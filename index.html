@@ -138,6 +138,45 @@
   .ctrl-group.collapsed h2{margin-bottom:0;padding-bottom:10px;}
   .ctrl-group.collapsed .ctrl-arrow{transform:rotate(-90deg);}
   .ctrl-group.collapsed .ctrl-group-body{display:none;}
+
+  .sub-collapse-toggle{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    width:100%;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 12px;
+    color:var(--star-white);
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .sub-collapse-toggle .ctrl-arrow{transition:transform .15s;}
+  .sub-collapse-toggle.open .ctrl-arrow{transform:rotate(180deg);}
+  .sub-collapse-body{display:none;padding-top:8px;}
+  .sub-collapse-body.show{display:block;}
+  .item-toggle-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .item-toggle-btn{
+    flex:none;
+    padding:6px 12px;
+    font-size:12px;
+    border-radius:16px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--dim);
+  }
+  .item-toggle-btn.active{
+    background:rgba(232,166,89,0.15);
+    border-color:var(--core-amber);
+    color:var(--core-amber);
+    font-weight:600;
+  }
   .field{margin-bottom:12px;}
   .field:last-child{margin-bottom:0;}
   .field label.top{
@@ -967,7 +1006,7 @@
     <aside class="control-panel">
       <button id="closeSettingsBtn" type="button" class="close-settings-btn">✕ 閉じる(シミュレーション画面へ戻る)</button>
 
-      <section class="ctrl-group collapsible">
+      <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">観測地点<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <div class="field">
@@ -1007,7 +1046,7 @@
         <p class="map-hint">＊プリセット地点(◆)の近くをクリックするとその地点にスナップします。それ以外の場所はクリック地点の緯度経度とタイムゾーンの目安(経度÷15で概算)を自動設定します。海外の地点はプリセット一覧から選択してください。</p>
       </section>
 
-      <section class="ctrl-group collapsible">
+      <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">カメラ設定<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <div class="field">
@@ -1037,44 +1076,86 @@
         </div>
       </section>
 
-      <section class="ctrl-group">
-        <h2>撮影方向</h2>
-        <div class="field">
-          <label class="top">構図</label>
-          <div class="seg" id="orientationSeg">
-            <button type="button" class="seg-btn active" data-o="landscape">▭ 横位置</button>
-            <button type="button" class="seg-btn" data-o="portrait">▯ 縦位置</button>
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">撮影方向<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <div class="field">
+            <label class="top">構図</label>
+            <div class="seg" id="orientationSeg">
+              <button type="button" class="seg-btn active" data-o="landscape">▭ 横位置</button>
+              <button type="button" class="seg-btn" data-o="portrait">▯ 縦位置</button>
+            </div>
           </div>
+          <div class="field">
+            <label class="top">方位 <span class="val mono" id="azVal">—</span></label>
+            <input type="range" id="facingAz" min="0" max="359" step="1">
+          </div>
+          <div class="field">
+            <label class="top">仰角 <span class="val mono" id="altValLabel">—</span></label>
+            <input type="range" id="facingAlt" min="-30" max="89" step="1">
+          </div>
+          <button id="snapBtn" type="button" class="ghost">🌌 天の川中心に向ける</button>
         </div>
-        <div class="field">
-          <label class="top">方位 <span class="val mono" id="azVal">—</span></label>
-          <input type="range" id="facingAz" min="0" max="359" step="1">
-        </div>
-        <div class="field">
-          <label class="top">仰角 <span class="val mono" id="altValLabel">—</span></label>
-          <input type="range" id="facingAlt" min="-30" max="89" step="1">
-        </div>
-        <button id="snapBtn" type="button" class="ghost">🌌 天の川中心に向ける</button>
       </section>
 
-      <section class="ctrl-group">
-        <h2>アニメーション</h2>
-        <div class="field">
-          <label class="top">再生速度</label>
-          <select id="animationSpeedSelect">
-            <option value="10">10倍速</option>
-            <option value="20" selected>20倍速</option>
-            <option value="30">30倍速</option>
-          </select>
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">星座・惑星設定<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <button id="showSkyLabelsBtn" type="button" class="toggle-btn active"><span>🏷 名称を表示(星座・惑星・太陽・月)</span><span id="showSkyLabelsState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+
+          <div class="sub-collapse" style="margin-top:10px;">
+            <button type="button" class="sub-collapse-toggle" id="constListToggle">
+              <span>星座リスト</span><span class="ctrl-arrow" id="constListArrow">▼</span>
+            </button>
+            <div class="sub-collapse-body" id="constListBody">
+              <div class="item-toggle-list" id="constItemList"></div>
+            </div>
+          </div>
+
+          <div class="sub-collapse" style="margin-top:8px;">
+            <button type="button" class="sub-collapse-toggle" id="planetListToggle">
+              <span>惑星リスト</span><span class="ctrl-arrow" id="planetListArrow">▼</span>
+            </button>
+            <div class="sub-collapse-body" id="planetListBody">
+              <div class="item-toggle-list" id="planetItemList"></div>
+            </div>
+          </div>
+
+          <div class="sub-collapse" style="margin-top:8px;">
+            <button type="button" class="sub-collapse-toggle" id="starListToggle">
+              <span>恒星リスト</span><span class="ctrl-arrow" id="starListArrow">▼</span>
+            </button>
+            <div class="sub-collapse-body" id="starListBody">
+              <div class="item-toggle-list" id="starItemList"></div>
+            </div>
+          </div>
         </div>
-        <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
-        <div class="row2" style="margin-top:8px;">
-          <button id="starTrailBtn" type="button" class="constellation-toggle-btn" style="width:100%;">スタートレイル</button>
-          <button id="starTrailTaperBtn" type="button" class="constellation-toggle-btn" style="width:100%;">尾を細く</button>
-        </div>
-        <div class="field" style="margin-top:10px;">
-          <label class="top">スタートレイルの長さ <span class="val mono" id="starTrailLengthVal">1×</span></label>
-          <input type="range" id="starTrailLengthSlider" min="1" max="10" step="1" value="1">
+      </section>
+
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">アニメーション<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <div class="field">
+            <label class="top">再生速度</label>
+            <select id="animationSpeedSelect">
+              <option value="10">10倍速</option>
+              <option value="20" selected>20倍速</option>
+              <option value="30">30倍速</option>
+            </select>
+          </div>
+          <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <div class="row2" style="margin-top:8px;">
+            <button id="starTrailBtn" type="button" class="constellation-toggle-btn" style="width:100%;">スタートレイル</button>
+            <button id="starTrailTaperBtn" type="button" class="constellation-toggle-btn" style="width:100%;">尾を細く</button>
+          </div>
+          <div class="field" style="margin-top:10px;">
+            <label class="top">スタートレイルの長さ <span class="val mono" id="starTrailLengthVal">1時間</span></label>
+            <input type="range" id="starTrailLengthSlider" min="10" max="300" step="10" value="60">
+          </div>
+          <div class="field">
+            <label class="top">星の透明度 <span class="val mono" id="starOpacityVal">100%</span></label>
+            <input type="range" id="starOpacitySlider" min="10" max="100" step="10" value="100">
+          </div>
         </div>
       </section>
 
@@ -1555,6 +1636,19 @@ const CONSTELLATIONS=[
 const POLARIS={ra:hToDeg(2.530),dec:89.264,name:"北極星"};
 const ANDROMEDA_GALAXY={ra:hToDeg(0.712),dec:41.269,name:"アンドロメダ銀河"};
 
+/* 恒星リストで個別に表示/非表示できる明るい恒星 (J2000) */
+const NAMED_STARS=[
+  {key:"polaris",    name:"北極星",       ra:hToDeg(2.530),  dec:89.264},
+  {key:"sirius",     name:"シリウス",     ra:hToDeg(6.752),  dec:-16.716},
+  {key:"betelgeuse", name:"ベテルギウス", ra:hToDeg(5.919),  dec:7.407},
+  {key:"rigel",      name:"リゲル",       ra:hToDeg(5.242),  dec:-8.202},
+  {key:"vega",       name:"ベガ",         ra:hToDeg(18.616), dec:38.784},
+  {key:"altair",     name:"アルタイル",   ra:hToDeg(19.847), dec:8.868},
+  {key:"deneb",      name:"デネブ",       ra:hToDeg(20.690), dec:45.280},
+  {key:"antares",    name:"アンタレス",   ra:hToDeg(16.490), dec:-26.432},
+  {key:"aldebaran",  name:"アルデバラン", ra:hToDeg(4.598),  dec:16.509},
+];
+
 /* =========================================================
    1.6 惑星データ (低精度軌道要素法。d=JD-2451543.5からの日数で計算)
    ========================================================= */
@@ -1664,9 +1758,14 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"),
+  showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
+  constListToggle:$("constListToggle"), constListBody:$("constListBody"), constItemList:$("constItemList"),
+  planetListToggle:$("planetListToggle"), planetListBody:$("planetListBody"), planetItemList:$("planetItemList"),
+  starListToggle:$("starListToggle"), starListBody:$("starListBody"), starItemList:$("starItemList"),
   lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"),
   starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
+  starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
@@ -1847,8 +1946,18 @@ el.starTrailTaperBtn.addEventListener("click",()=>{
   el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
   update();
 });
+function formatTrailLength(totalMin){
+  const h=Math.floor(totalMin/60), m=totalMin%60;
+  if(h===0) return `${m}分`;
+  if(m===0) return `${h}時間`;
+  return `${h}時間${m}分`;
+}
 el.starTrailLengthSlider.addEventListener("input",()=>{
-  el.starTrailLengthVal.textContent=`${el.starTrailLengthSlider.value}×`;
+  el.starTrailLengthVal.textContent=formatTrailLength(+el.starTrailLengthSlider.value);
+  update();
+});
+el.starOpacitySlider.addEventListener("input",()=>{
+  el.starOpacityVal.textContent=`${el.starOpacitySlider.value}%`;
   update();
 });
 /* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
@@ -1986,6 +2095,70 @@ el.planetToggleBtn.addEventListener("click",()=>{
   planetsVisible=!planetsVisible;
   el.planetToggleBtn.classList.toggle("active",planetsVisible);
   update();
+});
+
+/* 星座・惑星・太陽・月の名称表示ON/OFF */
+let showSkyLabels=true;
+el.showSkyLabelsBtn.addEventListener("click",()=>{
+  showSkyLabels=!showSkyLabels;
+  el.showSkyLabelsBtn.classList.toggle("active",showSkyLabels);
+  el.showSkyLabelsState.textContent = showSkyLabels ? "ON" : "OFF";
+  update();
+});
+
+/* 星座・惑星の個別表示/非表示 */
+const constellationVisibility={};
+CONSTELLATIONS.forEach(c=>{ constellationVisibility[c.name]=true; });
+CONSTELLATIONS.forEach(c=>{
+  const btn=document.createElement("button");
+  btn.type="button";
+  btn.className="item-toggle-btn active";
+  btn.textContent=c.name;
+  btn.addEventListener("click",()=>{
+    constellationVisibility[c.name]=!constellationVisibility[c.name];
+    btn.classList.toggle("active",constellationVisibility[c.name]);
+    update();
+  });
+  el.constItemList.appendChild(btn);
+});
+
+const planetVisibilityMap={};
+PLANET_INFO.forEach(pl=>{ planetVisibilityMap[pl.key]=true; });
+PLANET_INFO.forEach(pl=>{
+  const btn=document.createElement("button");
+  btn.type="button";
+  btn.className="item-toggle-btn active";
+  btn.textContent=pl.name;
+  btn.addEventListener("click",()=>{
+    planetVisibilityMap[pl.key]=!planetVisibilityMap[pl.key];
+    btn.classList.toggle("active",planetVisibilityMap[pl.key]);
+    update();
+  });
+  el.planetItemList.appendChild(btn);
+});
+
+const namedStarVisibility={};
+NAMED_STARS.forEach(ns=>{ namedStarVisibility[ns.key]=true; });
+NAMED_STARS.forEach(ns=>{
+  const btn=document.createElement("button");
+  btn.type="button";
+  btn.className="item-toggle-btn active";
+  btn.textContent=ns.name;
+  btn.addEventListener("click",()=>{
+    namedStarVisibility[ns.key]=!namedStarVisibility[ns.key];
+    btn.classList.toggle("active",namedStarVisibility[ns.key]);
+    update();
+  });
+  el.starItemList.appendChild(btn);
+});
+
+/* 星座リスト・惑星リスト・恒星リストのサブ折りたたみ */
+[[el.constListToggle,el.constListBody],[el.planetListToggle,el.planetListBody],[el.starListToggle,el.starListBody]].forEach(([toggle,body])=>{
+  toggle.addEventListener("click",()=>{
+    const open=!body.classList.contains("show");
+    body.classList.toggle("show",open);
+    toggle.classList.toggle("open",open);
+  });
 });
 
 /* モバイル: 設定画面(観測地点・カメラ設定・撮影方向)⇔ シミュレーション画面 の切り替え */
@@ -2600,6 +2773,7 @@ function drawPhoto(ctx,s){
   }
 
   const vis = 1-s.skyBrightness; // 全体の見えやすさ係数
+  const starOpacity = (+el.starOpacitySlider.value||100)/100; // 星の透明度(スタートレイルで描く星全体に均一に適用、0.1〜1.0)
 
   // 星
   const trailSec = s.shutter;
@@ -2607,12 +2781,14 @@ function drawPhoto(ctx,s){
   ctx.globalCompositeOperation="lighter";
   if(starTrailMode){
     // スタートレイル演出: 微光星も含めて、実際の日周運動に沿った弧状の軌跡として描く
-    const lengthMultiplier=+el.starTrailLengthSlider.value||1;
-    const steps=Math.min(14, 6+Math.round((lengthMultiplier-1)*0.9));
-    const trailMin=25*lengthMultiplier*starTrailGrowProgress;
+    const trailMinutesSetting=+el.starTrailLengthSlider.value||60; // スライダーの値をそのまま「分」として使う(10分刻み・最大300分=5時間)
+    const steps=Math.min(16, 6+Math.round((trailMinutesSetting/300)*10));
+    // 成長アニメーション中は滑らかに連続的に伸ばすのではなく、10分単位で段階的に伸びるようにする(実際に10分おきに1枚ずつ撮影が積み重なっていくイメージ)
+    const rawTrailMin=trailMinutesSetting*starTrailGrowProgress;
+    const trailMin=starTrailGrowProgress>=1 ? trailMinutesSetting : Math.floor(rawTrailMin/10)*10;
     s.starsNow.forEach(star=>{
       const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
-      const baseAlpha = brightness*vis;
+      const baseAlpha = brightness*vis*starOpacity;
       if(baseAlpha < 0.015) return; // 極端に暗い星は負荷軽減のため省略
 
       const nowP=toXY(star.az,star.alt);
@@ -2792,6 +2968,11 @@ function drawPhoto(ctx,s){
       drawMoonPhaseShape(ctx,x,y,r,s.moon.elong,"#f4f1e6","#3d4058");
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
       ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1; ctx.stroke();
+      if(showSkyLabels){
+        ctx.font="14px Inter, sans-serif";
+        ctx.fillStyle="rgba(230,230,245,0.95)";
+        ctx.fillText("月",x+r+9,y+5);
+      }
     }
   }
 
@@ -2808,12 +2989,18 @@ function drawPhoto(ctx,s){
       g.addColorStop(1,"rgba(255,190,110,0)");
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle="#fff2d9"; ctx.fill();
+      if(showSkyLabels){
+        ctx.font="14px Inter, sans-serif";
+        ctx.fillStyle="rgba(255,230,180,0.95)";
+        ctx.fillText("太陽",x+r+9,y+5);
+      }
     }
   }
 
   // 星座 (トグルON時のみ)
   if(constellationsVisible){
     CONSTELLATIONS.forEach(c=>{
+      if(constellationVisibility[c.name]===false) return;
       const pts=c.stars.map(st=>{
         const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
         if(aa.alt<-2) return null;
@@ -2835,7 +3022,7 @@ function drawPhoto(ctx,s){
         ctx.beginPath(); ctx.arc(p[0],p[1],2.8,0,Math.PI*2);
         ctx.fillStyle="rgba(210,230,255,0.95)"; ctx.fill();
       });
-      if(visN>=2){
+      if(visN>=2 && showSkyLabels){
         ctx.font="15px Inter, sans-serif";
         ctx.fillStyle="rgba(200,222,255,0.85)";
         ctx.textAlign="center";
@@ -2844,24 +3031,25 @@ function drawPhoto(ctx,s){
       }
     });
 
-    // 北極星(明るい点+名前)
-    {
-      const aa=raDecToAltAz(POLARIS.ra,POLARIS.dec,s.jd,s.lat,s.lon);
-      if(aa.alt>-2){
-        const p=toXY(aa.az,aa.alt);
-        if(p && p[0]>-40 && p[0]<W+40 && p[1]>-40 && p[1]<H+40){
-          const [x,y]=p;
-          const g=ctx.createRadialGradient(x,y,0,x,y,11);
-          g.addColorStop(0,"rgba(255,255,255,0.95)");
-          g.addColorStop(1,"rgba(255,255,255,0)");
-          ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-          ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
-          ctx.font="600 15px Inter, sans-serif";
-          ctx.fillStyle="#ffffff";
-          ctx.fillText(POLARIS.name,x+13,y+5);
-        }
+    // 恒星リスト (北極星・シリウス・ベテルギウスなど、個別に表示/非表示できる明るい恒星)
+    NAMED_STARS.forEach(ns=>{
+      if(namedStarVisibility[ns.key]===false) return;
+      const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);
+      if(aa.alt<-2) return;
+      const p=toXY(aa.az,aa.alt);
+      if(!p || p[0]<-40 || p[0]>W+40 || p[1]<-40 || p[1]>H+40) return;
+      const [x,y]=p;
+      const g=ctx.createRadialGradient(x,y,0,x,y,11);
+      g.addColorStop(0,"rgba(255,255,255,0.95)");
+      g.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
+      if(showSkyLabels){
+        ctx.font="600 15px Inter, sans-serif";
+        ctx.fillStyle="#ffffff";
+        ctx.fillText(ns.name,x+13,y+5);
       }
-    }
+    });
 
     // アンドロメダ銀河(淡い楕円状の光芒+名前)
     {
@@ -2878,9 +3066,11 @@ function drawPhoto(ctx,s){
           g.addColorStop(1,"rgba(224,214,255,0)");
           ctx.beginPath(); ctx.arc(0,0,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
           ctx.restore();
-          ctx.font="14.5px Inter, sans-serif";
-          ctx.fillStyle="rgba(224,214,255,0.9)";
-          ctx.fillText(ANDROMEDA_GALAXY.name,x+15,y+5);
+          if(showSkyLabels){
+            ctx.font="14.5px Inter, sans-serif";
+            ctx.fillStyle="rgba(224,214,255,0.9)";
+            ctx.fillText(ANDROMEDA_GALAXY.name,x+15,y+5);
+          }
         }
       }
     }
@@ -2889,6 +3079,7 @@ function drawPhoto(ctx,s){
   // 惑星 (トグルON時のみ)
   if(planetsVisible){
     PLANET_INFO.forEach(pl=>{
+      if(planetVisibilityMap[pl.key]===false) return;
       const pos=planetRaDec(pl.key,s.jd);
       const aa=raDecToAltAz(pos.ra,pos.dec,s.jd,s.lat,s.lon);
       if(aa.alt<-2) return;
@@ -2903,9 +3094,11 @@ function drawPhoto(ctx,s){
       g.addColorStop(1,`rgba(${pl.color},0)`);
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=`rgb(${pl.color})`; ctx.fill();
-      ctx.font="14.5px Inter, sans-serif";
-      ctx.fillStyle=`rgba(${pl.color},0.95)`;
-      ctx.fillText(pl.name,x+r+7,y+5);
+      if(showSkyLabels){
+        ctx.font="14.5px Inter, sans-serif";
+        ctx.fillStyle=`rgba(${pl.color},0.95)`;
+        ctx.fillText(pl.name,x+r+7,y+5);
+      }
     });
   }
 
