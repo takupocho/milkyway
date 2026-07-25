@@ -433,6 +433,69 @@
     font-size:13px;
     color:var(--dim-2);
   }
+  .sky-search-wrap{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  #skySearchSelect{
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--star-white);
+    border-radius:8px;
+    padding:7px 10px;
+    font-size:13px;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+  }
+  .sky-search-msg{display:none;}
+  .sky-search-popup{
+    position:absolute;
+    top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(20,22,40,0.82);
+    border:1.5px solid var(--violet);
+    border-radius:14px;
+    padding:16px 22px;
+    color:#fff;
+    font-size:16px;
+    font-weight:700;
+    text-align:center;
+    line-height:1.5;
+    white-space:nowrap;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity .25s;
+    z-index:15;
+  }
+  .sky-search-popup.show{opacity:1;}
+
+  .sky-info-popup{
+    position:absolute;
+    left:16px; right:16px; bottom:14px;
+    background:rgba(20,22,40,0.82);
+    border:1.5px solid var(--violet);
+    border-radius:14px;
+    padding:16px 20px;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .25s;
+    cursor:pointer;
+    z-index:14;
+  }
+  .sky-info-popup.show{opacity:1; pointer-events:auto;}
+  .sky-info-title{
+    font-size:16px;
+    font-weight:700;
+    color:#fff;
+    margin-bottom:8px;
+  }
+  .sky-info-body{
+    font-size:13.5px;
+    line-height:1.7;
+    color:rgba(255,255,255,0.9);
+  }
 
   .header-right-group{
     display:flex;
@@ -1129,6 +1192,15 @@
               <div class="item-toggle-list" id="starItemList"></div>
             </div>
           </div>
+
+          <div class="sub-collapse" style="margin-top:8px;">
+            <button type="button" class="sub-collapse-toggle" id="starGroupListToggle">
+              <span>星のグループ</span><span class="ctrl-arrow" id="starGroupListArrow">▼</span>
+            </button>
+            <div class="sub-collapse-body" id="starGroupListBody">
+              <div class="item-toggle-list" id="starGroupItemList"></div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1167,6 +1239,47 @@
         <section class="card">
           <div class="card-title-row" id="cardTitleRow">
             <h2 class="card-title">撮影シミュレーション<span class="card-note">露出・ノイズ・星の流れを反映</span></h2>
+            <div class="sky-search-wrap">
+              <select id="skySearchSelect">
+                <option value="" selected>星空検索</option>
+                <option value="gc">天の川の中心</option>
+                <option value="sun">太陽</option>
+                <option value="moon">月</option>
+                <optgroup label="星座リスト">
+                  <option value="const:さそり座">さそり座</option>
+                  <option value="const:オリオン座">オリオン座</option>
+                  <option value="const:カシオペア座">カシオペア座</option>
+                  <option value="const:北斗七星">北斗七星</option>
+                  <option value="const:はくちょう座">はくちょう座</option>
+                </optgroup>
+                <optgroup label="惑星リスト">
+                  <option value="planet:mercury">水星</option>
+                  <option value="planet:venus">金星</option>
+                  <option value="planet:mars">火星</option>
+                  <option value="planet:jupiter">木星</option>
+                  <option value="planet:saturn">土星</option>
+                  <option value="planet:uranus">天王星</option>
+                  <option value="planet:neptune">海王星</option>
+                </optgroup>
+                <optgroup label="恒星リスト">
+                  <option value="star:polaris">北極星</option>
+                  <option value="star:sirius">シリウス</option>
+                  <option value="star:betelgeuse">ベテルギウス</option>
+                  <option value="star:rigel">リゲル</option>
+                  <option value="star:vega">ベガ</option>
+                  <option value="star:altair">アルタイル</option>
+                  <option value="star:deneb">デネブ</option>
+                  <option value="star:antares">アンタレス</option>
+                  <option value="star:aldebaran">アルデバラン</option>
+                </optgroup>
+                <optgroup label="星のグループ">
+                  <option value="group:summer_triangle">夏の大三角</option>
+                  <option value="group:autumn_square">秋の四辺形</option>
+                  <option value="group:winter_triangle">冬の大三角</option>
+                  <option value="group:winter_hexagon">冬のダイヤモンド</option>
+                </optgroup>
+              </select>
+            </div>
             <div class="header-right-group" id="headerRightGroup">
               <div class="today-date" id="todayDate">
                 <span class="today-date-year" id="todayDateYear">2026</span>
@@ -1190,6 +1303,11 @@
             <div class="photo-canvas-wrap">
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
+              <div class="sky-search-popup" id="skySearchPopup"></div>
+              <div class="sky-info-popup" id="skyInfoPopup">
+                <div class="sky-info-title" id="skyInfoTitle"></div>
+                <div class="sky-info-body" id="skyInfoBody"></div>
+              </div>
             </div>
             <canvas id="compassStrip" width="1200" height="54"></canvas>
           </div>
@@ -1649,6 +1767,50 @@ const NAMED_STARS=[
   {key:"aldebaran",  name:"アルデバラン", ra:hToDeg(4.598),  dec:16.509},
 ];
 
+/* 星のグループ(星座の枠を超えた有名な星の並び。線で結んだ形と名前を表示) */
+const STAR_GROUPS=[
+  {
+    key:"summer_triangle", name:"夏の大三角",
+    stars:[
+      {ra:hToDeg(18.616),dec:38.784}, // ベガ
+      {ra:hToDeg(20.690),dec:45.280}, // デネブ
+      {ra:hToDeg(19.847),dec:8.868},  // アルタイル
+    ],
+    lines:[[0,1],[1,2],[2,0]],
+  },
+  {
+    key:"autumn_square", name:"秋の四辺形",
+    stars:[
+      {ra:hToDeg(23.080),dec:15.205}, // マルカブ
+      {ra:hToDeg(23.063),dec:28.083}, // シェアト
+      {ra:hToDeg(0.140), dec:29.083}, // アルフェラッツ
+      {ra:hToDeg(0.220), dec:15.183}, // アルゲニブ
+    ],
+    lines:[[0,1],[1,2],[2,3],[3,0]],
+  },
+  {
+    key:"winter_triangle", name:"冬の大三角",
+    stars:[
+      {ra:hToDeg(5.919),dec:7.407},   // ベテルギウス
+      {ra:hToDeg(6.752),dec:-16.716}, // シリウス
+      {ra:hToDeg(7.655),dec:5.225},   // プロキオン
+    ],
+    lines:[[0,1],[1,2],[2,0]],
+  },
+  {
+    key:"winter_hexagon", name:"冬のダイヤモンド",
+    stars:[
+      {ra:hToDeg(5.242),dec:-8.202},  // リゲル
+      {ra:hToDeg(4.598),dec:16.509},  // アルデバラン
+      {ra:hToDeg(5.278),dec:46.000},  // カペラ
+      {ra:hToDeg(7.755),dec:28.026},  // ポルックス
+      {ra:hToDeg(7.655),dec:5.225},   // プロキオン
+      {ra:hToDeg(6.752),dec:-16.716}, // シリウス
+    ],
+    lines:[[0,1],[1,2],[2,3],[3,4],[4,5],[5,0]],
+  },
+];
+
 /* =========================================================
    1.6 惑星データ (低精度軌道要素法。d=JD-2451543.5からの日数で計算)
    ========================================================= */
@@ -1758,10 +1920,13 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"),
+  skySearchSelect:$("skySearchSelect"), skySearchPopup:$("skySearchPopup"),
+  skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   constListToggle:$("constListToggle"), constListBody:$("constListBody"), constItemList:$("constItemList"),
   planetListToggle:$("planetListToggle"), planetListBody:$("planetListBody"), planetItemList:$("planetItemList"),
   starListToggle:$("starListToggle"), starListBody:$("starListBody"), starItemList:$("starItemList"),
+  starGroupListToggle:$("starGroupListToggle"), starGroupListBody:$("starGroupListBody"), starGroupItemList:$("starGroupItemList"),
   lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"),
   starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
@@ -1893,6 +2058,123 @@ el.snapBtn.addEventListener("click",()=>{
     el.facingAz.value=Math.round(state.gcAltAz.az);
     el.facingAlt.value=clamp(Math.round(state.gcAltAz.alt),-30,85);
   }
+  update();
+});
+
+/* 星空検索: RA/Decの角度平均を求める(RAは0h/24h境界をまたぐ場合があるため単位ベクトルで平均する) */
+function circularMeanRaDec(starsArr){
+  let sx=0, sy=0, sumDec=0;
+  starsArr.forEach(st=>{
+    sx+=cos(st.ra); sy+=sin(st.ra);
+    sumDec+=st.dec;
+  });
+  let ra=atan2d(sy,sx);
+  if(ra<0) ra+=360;
+  return {ra, dec:sumDec/starsArr.length};
+}
+/* 星空検索: 各対象のちょっとした解説 */
+const SKY_SEARCH_INFO={
+  gc:   {title:"天の川の中心", body:"天の川銀河の中心方向。いて座の方向にあり、天の川の中で最も明るく濃い部分です。"},
+  sun:  {title:"太陽", body:"地球に最も近い恒星。地球に光と熱を届ける、太陽系の中心にある天体です。"},
+  moon: {title:"月", body:"地球の唯一の衛星。太陽の光を反射しながら満ち欠けを繰り返しています。"},
+  "const:さそり座":     {title:"さそり座", body:"夏の代表的な星座。S字型に曲がった尾を持つサソリの姿を描きます。"},
+  "const:オリオン座":   {title:"オリオン座", body:"冬の代表的な星座。3つ星が並ぶベルトが目印です。"},
+  "const:カシオペア座": {title:"カシオペア座", body:"北天に輝くW字型の星座。北極星を見つける目印にもなります。"},
+  "const:北斗七星":     {title:"北斗七星", body:"おおぐま座の一部で、ひしゃく型に並ぶ7つの星。北極星を探す手がかりになります。"},
+  "const:はくちょう座": {title:"はくちょう座", body:"北十字とも呼ばれる、天の川に沿って羽ばたく白鳥の姿をした星座です。"},
+  "planet:mercury": {title:"水星", body:"太陽に最も近い惑星。太陽との離角が小さく、観測が難しい惑星です。"},
+  "planet:venus":   {title:"金星", body:"「明けの明星」「宵の明星」として知られる、太陽・月に次いで明るい天体です。"},
+  "planet:mars":    {title:"火星", body:"赤く見えることから「赤い惑星」とも呼ばれます。"},
+  "planet:jupiter": {title:"木星", body:"太陽系最大の惑星。ガリレオが発見した4つの衛星でも有名です。"},
+  "planet:saturn":  {title:"土星", body:"美しい環を持つ惑星。肉眼でも黄白色の落ち着いた輝きが分かります。"},
+  "planet:uranus":  {title:"天王星", body:"淡い青緑色に輝くガス惑星。肉眼ではぎりぎり見えるかどうかの明るさです。"},
+  "planet:neptune": {title:"海王星", body:"太陽から最も遠い惑星。青く輝きますが、肉眼で見るのはほぼ不可能です。"},
+  "star:polaris":    {title:"北極星（所属する星座：こぐま座）", body:"地軸のほぼ延長線上にあるため、一晩中ほとんど動かずに見える星です。"},
+  "star:sirius":     {title:"シリウス（所属する星座：おおいぬ座）", body:"全天で最も明るく輝く恒星。おおいぬ座の目にあたります。"},
+  "star:betelgeuse": {title:"ベテルギウス（所属する星座：オリオン座）", body:"オリオン座の肩にあたる赤色超巨星。将来、超新星爆発を起こすと言われています。"},
+  "star:rigel":      {title:"リゲル（所属する星座：オリオン座）", body:"オリオン座の足にあたる青白い超巨星。赤いベテルギウスと対照的な色をしています。"},
+  "star:vega":       {title:"ベガ（所属する星座：こと座）", body:"こと座の主星で、七夕伝説の「織姫星」としても知られています。"},
+  "star:altair":     {title:"アルタイル（所属する星座：わし座）", body:"わし座の主星で、七夕伝説の「彦星」として知られています。"},
+  "star:deneb":      {title:"デネブ（所属する星座：はくちょう座）", body:"はくちょう座の尾にあたる星。夏の大三角の一角を担います。"},
+  "star:antares":    {title:"アンタレス（所属する星座：さそり座）", body:"夏の夜空に赤く不気味に輝く赤色超巨星。「さそりの心臓」に位置しています。"},
+  "star:aldebaran":  {title:"アルデバラン（所属する星座：おうし座）", body:"おうし座の目にあたる赤みを帯びた星。ヒヤデス星団の手前に位置します。"},
+  "group:summer_triangle": {title:"夏の大三角", body:"ベガ・デネブ・アルタイルの3つの1等星が作る、夏の夜空の目印です。"},
+  "group:autumn_square":   {title:"秋の四辺形", body:"ペガスス座を中心とした4つの星が作る大きな四角形。秋の星座探しの起点になります。"},
+  "group:winter_triangle": {title:"冬の大三角", body:"ベテルギウス・シリウス・プロキオンの3つの1等星が作る、冬の夜空の目印です。"},
+  "group:winter_hexagon":  {title:"冬のダイヤモンド", body:"冬の1等星6つが描く大きな六角形。冬の星座めぐりの目印になります。"},
+};
+el.skyInfoPopup.addEventListener("click",()=>{
+  el.skyInfoPopup.classList.remove("show");
+});
+
+let skySearchPopupTimer=null;
+function showSkySearchPopup(message){
+  if(skySearchPopupTimer) clearTimeout(skySearchPopupTimer);
+  el.skySearchPopup.innerHTML=message;
+  el.skySearchPopup.classList.add("show");
+  skySearchPopupTimer=setTimeout(()=>{
+    el.skySearchPopup.classList.remove("show");
+    skySearchPopupTimer=null;
+  },2000);
+}
+el.skySearchSelect.addEventListener("change",()=>{
+  const val=el.skySearchSelect.value;
+  el.skySearchSelect.value=""; // 選択後は毎回「星空検索」に戻し、続けて別の対象を選べるようにする
+  if(!val || !state) return;
+
+  let target=null, displayName="";
+  if(val==="gc"){
+    target={ra:GC.ra, dec:GC.dec}; displayName="天の川の中心";
+  } else if(val==="sun"){
+    target=null; displayName="太陽";
+  } else if(val==="moon"){
+    target=null; displayName="月";
+  } else if(val.startsWith("const:")){
+    const name=val.slice(6);
+    const c=CONSTELLATIONS.find(c=>c.name===name);
+    if(c) target=circularMeanRaDec(c.stars);
+    displayName=name;
+  } else if(val.startsWith("planet:")){
+    const key=val.slice(7);
+    target=planetRaDec(key, state.jd);
+    const pl=PLANET_INFO.find(p=>p.key===key);
+    displayName=pl?pl.name:key;
+  } else if(val.startsWith("star:")){
+    const key=val.slice(5);
+    const ns=NAMED_STARS.find(n=>n.key===key);
+    if(ns) target={ra:ns.ra, dec:ns.dec};
+    displayName=ns?ns.name:key;
+  } else if(val.startsWith("group:")){
+    const key=val.slice(6);
+    const g=STAR_GROUPS.find(g=>g.key===key);
+    if(g) target=circularMeanRaDec(g.stars);
+    displayName=g?g.name:key;
+  }
+
+  // 太陽・月はすでに計算済みのalt/azをそのまま使う
+  let aa;
+  if(val==="sun") aa=state.sunAltAz;
+  else if(val==="moon") aa=state.moonAltAz;
+  else {
+    if(!target) return;
+    aa=raDecToAltAz(target.ra,target.dec,state.jd,state.lat,state.lon);
+  }
+
+  if(aa.alt<=-2){
+    showSkySearchPopup(`${displayName}は<br>夜空には出ていません`);
+    el.skyInfoPopup.classList.remove("show");
+    return;
+  }
+  if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
+  el.skySearchPopup.classList.remove("show");
+  const info=SKY_SEARCH_INFO[val];
+  if(info){
+    el.skyInfoTitle.textContent=info.title;
+    el.skyInfoBody.textContent=info.body;
+    el.skyInfoPopup.classList.add("show");
+  }
+  el.facingAz.value=((aa.az%360)+360)%360;
+  el.facingAlt.value=clamp(Math.round(aa.alt),-30,85);
   update();
 });
 
@@ -2152,8 +2434,23 @@ NAMED_STARS.forEach(ns=>{
   el.starItemList.appendChild(btn);
 });
 
-/* 星座リスト・惑星リスト・恒星リストのサブ折りたたみ */
-[[el.constListToggle,el.constListBody],[el.planetListToggle,el.planetListBody],[el.starListToggle,el.starListBody]].forEach(([toggle,body])=>{
+const starGroupVisibility={};
+STAR_GROUPS.forEach(g=>{ starGroupVisibility[g.key]=true; });
+STAR_GROUPS.forEach(g=>{
+  const btn=document.createElement("button");
+  btn.type="button";
+  btn.className="item-toggle-btn active";
+  btn.textContent=g.name;
+  btn.addEventListener("click",()=>{
+    starGroupVisibility[g.key]=!starGroupVisibility[g.key];
+    btn.classList.toggle("active",starGroupVisibility[g.key]);
+    update();
+  });
+  el.starGroupItemList.appendChild(btn);
+});
+
+/* 星座リスト・惑星リスト・恒星リスト・星のグループのサブ折りたたみ */
+[[el.constListToggle,el.constListBody],[el.planetListToggle,el.planetListBody],[el.starListToggle,el.starListBody],[el.starGroupListToggle,el.starGroupListBody]].forEach(([toggle,body])=>{
   toggle.addEventListener("click",()=>{
     const open=!body.classList.contains("show");
     body.classList.toggle("show",open);
@@ -3048,6 +3345,41 @@ function drawPhoto(ctx,s){
         ctx.font="600 15px Inter, sans-serif";
         ctx.fillStyle="#ffffff";
         ctx.fillText(ns.name,x+13,y+5);
+      }
+    });
+
+    // 星のグループ(夏の大三角・秋の四辺形・冬の大三角・冬のダイヤモンド)
+    STAR_GROUPS.forEach(g=>{
+      if(starGroupVisibility[g.key]===false) return;
+      const pts=g.stars.map(st=>{
+        const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
+        if(aa.alt<-2) return null;
+        return toXY(aa.az,aa.alt);
+      });
+      ctx.strokeStyle="rgba(255,214,150,0.55)";
+      ctx.lineWidth=1.3;
+      ctx.setLineDash([5,4]);
+      g.lines.forEach(([i,j])=>{
+        const p1=pts[i], p2=pts[j];
+        if(!p1||!p2) return;
+        if(Math.abs(p1[0]-p2[0])>W*1.5) return;
+        ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      let visN=0, sumX=0, sumY=0;
+      pts.forEach(p=>{
+        if(!p) return;
+        if(p[0]<-40||p[0]>W+40||p[1]<-40||p[1]>H+40) return;
+        visN++; sumX+=p[0]; sumY+=p[1];
+        ctx.beginPath(); ctx.arc(p[0],p[1],2.6,0,Math.PI*2);
+        ctx.fillStyle="rgba(255,224,180,0.95)"; ctx.fill();
+      });
+      if(visN>=2 && showSkyLabels){
+        ctx.font="15px Inter, sans-serif";
+        ctx.fillStyle="rgba(255,214,150,0.9)";
+        ctx.textAlign="center";
+        ctx.fillText(g.name, sumX/visN, sumY/visN-16);
+        ctx.textAlign="left";
       }
     });
 
