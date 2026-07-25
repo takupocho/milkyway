@@ -1067,6 +1067,15 @@
             <option value="30">30倍速</option>
           </select>
         </div>
+        <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+        <div class="row2" style="margin-top:8px;">
+          <button id="starTrailBtn" type="button" class="constellation-toggle-btn" style="width:100%;">スタートレイル</button>
+          <button id="starTrailTaperBtn" type="button" class="constellation-toggle-btn" style="width:100%;">尾を細く</button>
+        </div>
+        <div class="field" style="margin-top:10px;">
+          <label class="top">スタートレイルの長さ <span class="val mono" id="starTrailLengthVal">1×</span></label>
+          <input type="range" id="starTrailLengthSlider" min="1" max="10" step="1" value="1">
+        </div>
       </section>
 
     </aside>
@@ -1655,6 +1664,9 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"),
+  lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"),
+  starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
+  starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
@@ -1789,6 +1801,64 @@ el.snapBtn.addEventListener("click",()=>{
 let playbackTimer=null;
 let playbackAccumMinutes=0;
 let playbackLastTime=0;
+let lockAzToGc=false;
+el.lockAzToGcBtn.addEventListener("click",()=>{
+  lockAzToGc=!lockAzToGc;
+  el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
+  el.lockAzToGcState.textContent = lockAzToGc ? "ON" : "OFF";
+  if(lockAzToGc && state && state.gcAltAz.alt>-90){
+    el.facingAz.value=Math.round(state.gcAltAz.az);
+    update();
+  }
+});
+/* スタートレイル演出のON/OFF */
+let starTrailMode=false;
+let starTrailTaper=false;
+let starTrailGrowProgress=0; // 0(点)〜1(尾が最大長)
+let starTrailAnimRaf=null;
+let starTrailAnimStartTime=0;
+function starTrailGrowTick(now){
+  const duration=2.5; // 尾が最大長になるまでの秒数
+  const elapsed=(now-starTrailAnimStartTime)/1000;
+  starTrailGrowProgress=clamp(elapsed/duration,0,1);
+  if(state){ drawPhoto(photoCtx,state); }
+  if(starTrailGrowProgress<1 && starTrailMode){
+    starTrailAnimRaf=requestAnimationFrame(starTrailGrowTick);
+  } else {
+    starTrailAnimRaf=null;
+  }
+}
+el.starTrailBtn.addEventListener("click",()=>{
+  starTrailMode=!starTrailMode;
+  el.starTrailBtn.classList.toggle("active",starTrailMode);
+  if(starTrailAnimRaf){ cancelAnimationFrame(starTrailAnimRaf); starTrailAnimRaf=null; }
+  if(starTrailMode){
+    // ONにするたびに尾の長さ0から徐々に伸ばすアニメーションを開始する(星が少しずつ繋がっていく演出)
+    starTrailGrowProgress=0;
+    starTrailAnimStartTime=performance.now();
+    starTrailAnimRaf=requestAnimationFrame(starTrailGrowTick);
+  } else {
+    starTrailGrowProgress=0;
+  }
+  update();
+});
+el.starTrailTaperBtn.addEventListener("click",()=>{
+  starTrailTaper=!starTrailTaper;
+  el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
+  update();
+});
+el.starTrailLengthSlider.addEventListener("input",()=>{
+  el.starTrailLengthVal.textContent=`${el.starTrailLengthSlider.value}×`;
+  update();
+});
+/* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
+function jdForSliderMinutes(minutes){
+  const [y,mo,da]=el.dateInput.value.split("-").map(Number);
+  const tz=parseFloat(el.tz.value);
+  // Date.UTCは分(minutes)引数の小数部を切り捨ててしまうため、ミリ秒に変換してから加算し小数精度を保つ
+  const utcMs=Date.UTC(y,mo-1,da,0,0,0) + minutes*60000 - tz*3600000;
+  return toJulianDay(new Date(utcMs));
+}
 function startPlayback(){
   if(playbackTimer) return;
   playbackAccumMinutes=0;
@@ -1796,28 +1866,46 @@ function startPlayback(){
   el.playPauseBtn.textContent="⏸";
   el.playPauseBtn.setAttribute("aria-label","一時停止");
   el.playPauseBtn.classList.add("playing");
-  playbackTimer=setInterval(()=>{
-    const now=performance.now();
-    const dtSec=(now-playbackLastTime)/1000;
-    playbackLastTime=now;
-    const speed=parseFloat(el.animationSpeedSelect.value)||20; // 分/秒
-    playbackAccumMinutes += speed*dtSec;
-    if(playbackAccumMinutes<1) return;
+  playbackTimer=true;
+  requestAnimationFrame(playbackTick);
+}
+function playbackTick(now){
+  if(!playbackTimer) return;
+  const dtSec=(now-playbackLastTime)/1000;
+  playbackLastTime=now;
+  const speed=parseFloat(el.animationSpeedSelect.value)||20; // 分/秒
+  playbackAccumMinutes += speed*dtSec;
+
+  // 毎フレーム: 方位固定がONなら、まだ確定していない経過分も含めた「現在の瞬間」でGC方位を滑らかに追従させる。
+  // 重い全体再計算(星・天の川・タイムラインなど)は行わず、カメラの向きに関わる部分だけを軽量に再描画する。
+  if(lockAzToGc && state){
+    const previewVal=clamp((+el.timeSlider.value)+playbackAccumMinutes,0,1800);
+    const lat=parseFloat(el.lat.value), lon=parseFloat(el.lon.value);
+    const jdPreview=jdForSliderMinutes(previewVal);
+    const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,lat,lon);
+    const newAz=((gcAA.az%360)+360)%360;
+    el.facingAz.value=newAz;
+    state.facingAz=newAz;
+    el.azVal.textContent=`${Math.round(newAz)}°`;
+    drawPhoto(photoCtx,state);
+    drawDial(dialCtx,state);
+    drawCompassStrip(compassCtx,state);
+  }
+
+  if(playbackAccumMinutes>=1){
     const wholeMin=Math.floor(playbackAccumMinutes);
     playbackAccumMinutes -= wholeMin;
     let newVal=(+el.timeSlider.value)+wholeMin;
-    if(newVal>=1800){
-      el.timeSlider.value=1800;
-      update();
-      stopPlayback();
-      return;
-    }
+    const finished = newVal>=1800;
+    if(finished) newVal=1800;
     el.timeSlider.value=newVal;
-    update();
-  },120);
+    update(); // ここでフルの再計算を行う。facingAzは上ですでに最新の値に更新済みなのでそのまま使われる
+    if(finished){ stopPlayback(); return; }
+  }
+  requestAnimationFrame(playbackTick);
 }
 function stopPlayback(){
-  if(playbackTimer){ clearInterval(playbackTimer); playbackTimer=null; }
+  playbackTimer=null;
   el.playPauseBtn.textContent="▶";
   el.playPauseBtn.setAttribute("aria-label","再生");
   el.playPauseBtn.classList.remove("playing");
@@ -2275,7 +2363,7 @@ function computeState(){
   el.apVal.textContent=`F${aperture.toFixed(1)}`;
   el.isoVal.textContent=`ISO ${iso}`;
   el.ssVal.textContent=`${shutter} 秒`;
-  el.azVal.textContent=`${facingAz}°`;
+  el.azVal.textContent=`${Math.round(facingAz)}°`;
   el.altValLabel.textContent=`${facingAlt}°`;
 
   const maxShutter500 = 500/(focalLength*sensor.crop);
@@ -2299,30 +2387,35 @@ function computeState(){
   const fovH = 2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
   const fovV = 2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
 
-  /* 日の出没・月の出没 (選択した日付の現地 00:00〜24:00、読み取りカード用) */
-  const jdMidnight = toJulianDay(new Date(Date.UTC(y,mo-1,da,0,0,0) - tz*3600000));
-  const sunRiseSet = fmtRiseSet(findRiseSet(sunPosition, jdMidnight, lat, lon), tz);
-  const moonRiseSet = fmtRiseSet(findRiseSet(moonPosition, jdMidnight, lat, lon), tz);
-
-  /* 今夜の天の川ベストタイム (天文薄明終了後 かつ 銀河中心が地平線上) */
-  const bestWindow = findMilkyWayWindow(lat,lon,jdMidnight);
-
-  /* タイムラインバー用: 表示範囲(選択日 00:00 〜 翌 06:00 = 0〜1800分)全体での
-     月が出ている区間・太陽が出ている区間・天の川ベストタイムに該当する全区間(複数あり得る) */
-  const timelineTotalMin=1800;
-  const moonUpIntervals=findAltIntervals(moonPosition, jdMidnight, timelineTotalMin, lat, lon);
-  const sunUpIntervals=findAltIntervals(sunPosition, jdMidnight, timelineTotalMin, lat, lon);
-  const mwGoodIntervals=findAllGoodIntervals(lat,lon,jdMidnight,timelineTotalMin);
-
-  /* 撮影シミュレーション画面に表示する、太陽と月が一晩(表示範囲全体)でたどる軌跡 (20分刻み) */
-  const sunPath=[], moonPath=[];
-  for(let m=0;m<=timelineTotalMin;m+=20){
-    const jdP=jdMidnight+m/1440;
-    const sp=sunPosition(jdP);
-    sunPath.push(raDecToAltAz(sp.ra,sp.dec,jdP,lat,lon));
-    const mp=moonPosition(jdP);
-    moonPath.push(raDecToAltAz(mp.ra,mp.dec,jdP,lat,lon));
+  /* 日の出没・月の出没・ベストタイム・タイムライン区間・太陽/月の軌跡は「日付・場所」だけに依存し、
+     時刻スライダーの値(何時かの選択)には依存しない。再生アニメーション中は時刻だけが毎フレーム変わるため、
+     これらの重い計算は日付・場所が変わったときだけ行い、結果をキャッシュして使い回す。 */
+  const dailyCacheKey = `${el.dateInput.value}|${lat}|${lon}|${tz}`;
+  let daily;
+  if(computeState._dailyCacheKey===dailyCacheKey){
+    daily = computeState._dailyCache;
+  } else {
+    const jdMidnight = toJulianDay(new Date(Date.UTC(y,mo-1,da,0,0,0) - tz*3600000));
+    const sunRiseSet = fmtRiseSet(findRiseSet(sunPosition, jdMidnight, lat, lon), tz);
+    const moonRiseSet = fmtRiseSet(findRiseSet(moonPosition, jdMidnight, lat, lon), tz);
+    const bestWindow = findMilkyWayWindow(lat,lon,jdMidnight);
+    const timelineTotalMin=1800;
+    const moonUpIntervals=findAltIntervals(moonPosition, jdMidnight, timelineTotalMin, lat, lon);
+    const sunUpIntervals=findAltIntervals(sunPosition, jdMidnight, timelineTotalMin, lat, lon);
+    const mwGoodIntervals=findAllGoodIntervals(lat,lon,jdMidnight,timelineTotalMin);
+    const sunPath=[], moonPath=[];
+    for(let m=0;m<=timelineTotalMin;m+=20){
+      const jdP=jdMidnight+m/1440;
+      const sp=sunPosition(jdP);
+      sunPath.push(raDecToAltAz(sp.ra,sp.dec,jdP,lat,lon));
+      const mp=moonPosition(jdP);
+      moonPath.push(raDecToAltAz(mp.ra,mp.dec,jdP,lat,lon));
+    }
+    daily = { jdMidnight, sunRiseSet, moonRiseSet, bestWindow, moonUpIntervals, sunUpIntervals, mwGoodIntervals, sunPath, moonPath };
+    computeState._dailyCacheKey = dailyCacheKey;
+    computeState._dailyCache = daily;
   }
+  const { jdMidnight, sunRiseSet, moonRiseSet, bestWindow, moonUpIntervals, sunUpIntervals, mwGoodIntervals, sunPath, moonPath } = daily;
 
   return {
     lat,lon,tz,jd,sun,sunAltAz,moon,moonAltAz,gcAltAz,mwPoints,mwTop,mwBottom,starsNow,
@@ -2512,6 +2605,52 @@ function drawPhoto(ctx,s){
   const trailSec = s.shutter;
   ctx.save();
   ctx.globalCompositeOperation="lighter";
+  if(starTrailMode){
+    // スタートレイル演出: 微光星も含めて、実際の日周運動に沿った弧状の軌跡として描く
+    const lengthMultiplier=+el.starTrailLengthSlider.value||1;
+    const steps=Math.min(14, 6+Math.round((lengthMultiplier-1)*0.9));
+    const trailMin=25*lengthMultiplier*starTrailGrowProgress;
+    s.starsNow.forEach(star=>{
+      const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
+      const baseAlpha = brightness*vis;
+      if(baseAlpha < 0.015) return; // 極端に暗い星は負荷軽減のため省略
+
+      const nowP=toXY(star.az,star.alt);
+      if(!nowP) return;
+
+      const pts=[nowP];
+      for(let k=1;k<=steps;k++){
+        const dtMin = -trailMin*(k/steps);
+        const jdK = s.jd + dtMin/1440;
+        const aa = raDecToAltAz(star.ra,star.dec,jdK,s.lat,s.lon);
+        pts.push(aa.alt<-2 ? null : toXY(aa.az,aa.alt));
+      }
+      // 先端(現在位置)だけで判定すると、先端が画面外に出た途端に軌跡全体が消えてしまうため、
+      // 軌跡上のどこか一点でも画面内(余白込み)にあれば描画する
+      const anyOnScreen = pts.some(p => p && p[0]>-80 && p[0]<W+80 && p[1]>-80 && p[1]<H+80);
+      if(!anyOnScreen) return;
+      // pts[0]=現在(頭) 〜 pts[steps]=25分前(尾)。頭から尾へ向かって描画する。
+      const width=0.6+brightness*1.7;
+      for(let k=1;k<pts.length;k++){
+        const p0=pts[k-1], p1=pts[k]; // p0:頭側(現在に近い) -> p1:尾側(過去)
+        if(!p0||!p1) continue;
+        if(Math.abs(p0[0]-p1[0])>W*1.5) continue;
+        const tHead=1-(k-1)/(pts.length-2); // 1(頭・現在)→0(尾・過去)
+        let alpha, lw;
+        if(starTrailTaper){
+          alpha=baseAlpha*(0.10+0.90*tHead);
+          lw=width*(0.25+0.75*tHead);
+        } else {
+          alpha=baseAlpha;
+          lw=width;
+        }
+        ctx.strokeStyle=`rgba(255,250,240,${clamp(alpha,0,1)})`;
+        ctx.lineWidth=Math.max(0.4,lw);
+        ctx.lineCap="round";
+        ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.stroke();
+      }
+    });
+  } else {
   s.starsNow.forEach(star=>{
     if(star.alt<-2) return;
     const p0=toXY(star.az,star.alt);
@@ -2542,6 +2681,7 @@ function drawPhoto(ctx,s){
       ctx.beginPath(); ctx.arc(p0[0],p0[1],size,0,Math.PI*2); ctx.fill();
     }
   });
+  }
   ctx.restore();
 
   // 天の川帯 (中心線+上下オフセットのポリゴンで太さを表現)
@@ -3220,7 +3360,7 @@ function renderMessages(s){
 
 function renderExif(s){
   el.exifText.innerHTML = `
-    <span><b>方位</b> ${s.facingAz}°</span>
+    <span><b>方位</b> ${Math.round(s.facingAz)}°</span>
     <span><b>仰角</b> ${s.facingAlt}°</span>
     <span><b>焦点距離</b> ${s.focalLength}mm</span>
     <span><b>絞り</b> F${s.aperture.toFixed(1)}</span>
