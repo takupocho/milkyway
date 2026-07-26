@@ -1256,6 +1256,16 @@
         </div>
       </section>
 
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">シミュレーション画面<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <button id="showBelowHorizonBtn" type="button" class="toggle-btn"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
+          <button id="showHorizonLineBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📏 水平線を表示させる</span><span id="showHorizonLineState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:8px;">実際の地平線(高度0°)の位置を、明るいグレーの点線で分かりやすく表示します。</p>
+        </div>
+      </section>
+
     </aside>
 
     <main class="stage">
@@ -1351,7 +1361,7 @@
           <div class="datetime-row">
             <div class="dt-col">
               <button type="button" class="date-collapse-toggle" id="dateCollapseToggle">
-                <span class="dt-title">撮影日時を設定する</span>
+                <span class="dt-title">撮影日を設定</span>
                 <span class="collapse-arrow" id="dateCollapseArrow">▼</span>
               </button>
               <div class="date-collapse-body" id="dateCollapseBody">
@@ -2016,6 +2026,8 @@ const el={
   starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
+  showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
+  showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
@@ -2250,7 +2262,7 @@ el.skySearchSelect.addEventListener("change",()=>{
     aa=raDecToAltAz(target.ra,target.dec,state.jd,state.lat,state.lon);
   }
 
-  if(aa.alt<=-2){
+  if(!showBelowHorizon && aa.alt<=-2){
     showSkySearchPopup(`${displayName}は<br>夜空には出ていません`);
     el.skyInfoPopup.classList.remove("show");
     return;
@@ -2260,7 +2272,10 @@ el.skySearchSelect.addEventListener("change",()=>{
   const info=SKY_SEARCH_INFO[val];
   if(info){
     el.skyInfoTitle.textContent=info.title;
-    el.skyInfoBody.textContent=info.body;
+    const belowHorizonWarning = aa.alt<=-2
+      ? `<span style="color:var(--alert);font-weight:700;">現在南半球で夜空にはでていません。</span><br>`
+      : "";
+    el.skyInfoBody.innerHTML = belowHorizonWarning + info.body;
     el.skyInfoPopup.classList.add("show");
   }
   el.facingAz.value=((aa.az%360)+360)%360;
@@ -2330,6 +2345,22 @@ el.starTrailLengthSlider.addEventListener("input",()=>{
 });
 el.starOpacitySlider.addEventListener("input",()=>{
   el.starOpacityVal.textContent=`${el.starOpacitySlider.value}%`;
+  update();
+});
+/* 南半球(水平線の下)を可視化するON/OFF */
+let showBelowHorizon=false;
+el.showBelowHorizonBtn.addEventListener("click",()=>{
+  showBelowHorizon=!showBelowHorizon;
+  el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
+  el.showBelowHorizonState.textContent = showBelowHorizon ? "ON" : "OFF";
+  update();
+});
+/* 水平線(高度0°)を点線で表示するON/OFF */
+let showHorizonLine=false;
+el.showHorizonLineBtn.addEventListener("click",()=>{
+  showHorizonLine=!showHorizonLine;
+  el.showHorizonLineBtn.classList.toggle("active",showHorizonLine);
+  el.showHorizonLineState.textContent = showHorizonLine ? "ON" : "OFF";
   update();
 });
 /* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
@@ -2435,9 +2466,12 @@ function handlePhotoTap(pos){
   if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
   el.skySearchPopup.classList.remove("show");
   el.skyInfoTitle.textContent=info.title;
-  el.skyInfoBody.textContent = (hit.altitude!==undefined)
+  const belowHorizonWarning = (hit.altitude!==undefined && hit.altitude<=-2)
+    ? `<span style="color:var(--alert);font-weight:700;">現在南半球で夜空にはでていません。</span><br>`
+    : "";
+  el.skyInfoBody.innerHTML = belowHorizonWarning + (hit.altitude!==undefined
     ? `高度 ${Math.round(hit.altitude)}°　${info.body}`
-    : info.body;
+    : info.body);
   el.skyInfoPopup.classList.add("show");
 }
 function photoDragEnd(pos){
@@ -3096,7 +3130,7 @@ function drawDial(ctx,s){
   ctx.lineCap="round";
   for(let i=0;i<s.mwPoints.length-1;i++){
     const p0=s.mwPoints[i], p1=s.mwPoints[i+1];
-    if(p0.alt<=0 || p1.alt<=0) continue;
+    if(!showBelowHorizon && (p0.alt<=0 || p1.alt<=0)) continue;
     if(Math.abs(p0.az-p1.az)>180) continue; // 0/360またぎのノイズ除去
     const [x0,y0]=toXY(p0.az,p0.alt), [x1,y1]=toXY(p1.az,p1.alt);
     const w=p0.coreWeight;
@@ -3107,7 +3141,7 @@ function drawDial(ctx,s){
   }
 
   // 銀河中心マーカー
-  if(s.gcAltAz.alt>0){
+  if(showBelowHorizon || s.gcAltAz.alt>0){
     const [x,y]=toXY(s.gcAltAz.az,s.gcAltAz.alt);
     const g=ctx.createRadialGradient(x,y,0,x,y,14);
     g.addColorStop(0,"rgba(255,214,158,0.95)");
@@ -3252,7 +3286,7 @@ function drawPhoto(ctx,s){
         const dtMin = -trailMin*(k/steps);
         const jdK = s.jd + dtMin/1440;
         const aa = raDecToAltAz(star.ra,star.dec,jdK,s.lat,s.lon);
-        pts.push(aa.alt<-2 ? null : toXY(aa.az,aa.alt));
+        pts.push((!showBelowHorizon && aa.alt<-2) ? null : toXY(aa.az,aa.alt));
       }
       // 先端(現在位置)だけで判定すると、先端が画面外に出た途端に軌跡全体が消えてしまうため、
       // 軌跡上のどこか一点でも画面内(余白込み)にあれば描画する
@@ -3281,7 +3315,7 @@ function drawPhoto(ctx,s){
     });
   } else {
   s.starsNow.forEach(star=>{
-    if(star.alt<-2) return;
+    if(!showBelowHorizon && star.alt<-2) return;
     const p0=toXY(star.az,star.alt);
     if(!p0) return;
     if(p0[0]<-40||p0[0]>W+40||p0[1]<-40||p0[1]>H+40) return;
@@ -3356,7 +3390,7 @@ function drawPhoto(ctx,s){
     const minSpacing=Math.max(34, W*0.045);
     for(let i=0;i<s.mwPoints.length;i++){
       const p=s.mwPoints[i];
-      if(p.alt<-2) continue;
+      if(!showBelowHorizon && p.alt<-2) continue;
       const pt=toXY(p.az,p.alt);
       if(!pt) continue;
       const [x,y]=pt;
@@ -3407,7 +3441,7 @@ function drawPhoto(ctx,s){
   drawCelestialPath(s.sunPath,"242,180,90");
 
   // 月(月相の形を反映)
-  if(s.moonAltAz.alt>-1){
+  if(showBelowHorizon || s.moonAltAz.alt>-1){
     const pt=toXY(s.moonAltAz.az,s.moonAltAz.alt);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
       const [x,y]=pt;
@@ -3432,7 +3466,7 @@ function drawPhoto(ctx,s){
   }
 
   // 太陽
-  if(s.sunAltAz.alt>-1){
+  if(showBelowHorizon || s.sunAltAz.alt>-1){
     const pt=toXY(s.sunAltAz.az,s.sunAltAz.alt);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
       const [x,y]=pt;
@@ -3460,7 +3494,7 @@ function drawPhoto(ctx,s){
       if(constellationVisibility[c.name]===false) return;
       const pts=c.stars.map(st=>{
         const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
-        if(aa.alt<-2) return null;
+        if(!showBelowHorizon && aa.alt<-2) return null;
         return toXY(aa.az,aa.alt);
       });
       ctx.strokeStyle="rgba(160,205,255,0.6)";
@@ -3495,7 +3529,7 @@ function drawPhoto(ctx,s){
     NAMED_STARS.forEach(ns=>{
       if(namedStarVisibility[ns.key]===false) return;
       const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);
-      if(aa.alt<-2) return;
+      if(!showBelowHorizon && aa.alt<-2) return;
       const p=toXY(aa.az,aa.alt);
       if(!p || p[0]<-40 || p[0]>W+40 || p[1]<-40 || p[1]>H+40) return;
       const [x,y]=p;
@@ -3518,7 +3552,7 @@ function drawPhoto(ctx,s){
       if(starGroupVisibility[g.key]===false) return;
       const pts=g.stars.map(st=>{
         const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
-        if(aa.alt<-2) return null;
+        if(!showBelowHorizon && aa.alt<-2) return null;
         return toXY(aa.az,aa.alt);
       });
       ctx.strokeStyle="rgba(255,214,150,0.55)";
@@ -3554,7 +3588,7 @@ function drawPhoto(ctx,s){
     // アンドロメダ銀河(淡い楕円状の光芒+名前)
     {
       const aa=raDecToAltAz(ANDROMEDA_GALAXY.ra,ANDROMEDA_GALAXY.dec,s.jd,s.lat,s.lon);
-      if(aa.alt>-2){
+      if(showBelowHorizon || aa.alt>-2){
         const p=toXY(aa.az,aa.alt);
         if(p && p[0]>-40 && p[0]<W+40 && p[1]>-40 && p[1]<H+40){
           const [x,y]=p;
@@ -3584,7 +3618,7 @@ function drawPhoto(ctx,s){
       if(planetVisibilityMap[pl.key]===false) return;
       const pos=planetRaDec(pl.key,s.jd);
       const aa=raDecToAltAz(pos.ra,pos.dec,s.jd,s.lat,s.lon);
-      if(aa.alt<-2) return;
+      if(!showBelowHorizon && aa.alt<-2) return;
       const pt=toXY(aa.az,aa.alt);
       if(!pt) return;
       const [x,y]=pt;
@@ -3628,7 +3662,7 @@ function drawPhoto(ctx,s){
   }
   ctx.lineTo(W,H);
   ctx.closePath();
-  ctx.fillStyle="#050608";
+  ctx.fillStyle=showBelowHorizon ? "rgba(5,6,8,0.55)" : "#050608";
   ctx.fill();
   trees.forEach(t=>{
     const diff=angDiff(s.facingAz,t.az);
@@ -3639,9 +3673,28 @@ function drawPhoto(ctx,s){
     ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
     ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
     ctx.closePath();
-    ctx.fillStyle="#050608";
+    ctx.fillStyle=showBelowHorizon ? "rgba(5,6,8,0.55)" : "#050608";
     ctx.fill();
   });
+
+  // 水平線(高度0°)を明るいグレーの点線で表示(トグルON時のみ)
+  if(showHorizonLine){
+    ctx.save();
+    ctx.strokeStyle="rgba(210,213,225,0.85)";
+    ctx.lineWidth=1.6;
+    ctx.setLineDash([7,6]);
+    ctx.beginPath();
+    let started=false;
+    for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
+      const p=toXY(az,0);
+      if(!p) continue;
+      if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
+      else ctx.lineTo(p[0],p[1]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 
   // ISOグレイン
   if(s.grainAmount>0.02){
