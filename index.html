@@ -220,6 +220,7 @@
     padding:14px 16px 16px;
   }
   .month-table-panel.show{display:block;}
+  .month-table-close-btn{display:none;}
   .month-table-header{
     display:flex;
     align-items:center;
@@ -394,8 +395,41 @@
     .timeline-row{margin-bottom:0;}
     .slider-row{margin-top:10px;}
     .month-toggle-btn{margin-top:8px;padding:6px 12px;font-size:12px;}
-    .month-table-panel{padding:10px 10px 12px;margin-top:6px;}
-    .month-table-list{max-height:320px;}
+    .month-table-panel{
+      padding:0;
+      margin-top:0;
+      border:none;
+      border-radius:0;
+    }
+    .month-table-panel.show{
+      display:block;
+      position:fixed;
+      inset:0;
+      z-index:200;
+      background:var(--void);
+      overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+    }
+    .month-table-close-btn{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      position:sticky;
+      top:0;
+      z-index:1;
+      width:100%;
+      padding:14px;
+      font-family:'Inter',sans-serif;
+      font-weight:700;
+      font-size:14px;
+      color:var(--star-white);
+      background:var(--panel);
+      border:none;
+      border-bottom:1px solid var(--line-soft);
+    }
+    .month-table-header{padding:14px 14px 0;}
+    .month-table-list{padding:0 14px 14px; max-height:none; overflow-y:visible;}
     .month-row{padding:5px 4px;font-size:11.5px;}
     .exif{margin-top:8px;gap:10px;}
     .exif-icon{width:38px;height:38px;}
@@ -1285,6 +1319,16 @@
             </select>
           </div>
           <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <div class="field" style="margin-top:8px;">
+            <label class="top">スタートレイルの開始時間</label>
+            <select id="starTrailStartDelaySelect">
+              <option value="2" selected>2秒</option>
+              <option value="5">5秒</option>
+              <option value="10">10秒</option>
+              <option value="15">15秒</option>
+              <option value="20">20秒</option>
+            </select>
+          </div>
           <div class="row2" style="margin-top:8px;">
             <button id="starTrailBtn" type="button" class="constellation-toggle-btn" style="width:100%;">スタートレイル</button>
             <button id="starTrailTaperBtn" type="button" class="constellation-toggle-btn" style="width:100%;">尾を細く</button>
@@ -1460,6 +1504,7 @@
             <span id="monthToggleArrow">▶</span> 月別 天の川ベストタイム表
           </button>
           <div class="month-table-panel" id="monthTablePanel">
+            <button type="button" id="monthTableCloseBtn" class="month-table-close-btn">✕ 閉じる</button>
             <div class="month-table-header">
               <h3 id="monthTableTitle">（2026年07月）天の川ベストタイム表</h3>
               <div class="month-table-nav">
@@ -2085,7 +2130,7 @@ const el={
   orientationSeg:$("orientationSeg"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
-  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"),
+  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
   skySearchSelect:$("skySearchSelect"), skySearchPopup:$("skySearchPopup"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
@@ -2110,6 +2155,7 @@ const el={
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
+  monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
   monthTableList:$("monthTableList"),
@@ -2501,6 +2547,7 @@ function jdForSliderMinutes(minutes){
   const utcMs=Date.UTC(y,mo-1,da,0,0,0) + minutes*60000 - tz*3600000;
   return toJulianDay(new Date(utcMs));
 }
+let starTrailDelayTimer=null;
 function startPlayback(){
   if(playbackTimer) return;
   playbackAccumMinutes=0;
@@ -2510,6 +2557,20 @@ function startPlayback(){
   el.playPauseBtn.classList.add("playing");
   playbackTimer=true;
   requestAnimationFrame(playbackTick);
+
+  // スタートレイルON中に再生を始めた場合、設定した秒数だけ遅らせてから尾の成長アニメーションを開始する
+  if(starTrailMode){
+    if(starTrailAnimRaf){ cancelAnimationFrame(starTrailAnimRaf); starTrailAnimRaf=null; }
+    if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
+    starTrailGrowProgress=0;
+    const delaySec=+el.starTrailStartDelaySelect.value||2;
+    starTrailDelayTimer=setTimeout(()=>{
+      starTrailDelayTimer=null;
+      if(!starTrailMode) return; // 遅延中にOFFにされていたら何もしない
+      starTrailAnimStartTime=performance.now();
+      starTrailAnimRaf=requestAnimationFrame(starTrailGrowTick);
+    }, delaySec*1000);
+  }
 }
 function playbackTick(now){
   if(!playbackTimer) return;
@@ -2551,6 +2612,7 @@ function stopPlayback(){
   el.playPauseBtn.textContent="▶";
   el.playPauseBtn.setAttribute("aria-label","再生");
   el.playPauseBtn.classList.remove("playing");
+  if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
 }
 el.playPauseBtn.addEventListener("click",()=>{
   if(playbackTimer) stopPlayback(); else startPlayback();
@@ -2954,6 +3016,11 @@ el.monthTableToggleBtn.addEventListener("click",()=>{
   el.monthTablePanel.classList.toggle("show",monthTableVisible);
   el.monthToggleArrow.textContent = monthTableVisible ? "▼" : "▶";
   if(monthTableVisible) renderMonthTable();
+});
+el.monthTableCloseBtn.addEventListener("click",()=>{
+  monthTableVisible=false;
+  el.monthTablePanel.classList.remove("show");
+  el.monthToggleArrow.textContent="▶";
 });
 el.monthTablePrevBtn.addEventListener("click",()=>{
   monthTableMonth--;
@@ -3413,14 +3480,18 @@ function drawPhoto(ctx,s){
   if(starTrailMode){
     // スタートレイル演出: 微光星も含めて、実際の日周運動に沿った弧状の軌跡として描く
     const trailMinutesSetting=+el.starTrailLengthSlider.value||60; // スライダーの値をそのまま「分」として使う(10分刻み・最大300分=5時間)
-    const steps=Math.min(16, 6+Math.round((trailMinutesSetting/300)*10));
+    // 分割数をさらに細かくして、弧の滑らかさを向上させる
+    const steps=Math.min(60, 24+Math.round((trailMinutesSetting/300)*36));
     // 成長アニメーション中は滑らかに連続的に伸ばすのではなく、10分単位で段階的に伸びるようにする(実際に10分おきに1枚ずつ撮影が積み重なっていくイメージ)
     const rawTrailMin=trailMinutesSetting*starTrailGrowProgress;
     const trailMin=starTrailGrowProgress>=1 ? trailMinutesSetting : Math.floor(rawTrailMin/10)*10;
     s.starsNow.forEach(star=>{
       const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
-      const baseAlpha = brightness*vis*starOpacity;
-      if(baseAlpha < 0.015) return; // 極端に暗い星は負荷軽減のため省略
+      const rawAlpha = brightness*vis*starOpacity;
+      if(rawAlpha < 0.015) return; // 極端に暗い星は負荷軽減のため省略
+      // 見え始めのしきい値付近では急にポンと現れず、じわっと明るさが乗ってくるようにする
+      const fadeIn = clamp((rawAlpha-0.015)/0.08, 0, 1);
+      const baseAlpha = rawAlpha*fadeIn;
 
       const nowP=toXY(star.az,star.alt);
       if(!nowP) return;
@@ -3453,9 +3524,18 @@ function drawPhoto(ctx,s){
         }
         ctx.strokeStyle=`rgba(255,250,240,${clamp(alpha,0,1)})`;
         ctx.lineWidth=Math.max(0.4,lw);
-        ctx.lineCap="round";
+        // lineCapは区間の"両端"に適用されてしまうため、k===1だけroundにしても
+        // その区間の尾側(=最初の継ぎ目)にも丸みが乗ってしまっていた。
+        // そのため全区間buttに統一し、先端の丸みはループの外で別途小さな円として描く。
+        ctx.lineCap="butt";
         ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.stroke();
       }
+      // 先端(現在位置)に小さな円を描き、丸いキャップのような自然な頭の見た目にする(継ぎ目には一切重ならない)
+      const headLw=Math.max(0.4,width);
+      ctx.beginPath();
+      ctx.arc(pts[0][0],pts[0][1],headLw/2,0,Math.PI*2);
+      ctx.fillStyle=`rgba(255,250,240,${clamp(baseAlpha,0,1)})`;
+      ctx.fill();
     });
   } else {
   s.starsNow.forEach(star=>{
@@ -3469,7 +3549,11 @@ function drawPhoto(ctx,s){
     const limiting = clamp(1-s.skyBrightness*1.15, 0, 1);
     const normalStarOpacity = (+el.normalStarOpacitySlider.value||50)/100;
     const alpha = brightness*vis*normalStarOpacity;
-    if(alpha*limiting < 0.035) return;
+    const visScore = alpha*limiting;
+    if(visScore < 0.035) return; // 極端に暗い星は負荷軽減のため描画自体を省略
+    // 見え始めのしきい値付近では、急にポンと現れるのではなく、じわっと明るさが乗ってくるようにフェードインさせる
+    const fadeIn = clamp((visScore-0.035)/0.15, 0, 1);
+    const fadedAlpha = alpha*fadeIn;
 
     let x1=p0[0], y1=p0[1];
     if(s.trailRatio>1.15){
@@ -3481,7 +3565,7 @@ function drawPhoto(ctx,s){
     }
 
     const size = 0.6+brightness*1.8;
-    ctx.strokeStyle=ctx.fillStyle=`rgba(255,250,240,${clamp(alpha,0,1)})`;
+    ctx.strokeStyle=ctx.fillStyle=`rgba(255,250,240,${clamp(fadedAlpha,0,1)})`;
     if(Math.hypot(x1-p0[0],y1-p0[1])>1.2){
       ctx.lineWidth=size;
       ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(x1,y1); ctx.stroke();
