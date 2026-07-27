@@ -780,6 +780,20 @@
   }
   .dt-time-label{justify-content:space-between;}
   .dt-time-label .val{font-size:16px;color:var(--core-amber);font-weight:600;}
+  .dt-time-label-left{display:flex;align-items:baseline;gap:9px;}
+  .time-range-mode-btn{
+    flex:none;
+    width:auto;
+    padding:3px 9px;
+    margin:0;
+    font-size:11px;
+    font-weight:600;
+    border-radius:12px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--dim);
+  }
+  .time-range-mode-btn:hover{color:var(--star-white);border-color:var(--violet);}
   .dt-date-row{
     display:flex;
     gap:8px;
@@ -835,16 +849,45 @@
     display:block;
   }
   .tick-row{
-    display:flex;
+    position:relative;
     flex:1;
     min-width:0;
-    justify-content:space-between;
-    margin-top:2px;
+    margin-top:0;
+    height:12px;
     font-family:'IBM Plex Mono',monospace;
     font-size:10px;
     color:var(--dim-2);
   }
+  .tick-row span{
+    position:absolute;
+    top:0;
+    transform:translateX(-50%);
+    white-space:nowrap;
+  }
+  .slider-row{margin-bottom:0;}
   .timeline-row input[type="range"]{flex:1;min-width:0;margin:0;}
+  .slider-wrap{position:relative; flex:1; min-width:0; display:flex; align-items:center;}
+  .slider-wrap input[type="range"]{width:100%;}
+  .slider-tick-marks{
+    position:absolute;
+    left:7px; right:7px;
+    top:50%;
+    height:0;
+    pointer-events:none;
+  }
+  .slider-tick-marks span{
+    position:absolute;
+    top:-4px;
+    width:1px;
+    height:7px;
+    background:rgba(230,232,250,0.4);
+    transform:translateX(-50%);
+  }
+  .slider-tick-marks span.major{
+    height:9px;
+    top:-5px;
+    background:rgba(230,232,250,0.65);
+  }
 
   .exif{
     margin-top:10px;
@@ -1385,7 +1428,7 @@
               </div>
             </div>
             <div class="dt-col">
-              <label class="top dt-time-label"><span class="dt-sub">時刻</span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
+              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">15時間モード</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
               <div class="timeline-row">
                 <span class="timeline-icon">🌙</span>
                 <canvas class="timeline-bar-canvas" id="moonTimelineBar" width="760" height="44"></canvas>
@@ -1400,13 +1443,16 @@
               </div>
               <div class="timeline-row slider-row">
                 <button type="button" id="playPauseBtn" class="play-pause-btn" aria-label="再生">▶</button>
-                <input type="range" id="timeSlider" min="0" max="1800" step="1">
+                <div class="slider-wrap">
+                  <div class="slider-tick-marks" id="sliderTickMarks"></div>
+                  <input type="range" id="timeSlider" min="0" max="1800" step="1">
+                </div>
               </div>
               <div class="timeline-row">
                 <span class="timeline-icon" aria-hidden="true"></span>
                 <div class="tick-row" id="tickRow"></div>
               </div>
-              <div class="range-hint">00:00 〜 翌 06:00 まで(日をまたいで指定できます)</div>
+              <div class="range-hint" id="rangeHint">00:00 〜 翌 06:00 まで(日をまたいで指定できます)</div>
             </div>
           </div>
 
@@ -1591,21 +1637,21 @@ function altAzFromVec(v){
 }
 
 /* 出没時刻の計算: posFunc(jd)->{ra,dec} を10分刻みで走査し、高度0°を横切る時刻を線形補間で求める */
-function findRiseSet(posFunc, jdMidnight, latDeg, lonDeg){
+function findRiseSet(posFunc, jdMidnight, latDeg, lonDeg, altThreshold=0){
   const stepMin=10, nSteps=Math.round(24*60/stepMin);
   let prevAlt=null, prevJd=null, riseJd=null, setJd=null, anyAbove=false, anyBelow=false;
   for(let i=0;i<=nSteps;i++){
     const jd=jdMidnight + i*stepMin/1440;
     const pos=posFunc(jd);
     const aa=raDecToAltAz(pos.ra,pos.dec,jd,latDeg,lonDeg);
-    if(aa.alt>0) anyAbove=true; else anyBelow=true;
+    if(aa.alt>altThreshold) anyAbove=true; else anyBelow=true;
     if(prevAlt!==null){
-      if(prevAlt<=0 && aa.alt>0 && riseJd===null){
-        const frac=(0-prevAlt)/(aa.alt-prevAlt);
+      if(prevAlt<=altThreshold && aa.alt>altThreshold && riseJd===null){
+        const frac=(altThreshold-prevAlt)/(aa.alt-prevAlt);
         riseJd=prevJd+frac*(jd-prevJd);
       }
-      if(prevAlt>0 && aa.alt<=0 && setJd===null){
-        const frac=(0-prevAlt)/(aa.alt-prevAlt);
+      if(prevAlt>altThreshold && aa.alt<=altThreshold && setJd===null){
+        const frac=(altThreshold-prevAlt)/(aa.alt-prevAlt);
         setJd=prevJd+frac*(jd-prevJd);
       }
     }
@@ -1640,7 +1686,11 @@ function findMilkyWayWindow(latDeg,lonDeg,jdMidnight){
     const gcAlt=raDecToAltAz(GC.ra,GC.dec,jd,latDeg,lonDeg).alt;
     const moon=moonPosition(jd);
     const moonAlt=raDecToAltAz(moon.ra,moon.dec,jd,latDeg,lonDeg).alt;
-    const good = sunAlt<=-20 && gcAlt>0 && moonAlt<=0;
+    // 太陽高度: 標準的な天文薄明終了/開始の基準である-18度を使う(以前は-20度でやや厳しすぎた)
+    // 銀河中心の高度: 0度(数学的な地平線)ちょうどだと大気減光やモヤで実質見えないため、
+    //                実用的に見やすい5度以上を「見える」条件とする
+    // 月の高度: 大気差・視半径・視差を考慮した標準的な月の出没の閾値と合わせる
+    const good = sunAlt<=-18 && gcAlt>5 && moonAlt<=0.125;
     if(good && curStart===null) curStart=jd;
     if(!good && curStart!==null){ windows.push({start:curStart,end:jd}); curStart=null; }
   }
@@ -1653,7 +1703,7 @@ function findMilkyWayWindow(latDeg,lonDeg,jdMidnight){
 /* タイムラインバー用: 選択日00:00(jdMidnight)からtotalMinutes分の範囲で、
    天体(太陽/月)の高度が0を超えている区間を線形補間つきで求める(境界の分単位)。
    範囲開始時点で既に出ている/範囲終了時点でまだ沈んでいない場合もそれぞれ区間として扱う。 */
-function findAltIntervals(posFunc, jdMidnight, totalMinutes, latDeg, lonDeg, stepMin=5){
+function findAltIntervals(posFunc, jdMidnight, totalMinutes, latDeg, lonDeg, stepMin=5, altThreshold=0){
   const nSteps=Math.round(totalMinutes/stepMin);
   const alts=[];
   for(let i=0;i<=nSteps;i++){
@@ -1662,15 +1712,15 @@ function findAltIntervals(posFunc, jdMidnight, totalMinutes, latDeg, lonDeg, ste
     alts.push(raDecToAltAz(pos.ra,pos.dec,jd,latDeg,lonDeg).alt);
   }
   const intervals=[];
-  let curStart = alts[0]>0 ? 0 : null;
+  let curStart = alts[0]>altThreshold ? 0 : null;
   for(let i=1;i<=nSteps;i++){
     const prevAlt=alts[i-1], alt=alts[i];
-    if(prevAlt<=0 && alt>0){
-      const frac=(0-prevAlt)/(alt-prevAlt);
+    if(prevAlt<=altThreshold && alt>altThreshold){
+      const frac=(altThreshold-prevAlt)/(alt-prevAlt);
       curStart=(i-1)*stepMin+frac*stepMin;
     }
-    if(prevAlt>0 && alt<=0 && curStart!==null){
-      const frac=(0-prevAlt)/(alt-prevAlt);
+    if(prevAlt>altThreshold && alt<=altThreshold && curStart!==null){
+      const frac=(altThreshold-prevAlt)/(alt-prevAlt);
       const endMin=(i-1)*stepMin+frac*stepMin;
       intervals.push({start:curStart,end:endMin});
       curStart=null;
@@ -1693,7 +1743,8 @@ function findAllGoodIntervals(latDeg,lonDeg,jdMidnight,totalMinutes,stepMin=5){
     const sunAlt=raDecToAltAz(sunPosition(jd).ra,sunPosition(jd).dec,jd,latDeg,lonDeg).alt;
     const gcAlt=raDecToAltAz(GC.ra,GC.dec,jd,latDeg,lonDeg).alt;
     const moonAlt=raDecToAltAz(moonPosition(jd).ra,moonPosition(jd).dec,jd,latDeg,lonDeg).alt;
-    const good=sunAlt<=-20 && gcAlt>0 && moonAlt<=0;
+    // findMilkyWayWindowと同じ基準(標準的な天文薄明-18度・実用的な銀河中心高度5度・月の出没の標準閾値)に揃える
+    const good=sunAlt<=-18 && gcAlt>5 && moonAlt<=0.125;
     if(good && curStart===null) curStart=minutes;
     if(!good && curStart!==null){ out.push({start:curStart,end:minutes}); curStart=null; }
   }
@@ -1987,6 +2038,7 @@ function planetRaDec(key,jd){
 const CITIES=[
   {name:"カスタム(手動入力)", lat:35.6812, lon:139.7671, tz:9, custom:true},
   {name:"東京", lat:35.6812, lon:139.7671, tz:9},
+  {name:"神戸", lat:34.6913, lon:135.1830, tz:9},
   {name:"長野県 阿智村(日本一の星空)", lat:35.5167, lon:137.8167, tz:9},
   {name:"沖縄・石垣島", lat:24.3448, lon:124.1572, tz:9},
   {name:"北海道・美瑛", lat:43.5833, lon:142.4667, tz:9},
@@ -2023,7 +2075,7 @@ const el={
   zoomInBtn:$("zoomInBtn"), zoomOutBtn:$("zoomOutBtn"), mapResetBtn:$("mapResetBtn"), mapScaleLabel:$("mapScaleLabel"),
   dateInput:$("dateInput"), timeSlider:$("timeSlider"), timeLabel:$("timeLabel"), timeDateLabel:$("timeDateLabel"), nowBtn:$("nowBtn"),
   prevMonthBtn:$("prevMonthBtn"), prevDayBtn:$("prevDayBtn"), nextDayBtn:$("nextDayBtn"), nextMonthBtn:$("nextMonthBtn"),
-  jumpBestTimeBtn:$("jumpBestTimeBtn"), tickRow:$("tickRow"),
+  jumpBestTimeBtn:$("jumpBestTimeBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   focalLength:$("focalLength"), flVal:$("flVal"), focalBadge:$("focalBadge"),
   aperture:$("aperture"), apVal:$("apVal"),
@@ -2075,12 +2127,64 @@ populateSelect(el.citySelect, CITIES, c=>c.name);
 populateSelect(el.sensor, SENSORS, s=>s.name);
 populateSelect(el.lp, LP_LEVELS, l=>l.name);
 
-/* 時刻スライダーの3時間毎の目盛りラベルを生成 (0,3,6,...,21,0,3,6 の11個。24以上は翌日の時刻として%24表示) */
-for(let h=0; h<=30; h+=3){
-  const span=document.createElement("span");
-  span.textContent=String(h%24);
-  el.tickRow.appendChild(span);
+/* 時刻スライダーの表示モード: 30時間(0:00〜翌6:00、3時間毎の目盛り) / 15時間(16:00〜翌7:00、1時間毎の目盛り) */
+let is15hMode=false;
+function getTimeDisplayRange(){
+  return is15hMode ? {start:16*60, end:31*60} : {start:0, end:30*60};
 }
+function renderTickRow(){
+  el.tickRow.innerHTML="";
+  const range=getTimeDisplayRange();
+  const step=is15hMode?60:180; // 15時間モードは1時間毎、30時間モードは3時間毎
+  // 目盛りマーク(.slider-tick-marks)と同じ7pxインセットを使い、数字がマークの真下に来るよう揃える
+  const trackWidth=Math.max(0,(el.tickRow.clientWidth||el.tickRow.offsetWidth||0)-14);
+  for(let m=range.start; m<=range.end; m+=step){
+    const span=document.createElement("span");
+    span.textContent=String(Math.floor(m/60)%24);
+    const frac=(m-range.start)/(range.end-range.start);
+    span.style.left=`${7+trackWidth*frac}px`;
+    el.tickRow.appendChild(span);
+  }
+}
+function renderSliderTickMarks(){
+  el.sliderTickMarks.innerHTML="";
+  const range=getTimeDisplayRange();
+  const totalSpan=range.end-range.start;
+  for(let m=range.start; m<=range.end; m+=60){ // 1時間毎に目盛りマークを表示
+    const tick=document.createElement("span");
+    const hourOfDay=Math.floor(m/60)%24;
+    if(hourOfDay%3===0) tick.className="major"; // 3時間毎(0,3,6...)は少し大きめの目盛りに
+    tick.style.left=`${(m-range.start)/totalSpan*100}%`;
+    el.sliderTickMarks.appendChild(tick);
+  }
+}
+function updateRangeHint(){
+  const range=getTimeDisplayRange();
+  const startH=Math.floor(range.start/60)%24;
+  const endDayLabel = range.end>=1440 ? "翌 " : "";
+  const endH=Math.floor(range.end/60)%24;
+  const modeLabel = is15hMode ? "現在15時間モード" : "現在30時間モード";
+  el.rangeHint.textContent = `${modeLabel}　${String(startH).padStart(2,"0")}:00 〜 ${endDayLabel}${String(endH).padStart(2,"0")}:00 まで(日をまたいで指定できます)`;
+}
+function applyTimeRangeMode(){
+  const range=getTimeDisplayRange();
+  el.timeSlider.min=range.start;
+  el.timeSlider.max=range.end;
+  el.timeSlider.value=clamp(+el.timeSlider.value, range.start, range.end);
+  renderTickRow();
+  renderSliderTickMarks();
+  updateRangeHint();
+  el.timeRangeModeBtn.textContent = is15hMode ? "30時間モード" : "15時間モード";
+}
+el.timeRangeModeBtn.addEventListener("click",()=>{
+  is15hMode=!is15hMode;
+  applyTimeRangeMode();
+  update();
+});
+renderTickRow();
+renderSliderTickMarks();
+updateRangeHint();
+window.addEventListener("resize", ()=>{ renderTickRow(); renderSliderTickMarks(); });
 
 /* 初期値セット */
 function setInitialDateTime(){
@@ -3088,12 +3192,14 @@ function computeState(){
     daily = computeState._dailyCache;
   } else {
     const jdMidnight = toJulianDay(new Date(Date.UTC(y,mo-1,da,0,0,0) - tz*3600000));
-    const sunRiseSet = fmtRiseSet(findRiseSet(sunPosition, jdMidnight, lat, lon), tz);
-    const moonRiseSet = fmtRiseSet(findRiseSet(moonPosition, jdMidnight, lat, lon), tz);
+    // 日の出没: 大気差(屈折,約-34')+太陽の視半径(約-16')を考慮した標準的な閾値(-0.8333°)を使う
+    const sunRiseSet = fmtRiseSet(findRiseSet(sunPosition, jdMidnight, lat, lon, -0.8333), tz);
+    // 月の出没: 大気差+月の視半径に加え、月の視差(観測者が地球表面にいることによる見かけの押し下げ)を考慮した標準的な閾値(+0.125°)を使う
+    const moonRiseSet = fmtRiseSet(findRiseSet(moonPosition, jdMidnight, lat, lon, 0.125), tz);
     const bestWindow = findMilkyWayWindow(lat,lon,jdMidnight);
-    const timelineTotalMin=1800;
-    const moonUpIntervals=findAltIntervals(moonPosition, jdMidnight, timelineTotalMin, lat, lon);
-    const sunUpIntervals=findAltIntervals(sunPosition, jdMidnight, timelineTotalMin, lat, lon);
+    const timelineTotalMin=1860; // 15時間モード(16:00〜翌07:00)の終端までカバーできるよう30時間+αで計算する
+    const moonUpIntervals=findAltIntervals(moonPosition, jdMidnight, timelineTotalMin, lat, lon, 5, 0.125);
+    const sunUpIntervals=findAltIntervals(sunPosition, jdMidnight, timelineTotalMin, lat, lon, 5, -0.8333);
     const mwGoodIntervals=findAllGoodIntervals(lat,lon,jdMidnight,timelineTotalMin);
     const sunPath=[], moonPath=[];
     for(let m=0;m<=timelineTotalMin;m+=20){
@@ -3872,8 +3978,11 @@ function timelineLabelAt(ctx,x,W,y,text){
   else if(x>W-36){ ctx.textAlign="right"; ctx.fillText(text,W-4,y); }
   else { ctx.textAlign="center"; ctx.fillText(text,x,y); }
 }
-function drawIntervalBar(ctx,startMin,endMin,totalMinutes,W,barY,barH,gradientMin,colorRGB){
-  const toX=(m)=>clamp(m,0,totalMinutes)/totalMinutes*W;
+function drawIntervalBar(ctx,startMin,endMin,rangeStart,rangeEnd,W,barY,barH,gradientMin,colorRGB){
+  const span=rangeEnd-rangeStart;
+  const insetPx=7; // 時刻スライダーの目盛り(左右7pxインセット)と位置を揃えるため同じ値を使う
+  const usableW=W-insetPx*2;
+  const toX=(m)=>insetPx+(clamp(m,rangeStart,rangeEnd)-rangeStart)/span*usableW;
   function rectGrad(a,b,alphaA,alphaB){
     if(b<=a) return;
     const x0=toX(a), x1=toX(b);
@@ -3890,15 +3999,24 @@ function drawIntervalBar(ctx,startMin,endMin,totalMinutes,W,barY,barH,gradientMi
     ctx.fillRect(x0,barY,x1-x0,barH);
     return;
   }
-  const fadeInEnd=Math.min(startMin+gradientMin,endMin);
-  const fadeOutStart=Math.max(endMin-gradientMin,startMin);
-  rectGrad(startMin-gradientMin, fadeInEnd, 0, 1);
-  if(fadeOutStart>fadeInEnd){
-    const x0=toX(fadeInEnd), x1=toX(fadeOutStart);
+  const gapPx=1;
+  // 表示範囲の端で人為的に区間が切られているだけの場合(本当の出没ではない)や、
+  // 表示範囲より前/後にある別サイクルの出来事はグラデーションを出さない
+  const hasFadeIn = startMin>rangeStart+0.5 && startMin<rangeEnd-0.5;
+  const hasFadeOut = endMin>rangeStart+0.5 && endMin<rangeEnd-0.5;
+
+  // グラデーションは開始/終了時刻の"外側"だけに描く(実際に出ている時間帯には重ねない)
+  if(hasFadeIn) rectGrad(startMin-gradientMin, startMin, 0, 1);
+  if(hasFadeOut) rectGrad(endMin, endMin+gradientMin, 1, 0);
+
+  // 実際に出ている時間帯は塗りつぶし。グラデーションとの境目に1px隙間をあけて見分けやすくする
+  let x0=toX(startMin), x1=toX(endMin);
+  if(hasFadeIn) x0=Math.min(x1,x0+gapPx);
+  if(hasFadeOut) x1=Math.max(x0,x1-gapPx);
+  if(x1>x0){
     ctx.fillStyle=`rgba(${colorRGB},1)`;
     ctx.fillRect(x0,barY,x1-x0,barH);
   }
-  rectGrad(fadeOutStart, endMin+gradientMin, 1, 0);
 }
 function drawTimelineBar(canvas,intervals,opts){
   // 実際の表示幅にキャンバスの内部解像度(幅)を同期させる(表示幅とズレていると文字が縦長に潰れて見えるため)
@@ -3909,25 +4027,31 @@ function drawTimelineBar(canvas,intervals,opts){
   const ctx=canvas.getContext("2d");
   const W=canvas.width, H=canvas.height;
   ctx.clearRect(0,0,W,H);
-  const totalMinutes=opts.totalMinutes;
+  const rangeStart=opts.rangeStart||0;
+  const rangeEnd=opts.rangeEnd!==undefined?opts.rangeEnd:opts.totalMinutes;
+  const span=rangeEnd-rangeStart;
   const barH=9, barY=H-barH-3;
 
   intervals.forEach(iv=>{
-    drawIntervalBar(ctx,iv.start,iv.end,totalMinutes,W,barY,barH,opts.gradientMin,opts.colorRGB);
+    drawIntervalBar(ctx,iv.start,iv.end,rangeStart,rangeEnd,W,barY,barH,opts.gradientMin,opts.colorRGB);
   });
 
   ctx.font="12.5px IBM Plex Mono, monospace";
   ctx.fillStyle="rgba(230,232,250,0.9)";
-  const toX=(m)=>clamp(m,0,totalMinutes)/totalMinutes*W;
+  const insetPx=7; // 時刻スライダーの目盛りと位置を揃えるため同じ値を使う
+  const usableW=W-insetPx*2;
+  const toX=(m)=>insetPx+(clamp(m,rangeStart,rangeEnd)-rangeStart)/span*usableW;
 
   // ラベルをいったん収集し、近すぎる場合は段をずらして重なりを防ぐ
+  // (start/endとも、表示範囲[rangeStart,rangeEnd]の"内側"にある本物の出来事の時だけラベルを出す。
+  //  以前の日をまたぐ前サイクルの終わりなど、範囲より前に終わった出来事まで誤って表示端に張り付いていたバグの修正)
   const labels=[];
   intervals.forEach(iv=>{
-    if(iv.start>0.5){
+    if(iv.start>rangeStart+0.5 && iv.start<rangeEnd-0.5){
       const label=opts.risePrefix?`${opts.risePrefix} ${minutesToHHMM(iv.start)}`:minutesToHHMM(iv.start);
       labels.push({x:toX(iv.start), text:label});
     }
-    if(iv.end<totalMinutes-0.5){
+    if(iv.end>rangeStart+0.5 && iv.end<rangeEnd-0.5){
       const label=opts.setPrefix?`${opts.setPrefix} ${minutesToHHMM(iv.end)}`:minutesToHHMM(iv.end);
       labels.push({x:toX(iv.end), text:label});
     }
@@ -4233,9 +4357,10 @@ function update(){
   drawDial(dialCtx,state);
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
-  drawTimelineBar(el.moonTimelineBar, state.moonUpIntervals, {totalMinutes:1800, gradientMin:6, colorRGB:"205,208,228", risePrefix:"月出", setPrefix:"月入"});
-  drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {totalMinutes:1800, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入"});
-  drawTimelineBar(el.mwTimelineBar, state.mwGoodIntervals, {totalMinutes:1800, gradientMin:15, colorRGB:"224,90,90", risePrefix:null, setPrefix:null});
+  const timeDisplayRange=getTimeDisplayRange();
+  drawTimelineBar(el.moonTimelineBar, state.moonUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:6, colorRGB:"205,208,228", risePrefix:"月出", setPrefix:"月入"});
+  drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入"});
+  drawTimelineBar(el.mwTimelineBar, state.mwGoodIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:15, colorRGB:"224,90,90", risePrefix:null, setPrefix:null});
   renderReadout(state);
   renderMessages(state);
   renderExif(state);
