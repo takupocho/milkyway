@@ -1652,7 +1652,7 @@ const GC = galacticToEquatorial(0,0);
 
 /* 銀河面 (b=0, および帯の幅を表す b=±9) の経度サンプル点 (RA/Decへ事前変換) */
 const MW_CENTER=[], MW_TOP=[], MW_BOTTOM=[];
-for(let l=0;l<360;l+=4){
+for(let l=0;l<360;l+=2){
   const distToCore = Math.min(l, 360-l);
   const coreWeight = Math.exp(-(distToCore/38)*(distToCore/38)); // 中心ほど明るい
   MW_CENTER.push({l, coreWeight, ...galacticToEquatorial(l,0)});
@@ -3334,17 +3334,23 @@ function drawDial(ctx,s){
     ctx.fillText(label,x,y);
   });
 
-  // 天の川帯 (地平線上のみ、線分ごとに明るさを変えて描画)
+  // 天の川帯 (地平線上のみ、区間ごとに滑らかなグラデーションで描画)
   ctx.lineCap="round";
-  for(let i=0;i<s.mwPoints.length-1;i++){
-    const p0=s.mwPoints[i], p1=s.mwPoints[i+1];
+  for(let i=0;i<s.mwPoints.length;i++){
+    const j=(i+1)%s.mwPoints.length; // 最後の点を最初の点へつなぎ、360度の輪として閉じる
+    const p0=s.mwPoints[i], p1=s.mwPoints[j];
     if(!showBelowHorizon && (p0.alt<=0 || p1.alt<=0)) continue;
     if(Math.abs(p0.az-p1.az)>180) continue; // 0/360またぎのノイズ除去
     const [x0,y0]=toXY(p0.az,p0.alt), [x1,y1]=toXY(p1.az,p1.alt);
-    const w=p0.coreWeight;
+    const w0=p0.coreWeight, w1=p1.coreWeight;
     const vis=1-s.skyBrightness;
-    ctx.strokeStyle = w>0.4 ? `rgba(232,166,89,${(0.25+w*0.55)*vis+0.05})` : `rgba(139,127,240,${(0.18+w*0.4)*vis+0.04})`;
-    ctx.lineWidth = 5+w*7;
+    const style0 = w0>0.4 ? `rgba(232,166,89,${(0.25+w0*0.55)*vis+0.05})` : `rgba(139,127,240,${(0.18+w0*0.4)*vis+0.04})`;
+    const style1 = w1>0.4 ? `rgba(232,166,89,${(0.25+w1*0.55)*vis+0.05})` : `rgba(139,127,240,${(0.18+w1*0.4)*vis+0.04})`;
+    const grad=ctx.createLinearGradient(x0,y0,x1,y1);
+    grad.addColorStop(0,style0);
+    grad.addColorStop(1,style1);
+    ctx.strokeStyle=grad;
+    ctx.lineWidth = 5+((w0+w1)/2)*7;
     ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
   }
 
@@ -3579,11 +3585,14 @@ function drawPhoto(ctx,s){
   // 天の川帯 (中心線+上下オフセットのポリゴンで太さを表現)
   ctx.save();
   ctx.globalCompositeOperation="lighter";
-  for(let i=0;i<s.mwPoints.length-1;i++){
-    const c0=s.mwPoints[i], c1=s.mwPoints[i+1];
-    const t0=s.mwTop[i], t1=s.mwTop[i+1];
-    const b0=s.mwBottom[i], b1=s.mwBottom[i+1];
-    if(c0.alt<-5 || c1.alt<-5) continue;
+  const nMwPts=s.mwPoints.length;
+  for(let i=0;i<nMwPts;i++){
+    const j=(i+1)%nMwPts; // 最後の点を最初の点へつなぎ、360度の輪として閉じる(銀河中心の継ぎ目もこれで無くなる)
+    const c0=s.mwPoints[i], c1=s.mwPoints[j];
+    const t0=s.mwTop[i], t1=s.mwTop[j];
+    const b0=s.mwBottom[i], b1=s.mwBottom[j];
+    // 南半球を可視化中は水平線の下も描画する。それ以外は今まで通り地平線付近で打ち切る
+    if(!showBelowHorizon && (c0.alt<-5 || c1.alt<-5)) continue;
     if(Math.abs(c0.az-c1.az)>180) continue;
 
     const pc0=toXY(c0.az,c0.alt), pc1=toXY(c1.az,c1.alt);
@@ -3591,23 +3600,32 @@ function drawPhoto(ctx,s){
     const pb0=toXY(b0.az,b0.alt), pb1=toXY(b1.az,b1.alt);
     if(!pc0||!pc1) continue;
 
-    const w=c0.coreWeight;
-    const alpha = (0.05+w*0.30)*vis;
-    if(alpha<0.01) continue;
-    const color = w>0.35 ? `rgba(238,196,140,${alpha})` : `rgba(150,140,232,${alpha})`;
+    const w0=c0.coreWeight, w1=c1.coreWeight;
+    // 銀河中心(コアウェイトが高い場所)は少しだけ明るめに底上げする
+    const alpha0=clamp((0.05+w0*0.30)*vis*(1+w0*0.35),0,1);
+    const alpha1=clamp((0.05+w1*0.30)*vis*(1+w1*0.35),0,1);
+    if(alpha0<0.008 && alpha1<0.008) continue;
+    const color0 = w0>0.35 ? "238,196,140" : "150,140,232";
+    const color1 = w1>0.35 ? "238,196,140" : "150,140,232";
 
-    if(pt0&&pt1&&pb0&&pb1){
+    // 上下のオフセット点(帯の太さを表す4隅)が全て投影できる時だけ描画する。
+    // 一部だけ失敗した時に細い線へフォールバックしていたのが、水平線付近で
+    // 「太い帯→細い線→消える」を行き来するちらつきの原因だったため、その区間は描かずスキップする。
+    if(!(pt0&&pt1&&pb0&&pb1)) continue;
+
+    {
+      // 区間の始点から終点まで滑らかに色・明るさが変化するグラデーションで塗り、階調のカクカクを無くす
+      const grad=ctx.createLinearGradient(pc0[0],pc0[1],pc1[0],pc1[1]);
+      grad.addColorStop(0,`rgba(${color0},${alpha0})`);
+      grad.addColorStop(1,`rgba(${color1},${alpha1})`);
       ctx.beginPath();
       ctx.moveTo(pt0[0],pt0[1]);
       ctx.lineTo(pt1[0],pt1[1]);
       ctx.lineTo(pb1[0],pb1[1]);
       ctx.lineTo(pb0[0],pb0[1]);
       ctx.closePath();
-      ctx.fillStyle=color;
+      ctx.fillStyle=grad;
       ctx.fill();
-    } else {
-      ctx.strokeStyle=color; ctx.lineWidth=26;
-      ctx.beginPath(); ctx.moveTo(pc0[0],pc0[1]); ctx.lineTo(pc1[0],pc1[1]); ctx.stroke();
     }
   }
   ctx.restore();
