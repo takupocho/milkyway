@@ -3612,9 +3612,13 @@ function drawPhoto(ctx,s){
   }
   ctx.restore();
 
-  // ベストタイム中は天の川を丸(ビーズ状)で強調オーバーレイ表示
+  // ベストタイム中は天の川を丸(ビーズ状)で強調オーバーレイ表示(開始・終了付近は速くフェードイン・アウトする)
   const inBestWindow = s.bestWindow && s.jd>=s.bestWindow.start && s.jd<=s.bestWindow.end;
   if(inBestWindow){
+    const fadeMinutes=4; // この分数だけかけて素早くフェードイン・アウトする
+    const minutesSinceStart=(s.jd-s.bestWindow.start)*1440;
+    const minutesUntilEnd=(s.bestWindow.end-s.jd)*1440;
+    const windowFade=clamp(Math.min(minutesSinceStart,minutesUntilEnd)/fadeMinutes,0,1);
     let lastX=null,lastY=null;
     const minSpacing=Math.max(34, W*0.045);
     for(let i=0;i<s.mwPoints.length;i++){
@@ -3629,7 +3633,7 @@ function drawPhoto(ctx,s){
 
       const w=p.coreWeight;
       const r=(6+w*17)*Math.min(1.4,Math.max(0.6,W/960));
-      const alpha=clamp((0.5+w*0.5)*vis+0.1,0,0.95);
+      const alpha=clamp((0.5+w*0.5)*vis+0.1,0,0.95)*windowFade;
       const grad=ctx.createRadialGradient(x-r*0.32,y-r*0.32,r*0.12, x,y,r);
       if(w>0.8){
         grad.addColorStop(0,`rgba(255,255,252,${alpha})`);
