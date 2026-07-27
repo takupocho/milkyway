@@ -1251,8 +1251,8 @@
             <input type="range" id="starTrailLengthSlider" min="10" max="300" step="10" value="60">
           </div>
           <div class="field">
-            <label class="top">星の透明度 <span class="val mono" id="starOpacityVal">100%</span></label>
-            <input type="range" id="starOpacitySlider" min="10" max="100" step="10" value="100">
+            <label class="top">星の透明度 <span class="val mono" id="starOpacityVal">50%</span></label>
+            <input type="range" id="starOpacitySlider" min="10" max="100" step="10" value="50">
           </div>
         </div>
       </section>
@@ -1264,6 +1264,11 @@
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
           <button id="showHorizonLineBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📏 水平線を表示させる</span><span id="showHorizonLineState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">実際の地平線(高度0°)の位置を、明るいグレーの点線で分かりやすく表示します。</p>
+          <div class="field" style="margin-top:8px;">
+            <label class="top">星の透明度 <span class="val mono" id="normalStarOpacityVal">50%</span></label>
+            <input type="range" id="normalStarOpacitySlider" min="10" max="100" step="10" value="50">
+          </div>
+          <p class="map-hint" style="margin-top:4px;">通常表示時(スタートレイルOFF時)の星の明るさを調整します。星座・惑星・恒星・太陽・月には影響しません。</p>
         </div>
       </section>
 
@@ -2043,6 +2048,7 @@ const el={
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
   showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
+  normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
@@ -2377,6 +2383,10 @@ el.showHorizonLineBtn.addEventListener("click",()=>{
   showHorizonLine=!showHorizonLine;
   el.showHorizonLineBtn.classList.toggle("active",showHorizonLine);
   el.showHorizonLineState.textContent = showHorizonLine ? "ON" : "OFF";
+  update();
+});
+el.normalStarOpacitySlider.addEventListener("input",()=>{
+  el.normalStarOpacityVal.textContent=`${el.normalStarOpacitySlider.value}%`;
   update();
 });
 /* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
@@ -3288,7 +3298,7 @@ function drawPhoto(ctx,s){
   }
 
   const vis = 1-s.skyBrightness; // 全体の見えやすさ係数
-  const starOpacity = (+el.starOpacitySlider.value||100)/100; // 星の透明度(スタートレイルで描く星全体に均一に適用、0.1〜1.0)
+  const starOpacity = (+el.starOpacitySlider.value||50)/100; // 星の透明度(スタートレイルで描く星全体に均一に適用、0.1〜1.0)
 
   // 星
   const trailSec = s.shutter;
@@ -3351,7 +3361,8 @@ function drawPhoto(ctx,s){
     // 等級 -> 明るさ・サイズ (低スカイブライトネスの空では暗い星は消える)
     const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
     const limiting = clamp(1-s.skyBrightness*1.15, 0, 1);
-    const alpha = brightness*vis;
+    const normalStarOpacity = (+el.normalStarOpacitySlider.value||50)/100;
+    const alpha = brightness*vis*normalStarOpacity;
     if(alpha*limiting < 0.035) return;
 
     let x1=p0[0], y1=p0[1];
@@ -3926,7 +3937,7 @@ function drawTimelineBar(canvas,intervals,opts){
   labels.forEach(l=>{
     const w=ctx.measureText(l.text).width;
     const row = (l.x-w/2 < rowLastEnd[0]+8) ? 1 : 0;
-    timelineLabelAt(ctx,l.x,W,13+row*13,l.text);
+    timelineLabelAt(ctx,l.x,W,26-row*13,l.text);
     rowLastEnd[row]=l.x+w/2;
   });
   ctx.textAlign="left";
