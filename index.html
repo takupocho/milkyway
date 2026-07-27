@@ -1347,8 +1347,12 @@
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">シミュレーション画面<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
-          <button id="showBelowHorizonBtn" type="button" class="toggle-btn"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <button id="showBelowHorizonBtn" type="button" class="toggle-btn active"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
+          <div class="field" style="margin-top:8px;">
+            <label class="top">南半球の透明度 <span class="val mono" id="belowHorizonOpacityVal">100%</span></label>
+            <input type="range" id="belowHorizonOpacitySlider" min="0" max="100" step="5" value="100">
+          </div>
           <button id="showHorizonLineBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📏 水平線を表示させる</span><span id="showHorizonLineState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">実際の地平線(高度0°)の位置を、明るいグレーの点線で分かりやすく表示します。</p>
           <div class="field" style="margin-top:8px;">
@@ -2144,6 +2148,7 @@ const el={
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
   showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
+  belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
@@ -2520,11 +2525,15 @@ el.starOpacitySlider.addEventListener("input",()=>{
   update();
 });
 /* 南半球(水平線の下)を可視化するON/OFF */
-let showBelowHorizon=false;
+let showBelowHorizon=true;
 el.showBelowHorizonBtn.addEventListener("click",()=>{
   showBelowHorizon=!showBelowHorizon;
   el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
   el.showBelowHorizonState.textContent = showBelowHorizon ? "ON" : "OFF";
+  update();
+});
+el.belowHorizonOpacitySlider.addEventListener("input",()=>{
+  el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
   update();
 });
 /* 水平線(高度0°)を点線で表示するON/OFF */
@@ -3582,22 +3591,23 @@ function drawPhoto(ctx,s){
   }
   ctx.restore();
 
-  // 天の川帯 (中心線+上下オフセットのポリゴンで太さを表現)
+  // 天の川帯 (中心線+スクリーン上での垂直オフセットで太さを表現)
   ctx.save();
   ctx.globalCompositeOperation="lighter";
   const nMwPts=s.mwPoints.length;
+  // 銀河緯度9度ぶんの見かけの幅をピクセルに換算する目安値(画面中央付近での近似)。
+  // 上下の帯端を3D点として別々に投影すると、水平線付近でどちらかだけ投影に失敗し、
+  // 太い帯⇔細い線⇔消えるを行き来するちらつきの原因になっていたため、
+  // 中心線が投影できてさえいれば必ず一定の太さで描けるよう、スクリーン空間での垂直オフセットに変更した。
+  const mwHalfWidthPx = scale * (9*D2R);
   for(let i=0;i<nMwPts;i++){
     const j=(i+1)%nMwPts; // 最後の点を最初の点へつなぎ、360度の輪として閉じる(銀河中心の継ぎ目もこれで無くなる)
     const c0=s.mwPoints[i], c1=s.mwPoints[j];
-    const t0=s.mwTop[i], t1=s.mwTop[j];
-    const b0=s.mwBottom[i], b1=s.mwBottom[j];
     // 南半球を可視化中は水平線の下も描画する。それ以外は今まで通り地平線付近で打ち切る
     if(!showBelowHorizon && (c0.alt<-5 || c1.alt<-5)) continue;
     if(Math.abs(c0.az-c1.az)>180) continue;
 
     const pc0=toXY(c0.az,c0.alt), pc1=toXY(c1.az,c1.alt);
-    const pt0=toXY(t0.az,t0.alt), pt1=toXY(t1.az,t1.alt);
-    const pb0=toXY(b0.az,b0.alt), pb1=toXY(b1.az,b1.alt);
     if(!pc0||!pc1) continue;
 
     const w0=c0.coreWeight, w1=c1.coreWeight;
@@ -3608,25 +3618,27 @@ function drawPhoto(ctx,s){
     const color0 = w0>0.35 ? "238,196,140" : "150,140,232";
     const color1 = w1>0.35 ? "238,196,140" : "150,140,232";
 
-    // 上下のオフセット点(帯の太さを表す4隅)が全て投影できる時だけ描画する。
-    // 一部だけ失敗した時に細い線へフォールバックしていたのが、水平線付近で
-    // 「太い帯→細い線→消える」を行き来するちらつきの原因だったため、その区間は描かずスキップする。
-    if(!(pt0&&pt1&&pb0&&pb1)) continue;
+    // 区間の進行方向に対して垂直な単位ベクトルを求め、その方向に帯の半幅ぶんオフセットして4隅を作る
+    const dx=pc1[0]-pc0[0], dy=pc1[1]-pc0[1];
+    const segLen=Math.hypot(dx,dy)||1;
+    const nx=-dy/segLen, ny=dx/segLen;
+    const pt0=[pc0[0]+nx*mwHalfWidthPx, pc0[1]+ny*mwHalfWidthPx];
+    const pb0=[pc0[0]-nx*mwHalfWidthPx, pc0[1]-ny*mwHalfWidthPx];
+    const pt1=[pc1[0]+nx*mwHalfWidthPx, pc1[1]+ny*mwHalfWidthPx];
+    const pb1=[pc1[0]-nx*mwHalfWidthPx, pc1[1]-ny*mwHalfWidthPx];
 
-    {
-      // 区間の始点から終点まで滑らかに色・明るさが変化するグラデーションで塗り、階調のカクカクを無くす
-      const grad=ctx.createLinearGradient(pc0[0],pc0[1],pc1[0],pc1[1]);
-      grad.addColorStop(0,`rgba(${color0},${alpha0})`);
-      grad.addColorStop(1,`rgba(${color1},${alpha1})`);
-      ctx.beginPath();
-      ctx.moveTo(pt0[0],pt0[1]);
-      ctx.lineTo(pt1[0],pt1[1]);
-      ctx.lineTo(pb1[0],pb1[1]);
-      ctx.lineTo(pb0[0],pb0[1]);
-      ctx.closePath();
-      ctx.fillStyle=grad;
-      ctx.fill();
-    }
+    // 区間の始点から終点まで滑らかに色・明るさが変化するグラデーションで塗り、階調のカクカクを無くす
+    const grad=ctx.createLinearGradient(pc0[0],pc0[1],pc1[0],pc1[1]);
+    grad.addColorStop(0,`rgba(${color0},${alpha0})`);
+    grad.addColorStop(1,`rgba(${color1},${alpha1})`);
+    ctx.beginPath();
+    ctx.moveTo(pt0[0],pt0[1]);
+    ctx.lineTo(pt1[0],pt1[1]);
+    ctx.lineTo(pb1[0],pb1[1]);
+    ctx.lineTo(pb0[0],pb0[1]);
+    ctx.closePath();
+    ctx.fillStyle=grad;
+    ctx.fill();
   }
   ctx.restore();
 
@@ -3906,6 +3918,9 @@ function drawPhoto(ctx,s){
   }
   const half=s.fovH/2, pad=6, stepDeg=3;
   const startAz=s.facingAz-half-pad, endAz=s.facingAz+half+pad;
+  // 南半球可視化時の地面の不透明度: スライダー(0〜100%)、100%で真っ暗(1.0)になるようにする
+  const belowHorizonOpacityRaw=+el.belowHorizonOpacitySlider.value;
+  const belowHorizonAlpha = 1.0 * ((isNaN(belowHorizonOpacityRaw)?100:belowHorizonOpacityRaw)/100);
   ctx.beginPath();
   ctx.moveTo(0,H);
   for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
@@ -3915,7 +3930,7 @@ function drawPhoto(ctx,s){
   }
   ctx.lineTo(W,H);
   ctx.closePath();
-  ctx.fillStyle=showBelowHorizon ? "rgba(5,6,8,0.55)" : "#050608";
+  ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
   ctx.fill();
   trees.forEach(t=>{
     const diff=angDiff(s.facingAz,t.az);
@@ -3926,7 +3941,7 @@ function drawPhoto(ctx,s){
     ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
     ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
     ctx.closePath();
-    ctx.fillStyle=showBelowHorizon ? "rgba(5,6,8,0.55)" : "#050608";
+    ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
     ctx.fill();
   });
 
