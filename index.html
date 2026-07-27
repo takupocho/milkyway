@@ -3619,8 +3619,8 @@ function drawPhoto(ctx,s){
     const minutesSinceStart=(s.jd-s.bestWindow.start)*1440;
     const minutesUntilEnd=(s.bestWindow.end-s.jd)*1440;
     const windowFade=clamp(Math.min(minutesSinceStart,minutesUntilEnd)/fadeMinutes,0,1);
-    let lastX=null,lastY=null;
-    const minSpacing=Math.max(34, W*0.045);
+    let lastX=null,lastY=null,lastR=0;
+    const gapFactor=1.15; // 玉同士の中心間距離が、互いの半径の合計×この係数以上離れていることを保証する(重なり防止)
     for(let i=0;i<s.mwPoints.length;i++){
       const p=s.mwPoints[i];
       if(!showBelowHorizon && p.alt<-2) continue;
@@ -3628,11 +3628,15 @@ function drawPhoto(ctx,s){
       if(!pt) continue;
       const [x,y]=pt;
       if(x<-30||x>W+30||y<-30||y>H+30) continue;
-      if(lastX!==null && Math.hypot(x-lastX,y-lastY)<minSpacing) continue;
-      lastX=x; lastY=y;
 
       const w=p.coreWeight;
       const r=(6+w*17)*Math.min(1.4,Math.max(0.6,W/960));
+      // 前の玉との中心間距離が、両者の半径の合計×gapFactorより短い場合は重なってしまうためスキップする
+      // (以前は画面幅から計算した固定距離だけで判定しており、玉ごとに異なる実際の大きさを考慮していなかったため、
+      //  ウィンドウ幅や解像度によっては玉同士が重なったり不揃いに見えることがあった)
+      if(lastX!==null && Math.hypot(x-lastX,y-lastY) < (lastR+r)*gapFactor) continue;
+      lastX=x; lastY=y; lastR=r;
+
       const alpha=clamp((0.5+w*0.5)*vis+0.1,0,0.95)*windowFade;
       const grad=ctx.createRadialGradient(x-r*0.32,y-r*0.32,r*0.12, x,y,r);
       if(w>0.8){
