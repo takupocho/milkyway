@@ -385,11 +385,12 @@
     .toggle-btn-row .focal-badge{font-size:11px;}
     .toggle-btn-row .focal-badge-unit{font-size:8px;}
     #cardTitleRow .card-title{width:100%;}
-    .best-time-bar{padding:7px 6px;margin-top:4px;gap:6px;}
+    .best-time-bar{padding:5px 6px;margin-top:2px;gap:4px;cursor:pointer;}
     .best-time-label{font-size:11px;}
     .best-time-value{font-size:10.5px;}
-    .jump-besttime-btn{padding:8px 10px;font-size:9.5px;border-radius:10px;}
-    #bestTimeDate{font-size:10px;color:var(--dim);font-weight:500;}
+    .jump-besttime-btn{display:none;}
+    #bestTimeDate{font-size:10.5px;color:var(--dim);font-weight:500;}
+    .best-time-value.none{font-size:9.5px;white-space:normal;}
     input[type="range"]{height:6px;}
     input[type="range"]::-webkit-slider-thumb{
       width:26px;height:26px;
@@ -559,7 +560,14 @@
     color:var(--dim);
     letter-spacing:.04em;
   }
-  .today-date-place{display:none;}
+  .today-date-place{
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    color:var(--dim);
+    text-align:center;
+    white-space:nowrap;
+  }
   .today-date-main{
     font-family:'Fraunces',serif;
     font-weight:700;
@@ -2176,7 +2184,7 @@ const el={
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
-  exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"),
+  exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"), bestTimeBar:$("bestTimeBar"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
   moonTodayIcon:$("moonTodayIcon"), moonTodayName:$("moonTodayName"),
   todayDateYear:$("todayDateYear"), todayDateMain:$("todayDateMain"), todayDatePlace:$("todayDatePlace"),
@@ -2333,11 +2341,17 @@ el.prevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
 el.nextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 
 /* 今夜のベストタイム開始時刻へ時刻スライダーをジャンプ */
-el.jumpBestTimeBtn.addEventListener("click",()=>{
+function jumpToBestTimeStart(){
   if(!state || !state.bestWindow) return;
   const minutesFromMidnight=Math.round((state.bestWindow.start-state.jdMidnight)*1440);
   el.timeSlider.value=clamp(minutesFromMidnight,0,1800);
   update();
+}
+el.jumpBestTimeBtn.addEventListener("click",jumpToBestTimeStart);
+// スマホでは「開始時間」ボタンを非表示にする代わり、バー全体をタップすると開始時間にジャンプできるようにする
+el.bestTimeBar.addEventListener("click",(e)=>{
+  if(e.target.closest("#jumpBestTimeBtn")) return; // ボタン自体のクリックは専用ハンドラーに任せる(二重発火防止)
+  jumpToBestTimeStart();
 });
 
 [el.focalLength,el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp,el.facingAz,el.facingAlt]
