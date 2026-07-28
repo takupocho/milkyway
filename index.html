@@ -722,6 +722,10 @@
     border-radius:0 0 8px 8px;
     background:#0a0c1c;
   }
+  /* ベースルールの直後に置くことで、詳細度が同じでも正しく上書きされるようにする */
+  @media (max-width:760px){
+    #compassStrip{height:30px;margin-top:0;}
+  }
   .drag-hint{
     margin-top:8px;
     font-size:11.5px;
@@ -4144,6 +4148,8 @@ function drawCompassStrip(ctx,s){
 
   const fovH=s.fovH, centerAz=s.facingAz;
   const baseY=13;
+  // キャンバスの高さが低い(スマホ用に縮小されている)場合は、目盛りとラベルの間隔をより詰める
+  const labelOffset = H<40 ? 12 : 22;
 
   // 目盛り間隔をFOVに応じて選ぶ(ラベル同士が詰まりすぎないように)
   const candidates=[1,2,5,10,15,30];
@@ -4181,7 +4187,7 @@ function drawCompassStrip(ctx,s){
     ctx.lineWidth=1.4;
     ctx.beginPath(); ctx.moveTo(x,baseY-9); ctx.lineTo(x,baseY+9); ctx.stroke();
     ctx.fillStyle="rgba(230,232,250,0.9)";
-    ctx.fillText(COMPASS_LABELS[t], x, baseY+22);
+    ctx.fillText(COMPASS_LABELS[t], x, baseY+labelOffset);
   }
 
   // 現在の撮影方位(中央)マーカー
@@ -4193,7 +4199,7 @@ function drawCompassStrip(ctx,s){
   ctx.textAlign="center";
   ctx.font="600 11px IBM Plex Mono, monospace";
   ctx.fillStyle="#e8a659";
-  ctx.fillText(`${Math.round(centerAz)}°`, cx, baseY+22);
+  ctx.fillText(`${Math.round(centerAz)}°`, cx, baseY+labelOffset);
   ctx.textAlign="left";
 }
 
