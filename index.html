@@ -772,17 +772,37 @@
     font-weight:700;
     border-radius:8px;
   }
+  .best-time-date-nav{display:none;}
   /* 上のモバイル用ブロック(760px以下)はこのベースルールより前に書かれているため、
      同じプロパティを指定するとCSSの詳細度が同じ場合は後に書かれたこちらが勝ってしまい、
      余白などの上書きが効かなくなっていた。そのため、ベースルールの後に改めて上書きする。
      (文字サイズは以前のサイズのままにしたいので、ここでは変更しない) */
   @media (max-width:760px){
-    .best-time-bar{padding:5px 6px;margin-top:2px;gap:4px;}
+    .best-time-bar{padding:5px 6px;margin-top:2px;gap:4px;flex-wrap:wrap;}
     .best-time-value.none{
       white-space:normal;
       display:block;
       width:100%;
       text-align:center;
+    }
+    .best-time-date-nav{
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+      justify-content:flex-end;
+      width:100%;
+    }
+    .date-nav-btn{
+      flex:none;
+      width:auto;
+      padding:3px 9px;
+      margin:0;
+      font-size:11px;
+      font-weight:600;
+      border-radius:12px;
+      background:var(--panel-raised);
+      border:1px solid var(--line);
+      color:var(--dim);
     }
   }
 
@@ -1494,6 +1514,14 @@
               <div class="best-time-text">
                 <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
                 <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
+              </div>
+              <div class="best-time-date-nav" id="bestTimeDateNav">
+                <button id="mobileCalendarBtn" type="button" class="date-nav-btn" aria-label="カレンダーを開く">📅</button>
+                <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
+                <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
+                <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
+                <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
+                <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
               </div>
               <button id="jumpBestTimeBtn" type="button" class="jump-besttime-btn">開始<br>時間</button>
             </div>
@@ -2209,6 +2237,9 @@ const el={
   monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
+  bestTimeDateNav:$("bestTimeDateNav"), mobileCalendarBtn:$("mobileCalendarBtn"), mobileNowBtn:$("mobileNowBtn"),
+  mobilePrevMonthBtn:$("mobilePrevMonthBtn"), mobileNextMonthBtn:$("mobileNextMonthBtn"),
+  mobilePrevDayBtn:$("mobilePrevDayBtn"), mobileNextDayBtn:$("mobileNextDayBtn"),
   monthTableList:$("monthTableList"),
 };
 
@@ -2354,6 +2385,15 @@ el.nextDayBtn.addEventListener("click",()=>shiftSelectedDate(1,0));
 el.prevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
 el.nextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 
+/* スマホの「今夜の天の川のベストタイム」横にある日付ナビゲーションボタン。
+   既存の設定パネル内のボタンと同じ処理をそのまま呼び出す(カレンダーは日付欄の開閉を流用)。 */
+el.mobileCalendarBtn.addEventListener("click",()=>{ el.dateCollapseToggle.click(); });
+el.mobileNowBtn.addEventListener("click",()=>{ el.nowBtn.click(); });
+el.mobilePrevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
+el.mobileNextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
+el.mobilePrevDayBtn.addEventListener("click",()=>shiftSelectedDate(-1,0));
+el.mobileNextDayBtn.addEventListener("click",()=>shiftSelectedDate(1,0));
+
 /* 今夜のベストタイム開始時刻へ時刻スライダーをジャンプ */
 function jumpToBestTimeStart(){
   if(!state || !state.bestWindow) return;
@@ -2364,7 +2404,7 @@ function jumpToBestTimeStart(){
 el.jumpBestTimeBtn.addEventListener("click",jumpToBestTimeStart);
 // スマホでは「開始時間」ボタンを非表示にする代わり、バー全体をタップすると開始時間にジャンプできるようにする
 el.bestTimeBar.addEventListener("click",(e)=>{
-  if(e.target.closest("#jumpBestTimeBtn")) return; // ボタン自体のクリックは専用ハンドラーに任せる(二重発火防止)
+  if(e.target.closest("#jumpBestTimeBtn, #bestTimeDateNav")) return; // ボタン自体のクリックは専用ハンドラーに任せる(二重発火防止)
   jumpToBestTimeStart();
 });
 
