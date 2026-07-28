@@ -839,6 +839,7 @@
   .collapse-arrow{display:none;}
   @media (max-width:900px){
     .date-collapse-toggle{
+      display:none;
       cursor:pointer;
       padding:9px 10px;
       background:var(--panel-raised);
@@ -1519,9 +1520,9 @@
                 <button id="mobileCalendarBtn" type="button" class="date-nav-btn" aria-label="カレンダーを開く">📅</button>
                 <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
                 <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
-                <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
                 <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
                 <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
+                <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
               </div>
               <button id="jumpBestTimeBtn" type="button" class="jump-besttime-btn">開始<br>時間</button>
             </div>
@@ -2387,7 +2388,21 @@ el.nextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 
 /* スマホの「今夜の天の川のベストタイム」横にある日付ナビゲーションボタン。
    既存の設定パネル内のボタンと同じ処理をそのまま呼び出す(カレンダーは日付欄の開閉を流用)。 */
-el.mobileCalendarBtn.addEventListener("click",()=>{ el.dateCollapseToggle.click(); });
+el.mobileCalendarBtn.addEventListener("click",()=>{
+  // 日付欄が閉じたままだとinput自体が非表示(display:none)になり、ネイティブピッカーが開けないため、
+  // 見出しボタンを非表示にした代わりにここで確実に開いた状態にしておく
+  if(!dateCollapseOpen){
+    dateCollapseOpen=true;
+    el.dateCollapseBody.classList.add("show");
+    el.dateCollapseToggle.classList.add("open");
+  }
+  // ネイティブのカレンダーピッカーを直接開く。showPickerに対応していないブラウザではフォーカスで代用する
+  if(typeof el.dateInput.showPicker==="function"){
+    try{ el.dateInput.showPicker(); return; }catch(err){ /* 権限エラー等の場合は下のフォールバックへ */ }
+  }
+  el.dateInput.focus();
+  el.dateInput.click();
+});
 el.mobileNowBtn.addEventListener("click",()=>{ el.nowBtn.click(); });
 el.mobilePrevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
 el.mobileNextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
