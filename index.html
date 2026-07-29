@@ -773,16 +773,31 @@
     border-radius:8px;
   }
   .best-time-date-nav{display:none;}
-  .visually-hidden-date-input{
-    position:absolute;
-    width:1px;
-    height:1px;
-    opacity:0;
-    pointer-events:none;
-    overflow:hidden;
-    border:none;
-    padding:0;
+  .date-nav-input-wrap{
+    position:relative;
+    display:inline-flex;
+    align-items:center;
+  }
+  .date-nav-input{
+    flex:none;
+    padding:3px 24px 3px 9px;
     margin:0;
+    font-size:11px;
+    font-weight:600;
+    font-family:inherit;
+    border-radius:12px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    color:var(--dim);
+    color-scheme:dark;
+  }
+  .date-nav-input-icon{
+    position:absolute;
+    right:7px;
+    top:50%;
+    transform:translateY(-50%);
+    font-size:11px;
+    pointer-events:none;
   }
   /* 上のモバイル用ブロック(760px以下)はこのベースルールより前に書かれているため、
      同じプロパティを指定するとCSSの詳細度が同じ場合は後に書かれたこちらが勝ってしまい、
@@ -1529,8 +1544,10 @@
                 <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
               </div>
               <div class="best-time-date-nav" id="bestTimeDateNav">
-                <button id="mobileCalendarBtn" type="button" class="date-nav-btn" aria-label="カレンダーを開く">📅</button>
-                <input type="date" id="mobileDateInputHidden" class="visually-hidden-date-input" tabindex="-1" aria-hidden="true">
+                <span class="date-nav-input-wrap">
+                  <input type="date" id="mobileDateInputVisible" class="date-nav-input">
+                  <span class="date-nav-input-icon" aria-hidden="true">📅</span>
+                </span>
                 <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
                 <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
                 <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
@@ -2251,7 +2268,7 @@ const el={
   monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
-  bestTimeDateNav:$("bestTimeDateNav"), mobileCalendarBtn:$("mobileCalendarBtn"), mobileDateInputHidden:$("mobileDateInputHidden"), mobileNowBtn:$("mobileNowBtn"),
+  bestTimeDateNav:$("bestTimeDateNav"), mobileDateInputVisible:$("mobileDateInputVisible"), mobileNowBtn:$("mobileNowBtn"),
   mobilePrevMonthBtn:$("mobilePrevMonthBtn"), mobileNextMonthBtn:$("mobileNextMonthBtn"),
   mobilePrevDayBtn:$("mobilePrevDayBtn"), mobileNextDayBtn:$("mobileNextDayBtn"),
   monthTableList:$("monthTableList"),
@@ -2401,19 +2418,11 @@ el.prevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
 el.nextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 
 /* スマホの「今夜の天の川のベストタイム」横にある日付ナビゲーションボタン。
-   既存の設定パネル内のボタンと同じ処理をそのまま呼び出す(カレンダーは日付欄の開閉を流用)。 */
-el.mobileCalendarBtn.addEventListener("click",()=>{
-  // 「撮影日を設定」欄自体は開かず、見た目に影響しない専用の隠しinputでネイティブピッカーだけを開く
-  el.mobileDateInputHidden.value = el.dateInput.value;
-  if(typeof el.mobileDateInputHidden.showPicker==="function"){
-    try{ el.mobileDateInputHidden.showPicker(); return; }catch(err){ /* 権限エラー等の場合は下のフォールバックへ */ }
-  }
-  el.mobileDateInputHidden.focus();
-  el.mobileDateInputHidden.click();
-});
-el.mobileDateInputHidden.addEventListener("change",()=>{
-  if(!el.mobileDateInputHidden.value) return;
-  el.dateInput.value = el.mobileDateInputHidden.value;
+   カレンダーは、実際に見える日付inputを直接タップすることでネイティブピッカーを確実に開く
+   (見えない要素へのshowPicker呼び出しはiOSで動作しないことがあるため、この方式に変更)。 */
+el.mobileDateInputVisible.addEventListener("change",()=>{
+  if(!el.mobileDateInputVisible.value) return;
+  el.dateInput.value = el.mobileDateInputVisible.value;
   update();
 });
 el.mobileNowBtn.addEventListener("click",()=>{ el.nowBtn.click(); });
@@ -4660,6 +4669,7 @@ function applyCanvasSize(){
 }
 
 function update(){
+  el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション欄を常に最新の日付と同期させる
   applyCanvasSize();
   state=computeState();
   drawDial(dialCtx,state);
