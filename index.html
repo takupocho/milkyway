@@ -748,6 +748,10 @@
     gap:6px 14px;
     min-width:0;
   }
+  /* デスクトップでは、このラッパーが無いのと同じ見た目になるようdisplay:contentsにしておく
+     (直接の子であるラベル・ボタンが、そのままbest-time-textのflexアイテムとして並ぶ) */
+  .best-time-top-row{display:contents;}
+  .month-table-mobile-btn{display:none;}
   .best-time-label{
     font-size:13.5px;
     font-weight:600;
@@ -792,6 +796,27 @@
      (文字サイズは以前のサイズのままにしたいので、ここでは変更しない) */
   @media (max-width:760px){
     .best-time-bar{padding:5px 6px;margin-top:2px;gap:4px;flex-wrap:wrap;}
+    .best-time-top-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      width:100%;
+      gap:8px;
+    }
+    .month-table-mobile-btn{
+      display:inline-flex;
+      align-items:center;
+      gap:3px;
+      flex:none;
+      padding:3px 9px;
+      margin:0;
+      font-size:11px;
+      font-weight:600;
+      border-radius:12px;
+      background:var(--panel-raised);
+      border:1px solid var(--line);
+      color:var(--dim);
+    }
     .best-time-value.none{
       white-space:normal;
       display:block;
@@ -1533,7 +1558,10 @@
             <canvas id="compassStrip" width="1200" height="42"></canvas>
             <div class="best-time-bar" id="bestTimeBar">
               <div class="best-time-text">
-                <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
+                <div class="best-time-top-row">
+                  <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
+                  <button id="mobileMonthTableBtn" type="button" class="month-table-mobile-btn">▶月別表</button>
+                </div>
                 <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
               </div>
               <div class="best-time-date-nav" id="bestTimeDateNav">
@@ -2261,7 +2289,7 @@ const el={
   monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
-  bestTimeDateNav:$("bestTimeDateNav"), mobileDateInputVisible:$("mobileDateInputVisible"), mobileDateDisplay:$("mobileDateDisplay"), mobileNowBtn:$("mobileNowBtn"),
+  bestTimeDateNav:$("bestTimeDateNav"), mobileDateInputVisible:$("mobileDateInputVisible"), mobileDateDisplay:$("mobileDateDisplay"), mobileNowBtn:$("mobileNowBtn"), mobileMonthTableBtn:$("mobileMonthTableBtn"),
   mobilePrevMonthBtn:$("mobilePrevMonthBtn"), mobileNextMonthBtn:$("mobileNextMonthBtn"),
   mobilePrevDayBtn:$("mobilePrevDayBtn"), mobileNextDayBtn:$("mobileNextDayBtn"),
   monthTableList:$("monthTableList"),
@@ -2419,6 +2447,7 @@ el.mobileDateInputVisible.addEventListener("change",()=>{
   update();
 });
 el.mobileNowBtn.addEventListener("click",()=>{ el.nowBtn.click(); });
+el.mobileMonthTableBtn.addEventListener("click",()=>{ el.monthTableToggleBtn.click(); });
 el.mobilePrevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
 el.mobileNextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 el.mobilePrevDayBtn.addEventListener("click",()=>shiftSelectedDate(-1,0));
@@ -2434,7 +2463,7 @@ function jumpToBestTimeStart(){
 el.jumpBestTimeBtn.addEventListener("click",jumpToBestTimeStart);
 // スマホでは「開始時間」ボタンを非表示にする代わり、バー全体をタップすると開始時間にジャンプできるようにする
 el.bestTimeBar.addEventListener("click",(e)=>{
-  if(e.target.closest("#jumpBestTimeBtn, #bestTimeDateNav")) return; // ボタン自体のクリックは専用ハンドラーに任せる(二重発火防止)
+  if(e.target.closest("#jumpBestTimeBtn, #bestTimeDateNav, #mobileMonthTableBtn")) return; // ボタン自体のクリックは専用ハンドラーに任せる(二重発火防止)
   jumpToBestTimeStart();
 });
 
