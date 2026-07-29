@@ -563,6 +563,7 @@
     color:var(--dim);
     text-align:center;
     white-space:nowrap;
+    cursor:pointer;
   }
   .today-date-main{
     font-family:'Fraunces',serif;
@@ -1229,6 +1230,7 @@
     font-size:13.5px;
     font-weight:600;
     color:var(--core-amber);
+    cursor:pointer;
   }
 
   /* ---------- 縦向き案内オーバーレイ ----------
@@ -2375,8 +2377,8 @@ function setInitialDateTime(){
   el.timeSlider.value = clamp(22*60, 0, 1439); // デフォルトは22:00 (天の川が見えやすい時間帯の目安)
 }
 setInitialDateTime();
-el.lat.value=CITIES[1].lat; el.lon.value=CITIES[1].lon; el.tz.value=CITIES[1].tz;
-el.citySelect.value=1;
+el.lat.value=CITIES[2].lat; el.lon.value=CITIES[2].lon; el.tz.value=CITIES[2].tz;
+el.citySelect.value=2;
 el.focalLength.value=24; el.aperture.value=2.8; el.isoSlider.value=5; el.shutter.value=15;
 el.sensor.value=0; el.lp.value=1;
 el.facingAz.value=180; el.facingAlt.value=20;
@@ -2388,6 +2390,7 @@ el.citySelect.addEventListener("change",()=>{
   const c=CITIES[+el.citySelect.value];
   if(!c.custom){ el.lat.value=c.lat; el.lon.value=c.lon; el.tz.value=c.tz; }
   update();
+  if(!c.custom) reverseGeocodeAndShow(c.lat, c.lon); // プリセットを選んだ地点の県+市名を自動取得して表示する
 });
 [el.lat,el.lon,el.tz].forEach(inp=>inp.addEventListener("input",()=>{ el.citySelect.value=0; update(); }));
 
@@ -2407,6 +2410,10 @@ el.geoBtn.addEventListener("click",()=>{
     alert("位置情報を取得できませんでした。手動で緯度経度を入力してください。");
   });
 });
+
+/* 「観測地点：〇〇県〇〇市」のテキスト自体をタップ/クリックしても現在地取得を実行できるようにする */
+el.observedPlaceName.addEventListener("click",()=>{ el.geoBtn.click(); });
+el.todayDatePlace.addEventListener("click",()=>{ el.geoBtn.click(); });
 
 el.dateInput.addEventListener("input",update);
 el.timeSlider.addEventListener("input",update);
@@ -3070,10 +3077,10 @@ function scheduleSaveSettings(){
   },400);
 }
 async function loadPersistedSettings(){
-  if(typeof window.storage==="undefined") return;
+  if(typeof window.storage==="undefined"){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
   try{
     const res=await window.storage.get(SETTINGS_KEY,false);
-    if(!res || !res.value) return;
+    if(!res || !res.value){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; } // 初回訪問時はデフォルト地点(神戸)の観測地点名を自動取得する
     const s=JSON.parse(res.value);
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
