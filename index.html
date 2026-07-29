@@ -773,6 +773,17 @@
     border-radius:8px;
   }
   .best-time-date-nav{display:none;}
+  .visually-hidden-date-input{
+    position:absolute;
+    width:1px;
+    height:1px;
+    opacity:0;
+    pointer-events:none;
+    overflow:hidden;
+    border:none;
+    padding:0;
+    margin:0;
+  }
   /* 上のモバイル用ブロック(760px以下)はこのベースルールより前に書かれているため、
      同じプロパティを指定するとCSSの詳細度が同じ場合は後に書かれたこちらが勝ってしまい、
      余白などの上書きが効かなくなっていた。そのため、ベースルールの後に改めて上書きする。
@@ -791,6 +802,7 @@
       gap:4px;
       justify-content:flex-end;
       width:100%;
+      position:relative;
     }
     .date-nav-btn{
       flex:none;
@@ -1518,6 +1530,7 @@
               </div>
               <div class="best-time-date-nav" id="bestTimeDateNav">
                 <button id="mobileCalendarBtn" type="button" class="date-nav-btn" aria-label="カレンダーを開く">📅</button>
+                <input type="date" id="mobileDateInputHidden" class="visually-hidden-date-input" tabindex="-1" aria-hidden="true">
                 <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
                 <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
                 <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
@@ -2238,7 +2251,7 @@ const el={
   monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
-  bestTimeDateNav:$("bestTimeDateNav"), mobileCalendarBtn:$("mobileCalendarBtn"), mobileNowBtn:$("mobileNowBtn"),
+  bestTimeDateNav:$("bestTimeDateNav"), mobileCalendarBtn:$("mobileCalendarBtn"), mobileDateInputHidden:$("mobileDateInputHidden"), mobileNowBtn:$("mobileNowBtn"),
   mobilePrevMonthBtn:$("mobilePrevMonthBtn"), mobileNextMonthBtn:$("mobileNextMonthBtn"),
   mobilePrevDayBtn:$("mobilePrevDayBtn"), mobileNextDayBtn:$("mobileNextDayBtn"),
   monthTableList:$("monthTableList"),
@@ -2349,6 +2362,7 @@ el.geoBtn.addEventListener("click",()=>{
     el.citySelect.value=0;
     el.geoBtn.textContent="📍 現在地を取得";
     update();
+    reverseGeocodeAndShow(pos.coords.latitude, pos.coords.longitude);
   },()=>{
     el.geoBtn.textContent="📍 現在地を取得";
     alert("位置情報を取得できませんでした。手動で緯度経度を入力してください。");
@@ -2389,19 +2403,18 @@ el.nextMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,1));
 /* スマホの「今夜の天の川のベストタイム」横にある日付ナビゲーションボタン。
    既存の設定パネル内のボタンと同じ処理をそのまま呼び出す(カレンダーは日付欄の開閉を流用)。 */
 el.mobileCalendarBtn.addEventListener("click",()=>{
-  // 日付欄が閉じたままだとinput自体が非表示(display:none)になり、ネイティブピッカーが開けないため、
-  // 見出しボタンを非表示にした代わりにここで確実に開いた状態にしておく
-  if(!dateCollapseOpen){
-    dateCollapseOpen=true;
-    el.dateCollapseBody.classList.add("show");
-    el.dateCollapseToggle.classList.add("open");
+  // 「撮影日を設定」欄自体は開かず、見た目に影響しない専用の隠しinputでネイティブピッカーだけを開く
+  el.mobileDateInputHidden.value = el.dateInput.value;
+  if(typeof el.mobileDateInputHidden.showPicker==="function"){
+    try{ el.mobileDateInputHidden.showPicker(); return; }catch(err){ /* 権限エラー等の場合は下のフォールバックへ */ }
   }
-  // ネイティブのカレンダーピッカーを直接開く。showPickerに対応していないブラウザではフォーカスで代用する
-  if(typeof el.dateInput.showPicker==="function"){
-    try{ el.dateInput.showPicker(); return; }catch(err){ /* 権限エラー等の場合は下のフォールバックへ */ }
-  }
-  el.dateInput.focus();
-  el.dateInput.click();
+  el.mobileDateInputHidden.focus();
+  el.mobileDateInputHidden.click();
+});
+el.mobileDateInputHidden.addEventListener("change",()=>{
+  if(!el.mobileDateInputHidden.value) return;
+  el.dateInput.value = el.mobileDateInputHidden.value;
+  update();
 });
 el.mobileNowBtn.addEventListener("click",()=>{ el.nowBtn.click(); });
 el.mobilePrevMonthBtn.addEventListener("click",()=>shiftSelectedDate(0,-1));
