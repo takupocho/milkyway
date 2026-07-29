@@ -773,18 +773,19 @@
     border-radius:8px;
   }
   .best-time-date-nav{display:none;}
-  .date-nav-input{
-    flex:none;
-    padding:3px 9px;
+  .date-nav-btn-wrap{
+    position:relative;
+    display:inline-flex;
+  }
+  .date-nav-input-overlay{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:0;
+    border:none;
+    padding:0;
     margin:0;
-    font-size:11px;
-    font-weight:600;
-    font-family:inherit;
-    border-radius:12px;
-    background:var(--panel-raised);
-    border:1px solid var(--line);
-    color:var(--dim);
-    color-scheme:dark;
   }
   /* 上のモバイル用ブロック(760px以下)はこのベースルールより前に書かれているため、
      同じプロパティを指定するとCSSの詳細度が同じ場合は後に書かれたこちらが勝ってしまい、
@@ -1531,7 +1532,10 @@
                 <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
               </div>
               <div class="best-time-date-nav" id="bestTimeDateNav">
-                <input type="date" id="mobileDateInputVisible" class="date-nav-input">
+                <span class="date-nav-btn-wrap">
+                  <span class="date-nav-btn" id="mobileDateDisplay">—</span>
+                  <input type="date" id="mobileDateInputVisible" class="date-nav-input-overlay" tabindex="-1">
+                </span>
                 <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
                 <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
                 <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
@@ -2252,7 +2256,7 @@ const el={
   monthTableCloseBtn:$("monthTableCloseBtn"),
   monthTablePanel:$("monthTablePanel"), monthTableTitle:$("monthTableTitle"),
   monthTablePrevBtn:$("monthTablePrevBtn"), monthTableNextBtn:$("monthTableNextBtn"),
-  bestTimeDateNav:$("bestTimeDateNav"), mobileDateInputVisible:$("mobileDateInputVisible"), mobileNowBtn:$("mobileNowBtn"),
+  bestTimeDateNav:$("bestTimeDateNav"), mobileDateInputVisible:$("mobileDateInputVisible"), mobileDateDisplay:$("mobileDateDisplay"), mobileNowBtn:$("mobileNowBtn"),
   mobilePrevMonthBtn:$("mobilePrevMonthBtn"), mobileNextMonthBtn:$("mobileNextMonthBtn"),
   mobilePrevDayBtn:$("mobilePrevDayBtn"), mobileNextDayBtn:$("mobileNextDayBtn"),
   monthTableList:$("monthTableList"),
@@ -4653,7 +4657,8 @@ function applyCanvasSize(){
 }
 
 function update(){
-  el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション欄を常に最新の日付と同期させる
+  el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション(透明な実inputと見た目のspan)を常に最新の日付と同期させる
+  el.mobileDateDisplay.textContent = el.dateInput.value ? el.dateInput.value.replace(/-/g,"/") : "—";
   applyCanvasSize();
   state=computeState();
   drawDial(dialCtx,state);
