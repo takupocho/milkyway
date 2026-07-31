@@ -3097,6 +3097,8 @@ let arCameraStream=null;
 let arOrientationOffset=0; // 手動補正用のオフセット(度)。電子コンパスのズレを軽減するための微調整
 let arOrientationHandler=null;
 let arManualAzAlt=null; // AR中に手動でドラッグ操作された場合、そのままセンサー値を使わずここを優先する(未使用時はnull)
+let arPrevOrientation=null; // AR開始前の構図(横/縦)を覚えておき、終了時に元へ戻す
+let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイズを平滑化した後の方位・高度
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3137,6 +3139,12 @@ function hideArStatus(){
   el.arStatusMessage.innerHTML="";
 }
 
+/* 角度(0〜360度)の周期性を考慮して、currentからtargetへfactorの割合だけ滑らかに近づける */
+function smoothAngleTowards(current,target,factor){
+  const diff = ((target-current+540)%360)-180; // 最短経路の差分(-180〜180)
+  return ((current+diff*factor)%360+360)%360;
+}
+
 async function startArMode(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     showArStatus("この端末・ブラウザではカメラを利用できません。");
@@ -3173,18 +3181,47 @@ async function startArMode(){
   el.arCameraVideo.srcObject = arCameraStream;
   await el.arCameraVideo.play().catch(()=>{});
 
+  // ARモードは縦構図(2:3)固定にする。終了時に元の構図へ戻せるよう記憶しておく
+  arPrevOrientation = orientation;
+  setOrientation("portrait");
+  el.mobileOrientationToggleBtn.disabled = true;
+
   arOrientationOffset=0;
+  arSmoothedAz=null;
+  arSmoothedAlt=null;
+  let arRafPending=false;
   arOrientationHandler = (e)=>{
     if(e.alpha==null) return;
     // iOSはwebkitCompassHeadingの方が真北基準で信頼できるため、使える場合はそちらを優先する
     let alpha=e.alpha;
     if(typeof e.webkitCompassHeading==="number") alpha = e.webkitCompassHeading;
     const dir=computeArDirection(alpha, e.beta||0, e.gamma||0, getScreenAngle());
-    let az = dir.azimuth + arOrientationOffset;
-    az = ((az%360)+360)%360;
-    el.facingAz.value = az.toFixed(1);
-    el.facingAlt.value = clamp(dir.altitude,-89,89).toFixed(1);
-    update();
+    let targetAz = dir.azimuth + arOrientationOffset;
+    targetAz = ((targetAz%360)+360)%360;
+    const targetAlt = clamp(dir.altitude,-89,89);
+
+    // センサーの細かいノイズをそのまま反映すると小刻みに揺れて落ち着かないため、
+    // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる
+    if(arSmoothedAz===null){
+      arSmoothedAz=targetAz;
+      arSmoothedAlt=targetAlt;
+    } else {
+      arSmoothedAz = smoothAngleTowards(arSmoothedAz, targetAz, 0.15);
+      arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
+    }
+
+    // deviceorientationは高頻度(端末によっては60回/秒)で発火するため、
+    // 実際の再描画は画面のフレームごとに1回にまとめて負荷と揺れを抑える
+    if(!arRafPending){
+      arRafPending=true;
+      requestAnimationFrame(()=>{
+        arRafPending=false;
+        if(!arActive) return;
+        el.facingAz.value = arSmoothedAz.toFixed(1);
+        el.facingAlt.value = arSmoothedAlt.toFixed(1);
+        update();
+      });
+    }
   };
   window.addEventListener("deviceorientation", arOrientationHandler);
 
@@ -3202,6 +3239,8 @@ function stopArMode(){
   if(arOrientationHandler){ window.removeEventListener("deviceorientation", arOrientationHandler); arOrientationHandler=null; }
   if(arCameraStream){ arCameraStream.getTracks().forEach(t=>t.stop()); arCameraStream=null; }
   el.arCameraVideo.srcObject=null;
+  el.mobileOrientationToggleBtn.disabled = false;
+  if(arPrevOrientation){ setOrientation(arPrevOrientation); arPrevOrientation=null; }
 }
 
 el.arModeBtn.addEventListener("click",()=>{
