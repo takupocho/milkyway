@@ -3214,11 +3214,15 @@ async function startArMode(){
     // センサーの細かいノイズをそのまま反映すると小刻みに揺れて落ち着かないため、
     // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる。
     // 方位角は、ジンバルロックによる突発的な飛び値を弱める外れ値対策版を使う。
+    // さらに、天頂(真上、高度90度)に近づくほど「方位」という概念自体が数学的にあいまいになり、
+    // わずかなセンサーのブレが方位の大きな回転として現れてしまうため、
+    // 水平成分の大きさ(=高度90度に近いほど小さくなる)を信頼度として、方位の更新量を弱める。
+    const azConfidence = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.20, 0, 1);
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
     } else {
-      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15, 25, 0.03);
+      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25, 0.03*azConfidence);
       arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
     }
 
