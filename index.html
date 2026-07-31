@@ -3150,10 +3150,10 @@ function smoothAngleTowards(current,target,factor){
    方位が一瞬だけ大きく飛ぶことがある(数学的な特異点によるもので、センサーの故障ではない)。
    1フレームでの変化が異常に大きい場合は、その値をあまり信用せず弱くしか反映しないことで、
    本物の飛び値による「フットワーク」を抑えつつ、実際にゆっくり向きを変えた時には追従できるようにする。 */
-function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg,outlierFactor){
+function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg){
   const diff = Math.abs(((target-current+540)%360)-180);
-  const factor = diff>outlierThresholdDeg ? outlierFactor : normalFactor;
-  return smoothAngleTowards(current,target,factor);
+  if(diff>outlierThresholdDeg) return current; // 明らかな外れ値は弱めるだけでなく完全に無視する
+  return smoothAngleTowards(current,target,normalFactor);
 }
 
 async function startArMode(){
@@ -3213,16 +3213,17 @@ async function startArMode(){
 
     // センサーの細かいノイズをそのまま反映すると小刻みに揺れて落ち着かないため、
     // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる。
-    // 方位角は、ジンバルロックによる突発的な飛び値を弱める外れ値対策版を使う。
+    // 方位角は、ジンバルロックによる突発的な飛び値を完全に無視する外れ値対策版を使う。
     // さらに、天頂(真上、高度90度)に近づくほど「方位」という概念自体が数学的にあいまいになり、
     // わずかなセンサーのブレが方位の大きな回転として現れてしまうため、
     // 水平成分の大きさ(=高度90度に近いほど小さくなる)を信頼度として、方位の更新量を弱める。
-    const azConfidence = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.20, 0, 1);
+    // (実機でまだ揺れが報告されたため、しきい値をより保守的に前倒しした)
+    const azConfidence = clamp((Math.cos(targetAlt*Math.PI/180)-0.20)/0.30, 0, 1);
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
     } else {
-      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25, 0.03*azConfidence);
+      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25);
       arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
     }
 
