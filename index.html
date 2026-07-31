@@ -584,6 +584,7 @@
     display:flex;
     gap:8px;
     margin-bottom:12px;
+    position:relative;
   }
   .constellation-toggle-btn{
     width:auto;
@@ -616,8 +617,24 @@
   /* ---------- モバイル: 設定画面の切り替え ---------- */
   .settings-toggle-btn{display:none;}
   .close-settings-btn{display:none;}
-  .display-options-btn{display:none;}
+  /* 表示ボタンは常に表示する(PCでは.constellation-toggle-btnの通常サイズを自動的に継承する) */
   .display-options-popup{display:none;}
+  .display-options-popup.show{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    position:absolute;
+    top:100%;
+    left:0;
+    margin-top:6px;
+    z-index:15;
+    padding:12px;
+    border-radius:12px;
+    background:rgba(16,20,42,0.88);
+    border:1px solid var(--line);
+    backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+  }
   @media (max-width:900px){
     /* 上のモバイル用ブロック(760px以下)の.constellation-toggle-btnはこのベースルールより
        前に書かれているため、詳細度が同じ場合は後に書かれたベースルールが勝ってしまい、
@@ -638,20 +655,8 @@
       border-radius:12px;
     }
     .display-options-popup.show{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      position:absolute;
-      top:44px;
       left:6px;
       right:6px;
-      z-index:15;
-      padding:12px;
-      border-radius:12px;
-      background:rgba(16,20,42,0.88);
-      border:1px solid var(--line);
-      backdrop-filter:blur(6px);
-      -webkit-backdrop-filter:blur(6px);
     }
     .control-panel{display:none;}
     body.mobile-settings-open .control-panel{display:flex;}
@@ -1587,11 +1592,15 @@
             <div class="toggle-btn-row" id="toggleBtnRow">
               <button id="mobileSettingsBtn" type="button" class="constellation-toggle-btn settings-toggle-btn">⚙ 設定</button>
               <button id="mobileDisplayOptionsBtn" type="button" class="constellation-toggle-btn display-options-btn">表示</button>
-              <button id="constellationToggleBtn" type="button" class="constellation-toggle-btn active">星座</button>
-              <button id="planetToggleBtn" type="button" class="constellation-toggle-btn active">惑星</button>
               <span class="focal-badge" id="focalBadge">24<span class="focal-badge-unit">mm</span></span>
+              <div class="display-options-popup" id="displayOptionsPopup">
+                <button id="constellationToggleBtn" type="button" class="constellation-toggle-btn active">星座</button>
+                <button id="planetToggleBtn" type="button" class="constellation-toggle-btn active">惑星</button>
+                <button id="namedStarsToggleBtn" type="button" class="constellation-toggle-btn active">恒星</button>
+                <button id="starGroupsToggleBtn" type="button" class="constellation-toggle-btn">星のグループ</button>
+                <button id="popupShowLabelsBtn" type="button" class="constellation-toggle-btn active">名称表示</button>
+              </div>
             </div>
-            <div class="display-options-popup" id="displayOptionsPopup"></div>
             <div class="photo-canvas-wrap" id="photoCanvasWrap">
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
@@ -2331,6 +2340,7 @@ const el={
   cardTitleRow:$("cardTitleRow"), headerRightGroup:$("headerRightGroup"), toggleBtnRow:$("toggleBtnRow"), todayDate:$("todayDate"), moonToday:$("moonToday"),
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
+  namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -2967,14 +2977,33 @@ el.planetToggleBtn.addEventListener("click",()=>{
   update();
 });
 
-/* 星座・惑星・太陽・月の名称表示ON/OFF */
+/* 恒星(恒星リストの明るい星)表示のON/OFF。星座とは独立して切り替えられる */
+let namedStarsVisible=true;
+el.namedStarsToggleBtn.addEventListener("click",()=>{
+  namedStarsVisible=!namedStarsVisible;
+  el.namedStarsToggleBtn.classList.toggle("active",namedStarsVisible);
+  update();
+});
+
+/* 星のグループ(夏の大三角など)表示のON/OFF。星座とは独立して切り替えられる */
+let starGroupsVisible=false;
+el.starGroupsToggleBtn.addEventListener("click",()=>{
+  starGroupsVisible=!starGroupsVisible;
+  el.starGroupsToggleBtn.classList.toggle("active",starGroupsVisible);
+  update();
+});
+
+/* 星座・惑星・太陽・月の名称表示ON/OFF(設定パネル内のボタンと、撮影シミュレーションの「表示」ポップアップ内のボタンの両方から切り替え可能。常に見た目を同期させる) */
 let showSkyLabels=true;
-el.showSkyLabelsBtn.addEventListener("click",()=>{
+function toggleShowSkyLabels(){
   showSkyLabels=!showSkyLabels;
   el.showSkyLabelsBtn.classList.toggle("active",showSkyLabels);
   el.showSkyLabelsState.textContent = showSkyLabels ? "ON" : "OFF";
+  el.popupShowLabelsBtn.classList.toggle("active",showSkyLabels);
   update();
-});
+}
+el.showSkyLabelsBtn.addEventListener("click",toggleShowSkyLabels);
+el.popupShowLabelsBtn.addEventListener("click",toggleShowSkyLabels);
 
 /* 流星群の極大±1週間に該当する星座を自動表示するON/OFF */
 let autoShowShowerConst=false;
@@ -3034,11 +3063,11 @@ NAMED_STARS.forEach(ns=>{
 });
 
 const starGroupVisibility={};
-STAR_GROUPS.forEach(g=>{ starGroupVisibility[g.key]=false; });
+STAR_GROUPS.forEach(g=>{ starGroupVisibility[g.key]=true; });
 STAR_GROUPS.forEach(g=>{
   const btn=document.createElement("button");
   btn.type="button";
-  btn.className="item-toggle-btn";
+  btn.className="item-toggle-btn"+(starGroupVisibility[g.key] ? " active" : "");
   btn.textContent=g.name;
   btn.addEventListener("click",()=>{
     starGroupVisibility[g.key]=!starGroupVisibility[g.key];
@@ -3095,14 +3124,10 @@ function layoutHeaderForViewport(){
     targetParent.appendChild(el.todayDate);
     targetParent.appendChild(el.moonToday);
   }
-  // スマホでは星座・惑星ボタンを「表示」ポップアップの中へ、PCでは元のツールバー行へ戻す
-  const constellationTarget = isMobile ? el.displayOptionsPopup : el.toggleBtnRow;
-  if(el.constellationToggleBtn.parentElement !== constellationTarget){
-    constellationTarget.appendChild(el.constellationToggleBtn);
-    constellationTarget.appendChild(el.planetToggleBtn);
-  }
-  if(!isMobile){
-    el.displayOptionsPopup.classList.remove("show"); // PC幅に戻った時はポップアップを閉じておく
+  // 星座・惑星ボタンは、PC・スマホ共通で「表示」ポップアップの中に配置する
+  if(el.constellationToggleBtn.parentElement !== el.displayOptionsPopup){
+    el.displayOptionsPopup.appendChild(el.constellationToggleBtn);
+    el.displayOptionsPopup.appendChild(el.planetToggleBtn);
   }
 }
 layoutHeaderForViewport();
@@ -4075,7 +4100,35 @@ function drawPhoto(ctx,s){
       }
     });
 
-    // 恒星リスト (北極星・シリウス・ベテルギウスなど、個別に表示/非表示できる明るい恒星)
+    // アンドロメダ銀河(淡い楕円状の光芒+名前)
+    {
+      const aa=raDecToAltAz(ANDROMEDA_GALAXY.ra,ANDROMEDA_GALAXY.dec,s.jd,s.lat,s.lon);
+      if(showBelowHorizon || aa.alt>-2){
+        const p=toXY(aa.az,aa.alt);
+        if(p && p[0]>-40 && p[0]<W+40 && p[1]>-40 && p[1]<H+40){
+          const [x,y]=p;
+          ctx.save();
+          ctx.translate(x,y);
+          ctx.scale(1.7,1);
+          const g=ctx.createRadialGradient(0,0,0,0,0,11);
+          g.addColorStop(0,"rgba(224,214,255,0.6)");
+          g.addColorStop(1,"rgba(224,214,255,0)");
+          ctx.beginPath(); ctx.arc(0,0,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+          ctx.restore();
+          if(showSkyLabels){
+            ctx.font=`${14.5+labelFontBump}px Inter, sans-serif`;
+            ctx.fillStyle="rgba(224,214,255,0.9)";
+            ctx.fillText(ANDROMEDA_GALAXY.name,x+15,y+5);
+            const aw=ctx.measureText(ANDROMEDA_GALAXY.name).width;
+            photoClickRegions.push({x1:x+15-4-tapPad,y1:y-11-tapPad,x2:x+15+aw+4+tapPad,y2:y+11+tapPad,infoKey:"andromeda"});
+          }
+        }
+      }
+    }
+  }
+
+  // 恒星 (星座とは独立したトグルON時のみ。恒星リストの明るい星: 北極星・シリウス・ベテルギウスなど)
+  if(namedStarsVisible){
     NAMED_STARS.forEach(ns=>{
       if(namedStarVisibility[ns.key]===false) return;
       const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);
@@ -4096,8 +4149,10 @@ function drawPhoto(ctx,s){
         photoClickRegions.push({x1:x+13-4-tapPad,y1:y-11-tapPad,x2:x+13+nw+4+tapPad,y2:y+11+tapPad,infoKey:`star:${ns.key}`,altitude:aa.alt});
       }
     });
+  }
 
-    // 星のグループ(夏の大三角・秋の四辺形・冬の大三角・冬のダイヤモンド)
+  // 星のグループ (星座とは独立したトグルON時のみ。夏の大三角・秋の四辺形・冬の大三角・冬のダイヤモンド)
+  if(starGroupsVisible){
     STAR_GROUPS.forEach(g=>{
       if(starGroupVisibility[g.key]===false) return;
       const pts=g.stars.map(st=>{
@@ -4134,32 +4189,6 @@ function drawPhoto(ctx,s){
         photoClickRegions.push({x1:lx-gw/2-6-tapPad,y1:ly-16-tapPad,x2:lx+gw/2+6+tapPad,y2:ly+6+tapPad,infoKey:`group:${g.key}`});
       }
     });
-
-    // アンドロメダ銀河(淡い楕円状の光芒+名前)
-    {
-      const aa=raDecToAltAz(ANDROMEDA_GALAXY.ra,ANDROMEDA_GALAXY.dec,s.jd,s.lat,s.lon);
-      if(showBelowHorizon || aa.alt>-2){
-        const p=toXY(aa.az,aa.alt);
-        if(p && p[0]>-40 && p[0]<W+40 && p[1]>-40 && p[1]<H+40){
-          const [x,y]=p;
-          ctx.save();
-          ctx.translate(x,y);
-          ctx.scale(1.7,1);
-          const g=ctx.createRadialGradient(0,0,0,0,0,11);
-          g.addColorStop(0,"rgba(224,214,255,0.6)");
-          g.addColorStop(1,"rgba(224,214,255,0)");
-          ctx.beginPath(); ctx.arc(0,0,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-          ctx.restore();
-          if(showSkyLabels){
-            ctx.font=`${14.5+labelFontBump}px Inter, sans-serif`;
-            ctx.fillStyle="rgba(224,214,255,0.9)";
-            ctx.fillText(ANDROMEDA_GALAXY.name,x+15,y+5);
-            const aw=ctx.measureText(ANDROMEDA_GALAXY.name).width;
-            photoClickRegions.push({x1:x+15-4-tapPad,y1:y-11-tapPad,x2:x+15+aw+4+tapPad,y2:y+11+tapPad,infoKey:"andromeda"});
-          }
-        }
-      }
-    }
   }
 
   // 惑星 (トグルON時のみ)
