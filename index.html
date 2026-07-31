@@ -632,6 +632,8 @@
   .close-settings-btn{display:none;}
   /* 表示ボタンは常に表示する(PCでは.constellation-toggle-btnの通常サイズを自動的に継承する) */
   /* 縦横切り替えボタンも常に表示する(PCでは.constellation-toggle-btnの通常サイズを自動的に継承する) */
+  /* ARボタンはスマホ限定の機能なのでPCでは常に非表示にする */
+  .ar-toggle-btn{display:none;}
   .display-options-popup{display:none;}
   .display-options-popup.show{
     display:flex;
@@ -678,6 +680,12 @@
       padding-left:0;
       padding-right:0;
       font-size:15px;
+      border-radius:12px;
+    }
+    .ar-toggle-btn{
+      display:inline-block;
+      padding:3px 9px;
+      font-size:11px;
       border-radius:12px;
     }
     .display-options-popup.show{
@@ -750,6 +758,80 @@
   }
   .dial-card{max-width:100%;}
   .photo-canvas-wrap{position:relative;}
+  /* ---------- ARモード ---------- */
+  .ar-camera-video{
+    display:none;
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    z-index:0;
+    background:#000;
+  }
+  body.ar-active .ar-camera-video{display:block;}
+  body.ar-active #photoCanvas{position:relative;z-index:1;background:transparent;}
+  body.ar-active #meteorCanvas{position:relative;z-index:2;}
+  .ar-status-message{
+    display:none;
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    z-index:10;
+    max-width:85%;
+    padding:16px 18px;
+    border-radius:12px;
+    background:rgba(10,12,28,0.9);
+    border:1px solid var(--line);
+    color:var(--star-white);
+    font-size:13px;
+    line-height:1.7;
+    text-align:center;
+  }
+  .ar-status-message.show{display:block;}
+  .ar-status-message button{
+    margin-top:10px;
+    padding:8px 18px;
+    border-radius:20px;
+    background:var(--core-amber);
+    color:#1c1120;
+    border:none;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .ar-controls{
+    display:none;
+    position:absolute;
+    left:50%;
+    bottom:10px;
+    transform:translateX(-50%);
+    z-index:10;
+    align-items:center;
+    gap:10px;
+  }
+  body.ar-active .ar-controls{display:flex;}
+  .ar-exit-btn{
+    padding:9px 18px;
+    border-radius:20px;
+    background:rgba(10,12,28,0.85);
+    border:1px solid var(--line);
+    color:var(--star-white);
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .ar-calib-btn{
+    width:36px;
+    height:36px;
+    border-radius:50%;
+    background:rgba(10,12,28,0.85);
+    border:1px solid var(--line);
+    color:var(--star-white);
+    font-size:14px;
+    cursor:pointer;
+  }
   /* 縦位置は横位置と同じ面積の長方形を90度回転させただけの見た目にするため、
      幅を横位置の2/3(=3:2と2:3のアスペクト比の関係)に縮めて中央寄せする */
   .photo-canvas-wrap.portrait #photoCanvas{
@@ -988,6 +1070,7 @@
   }
   .dt-time-label{justify-content:space-between;}
   .dt-time-label .val{font-size:16px;color:var(--core-amber);font-weight:600;}
+  .next-day-label{font-size:12px;}
   .dt-time-label-left{display:flex;align-items:baseline;gap:9px;}
   .time-range-mode-btn{
     flex:none;
@@ -1619,6 +1702,7 @@
               <button id="mobileSettingsBtn" type="button" class="constellation-toggle-btn settings-toggle-btn">⚙ 設定</button>
               <button id="mobileDisplayOptionsBtn" type="button" class="constellation-toggle-btn display-options-btn">表示</button>
               <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn" aria-label="縦横を切り替える">▭</button>
+              <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn">AR</button>
               <span class="focal-badge" id="focalBadge">24<span class="focal-badge-unit">mm</span></span>
               <div class="display-options-popup" id="displayOptionsPopup">
                 <button id="constellationToggleBtn" type="button" class="constellation-toggle-btn active">星座</button>
@@ -1629,12 +1713,19 @@
               </div>
             </div>
             <div class="photo-canvas-wrap" id="photoCanvasWrap">
+              <video id="arCameraVideo" class="ar-camera-video" playsinline muted></video>
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
                 <div class="sky-info-body" id="skyInfoBody"></div>
+              </div>
+              <div class="ar-status-message" id="arStatusMessage"></div>
+              <div class="ar-controls" id="arControls">
+                <button type="button" id="arCalibLeftBtn" class="ar-calib-btn" aria-label="方位を左に補正">◀</button>
+                <button type="button" id="arExitBtn" class="ar-exit-btn">AR終了</button>
+                <button type="button" id="arCalibRightBtn" class="ar-calib-btn" aria-label="方位を右に補正">▶</button>
               </div>
             </div>
             <canvas id="compassStrip" width="1200" height="42"></canvas>
@@ -2340,6 +2431,8 @@ const el={
   shutter:$("shutter"), ssVal:$("ssVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
+  arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
+  arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
@@ -2995,6 +3088,129 @@ el.mobileOrientationToggleBtn.addEventListener("click",()=>{
   setOrientation(orientation==="portrait" ? "landscape" : "portrait");
 });
 
+/* ===================== ARモード =====================
+   スマホの背面カメラ映像を背景に表示し、端末の向き(コンパス方位+傾き)を
+   取得して、その方向の星空をカメラ映像に重ねてリアルタイムに表示する。
+   HTTPS環境かつスマホの方位・カメラセンサーへのアクセス許可が必要。 */
+let arActive=false;
+let arCameraStream=null;
+let arOrientationOffset=0; // 手動補正用のオフセット(度)。電子コンパスのズレを軽減するための微調整
+let arOrientationHandler=null;
+let arManualAzAlt=null; // AR中に手動でドラッグ操作された場合、そのままセンサー値を使わずここを優先する(未使用時はnull)
+
+function getScreenAngle(){
+  if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
+  if(typeof window.orientation==="number") return window.orientation;
+  return 0;
+}
+
+/* デバイスの生の傾きセンサー値(alpha/beta/gamma)から、背面カメラが向いている方位・仰角を計算する。
+   標準的なdeviceorientationのZXY回転順に基づき、画面の向き(縦/横持ち)による軸の入れ替えも考慮する。 */
+function computeArDirection(alpha,beta,gamma,screenAngle){
+  let a=alpha, b=beta, g=gamma;
+  if(screenAngle===90){ const t=b; b=-g; g=t; }
+  else if(screenAngle===-90 || screenAngle===270){ const t=b; b=g; g=-t; }
+  else if(screenAngle===180){ b=-b; g=-g; }
+
+  const d2r=Math.PI/180;
+  const cA=Math.cos(a*d2r), sA=Math.sin(a*d2r);
+  const cB=Math.cos(b*d2r), sB=Math.sin(b*d2r);
+  const cG=Math.cos(g*d2r), sG=Math.sin(g*d2r);
+
+  // 端末背面(カメラの向き)をワールド座標系に変換したベクトル
+  const rX = -cA*sG - sA*sB*cG;
+  const rY = -sA*sG + cA*sB*cG;
+  const rZ = -cB*cG;
+
+  let azimuth = Math.atan2(-rX,rY) * (180/Math.PI);
+  if(azimuth<0) azimuth += 360;
+  const altitude = Math.asin(clamp(-rZ,-1,1)) * (180/Math.PI);
+  return {azimuth, altitude};
+}
+
+function showArStatus(html){
+  el.arStatusMessage.innerHTML = html;
+  el.arStatusMessage.classList.add("show");
+}
+function hideArStatus(){
+  el.arStatusMessage.classList.remove("show");
+  el.arStatusMessage.innerHTML="";
+}
+
+async function startArMode(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showArStatus("この端末・ブラウザではカメラを利用できません。");
+    return;
+  }
+  if(!window.DeviceOrientationEvent){
+    showArStatus("この端末では方位センサーを利用できません。");
+    return;
+  }
+  showArStatus("カメラと方位センサーの利用を許可してください…");
+
+  // iOS 13+はユーザー操作の直後に明示的な許可リクエストが必要
+  try{
+    if(typeof DeviceOrientationEvent.requestPermission==="function"){
+      const res=await DeviceOrientationEvent.requestPermission();
+      if(res!=="granted"){
+        showArStatus("方位センサーの利用が許可されませんでした。<br>設定アプリからこのサイトの「モーションと画面の向き」を許可してください。<button type=\"button\" id=\"arRetryBtn\">再試行</button>");
+        el.arStatusMessage.querySelector("#arRetryBtn")?.addEventListener("click",startArMode);
+        return;
+      }
+    }
+  }catch(err){
+    showArStatus("方位センサーの許可取得に失敗しました。");
+    return;
+  }
+
+  try{
+    arCameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
+  }catch(err){
+    showArStatus("カメラの利用が許可されませんでした。<br>設定アプリからこのサイトのカメラアクセスを許可してください。");
+    return;
+  }
+
+  el.arCameraVideo.srcObject = arCameraStream;
+  await el.arCameraVideo.play().catch(()=>{});
+
+  arOrientationOffset=0;
+  arOrientationHandler = (e)=>{
+    if(e.alpha==null) return;
+    // iOSはwebkitCompassHeadingの方が真北基準で信頼できるため、使える場合はそちらを優先する
+    let alpha=e.alpha;
+    if(typeof e.webkitCompassHeading==="number") alpha = e.webkitCompassHeading;
+    const dir=computeArDirection(alpha, e.beta||0, e.gamma||0, getScreenAngle());
+    let az = dir.azimuth + arOrientationOffset;
+    az = ((az%360)+360)%360;
+    el.facingAz.value = az.toFixed(1);
+    el.facingAlt.value = clamp(dir.altitude,-89,89).toFixed(1);
+    update();
+  };
+  window.addEventListener("deviceorientation", arOrientationHandler);
+
+  arActive=true;
+  document.body.classList.add("ar-active");
+  el.arModeBtn.classList.add("active");
+  hideArStatus();
+}
+
+function stopArMode(){
+  arActive=false;
+  document.body.classList.remove("ar-active");
+  el.arModeBtn.classList.remove("active");
+  hideArStatus();
+  if(arOrientationHandler){ window.removeEventListener("deviceorientation", arOrientationHandler); arOrientationHandler=null; }
+  if(arCameraStream){ arCameraStream.getTracks().forEach(t=>t.stop()); arCameraStream=null; }
+  el.arCameraVideo.srcObject=null;
+}
+
+el.arModeBtn.addEventListener("click",()=>{
+  if(arActive) stopArMode(); else startArMode();
+});
+el.arExitBtn.addEventListener("click",stopArMode);
+el.arCalibLeftBtn.addEventListener("click",()=>{ arOrientationOffset -= 5; });
+el.arCalibRightBtn.addEventListener("click",()=>{ arOrientationOffset += 5; });
+
 /* 星座表示のON/OFF */
 let constellationsVisible=true;
 el.constellationToggleBtn.addEventListener("click",()=>{
@@ -3540,7 +3756,7 @@ function computeState(){
   const dayOffset=Math.floor(minutes/1440);
   const hh=Math.floor(minutes/60), mm=minutes%60; // hhは24以上になり得る(Date.UTCが自動繰り上げ処理)
   const dispHH=hh%24;
-  el.timeLabel.textContent = (dayOffset>0?"翌日 ":"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
   const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}`;
 
