@@ -3145,6 +3145,17 @@ function smoothAngleTowards(current,target,factor){
   return ((current+diff*factor)%360+360)%360;
 }
 
+/* 方位角専用の平滑化。スマホを立てて空にかざす姿勢(beta≈90度付近)では、
+   alpha/beta/gammaのオイラー角表現特有の「ジンバルロック」により、実際にはほぼ動いていなくても
+   方位が一瞬だけ大きく飛ぶことがある(数学的な特異点によるもので、センサーの故障ではない)。
+   1フレームでの変化が異常に大きい場合は、その値をあまり信用せず弱くしか反映しないことで、
+   本物の飛び値による「フットワーク」を抑えつつ、実際にゆっくり向きを変えた時には追従できるようにする。 */
+function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg,outlierFactor){
+  const diff = Math.abs(((target-current+540)%360)-180);
+  const factor = diff>outlierThresholdDeg ? outlierFactor : normalFactor;
+  return smoothAngleTowards(current,target,factor);
+}
+
 async function startArMode(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
     showArStatus("この端末・ブラウザではカメラを利用できません。");
@@ -3201,12 +3212,13 @@ async function startArMode(){
     const targetAlt = clamp(dir.altitude,-89,89);
 
     // センサーの細かいノイズをそのまま反映すると小刻みに揺れて落ち着かないため、
-    // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる
+    // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる。
+    // 方位角は、ジンバルロックによる突発的な飛び値を弱める外れ値対策版を使う。
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
     } else {
-      arSmoothedAz = smoothAngleTowards(arSmoothedAz, targetAz, 0.15);
+      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15, 25, 0.03);
       arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
     }
 
