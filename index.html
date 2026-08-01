@@ -3381,6 +3381,7 @@ async function startArMode(){
   document.body.classList.add("ar-active");
   el.arModeBtn.classList.add("active");
   hideArStatus();
+  update(); // ARの3:4キャンバスサイズや水平線ラインを、最初のセンサー値を待たずすぐに反映する
 }
 
 function stopArMode(){
@@ -4796,6 +4797,26 @@ function drawPhoto(ctx,s){
   vg.addColorStop(0,"rgba(0,0,0,0)");
   vg.addColorStop(1,"rgba(0,0,0,0.35)");
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+
+  // ARモード中は、実際の水平線(高度0度)の位置を白い点線で分かりやすく表示する
+  if(arActive){
+    const hp=toXY(s.facingAz,0);
+    if(hp){
+      const hy=hp[1];
+      if(hy>=-5 && hy<=H+5){
+        ctx.save();
+        ctx.strokeStyle="rgba(255,255,255,0.85)";
+        ctx.lineWidth=1.6;
+        ctx.setLineDash([8,7]);
+        ctx.beginPath();
+        ctx.moveTo(0,hy);
+        ctx.lineTo(W,hy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+    }
+  }
 }
 
 /* =========================================================
