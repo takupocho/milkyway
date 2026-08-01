@@ -851,11 +851,17 @@
      (AR終了などの操作は、カメラ映像に重ねて表示されるar-controls側で行う) */
   body.ar-active #cardTitleRow{display:none;}
   body.ar-active #toggleBtnRow{display:none;}
-  .ar-exit-btn{
+  .ar-left-group{
     position:absolute;
     left:0;
     top:50%;
     transform:translateY(-50%);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .ar-exit-btn{
+    flex:none;
     width:auto;
     padding:9px 16px;
     border-radius:20px;
@@ -865,6 +871,24 @@
     font-weight:700;
     font-size:13px;
     cursor:pointer;
+  }
+  .ar-grid-toggle-btn{
+    flex:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:38px;
+    height:38px;
+    padding:0;
+    border-radius:50%;
+    background:rgba(10,12,28,0.85);
+    border:1px solid var(--line);
+    color:var(--star-white);
+    cursor:pointer;
+  }
+  .ar-grid-toggle-btn.active{
+    color:var(--core-amber);
+    border-color:var(--core-amber);
   }
   /* 方位(左右)・高度(上下)を十字キーのように配置した補正パッド */
   .ar-calib-pad{
@@ -1814,7 +1838,16 @@
               </div>
               <div class="ar-status-message" id="arStatusMessage"></div>
               <div class="ar-controls" id="arControls">
-                <button type="button" id="arExitBtn" class="ar-exit-btn">AR終了</button>
+                <div class="ar-left-group">
+                  <button type="button" id="arExitBtn" class="ar-exit-btn">AR終了</button>
+                  <button type="button" id="arGridToggleBtn" class="ar-grid-toggle-btn" aria-label="高度方位グリッドの表示切替">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"/>
+                      <ellipse cx="12" cy="12" rx="9" ry="3.6" stroke="currentColor" stroke-width="1.5"/>
+                      <ellipse cx="12" cy="12" rx="3.6" ry="9" stroke="currentColor" stroke-width="1.5"/>
+                    </svg>
+                  </button>
+                </div>
                 <div class="ar-calib-pad" id="arCalibPad">
                   <button type="button" id="arCalibUpBtn" class="ar-calib-btn ar-calib-up" aria-label="高度を上に補正">
                     <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 6l7 8H5z"/></svg>
@@ -2543,7 +2576,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
-  arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"),
+  arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
@@ -3211,6 +3244,7 @@ let arOrientationHandler=null;
 let arManualAzAlt=null; // AR中に手動でドラッグ操作された場合、そのままセンサー値を使わずここを優先する(未使用時はnull)
 let arPrevOrientation=null; // AR開始前の構図(横/縦)を覚えておき、終了時に元へ戻す
 let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイズを平滑化した後の方位・高度
+let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3404,6 +3438,11 @@ el.arCalibLeftBtn.addEventListener("click",()=>{ arOrientationOffset -= 5; });
 el.arCalibRightBtn.addEventListener("click",()=>{ arOrientationOffset += 5; });
 el.arCalibUpBtn.addEventListener("click",()=>{ arAltitudeOffset = clamp(arAltitudeOffset+5,-45,45); });
 el.arCalibDownBtn.addEventListener("click",()=>{ arAltitudeOffset = clamp(arAltitudeOffset-5,-45,45); });
+el.arGridToggleBtn.addEventListener("click",()=>{
+  arGridVisible=!arGridVisible;
+  el.arGridToggleBtn.classList.toggle("active",arGridVisible);
+  update();
+});
 
 /* ARの「今見えている画面」(カメラ映像+星空オーバーレイ)を1枚の画像に合成して保存する */
 function takeArScreenshot(){
@@ -4816,6 +4855,40 @@ function drawPhoto(ctx,s){
         ctx.restore();
       }
     }
+  }
+
+  // ARモード中、ON時のみ: 高度方位グリッド(方位を一定に保つ線+高度を一定に保つ線)を表示する
+  if(arActive && arGridVisible){
+    ctx.save();
+    ctx.strokeStyle="rgba(140,170,255,0.45)";
+    ctx.lineWidth=1;
+    // 方位線(0〜330度、30度刻み): 高度-85〜85度の範囲を細かくサンプリングして結ぶ
+    for(let az=0; az<360; az+=30){
+      ctx.beginPath();
+      let started=false;
+      for(let alt=-85; alt<=85; alt+=5){
+        const p=toXY(az,alt);
+        if(!p){ started=false; continue; }
+        if(p[0]<-W*0.5 || p[0]>W*1.5 || p[1]<-H*0.5 || p[1]>H*1.5){ started=false; continue; }
+        if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
+        else ctx.lineTo(p[0],p[1]);
+      }
+      ctx.stroke();
+    }
+    // 高度線(-60〜60度、30度刻み): 方位0〜360度を一周してつなぐ
+    for(let alt=-60; alt<=60; alt+=30){
+      ctx.beginPath();
+      let started=false;
+      for(let az=0; az<=360; az+=5){
+        const p=toXY(az,alt);
+        if(!p){ started=false; continue; }
+        if(p[0]<-W*0.5 || p[0]>W*1.5 || p[1]<-H*0.5 || p[1]>H*1.5){ started=false; continue; }
+        if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
+        else ctx.lineTo(p[0],p[1]);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }
 
