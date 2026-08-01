@@ -769,9 +769,37 @@
     z-index:0;
     background:#000;
   }
-  body.ar-active .ar-camera-video{display:block;}
-  body.ar-active #photoCanvas{position:relative;z-index:1;background:transparent;opacity:0.72;}
-  body.ar-active #meteorCanvas{position:relative;z-index:2;opacity:0.72;}
+  body.ar-active .ar-camera-video{
+    display:block;
+    position:absolute;
+    inset:auto;
+    left:50%;
+    top:0;
+    transform:translateX(-50%);
+    width:55%;
+    height:auto;
+    aspect-ratio:3/4;
+    object-fit:cover;
+  }
+  body.ar-active .photo-canvas-wrap.portrait #photoCanvas{
+    position:absolute;
+    left:50%;
+    top:0;
+    transform:translateX(-50%);
+    width:55%;
+    z-index:1;
+    background:transparent;
+    opacity:0.72;
+  }
+  body.ar-active .photo-canvas-wrap.portrait #meteorCanvas{
+    position:absolute;
+    left:50%;
+    top:0;
+    transform:translateX(-50%);
+    width:55%;
+    z-index:2;
+    opacity:0.72;
+  }
   .ar-status-message{
     display:none;
     position:absolute;
@@ -5110,7 +5138,12 @@ const photoCtx=el.photoCanvas.getContext("2d");
 const compassCtx=el.compassStrip.getContext("2d");
 
 function applyCanvasSize(){
-  if(orientation==="portrait"){
+  if(arActive){
+    // ARモードはカメラ映像に合わせて3:4の比率にする(通常の縦位置2:3とは別扱い)
+    el.photoCanvas.width=900; el.photoCanvas.height=1200;
+    el.photoCanvas.style.aspectRatio="3/4";
+    el.photoCanvasWrap.classList.add("portrait");
+  } else if(orientation==="portrait"){
     el.photoCanvas.width=800; el.photoCanvas.height=1200;
     el.photoCanvas.style.aspectRatio="2/3";
     el.photoCanvasWrap.classList.add("portrait");
