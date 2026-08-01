@@ -3150,10 +3150,27 @@ function smoothAngleTowards(current,target,factor){
    方位が一瞬だけ大きく飛ぶことがある(数学的な特異点によるもので、センサーの故障ではない)。
    1フレームでの変化が異常に大きい場合は、その値をあまり信用せず弱くしか反映しないことで、
    本物の飛び値による「フットワーク」を抑えつつ、実際にゆっくり向きを変えた時には追従できるようにする。 */
-function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg){
+/* 方位角専用の外れ値対策。1フレームだけ大きく飛ぶ値(ジンバルロックによる一時的なノイズ)は無視するが、
+   同じ新しい方向が何フレームも連続する場合は「本物の動き」とみなして追従を再開する。
+   単純に「大きな飛びは常に無視」にすると、実際にスマホを大きく動かした時に永久に反応しなくなってしまうため、
+   このような「一定時間の合意」で判断する方式にしている。 */
+let arOutlierStreak=0, arOutlierTarget=null;
+function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg,requiredStreak){
   const diff = Math.abs(((target-current+540)%360)-180);
-  if(diff>outlierThresholdDeg) return current; // 明らかな外れ値は弱めるだけでなく完全に無視する
-  return smoothAngleTowards(current,target,normalFactor);
+  if(diff<=outlierThresholdDeg){
+    arOutlierStreak=0;
+    return smoothAngleTowards(current,target,normalFactor);
+  }
+  if(arOutlierTarget!==null && Math.abs(((target-arOutlierTarget+540)%360)-180)<15){
+    arOutlierStreak++;
+  } else {
+    arOutlierStreak=1;
+  }
+  arOutlierTarget=target;
+  if(arOutlierStreak>=requiredStreak){
+    return smoothAngleTowards(current,target,normalFactor); // 同じ方向への飛びが続いたので本物の動きとみなす
+  }
+  return current; // まだ様子見
 }
 
 async function startArMode(){
@@ -3200,6 +3217,8 @@ async function startArMode(){
   arOrientationOffset=0;
   arSmoothedAz=null;
   arSmoothedAlt=null;
+  arOutlierStreak=0;
+  arOutlierTarget=null;
   let arRafPending=false;
   arOrientationHandler = (e)=>{
     if(e.alpha==null) return;
@@ -3217,13 +3236,16 @@ async function startArMode(){
     // さらに、天頂(真上、高度90度)に近づくほど「方位」という概念自体が数学的にあいまいになり、
     // わずかなセンサーのブレが方位の大きな回転として現れてしまうため、
     // 水平成分の大きさ(=高度90度に近いほど小さくなる)を信頼度として、方位の更新量を弱める。
-    // (実機でまだ揺れが報告されたため、しきい値をより保守的に前倒しした)
-    const azConfidence = clamp((Math.cos(targetAlt*Math.PI/180)-0.20)/0.30, 0, 1);
+    // (「真上手前で回転する」問題を抑えるため一度しきい値を厳しくしたところ、
+    //  今度は高度を上げると全く反応しなくなってしまったため、最低でも15%は必ず反映されるよう調整し直した。
+    //  これにより、真上付近では反応がゆっくりにはなるが、完全に固まることはなくなる)
+    const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.35, 0, 1);
+    const azConfidence = 0.15 + azConfidenceRaw*0.85;
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
     } else {
-      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25);
+      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25, 5);
       arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
     }
 
