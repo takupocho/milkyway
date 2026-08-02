@@ -3548,8 +3548,11 @@ async function startArMode(){
     // 「長期的にゆっくり正しい方角へ引き戻す」役割に徹し、弱い重みだけで補正する。
     // ジャイロが使えない端末では、これまで通りコンパスの値がそのまま主役になる。
     const baseFactor = gyroAvailable ? 0.05 : 0.15;
-    // 天頂(真上)に近づくほど方位という概念自体があいまいになるため、信頼度を下げる
-    const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.35, 0, 1);
+    // 天頂(真上)に近づくほど方位という概念自体があいまいになるため、信頼度を下げる。
+    // 実機の生データを解析したところ、以前想定していた87度付近ではなく、
+    // 高度45度あたりから既にiOSのwebkitCompassHeading自体が約180度ズレた値を
+    // 返し始めることが判明したため、信頼度を下げ始める高度を大幅に前倒しした。
+    const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.30)/0.55, 0, 1);
     const azConfidence = 0.15 + azConfidenceRaw*0.85;
     const nowSec = performance.now()/1000;
 
@@ -3559,9 +3562,12 @@ async function startArMode(){
       arAzFilter.filter(targetAz, nowSec);
       arAltFilter.filter(targetAlt, nowSec);
     } else {
-      // 明らかにジンバルロックによる一時的な飛び値は、1€ Filterに渡す前の時点で弾く
-      if(isAzimuthTrustworthy(arSmoothedAz, targetAz, 25, 5)){
-        // 信頼度が低い(天頂付近)ほど、1€ Filterのmincutoffを下げて強めに滑らかにする
+      // 明らかにジンバルロックによる一時的な飛び値は、1€ Filterに渡す前の時点で弾く。
+      // 実機の生データでは、この「約180度ズレた誤った値」が1フレームだけでなく
+      // 何フレームも連続して出続けることが分かったため、必要な連続回数を5→22に増やし、
+      // 一時的な誤りに「合意判定」が騙されにくくした
+      if(isAzimuthTrustworthy(arSmoothedAz, targetAz, 25, 22)){
+        // 信頼度が低い(天頂に近い)ほど、1€ Filterのmincutoffを下げて強めに滑らかにする
         arAzFilter.inner.mincutoff = Math.max(0.05, 1.0*azConfidence);
         const filteredAz = arAzFilter.filter(targetAz, nowSec);
         arSmoothedAz = smoothAngleTowards(arSmoothedAz, filteredAz, baseFactor);
