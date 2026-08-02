@@ -3535,7 +3535,10 @@ async function startArMode(){
       if(Math.abs(offsetError)<20) arNorthOffset += offsetError*0.012;
     }
 
-    let targetAz = localAz + arNorthOffset + arOrientationOffset;
+    // iPhone実機では北(0度)・南(180度)は一致する一方、東西の回転方向だけが反転していたため、
+    // 真北基準へ補正したセンサー方位を北軸で鏡像反転する。
+    // 手動補正は反転後に加え、右ボタン=プラス方向という操作感を維持する。
+    let targetAz = -(localAz + arNorthOffset) + arOrientationOffset;
     targetAz = ((targetAz%360)+360)%360;
 
     // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
