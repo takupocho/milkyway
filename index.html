@@ -818,6 +818,24 @@
     text-align:center;
   }
   .ar-status-message.show{display:block;}
+  /* センサーの生データを確認するための一時的なデバッグ表示(検証用) */
+  .ar-debug-overlay{
+    display:none;
+    position:absolute;
+    left:6px;
+    top:6px;
+    z-index:11;
+    padding:6px 8px;
+    border-radius:8px;
+    background:rgba(0,0,0,0.6);
+    color:#7CFC9A;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    line-height:1.5;
+    white-space:pre;
+    pointer-events:none;
+  }
+  body.ar-active .ar-debug-overlay.show{display:block;}
   .ar-status-message button{
     margin-top:10px;
     padding:8px 18px;
@@ -1837,6 +1855,7 @@
                 <div class="sky-info-body" id="skyInfoBody"></div>
               </div>
               <div class="ar-status-message" id="arStatusMessage"></div>
+              <div class="ar-debug-overlay" id="arDebugOverlay"></div>
               <div class="ar-controls" id="arControls">
                 <div class="ar-left-group">
                   <button type="button" id="arExitBtn" class="ar-exit-btn">AR終了</button>
@@ -2576,7 +2595,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
-  arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"),
+  arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
@@ -3248,6 +3267,7 @@ let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
 let arMotionHandler=null; // ジャイロスコープ(devicemotion)のイベントハンドラー
 let arGyroLastTime=null; // ジャイロの角速度を積分するための直前の時刻
 let arAzFilter=null, arAltFilter=null; // 1€ Filterのインスタンス(AR開始時に生成)
+let arDebugData={}; // 検証用: センサーの生データと計算結果を保持
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3286,6 +3306,20 @@ function showArStatus(html){
 function hideArStatus(){
   el.arStatusMessage.classList.remove("show");
   el.arStatusMessage.innerHTML="";
+}
+
+/* 検証用: センサーの生データと計算結果を画面に表示する(原因調査のための一時的な機能) */
+function renderArDebugOverlay(){
+  const d=arDebugData;
+  const fmt=(v,digits=1)=>(v==null ? "—" : Number(v).toFixed(digits));
+  el.arDebugOverlay.textContent =
+`raw α/β/γ: ${fmt(d.rawAlpha)} / ${fmt(d.rawBeta)} / ${fmt(d.rawGamma)}
+compassHeading: ${fmt(d.compassHeading)}
+screenAngle: ${d.screenAngle!=null?d.screenAngle:"—"}
+gyro rate α/β/γ: ${fmt(d.gyroAlpha)} / ${fmt(d.gyroBeta)} / ${fmt(d.gyroGamma)}
+target az/alt: ${fmt(d.targetAz)} / ${fmt(d.targetAlt)}
+final az/alt: ${fmt(arSmoothedAz)} / ${fmt(arSmoothedAlt)}
+gyro有効: ${d.gyroAvailable ? "はい" : "いいえ"}`;
 }
 
 /* ===== 1€ Filter (One Euro Filter) =====
@@ -3463,6 +3497,7 @@ async function startArMode(){
       el.facingAz.value = arSmoothedAz.toFixed(1);
       el.facingAlt.value = arSmoothedAlt.toFixed(1);
       update();
+      renderArDebugOverlay();
     });
   }
 
@@ -3479,6 +3514,8 @@ async function startArMode(){
       arGyroLastTime = now;
       if(dt<=0 || dt>0.5) return; // 大きすぎる間隔(バックグラウンド復帰直後など)は無視
 
+      arDebugData.gyroAlpha=e.rotationRate.alpha; arDebugData.gyroBeta=e.rotationRate.beta; arDebugData.gyroGamma=e.rotationRate.gamma;
+
       // 端末を立てて構える一般的なAR姿勢では、Z軸回転(alpha)が左右の首振り=方位変化に、
       // X軸回転(beta)が上下の傾き=高度変化に、おおむね対応する
       const gyroAzDelta = (e.rotationRate.alpha||0) * dt;
@@ -3494,11 +3531,18 @@ async function startArMode(){
     if(e.alpha==null) return;
     // iOSはwebkitCompassHeadingの方が真北基準で信頼できるため、使える場合はそちらを優先する
     let alpha=e.alpha;
-    if(typeof e.webkitCompassHeading==="number") alpha = e.webkitCompassHeading;
+    const hasCompassHeading = typeof e.webkitCompassHeading==="number";
+    if(hasCompassHeading) alpha = e.webkitCompassHeading;
     const dir=computeArDirection(alpha, e.beta||0, e.gamma||0, getScreenAngle());
     let targetAz = dir.azimuth + arOrientationOffset;
     targetAz = ((targetAz%360)+360)%360;
     const targetAlt = clamp(dir.altitude+arAltitudeOffset,-89,89);
+
+    // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
+    arDebugData.rawAlpha=e.alpha; arDebugData.rawBeta=e.beta; arDebugData.rawGamma=e.gamma;
+    arDebugData.compassHeading = hasCompassHeading ? e.webkitCompassHeading : null;
+    arDebugData.screenAngle = getScreenAngle();
+    arDebugData.targetAz = targetAz; arDebugData.targetAlt = targetAlt;
 
     // ジャイロが使える場合は、そちらが短期的な滑らかさを担当するため、コンパス側は
     // 「長期的にゆっくり正しい方角へ引き戻す」役割に徹し、弱い重みだけで補正する。
@@ -3537,6 +3581,8 @@ async function startArMode(){
   document.body.classList.add("ar-active");
   el.arModeBtn.classList.add("active");
   hideArStatus();
+  arDebugData={gyroAvailable};
+  el.arDebugOverlay.classList.add("show"); // 検証用: 原因調査が終わるまで一時的に常時表示する
   update(); // ARの3:4キャンバスサイズや水平線ラインを、最初のセンサー値を待たずすぐに反映する
 }
 
@@ -3545,6 +3591,7 @@ function stopArMode(){
   document.body.classList.remove("ar-active");
   el.arModeBtn.classList.remove("active");
   hideArStatus();
+  el.arDebugOverlay.classList.remove("show");
   if(arOrientationHandler){ window.removeEventListener("deviceorientation", arOrientationHandler); arOrientationHandler=null; }
   if(arMotionHandler){ window.removeEventListener("devicemotion", arMotionHandler); arMotionHandler=null; }
   if(arCameraStream){ arCameraStream.getTracks().forEach(t=>t.stop()); arCameraStream=null; }
