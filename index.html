@@ -3264,10 +3264,11 @@ let arManualAzAlt=null; // AR中に手動でドラッグ操作された場合、
 let arPrevOrientation=null; // AR開始前の構図(横/縦)を覚えておき、終了時に元へ戻す
 let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイズを平滑化した後の方位・高度
 let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
-let arMotionHandler=null; // ジャイロスコープ(devicemotion)のイベントハンドラー
-let arGyroLastTime=null; // ジャイロの角速度を積分するための直前の時刻
 let arAzFilter=null, arAltFilter=null; // 1€ Filterのインスタンス(AR開始時に生成)
 let arDebugData={}; // 検証用: センサーの生データと計算結果を保持
+let arNorthOffset=null; // 端末の相対姿勢を真北基準へ合わせる補正。高仰角では固定してコンパス暴れを防ぐ
+let arLastLocalAz=null; // 天頂付近で方位が数学的に不定になるため、最後に信頼できた相対方位を保持
+let arLastFrameTime=null;
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3299,6 +3300,18 @@ function computeArDirection(alpha,beta,gamma,screenAngle){
   return {azimuth, altitude};
 }
 
+function shortestAngleDelta(from,to){
+  return ((to-from+540)%360)-180;
+}
+
+/* iOSのwebkitCompassHeadingはalphaとは別物なので、姿勢行列のalphaとしては使用しない。
+   ただし低仰角では従来の実機結果と整合しやすいため、真北へ合わせるための参照値としてだけ使う。 */
+function computeCompassReferenceDirection(e,screenAngle){
+  if(typeof e.webkitCompassHeading!=="number" || !Number.isFinite(e.webkitCompassHeading)) return null;
+  const dir=computeArDirection(e.webkitCompassHeading,e.beta||0,e.gamma||0,screenAngle);
+  return dir.azimuth;
+}
+
 function showArStatus(html){
   el.arStatusMessage.innerHTML = html;
   el.arStatusMessage.classList.add("show");
@@ -3315,11 +3328,12 @@ function renderArDebugOverlay(){
   el.arDebugOverlay.textContent =
 `raw α/β/γ: ${fmt(d.rawAlpha)} / ${fmt(d.rawBeta)} / ${fmt(d.rawGamma)}
 compassHeading: ${fmt(d.compassHeading)}
+compassAccuracy: ${fmt(d.compassAccuracy)}
 screenAngle: ${d.screenAngle!=null?d.screenAngle:"—"}
-gyro rate α/β/γ: ${fmt(d.gyroAlpha)} / ${fmt(d.gyroBeta)} / ${fmt(d.gyroGamma)}
+local az / north offset: ${fmt(d.localAz)} / ${fmt(arNorthOffset)}
 target az/alt: ${fmt(d.targetAz)} / ${fmt(d.targetAlt)}
 final az/alt: ${fmt(arSmoothedAz)} / ${fmt(arSmoothedAlt)}
-gyro有効: ${d.gyroAvailable ? "はい" : "いいえ"}`;
+compass補正: ${d.compassCorrectionActive ? "有効" : "固定"}`;
 }
 
 /* ===== 1€ Filter (One Euro Filter) =====
@@ -3445,20 +3459,6 @@ async function startArMode(){
     showArStatus("方位センサーの許可取得に失敗しました。");
     return;
   }
-  // ジャイロスコープ(devicemotion)は、方位センサーが使えてもこちらだけ拒否される場合があるため、
-  // 失敗しても致命的エラーにはせず、無い場合はジャイロ融合なしで動作を続ける
-  let gyroAvailable=false;
-  try{
-    if(typeof DeviceMotionEvent!=="undefined" && typeof DeviceMotionEvent.requestPermission==="function"){
-      const res2=await DeviceMotionEvent.requestPermission();
-      gyroAvailable = (res2==="granted");
-    } else if(typeof DeviceMotionEvent!=="undefined"){
-      gyroAvailable=true; // 明示的な許可要求が不要な環境(Androidなど)
-    }
-  }catch(err){
-    gyroAvailable=false;
-  }
-
   try{
     arCameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
   }catch(err){
@@ -3480,7 +3480,9 @@ async function startArMode(){
   arSmoothedAlt=null;
   arOutlierStreak=0;
   arOutlierTarget=null;
-  arGyroLastTime=null;
+  arNorthOffset=null;
+  arLastLocalAz=null;
+  arLastFrameTime=null;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
   // beta: 動きが速いほど追従を優先する度合い
   arAzFilter = new CircularOneEuroFilter(30, 1.0, 0.4, 1.0);
@@ -3501,60 +3503,52 @@ async function startArMode(){
     });
   }
 
-  /* ジャイロスコープ(devicemotion)の角速度を積分し、コンパスの通知間を滑らかに補う。
-     ジャイロは短期的にはなめらかだが、使い続けると少しずつ実際の向きからズレていく(ドリフト)ため、
-     下のコンパス側のハンドラーで、弱い力(低い重み)で常に正しい方角へゆっくり引き戻す。
-     これはネイティブアプリのAR機能で広く使われている「相補フィルタ」という手法を単純化したもの。 */
-  if(gyroAvailable){
-    arMotionHandler = (e)=>{
-      if(!arActive || !e.rotationRate || arSmoothedAz===null) return;
-      const now = performance.now();
-      if(arGyroLastTime===null){ arGyroLastTime=now; return; }
-      const dt = (now-arGyroLastTime)/1000;
-      arGyroLastTime = now;
-      if(dt<=0 || dt>0.5) return; // 大きすぎる間隔(バックグラウンド復帰直後など)は無視
-
-      arDebugData.gyroAlpha=e.rotationRate.alpha; arDebugData.gyroBeta=e.rotationRate.beta; arDebugData.gyroGamma=e.rotationRate.gamma;
-
-      // 端末を立てて構える一般的なAR姿勢では、Z軸回転(alpha)が左右の首振り=方位変化に、
-      // X軸回転(beta)が上下の傾き=高度変化に、おおむね対応する
-      const gyroAzDelta = (e.rotationRate.alpha||0) * dt;
-      const gyroAltDelta = -(e.rotationRate.beta||0) * dt;
-      arSmoothedAz = ((arSmoothedAz+gyroAzDelta)%360+360)%360;
-      arSmoothedAlt = clamp(arSmoothedAlt+gyroAltDelta,-89,89);
-      scheduleArRender();
-    };
-    window.addEventListener("devicemotion", arMotionHandler);
-  }
-
   arOrientationHandler = (e)=>{
     if(e.alpha==null) return;
-    // iOSはwebkitCompassHeadingの方が真北基準で信頼できるため、使える場合はそちらを優先する
-    let alpha=e.alpha;
-    const hasCompassHeading = typeof e.webkitCompassHeading==="number";
-    if(hasCompassHeading) alpha = e.webkitCompassHeading;
-    const dir=computeArDirection(alpha, e.beta||0, e.gamma||0, getScreenAngle());
-    let targetAz = dir.azimuth + arOrientationOffset;
+    const screenAngle=getScreenAngle();
+    // alpha/beta/gammaは必ず同じイベントの一組として使う。webkitCompassHeadingをalphaへ混ぜない。
+    const localDir=computeArDirection(e.alpha,e.beta||0,e.gamma||0,screenAngle);
+    let localAz=localDir.azimuth;
+    const targetAlt=clamp(localDir.altitude+arAltitudeOffset,-89,89);
+
+    // 天頂に近づくと視線の水平成分が消え、方位がわずかなノイズで大きく回る。
+    // 72度から方位変化を弱め、82度以上では最後に信頼できた方位を保持する。
+    if(arLastLocalAz===null) arLastLocalAz=localAz;
+    const zenithBlend=clamp((Math.abs(targetAlt)-72)/10,0,1);
+    const localDelta=shortestAngleDelta(arLastLocalAz,localAz);
+    localAz=((arLastLocalAz+localDelta*(1-zenithBlend))%360+360)%360;
+    if(zenithBlend<1) arLastLocalAz=localAz;
+
+    // コンパスは低仰角かつ精度が極端に悪くない時だけ、北基準オフセットの校正に使用する。
+    // 高仰角では補正値を完全に固定し、iPhone特有の180度ジャンプを画面へ伝えない。
+    const compassAz=computeCompassReferenceDirection(e,screenAngle);
+    const compassAccuracy=typeof e.webkitCompassAccuracy==="number" ? e.webkitCompassAccuracy : null;
+    const accuracyOK=compassAccuracy===null || compassAccuracy<=35;
+    const compassCorrectionActive=compassAz!==null && accuracyOK && Math.abs(targetAlt)<38;
+    if(arNorthOffset===null){
+      arNorthOffset=compassCorrectionActive ? shortestAngleDelta(localAz,compassAz) : 0;
+    } else if(compassCorrectionActive){
+      const desiredOffset=shortestAngleDelta(localAz,compassAz);
+      const offsetError=shortestAngleDelta(arNorthOffset,desiredOffset);
+      // 大きな磁気外乱は無視。通常のドリフトだけを約数秒かけて静かに補正する。
+      if(Math.abs(offsetError)<20) arNorthOffset += offsetError*0.012;
+    }
+
+    let targetAz = localAz + arNorthOffset + arOrientationOffset;
     targetAz = ((targetAz%360)+360)%360;
-    const targetAlt = clamp(dir.altitude+arAltitudeOffset,-89,89);
 
     // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
     arDebugData.rawAlpha=e.alpha; arDebugData.rawBeta=e.beta; arDebugData.rawGamma=e.gamma;
-    arDebugData.compassHeading = hasCompassHeading ? e.webkitCompassHeading : null;
-    arDebugData.screenAngle = getScreenAngle();
+    arDebugData.compassHeading = typeof e.webkitCompassHeading==="number" ? e.webkitCompassHeading : null;
+    arDebugData.compassAccuracy = compassAccuracy;
+    arDebugData.screenAngle = screenAngle;
+    arDebugData.localAz = localAz;
     arDebugData.targetAz = targetAz; arDebugData.targetAlt = targetAlt;
+    arDebugData.compassCorrectionActive=compassCorrectionActive;
 
-    // ジャイロが使える場合は、そちらが短期的な滑らかさを担当するため、コンパス側は
-    // 「長期的にゆっくり正しい方角へ引き戻す」役割に徹し、弱い重みだけで補正する。
-    // ジャイロが使えない端末では、これまで通りコンパスの値がそのまま主役になる。
-    const baseFactor = gyroAvailable ? 0.05 : 0.15;
-    // 天頂(真上)に近づくほど方位という概念自体があいまいになるため、信頼度を下げる。
-    // 実機の生データを解析したところ、以前想定していた87度付近ではなく、
-    // 高度45度あたりから既にiOSのwebkitCompassHeading自体が約180度ズレた値を
-    // 返し始めることが判明したため、信頼度を下げ始める高度を大幅に前倒しした。
-    const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.30)/0.55, 0, 1);
-    const azConfidence = 0.15 + azConfidenceRaw*0.85;
     const nowSec = performance.now()/1000;
+    const dt=arLastFrameTime===null ? 1/60 : clamp(nowSec-arLastFrameTime,1/240,0.1);
+    arLastFrameTime=nowSec;
 
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
@@ -3562,19 +3556,18 @@ async function startArMode(){
       arAzFilter.filter(targetAz, nowSec);
       arAltFilter.filter(targetAlt, nowSec);
     } else {
-      // 明らかにジンバルロックによる一時的な飛び値は、1€ Filterに渡す前の時点で弾く。
-      // 実機の生データでは、この「約180度ズレた誤った値」が1フレームだけでなく
-      // 何フレームも連続して出続けることが分かったため、必要な連続回数を5→22に増やし、
-      // 一時的な誤りに「合意判定」が騙されにくくした
-      if(isAzimuthTrustworthy(arSmoothedAz, targetAz, 25, 22)){
-        // 信頼度が低い(天頂に近い)ほど、1€ Filterのmincutoffを下げて強めに滑らかにする
-        arAzFilter.inner.mincutoff = Math.max(0.05, 1.0*azConfidence);
+      // 180度級の磁気外乱は受け入れず、通常の素早いパン操作はOne Euro Filterへ渡す。
+      if(isAzimuthTrustworthy(arSmoothedAz,targetAz,95,4)){
+        arAzFilter.inner.mincutoff = zenithBlend>0 ? 0.35 : 0.8;
         const filteredAz = arAzFilter.filter(targetAz, nowSec);
-        arSmoothedAz = smoothAngleTowards(arSmoothedAz, filteredAz, baseFactor);
+        // フレームレート非依存。静止時は安定しつつ、操作時に遅れすぎない追従速度。
+        const follow=1-Math.exp(-(zenithBlend>0 ? 7 : 11)*dt);
+        arSmoothedAz = smoothAngleTowards(arSmoothedAz,filteredAz,follow);
       }
-      arAltFilter.mincutoff = 1.0;
+      arAltFilter.mincutoff=0.8;
       const filteredAlt = arAltFilter.filter(targetAlt, nowSec);
-      arSmoothedAlt += (filteredAlt-arSmoothedAlt)*baseFactor;
+      const altFollow=1-Math.exp(-11*dt);
+      arSmoothedAlt += (filteredAlt-arSmoothedAlt)*altFollow;
     }
 
     // deviceorientationは高頻度(端末によっては60回/秒)で発火するため、
@@ -3587,7 +3580,7 @@ async function startArMode(){
   document.body.classList.add("ar-active");
   el.arModeBtn.classList.add("active");
   hideArStatus();
-  arDebugData={gyroAvailable};
+  arDebugData={};
   el.arDebugOverlay.classList.add("show"); // 検証用: 原因調査が終わるまで一時的に常時表示する
   update(); // ARの3:4キャンバスサイズや水平線ラインを、最初のセンサー値を待たずすぐに反映する
 }
@@ -3599,7 +3592,6 @@ function stopArMode(){
   hideArStatus();
   el.arDebugOverlay.classList.remove("show");
   if(arOrientationHandler){ window.removeEventListener("deviceorientation", arOrientationHandler); arOrientationHandler=null; }
-  if(arMotionHandler){ window.removeEventListener("devicemotion", arMotionHandler); arMotionHandler=null; }
   if(arCameraStream){ arCameraStream.getTracks().forEach(t=>t.stop()); arCameraStream=null; }
   el.arCameraVideo.srcObject=null;
   el.mobileOrientationToggleBtn.disabled = false;
