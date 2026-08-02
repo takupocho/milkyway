@@ -4304,19 +4304,23 @@ function drawPhoto(ctx,s){
   const labelFontBump = isMobileView ? 3 : 0; // スマホでは名称の文字を少し大きくする
   const tapPad = isMobileView ? 10 : 0; // スマホではタップ判定を周囲に広げる
 
-  const pal=skyPalette(s.sunAltAz.alt);
-  const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,`rgb(${pal.z.join(",")})`);
-  g.addColorStop(1,`rgb(${pal.h.join(",")})`);
-  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  // ARモード中は、背景の空色を塗りつぶすとカメラ映像が暗くなってしまうため、
+  // 通常モードの時だけ空のグラデーション背景・光害の色かぶりを描画する
+  if(!arActive){
+    const pal=skyPalette(s.sunAltAz.alt);
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,`rgb(${pal.z.join(",")})`);
+    g.addColorStop(1,`rgb(${pal.h.join(",")})`);
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-  // 光害による地平線側の色かぶり
-  if(s.lp.base>0.05){
-    const lg=ctx.createLinearGradient(0,H*0.55,0,H);
-    const a=s.lp.base*0.55;
-    lg.addColorStop(0,`rgba(232,166,89,0)`);
-    lg.addColorStop(1,`rgba(232,150,89,${a})`);
-    ctx.fillStyle=lg; ctx.fillRect(0,H*0.55,W,H*0.45);
+    // 光害による地平線側の色かぶり
+    if(s.lp.base>0.05){
+      const lg=ctx.createLinearGradient(0,H*0.55,0,H);
+      const a=s.lp.base*0.55;
+      lg.addColorStop(0,`rgba(232,166,89,0)`);
+      lg.addColorStop(1,`rgba(232,150,89,${a})`);
+      ctx.fillStyle=lg; ctx.fillRect(0,H*0.55,W,H*0.45);
+    }
   }
 
   const scale=(W/2)/Math.tan(s.fovH/2*D2R);
@@ -4751,44 +4755,47 @@ function drawPhoto(ctx,s){
   }
 
   // 地平線シルエット (方位に応じてスクロールする360度パノラマ)
-  // 仰角の変化に合わせて地平線の位置も星空と同じだけ連動して動くよう、人為的なクランプは行わない
-  const horizonP = toXY(s.facingAz,0) || (s.facingAlt<0 ? [W/2, -H*10] : [W/2, H*10]);
-  const baseY = horizonP[1];
-  const {trees}=seededSilhouette();
-  function ridgeHeightAt(az){
-    // seededSilhouette()は3度刻み・120区間(0〜357度)の高さを360度でループさせて参照する
-    const ridgePts=seededSilhouette().ridge;
-    const idx=((Math.round(az/3)%120)+120)%120;
-    return ridgePts[idx][1];
-  }
-  const half=s.fovH/2, pad=6, stepDeg=3;
-  const startAz=s.facingAz-half-pad, endAz=s.facingAz+half+pad;
-  // 南半球可視化時の地面の不透明度: スライダー(0〜100%)、100%で真っ暗(1.0)になるようにする
-  const belowHorizonOpacityRaw=+el.belowHorizonOpacitySlider.value;
-  const belowHorizonAlpha = 1.0 * ((isNaN(belowHorizonOpacityRaw)?100:belowHorizonOpacityRaw)/100);
-  ctx.beginPath();
-  ctx.moveTo(0,H);
-  for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
-    const y=ridgeHeightAt(az);
-    const x=W/2+(az-s.facingAz)/s.fovH*W;
-    ctx.lineTo(x, baseY - y*0.4);
-  }
-  ctx.lineTo(W,H);
-  ctx.closePath();
-  ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
-  ctx.fill();
-  trees.forEach(t=>{
-    const diff=angDiff(s.facingAz,t.az);
-    if(Math.abs(diff)>half+3) return;
-    const tx=W/2+diff/s.fovH*W, ty=baseY-6;
+  // ARモード中は、実際のカメラ映像に映る地面がそのまま見えるように、この暗いシルエットは描画しない
+  if(!arActive){
+    // 仰角の変化に合わせて地平線の位置も星空と同じだけ連動して動くよう、人為的なクランプは行わない
+    const horizonP = toXY(s.facingAz,0) || (s.facingAlt<0 ? [W/2, -H*10] : [W/2, H*10]);
+    const baseY = horizonP[1];
+    const {trees}=seededSilhouette();
+    function ridgeHeightAt(az){
+      // seededSilhouette()は3度刻み・120区間(0〜357度)の高さを360度でループさせて参照する
+      const ridgePts=seededSilhouette().ridge;
+      const idx=((Math.round(az/3)%120)+120)%120;
+      return ridgePts[idx][1];
+    }
+    const half=s.fovH/2, pad=6, stepDeg=3;
+    const startAz=s.facingAz-half-pad, endAz=s.facingAz+half+pad;
+    // 南半球可視化時の地面の不透明度: スライダー(0〜100%)、100%で真っ暗(1.0)になるようにする
+    const belowHorizonOpacityRaw=+el.belowHorizonOpacitySlider.value;
+    const belowHorizonAlpha = 1.0 * ((isNaN(belowHorizonOpacityRaw)?100:belowHorizonOpacityRaw)/100);
     ctx.beginPath();
-    ctx.moveTo(tx,ty);
-    ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
-    ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
+    ctx.moveTo(0,H);
+    for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
+      const y=ridgeHeightAt(az);
+      const x=W/2+(az-s.facingAz)/s.fovH*W;
+      ctx.lineTo(x, baseY - y*0.4);
+    }
+    ctx.lineTo(W,H);
     ctx.closePath();
     ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
     ctx.fill();
-  });
+    trees.forEach(t=>{
+      const diff=angDiff(s.facingAz,t.az);
+      if(Math.abs(diff)>half+3) return;
+      const tx=W/2+diff/s.fovH*W, ty=baseY-6;
+      ctx.beginPath();
+      ctx.moveTo(tx,ty);
+      ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
+      ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
+      ctx.closePath();
+      ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
+      ctx.fill();
+    });
+  }
 
   // 水平線(高度0°)を明るいグレーの点線で表示(トグルON時のみ)
   if(showHorizonLine){
@@ -4822,20 +4829,22 @@ function drawPhoto(ctx,s){
     ctx.globalAlpha=1;
   }
 
-  // 露出オーバー/アンダー オーバーレイ
-  if(s.totalStops>0.7){
-    const a=clamp((s.totalStops-0.7)*0.18,0,0.62);
-    ctx.fillStyle=`rgba(255,255,255,${a})`; ctx.fillRect(0,0,W,H);
-  } else if(s.totalStops<-0.7){
-    const a=clamp((-s.totalStops-0.7)*0.18,0,0.72);
-    ctx.fillStyle=`rgba(0,0,0,${a})`; ctx.fillRect(0,0,W,H);
-  }
+  // 露出オーバー/アンダー オーバーレイ・ビネット: ARモード中はカメラ本来の明るさを保つため適用しない
+  if(!arActive){
+    if(s.totalStops>0.7){
+      const a=clamp((s.totalStops-0.7)*0.18,0,0.62);
+      ctx.fillStyle=`rgba(255,255,255,${a})`; ctx.fillRect(0,0,W,H);
+    } else if(s.totalStops<-0.7){
+      const a=clamp((-s.totalStops-0.7)*0.18,0,0.72);
+      ctx.fillStyle=`rgba(0,0,0,${a})`; ctx.fillRect(0,0,W,H);
+    }
 
-  // ビネット
-  const vg=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.85);
-  vg.addColorStop(0,"rgba(0,0,0,0)");
-  vg.addColorStop(1,"rgba(0,0,0,0.35)");
-  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    // ビネット
+    const vg=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.85);
+    vg.addColorStop(0,"rgba(0,0,0,0)");
+    vg.addColorStop(1,"rgba(0,0,0,0.35)");
+    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+  }
 
   // ARモード中は、実際の水平線(高度0度)の位置を白い点線で分かりやすく表示する
   if(arActive){
