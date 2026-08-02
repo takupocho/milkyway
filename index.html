@@ -3245,6 +3245,8 @@ let arManualAzAlt=null; // AR中に手動でドラッグ操作された場合、
 let arPrevOrientation=null; // AR開始前の構図(横/縦)を覚えておき、終了時に元へ戻す
 let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイズを平滑化した後の方位・高度
 let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
+let arMotionHandler=null; // ジャイロスコープ(devicemotion)のイベントハンドラー
+let arGyroLastTime=null; // ジャイロの角速度を積分するための直前の時刻
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3328,9 +3330,9 @@ async function startArMode(){
     showArStatus("この端末では方位センサーを利用できません。");
     return;
   }
-  showArStatus("カメラと方位センサーの利用を許可してください…");
+  showArStatus("カメラ・方位・モーションセンサーの利用を許可してください…");
 
-  // iOS 13+はユーザー操作の直後に明示的な許可リクエストが必要
+  // iOS 13+はユーザー操作の直後に明示的な許可リクエストが必要(方位・モーションは別々に許可を求める必要がある)
   try{
     if(typeof DeviceOrientationEvent.requestPermission==="function"){
       const res=await DeviceOrientationEvent.requestPermission();
@@ -3343,6 +3345,19 @@ async function startArMode(){
   }catch(err){
     showArStatus("方位センサーの許可取得に失敗しました。");
     return;
+  }
+  // ジャイロスコープ(devicemotion)は、方位センサーが使えてもこちらだけ拒否される場合があるため、
+  // 失敗しても致命的エラーにはせず、無い場合はジャイロ融合なしで動作を続ける
+  let gyroAvailable=false;
+  try{
+    if(typeof DeviceMotionEvent!=="undefined" && typeof DeviceMotionEvent.requestPermission==="function"){
+      const res2=await DeviceMotionEvent.requestPermission();
+      gyroAvailable = (res2==="granted");
+    } else if(typeof DeviceMotionEvent!=="undefined"){
+      gyroAvailable=true; // 明示的な許可要求が不要な環境(Androidなど)
+    }
+  }catch(err){
+    gyroAvailable=false;
   }
 
   try{
@@ -3366,7 +3381,46 @@ async function startArMode(){
   arSmoothedAlt=null;
   arOutlierStreak=0;
   arOutlierTarget=null;
+  arGyroLastTime=null;
   let arRafPending=false;
+
+  // rAFでまとめて再描画する共通処理(コンパス・ジャイロ両方のハンドラーから呼ぶ)
+  function scheduleArRender(){
+    if(arRafPending) return;
+    arRafPending=true;
+    requestAnimationFrame(()=>{
+      arRafPending=false;
+      if(!arActive) return;
+      el.facingAz.value = arSmoothedAz.toFixed(1);
+      el.facingAlt.value = arSmoothedAlt.toFixed(1);
+      update();
+    });
+  }
+
+  /* ジャイロスコープ(devicemotion)の角速度を積分し、コンパスの通知間を滑らかに補う。
+     ジャイロは短期的にはなめらかだが、使い続けると少しずつ実際の向きからズレていく(ドリフト)ため、
+     下のコンパス側のハンドラーで、弱い力(低い重み)で常に正しい方角へゆっくり引き戻す。
+     これはネイティブアプリのAR機能で広く使われている「相補フィルタ」という手法を単純化したもの。 */
+  if(gyroAvailable){
+    arMotionHandler = (e)=>{
+      if(!arActive || !e.rotationRate || arSmoothedAz===null) return;
+      const now = performance.now();
+      if(arGyroLastTime===null){ arGyroLastTime=now; return; }
+      const dt = (now-arGyroLastTime)/1000;
+      arGyroLastTime = now;
+      if(dt<=0 || dt>0.5) return; // 大きすぎる間隔(バックグラウンド復帰直後など)は無視
+
+      // 端末を立てて構える一般的なAR姿勢では、Z軸回転(alpha)が左右の首振り=方位変化に、
+      // X軸回転(beta)が上下の傾き=高度変化に、おおむね対応する
+      const gyroAzDelta = (e.rotationRate.alpha||0) * dt;
+      const gyroAltDelta = -(e.rotationRate.beta||0) * dt;
+      arSmoothedAz = ((arSmoothedAz+gyroAzDelta)%360+360)%360;
+      arSmoothedAlt = clamp(arSmoothedAlt+gyroAltDelta,-89,89);
+      scheduleArRender();
+    };
+    window.addEventListener("devicemotion", arMotionHandler);
+  }
+
   arOrientationHandler = (e)=>{
     if(e.alpha==null) return;
     // iOSはwebkitCompassHeadingの方が真北基準で信頼できるため、使える場合はそちらを優先する
@@ -3377,37 +3431,23 @@ async function startArMode(){
     targetAz = ((targetAz%360)+360)%360;
     const targetAlt = clamp(dir.altitude+arAltitudeOffset,-89,89);
 
-    // センサーの細かいノイズをそのまま反映すると小刻みに揺れて落ち着かないため、
-    // 生の値を毎回そのまま使わず、指数移動平均でなめらかに追従させる。
-    // 方位角は、ジンバルロックによる突発的な飛び値を完全に無視する外れ値対策版を使う。
-    // さらに、天頂(真上、高度90度)に近づくほど「方位」という概念自体が数学的にあいまいになり、
-    // わずかなセンサーのブレが方位の大きな回転として現れてしまうため、
-    // 水平成分の大きさ(=高度90度に近いほど小さくなる)を信頼度として、方位の更新量を弱める。
-    // (「真上手前で回転する」問題を抑えるため一度しきい値を厳しくしたところ、
-    //  今度は高度を上げると全く反応しなくなってしまったため、最低でも15%は必ず反映されるよう調整し直した。
-    //  これにより、真上付近では反応がゆっくりにはなるが、完全に固まることはなくなる)
+    // ジャイロが使える場合は、そちらが短期的な滑らかさを担当するため、コンパス側は
+    // 「長期的にゆっくり正しい方角へ引き戻す」役割に徹し、弱い重みだけで補正する。
+    // ジャイロが使えない端末では、これまで通りコンパスの値がそのまま主役になる。
+    const baseFactor = gyroAvailable ? 0.05 : 0.15;
     const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.35, 0, 1);
     const azConfidence = 0.15 + azConfidenceRaw*0.85;
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
     } else {
-      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, 0.15*azConfidence, 25, 5);
-      arSmoothedAlt += (targetAlt-arSmoothedAlt)*0.15;
+      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, baseFactor*azConfidence, 25, 5);
+      arSmoothedAlt += (targetAlt-arSmoothedAlt)*baseFactor;
     }
 
     // deviceorientationは高頻度(端末によっては60回/秒)で発火するため、
     // 実際の再描画は画面のフレームごとに1回にまとめて負荷と揺れを抑える
-    if(!arRafPending){
-      arRafPending=true;
-      requestAnimationFrame(()=>{
-        arRafPending=false;
-        if(!arActive) return;
-        el.facingAz.value = arSmoothedAz.toFixed(1);
-        el.facingAlt.value = arSmoothedAlt.toFixed(1);
-        update();
-      });
-    }
+    scheduleArRender();
   };
   window.addEventListener("deviceorientation", arOrientationHandler);
 
@@ -3424,6 +3464,7 @@ function stopArMode(){
   el.arModeBtn.classList.remove("active");
   hideArStatus();
   if(arOrientationHandler){ window.removeEventListener("deviceorientation", arOrientationHandler); arOrientationHandler=null; }
+  if(arMotionHandler){ window.removeEventListener("devicemotion", arMotionHandler); arMotionHandler=null; }
   if(arCameraStream){ arCameraStream.getTracks().forEach(t=>t.stop()); arCameraStream=null; }
   el.arCameraVideo.srcObject=null;
   el.mobileOrientationToggleBtn.disabled = false;
