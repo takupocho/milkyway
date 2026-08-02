@@ -3247,6 +3247,7 @@ let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイ�
 let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
 let arMotionHandler=null; // ジャイロスコープ(devicemotion)のイベントハンドラー
 let arGyroLastTime=null; // ジャイロの角速度を積分するための直前の時刻
+let arAzFilter=null, arAltFilter=null; // 1€ Filterのインスタンス(AR開始時に生成)
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3287,6 +3288,72 @@ function hideArStatus(){
   el.arStatusMessage.innerHTML="";
 }
 
+/* ===== 1€ Filter (One Euro Filter) =====
+   Casiez, Roussel, Vogel (CHI 2012) による、速度に応じて滑らかさを自動調整する定番のノイズ除去フィルタ。
+   ゆっくり動いている時は強く滑らかにしてブレを消し、素早く動いた時は追従を優先して遅れを減らす。
+   参照実装: https://gery.casiez.net/1euro/ (BSD License) を、このアプリ用に移植したもの。 */
+class LowPassFilter{
+  constructor(alpha, initval=0){
+    this.y=this.s=initval;
+    this.setAlpha(alpha);
+    this.initialized=false;
+  }
+  setAlpha(alpha){ this.a=clamp(alpha,0.0001,1); }
+  filter(value){
+    const result = this.initialized ? this.a*value+(1-this.a)*this.s : value;
+    this.initialized=true;
+    this.y=value; this.s=result;
+    return result;
+  }
+  filterWithAlpha(value,alpha){ this.setAlpha(alpha); return this.filter(value); }
+  hasLastRawValue(){ return this.initialized; }
+  lastFilteredValue(){ return this.s; }
+  reset(){ this.initialized=false; }
+}
+class OneEuroFilter{
+  constructor(freq, mincutoff=1.0, beta=0.0, dcutoff=1.0){
+    this.freq=freq; this.mincutoff=mincutoff; this.beta_=beta; this.dcutoff=dcutoff;
+    this.x=new LowPassFilter(this.alpha(mincutoff));
+    this.dx=new LowPassFilter(this.alpha(dcutoff));
+    this.lasttime=undefined;
+  }
+  alpha(cutoff){
+    const te=1/this.freq, tau=1/(2*Math.PI*cutoff);
+    return 1/(1+tau/te);
+  }
+  reset(){ this.x.reset(); this.dx.reset(); this.lasttime=undefined; }
+  filter(value, timestamp){
+    if(this.lasttime!==undefined && timestamp!==undefined && timestamp>this.lasttime){
+      this.freq = 1/(timestamp-this.lasttime);
+    }
+    this.lasttime=timestamp;
+    const dvalue = this.x.hasLastRawValue() ? (value-this.x.lastFilteredValue())*this.freq : 0;
+    const edvalue = this.dx.filterWithAlpha(dvalue, this.alpha(this.dcutoff));
+    const cutoff = this.mincutoff + this.beta_*Math.abs(edvalue);
+    return this.x.filterWithAlpha(value, this.alpha(cutoff));
+  }
+}
+/* 方位角(0〜360度)は0度/360度の境界をまたぐため、そのままでは1€ Filterにかけられない。
+   直前の値に最も近い「等価な角度」に一旦アンラップ(展開)してからフィルタにかけ、
+   出力時に改めて0〜360度へラップし直すことで、境界をまたいでも正しく滑らかにできるようにする。 */
+class CircularOneEuroFilter{
+  constructor(freq, mincutoff=1.0, beta=0.0, dcutoff=1.0){
+    this.inner=new OneEuroFilter(freq,mincutoff,beta,dcutoff);
+    this.unwrapped=null;
+  }
+  reset(){ this.inner.reset(); this.unwrapped=null; }
+  filter(valueDeg, timestamp){
+    if(this.unwrapped===null){
+      this.unwrapped=valueDeg;
+    } else {
+      const diff=((valueDeg-(this.unwrapped%360+360)%360+540)%360)-180; // 最短経路の差分
+      this.unwrapped += diff;
+    }
+    const filtered=this.inner.filter(this.unwrapped, timestamp);
+    return ((filtered%360)+360)%360;
+  }
+}
+
 /* 角度(0〜360度)の周期性を考慮して、currentからtargetへfactorの割合だけ滑らかに近づける */
 function smoothAngleTowards(current,target,factor){
   const diff = ((target-current+540)%360)-180; // 最短経路の差分(-180〜180)
@@ -3298,16 +3365,17 @@ function smoothAngleTowards(current,target,factor){
    方位が一瞬だけ大きく飛ぶことがある(数学的な特異点によるもので、センサーの故障ではない)。
    1フレームでの変化が異常に大きい場合は、その値をあまり信用せず弱くしか反映しないことで、
    本物の飛び値による「フットワーク」を抑えつつ、実際にゆっくり向きを変えた時には追従できるようにする。 */
-/* 方位角専用の外れ値対策。1フレームだけ大きく飛ぶ値(ジンバルロックによる一時的なノイズ)は無視するが、
-   同じ新しい方向が何フレームも連続する場合は「本物の動き」とみなして追従を再開する。
-   単純に「大きな飛びは常に無視」にすると、実際にスマホを大きく動かした時に永久に反応しなくなってしまうため、
-   このような「一定時間の合意」で判断する方式にしている。 */
+/* 方位角専用の外れ値判定。1フレームだけ大きく飛ぶ値(ジンバルロックによる一時的なノイズ)は
+   信用できない値として弾くが、同じ新しい方向が何フレームも連続する場合は「本物の動き」とみなして
+   信用するようにする。単純に「大きな飛びは常に無視」にすると、実際にスマホを大きく動かした時に
+   永久に反応しなくなってしまうため、このような「一定時間の合意」で判断する方式にしている。
+   戻り値: この値を信用してよいか(true/false) */
 let arOutlierStreak=0, arOutlierTarget=null;
-function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg,requiredStreak){
+function isAzimuthTrustworthy(current,target,outlierThresholdDeg,requiredStreak){
   const diff = Math.abs(((target-current+540)%360)-180);
   if(diff<=outlierThresholdDeg){
     arOutlierStreak=0;
-    return smoothAngleTowards(current,target,normalFactor);
+    return true;
   }
   if(arOutlierTarget!==null && Math.abs(((target-arOutlierTarget+540)%360)-180)<15){
     arOutlierStreak++;
@@ -3315,10 +3383,7 @@ function smoothAzimuthTowards(current,target,normalFactor,outlierThresholdDeg,re
     arOutlierStreak=1;
   }
   arOutlierTarget=target;
-  if(arOutlierStreak>=requiredStreak){
-    return smoothAngleTowards(current,target,normalFactor); // 同じ方向への飛びが続いたので本物の動きとみなす
-  }
-  return current; // まだ様子見
+  return arOutlierStreak>=requiredStreak; // 同じ方向への飛びが続いた場合のみ、本物の動きとみなして信用する
 }
 
 async function startArMode(){
@@ -3382,6 +3447,10 @@ async function startArMode(){
   arOutlierStreak=0;
   arOutlierTarget=null;
   arGyroLastTime=null;
+  // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
+  // beta: 動きが速いほど追従を優先する度合い
+  arAzFilter = new CircularOneEuroFilter(30, 1.0, 0.4, 1.0);
+  arAltFilter = new OneEuroFilter(30, 1.0, 0.4, 1.0);
   let arRafPending=false;
 
   // rAFでまとめて再描画する共通処理(コンパス・ジャイロ両方のハンドラーから呼ぶ)
@@ -3435,14 +3504,27 @@ async function startArMode(){
     // 「長期的にゆっくり正しい方角へ引き戻す」役割に徹し、弱い重みだけで補正する。
     // ジャイロが使えない端末では、これまで通りコンパスの値がそのまま主役になる。
     const baseFactor = gyroAvailable ? 0.05 : 0.15;
+    // 天頂(真上)に近づくほど方位という概念自体があいまいになるため、信頼度を下げる
     const azConfidenceRaw = clamp((Math.cos(targetAlt*Math.PI/180)-0.05)/0.35, 0, 1);
     const azConfidence = 0.15 + azConfidenceRaw*0.85;
+    const nowSec = performance.now()/1000;
+
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
       arSmoothedAlt=targetAlt;
+      arAzFilter.filter(targetAz, nowSec);
+      arAltFilter.filter(targetAlt, nowSec);
     } else {
-      arSmoothedAz = smoothAzimuthTowards(arSmoothedAz, targetAz, baseFactor*azConfidence, 25, 5);
-      arSmoothedAlt += (targetAlt-arSmoothedAlt)*baseFactor;
+      // 明らかにジンバルロックによる一時的な飛び値は、1€ Filterに渡す前の時点で弾く
+      if(isAzimuthTrustworthy(arSmoothedAz, targetAz, 25, 5)){
+        // 信頼度が低い(天頂付近)ほど、1€ Filterのmincutoffを下げて強めに滑らかにする
+        arAzFilter.inner.mincutoff = Math.max(0.05, 1.0*azConfidence);
+        const filteredAz = arAzFilter.filter(targetAz, nowSec);
+        arSmoothedAz = smoothAngleTowards(arSmoothedAz, filteredAz, baseFactor);
+      }
+      arAltFilter.mincutoff = 1.0;
+      const filteredAlt = arAltFilter.filter(targetAlt, nowSec);
+      arSmoothedAlt += (filteredAlt-arSmoothedAlt)*baseFactor;
     }
 
     // deviceorientationは高頻度(端末によっては60回/秒)で発火するため、
