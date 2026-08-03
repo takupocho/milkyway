@@ -4477,7 +4477,8 @@ function drawPhoto(ctx,s){
   ctx.clearRect(0,0,W,H);
   photoClickRegions.length=0; // 名称クリック検出用の領域をこのフレーム分だけ作り直す
   const isMobileView = (typeof mobileHeaderMQ!=="undefined") && mobileHeaderMQ.matches;
-  const labelFontBump = isMobileView ? 3 : 0; // スマホでは名称の文字を少し大きくする
+  const labelFontBump = (isMobileView ? 3 : 0) + (arActive ? 3 : 0); // スマホ・ARモードでは名称の文字を少し大きくする
+  const arSizeScale = arActive ? 1.7 : 1; // ARモードでは星座線・星・水平線・グリッドなどを目立つよう太く/大きくする
   const tapPad = isMobileView ? 10 : 0; // スマホではタップ判定を周囲に広げる
 
   // ARモード中は、背景の空色を塗りつぶすとカメラ映像が暗くなってしまうため、
@@ -4784,7 +4785,7 @@ function drawPhoto(ctx,s){
         return toXY(aa.az,aa.alt);
       });
       ctx.strokeStyle="rgba(160,205,255,0.6)";
-      ctx.lineWidth=1.3;
+      ctx.lineWidth=1.3*arSizeScale;
       c.lines.forEach(([i,j])=>{
         const p1=pts[i], p2=pts[j];
         if(!p1||!p2) return;
@@ -4796,7 +4797,7 @@ function drawPhoto(ctx,s){
         if(!p) return;
         if(p[0]<-40||p[0]>W+40||p[1]<-40||p[1]>H+40) return;
         visN++; sumX+=p[0]; sumY+=p[1];
-        ctx.beginPath(); ctx.arc(p[0],p[1],2.8,0,Math.PI*2);
+        ctx.beginPath(); ctx.arc(p[0],p[1],2.8*arSizeScale,0,Math.PI*2);
         ctx.fillStyle="rgba(210,230,255,0.95)"; ctx.fill();
       });
       if(visN>=2 && showSkyLabels){
@@ -4847,11 +4848,11 @@ function drawPhoto(ctx,s){
       const p=toXY(aa.az,aa.alt);
       if(!p || p[0]<-40 || p[0]>W+40 || p[1]<-40 || p[1]>H+40) return;
       const [x,y]=p;
-      const g=ctx.createRadialGradient(x,y,0,x,y,11);
+      const g=ctx.createRadialGradient(x,y,0,x,y,11*arSizeScale);
       g.addColorStop(0,"rgba(255,255,255,0.95)");
       g.addColorStop(1,"rgba(255,255,255,0)");
-      ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,11*arSizeScale,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,3*arSizeScale,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
       if(showSkyLabels){
         ctx.font=`600 ${15+labelFontBump}px Inter, sans-serif`;
         ctx.fillStyle="#ffffff";
@@ -4872,7 +4873,7 @@ function drawPhoto(ctx,s){
         return toXY(aa.az,aa.alt);
       });
       ctx.strokeStyle="rgba(255,214,150,0.55)";
-      ctx.lineWidth=1.3;
+      ctx.lineWidth=1.3*arSizeScale;
       ctx.setLineDash([5,4]);
       g.lines.forEach(([i,j])=>{
         const p1=pts[i], p2=pts[j];
@@ -4886,7 +4887,7 @@ function drawPhoto(ctx,s){
         if(!p) return;
         if(p[0]<-40||p[0]>W+40||p[1]<-40||p[1]>H+40) return;
         visN++; sumX+=p[0]; sumY+=p[1];
-        ctx.beginPath(); ctx.arc(p[0],p[1],2.6,0,Math.PI*2);
+        ctx.beginPath(); ctx.arc(p[0],p[1],2.6*arSizeScale,0,Math.PI*2);
         ctx.fillStyle="rgba(255,224,180,0.95)"; ctx.fill();
       });
       if(visN>=2 && showSkyLabels){
@@ -5030,7 +5031,7 @@ function drawPhoto(ctx,s){
       if(hy>=-5 && hy<=H+5){
         ctx.save();
         ctx.strokeStyle="rgba(255,255,255,0.85)";
-        ctx.lineWidth=1.6;
+        ctx.lineWidth=1.6*arSizeScale;
         ctx.setLineDash([8,7]);
         ctx.beginPath();
         ctx.moveTo(0,hy);
@@ -5046,7 +5047,7 @@ function drawPhoto(ctx,s){
   if(arActive && arGridVisible){
     ctx.save();
     ctx.strokeStyle="rgba(140,170,255,0.45)";
-    ctx.lineWidth=1;
+    ctx.lineWidth=1*arSizeScale;
     // 方位線(0〜330度、30度刻み): 高度-85〜85度の範囲を細かくサンプリングして結ぶ
     for(let az=0; az<360; az+=30){
       ctx.beginPath();
