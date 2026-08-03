@@ -1249,21 +1249,26 @@
   .mw-timeline-row{position:relative;}
   .mw-start-time{
     position:absolute;
-    left:32px;
     top:-2px;
     font-family:'IBM Plex Mono',monospace;
     font-size:12.5px;
     color:rgba(224,90,90,0.95);
     pointer-events:none;
+    white-space:nowrap;
   }
   .mw-end-time-row{
+    position:relative;
     margin-top:-6px;
-    justify-content:flex-end;
+    min-height:15px;
   }
   .mw-end-time{
+    position:absolute;
+    top:0;
     font-family:'IBM Plex Mono',monospace;
     font-size:12.5px;
     color:rgba(224,90,90,0.95);
+    pointer-events:none;
+    white-space:nowrap;
   }
   .play-pause-btn{
     flex:none;
@@ -5316,7 +5321,9 @@ function drawTimelineBar(canvas,intervals,opts){
   const rangeStart=opts.rangeStart||0;
   const rangeEnd=opts.rangeEnd!==undefined?opts.rangeEnd:opts.totalMinutes;
   const span=rangeEnd-rangeStart;
-  const barH=9, barY=H-barH-3;
+  // labelsBelow指定時(スマホのみ)は、バーをキャンバス上部に寄せ、ラベルをその下に表示する(太陽バー用)。PCでは従来通り。
+  const useLabelsBelow = opts.labelsBelow && isMobileView;
+  const barH=9, barY=useLabelsBelow ? 3 : H-barH-3;
 
   intervals.forEach(iv=>{
     drawIntervalBar(ctx,iv.start,iv.end,rangeStart,rangeEnd,W,barY,barH,opts.gradientMin,opts.colorRGB);
@@ -5326,7 +5333,14 @@ function drawTimelineBar(canvas,intervals,opts){
   // テキストとして返す(呼び出し側でキャンバスの外にあるHTML要素に表示させるため)。PCではこれまで通り。
   if(opts.labelsOutside && isMobileView){
     const first=intervals.find(iv=>iv.start<rangeEnd-0.5 && iv.end>rangeStart+0.5);
-    return first ? {startText:minutesToHHMM(first.start), endText:minutesToHHMM(first.end)} : null;
+    if(!first) return null;
+    const insetPx=7; // drawIntervalBar内のtoXと同じ計算式(表示位置を一致させるため)
+    const usableW=W-insetPx*2;
+    const toX=(m)=>insetPx+(clamp(m,rangeStart,rangeEnd)-rangeStart)/span*usableW;
+    return {
+      startText:minutesToHHMM(first.start), endText:minutesToHHMM(first.end),
+      startX:toX(first.start), endX:toX(first.end)
+    };
   }
 
   ctx.font="12.5px IBM Plex Mono, monospace";
@@ -5350,7 +5364,7 @@ function drawTimelineBar(canvas,intervals,opts){
     }
   });
   labels.sort((a,b)=>a.x-b.x);
-  const labelY = barY-6; // バーの少し上に配置する(キャンバスの高さが変わっても追従する)
+  const labelY = useLabelsBelow ? barY+barH+16 : barY-6; // バーの上または下に配置する(キャンバスの高さが変わっても追従する)
   if(opts.singleRow){
     // 月の出入・日の出入は、同じ天体の出来事同士が近づきすぎることが実質無いため、常に1行で表示して縦の余白を詰める
     labels.forEach(l=>{ timelineLabelAt(ctx,l.x,W,labelY,l.text); });
@@ -5668,10 +5682,20 @@ function update(){
   drawCompassStrip(compassCtx,state);
   const timeDisplayRange=getTimeDisplayRange();
   drawTimelineBar(el.moonTimelineBar, state.moonUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:6, colorRGB:"205,208,228", risePrefix:"月出", setPrefix:"月入", singleRow:true});
-  drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入", singleRow:true});
+  drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入", singleRow:true, labelsBelow:true});
   const mwLabels = drawTimelineBar(el.mwTimelineBar, state.mwGoodIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:15, colorRGB:"224,90,90", risePrefix:null, setPrefix:null, labelsOutside:true});
-  el.mwStartTimeLabel.textContent = mwLabels ? mwLabels.startText : "";
-  el.mwEndTimeLabel.textContent = mwLabels ? mwLabels.endText : "";
+  const mwIconOffset=32; // アイコン(24px)+間隔(8px)ぶん、キャンバスは行の左端からこのくらいの位置から始まる
+  if(mwLabels){
+    el.mwStartTimeLabel.textContent = mwLabels.startText;
+    el.mwStartTimeLabel.style.left = (mwIconOffset+mwLabels.startX)+"px";
+    el.mwStartTimeLabel.style.transform = "translateX(-100%)"; // 右端がバーの開始位置に来るよう、バーの手前に表示する
+    el.mwEndTimeLabel.textContent = mwLabels.endText;
+    el.mwEndTimeLabel.style.left = (mwIconOffset+mwLabels.endX)+"px";
+    el.mwEndTimeLabel.style.transform = "translateX(-50%)"; // バーの終了位置の真下に来るよう中央揃えにする
+  } else {
+    el.mwStartTimeLabel.textContent = "";
+    el.mwEndTimeLabel.textContent = "";
+  }
   renderReadout(state);
   renderMessages(state);
   renderExif(state);
