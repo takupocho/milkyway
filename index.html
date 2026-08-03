@@ -4704,8 +4704,10 @@ function drawPhoto(ctx,s){
   // 太陽・月の軌跡(表示範囲全体でたどる経路)
   function drawCelestialPath(path,colorRGB){
     ctx.save();
-    ctx.strokeStyle=`rgba(${colorRGB},${0.4*vis+0.08})`;
-    ctx.lineWidth=1.3;
+    // ARモード中は、これまで目立たなかった軌跡線を太く・はっきり見えるようにする
+    const pathScale = arActive ? arSizeScale*1.8 : 1;
+    ctx.strokeStyle=`rgba(${colorRGB},${arActive ? 0.7 : (0.4*vis+0.08)})`;
+    ctx.lineWidth=1.3*pathScale;
     ctx.setLineDash([5,5]);
     ctx.beginPath();
     let drawing=false;
@@ -4730,7 +4732,8 @@ function drawPhoto(ctx,s){
     const pt=toXY(s.moonAltAz.az,s.moonAltAz.alt);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
       const [x,y]=pt;
-      const r=13*(W/1200);
+      const celestialScale = arActive ? 2 : 1;
+      const r=13*(W/1200)*celestialScale;
       const glowR=r*(2.1+s.moon.illum*1.2);
       const g=ctx.createRadialGradient(x,y,0,x,y,glowR);
       g.addColorStop(0,`rgba(220,222,240,${0.35+s.moon.illum*0.25})`);
@@ -4755,7 +4758,8 @@ function drawPhoto(ctx,s){
     const pt=toXY(s.sunAltAz.az,s.sunAltAz.alt);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
       const [x,y]=pt;
-      const r=20*(W/1200);
+      const celestialScale = arActive ? 2 : 1;
+      const r=20*(W/1200)*celestialScale;
       const glowR=r*3.2;
       const g=ctx.createRadialGradient(x,y,0,x,y,glowR);
       g.addColorStop(0,"rgba(255,224,160,0.9)");
@@ -5031,7 +5035,7 @@ function drawPhoto(ctx,s){
       if(hy>=-5 && hy<=H+5){
         ctx.save();
         ctx.strokeStyle="rgba(255,255,255,0.85)";
-        ctx.lineWidth=1.6*arSizeScale;
+        ctx.lineWidth=1.6*arSizeScale*3;
         ctx.setLineDash([8,7]);
         ctx.beginPath();
         ctx.moveTo(0,hy);
@@ -5047,7 +5051,7 @@ function drawPhoto(ctx,s){
   if(arActive && arGridVisible){
     ctx.save();
     ctx.strokeStyle="rgba(140,170,255,0.45)";
-    ctx.lineWidth=1*arSizeScale;
+    ctx.lineWidth=1*arSizeScale*3;
     // 方位線(0〜330度、30度刻み): 高度-85〜85度の範囲を細かくサンプリングして結ぶ
     for(let az=0; az<360; az+=30){
       ctx.beginPath();
