@@ -3309,8 +3309,9 @@ function shortestAngleDelta(from,to){
 function computeCompassReferenceDirection(e,screenAngle){
   if(typeof e.webkitCompassHeading!=="number" || !Number.isFinite(e.webkitCompassHeading)) return null;
   const dir=computeArDirection(e.webkitCompassHeading,e.beta||0,e.gamma||0,screenAngle);
-  // 背面カメラの視線は画面正面ベクトルと180度反対側。北基準へ合わせる際に反転を補正する。
-  return (dir.azimuth+180)%360;
+  // (以前ここにあった+180度の補正は、targetAz計算式で行っている鏡像反転と重複していたため削除。
+  //  回転方向の補正は鏡像反転の1箇所だけで行う)
+  return dir.azimuth;
 }
 
 function showArStatus(html){
@@ -3526,11 +3527,15 @@ async function startArMode(){
     const compassAccuracy=typeof e.webkitCompassAccuracy==="number" ? e.webkitCompassAccuracy : null;
     const accuracyOK=compassAccuracy===null || compassAccuracy<=35;
     const compassCorrectionActive=compassAz!==null && accuracyOK && Math.abs(targetAlt)<38;
+    // targetAzは最終的に -(localAz + arNorthOffset) として計算されるため、
+    // targetAz = compassAz となるように校正するには arNorthOffset = -compassAz - localAz が必要。
+    // (以前はtargetAz = localAz + arNorthOffsetの式向けの校正式のままだったため、
+    //  鏡像反転を追加した後もこの校正式だけ更新されておらず、方位が実際とズレる原因になっていた)
+    const desiredNorthOffset=(v=>((v%360)+360)%360)(-compassAz-localAz);
     if(arNorthOffset===null){
-      arNorthOffset=compassCorrectionActive ? shortestAngleDelta(localAz,compassAz) : 0;
+      arNorthOffset=compassCorrectionActive ? desiredNorthOffset : 0;
     } else if(compassCorrectionActive){
-      const desiredOffset=shortestAngleDelta(localAz,compassAz);
-      const offsetError=shortestAngleDelta(arNorthOffset,desiredOffset);
+      const offsetError=shortestAngleDelta(arNorthOffset,desiredNorthOffset);
       // 大きな磁気外乱は無視。通常のドリフトだけを約数秒かけて静かに補正する。
       if(Math.abs(offsetError)<20) arNorthOffset += offsetError*0.012;
     }
