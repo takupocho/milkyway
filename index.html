@@ -5332,7 +5332,8 @@ function drawTimelineBar(canvas,intervals,opts){
   // labelsOutside指定時(スマホのみ)は、キャンバス上に時刻ラベルを描かず、代わりに最初の区間の開始・終了時刻を
   // テキストとして返す(呼び出し側でキャンバスの外にあるHTML要素に表示させるため)。PCではこれまで通り。
   if(opts.labelsOutside && isMobileView){
-    const first=intervals.find(iv=>iv.start<rangeEnd-0.5 && iv.end>rangeStart+0.5);
+    // forceIntervalが指定されていればそれを優先する(日をまたいで複数の区間がある場合の誤検出を防ぐため)
+    const first=opts.forceInterval || intervals.find(iv=>iv.start<rangeEnd-0.5 && iv.end>rangeStart+0.5);
     if(!first) return null;
     const insetPx=7; // drawIntervalBar内のtoXと同じ計算式(表示位置を一致させるため)
     const usableW=W-insetPx*2;
@@ -5683,7 +5684,18 @@ function update(){
   const timeDisplayRange=getTimeDisplayRange();
   drawTimelineBar(el.moonTimelineBar, state.moonUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:6, colorRGB:"205,208,228", risePrefix:"月出", setPrefix:"月入", singleRow:true});
   drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入", singleRow:true, labelsBelow:true});
-  const mwLabels = drawTimelineBar(el.mwTimelineBar, state.mwGoodIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:15, colorRGB:"224,90,90", risePrefix:null, setPrefix:null, labelsOutside:true});
+  // 天の川ベストタイムのラベルは、時間バー上の区間を自動検出するのではなく、
+  // 「今夜のベストタイム」欄と同じ state.bestWindow から直接、正しい開始・終了分を計算して渡す。
+  // (日をまたぐ場合、mwGoodIntervals内には「前日の名残り」の区間も含まれることがあり、
+  //  そちらを誤って選んでしまうと、ラベルが「今夜」ではない区間を指してしまうバグがあったため)
+  let mwForcedInterval=null;
+  if(state.bestWindow){
+    mwForcedInterval={
+      start: Math.round((state.bestWindow.start-state.jdMidnight)*1440),
+      end: Math.round((state.bestWindow.end-state.jdMidnight)*1440)
+    };
+  }
+  const mwLabels = drawTimelineBar(el.mwTimelineBar, state.mwGoodIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:15, colorRGB:"224,90,90", risePrefix:null, setPrefix:null, labelsOutside:true, forceInterval:mwForcedInterval});
   const mwIconOffset=32; // アイコン(24px)+間隔(8px)ぶん、キャンバスは行の左端からこのくらいの位置から始まる
   if(mwLabels){
     el.mwStartTimeLabel.textContent = mwLabels.startText;
