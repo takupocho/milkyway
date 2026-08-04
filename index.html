@@ -642,6 +642,21 @@
     color:var(--dim);
     margin-left:1px;
   }
+  .focal-badge.fisheye-mode{
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    line-height:1.05;
+  }
+  .focal-badge-fisheye-name{
+    margin-top:2px;
+    font-family:'Inter',sans-serif;
+    font-size:9px;
+    font-weight:600;
+    color:var(--core-amber);
+    letter-spacing:.04em;
+  }
 
   /* ---------- モバイル: 設定画面の切り替え ---------- */
   .settings-toggle-btn{display:none;}
@@ -4518,7 +4533,12 @@ function computeState(){
   const facingAz=+el.facingAz.value, facingAlt=+el.facingAlt.value;
 
   el.flVal.textContent=`${focalLength} mm`;
-  el.focalBadge.innerHTML=`${focalLength}<span class="focal-badge-unit">mm</span>`;
+  const showFisheyeBadge = mobileLensMode==="fisheye" && !arActive &&
+    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
+  el.focalBadge.innerHTML=showFisheyeBadge
+    ? `<span>15㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
+    : `${focalLength}<span class="focal-badge-unit">mm</span>`;
   el.apVal.textContent=`F${aperture.toFixed(1)}`;
   el.isoVal.textContent=`ISO ${iso}`;
   el.ssVal.textContent=`${shutter} 秒`;
