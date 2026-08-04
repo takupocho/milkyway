@@ -2357,12 +2357,37 @@ realMilkyWayImage.crossOrigin="anonymous";
 realMilkyWayImage.src="https://cdn.eso.org/images/screen/eso0932a.jpg";
 let realMilkyWayTexture=null;
 realMilkyWayImage.addEventListener("load",()=>{
-  const c=document.createElement("canvas");
-  c.width=realMilkyWayImage.naturalWidth*2; c.height=realMilkyWayImage.naturalHeight;
-  const cctx=c.getContext("2d");
-  cctx.drawImage(realMilkyWayImage,0,0);
-  cctx.drawImage(realMilkyWayImage,realMilkyWayImage.naturalWidth,0);
-  realMilkyWayTexture=c;
+  const iw=realMilkyWayImage.naturalWidth, ih=realMilkyWayImage.naturalHeight;
+  // 元画像の暗い全天背景を透明化し、天の川の発光構造だけを抽出する。
+  // 銀河面からの距離と画素輝度を連続値で掛け合わせるため、帯状の階調境界を作らない。
+  const single=document.createElement("canvas");
+  single.width=iw; single.height=ih;
+  const sctx=single.getContext("2d",{willReadFrequently:true});
+  sctx.drawImage(realMilkyWayImage,0,0);
+  const pixels=sctx.getImageData(0,0,iw,ih), data=pixels.data;
+  const smoothstep=(edge0,edge1,x)=>{
+    const t=clamp((x-edge0)/(edge1-edge0),0,1);
+    return t*t*(3-2*t);
+  };
+  for(let y=0;y<ih;y++){
+    const galLat=Math.abs((0.5-y/ih)*180);
+    // |b|≦12°は保持、12〜27°は画素単位で滑らかに透明化する。
+    const latitudeMask=1-smoothstep(12,27,galLat);
+    for(let x=0;x<iw;x++){
+      const i=(y*iw+x)*4;
+      const lum=data[i]*0.2126+data[i+1]*0.7152+data[i+2]*0.0722;
+      // 黒に近い背景・撮像ノイズを除去し、淡い星雲から明るい銀河中心まで連続的に残す。
+      const signalMask=smoothstep(7,32,lum);
+      const alpha=latitudeMask*signalMask;
+      data[i+3]=Math.round(255*alpha);
+    }
+  }
+  sctx.putImageData(pixels,0,0);
+  const doubled=document.createElement("canvas");
+  doubled.width=iw*2; doubled.height=ih;
+  const dctx=doubled.getContext("2d");
+  dctx.drawImage(single,0,0); dctx.drawImage(single,iw,0);
+  realMilkyWayTexture=doubled;
   if(typeof update==="function") update();
 });
 
@@ -4961,9 +4986,6 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
   ctx.save();
   ctx.globalCompositeOperation="screen";
   for(let r=0;r<projected.length-1;r++){
-    const bMid=(projected[r][0].b+projected[r+1][0].b)/2;
-    const edgeFade=clamp((REAL_MW_B_LIMIT-Math.abs(bMid))/12,0,1);
-    if(edgeFade<=0) continue;
     for(let k=0;k<projected[r].length-1;k++){
       const p00=projected[r][k],p10=projected[r][k+1],p01=projected[r+1][k],p11=projected[r+1][k+1];
       if(!p00.pt||!p10.pt||!p01.pt||!p11.pt) continue;
@@ -4973,7 +4995,9 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
       const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
       if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
       const belowFactor=(p00.alt+p10.alt+p01.alt+p11.alt)/4<0 ? (+el.belowHorizonOpacitySlider.value||0)/100 : 1;
-      ctx.globalAlpha=clamp(vis*0.92*edgeFade*belowFactor,0,0.92);
+      // 天の川以外の透明化と端のフェードは画像の各画素に焼き込み済み。
+      // 格子ごとに透明度を変えないことで、斜めに見えていた階段状の階調をなくす。
+      ctx.globalAlpha=clamp(vis*1.08*belowFactor,0,1);
       const sx0=(1.5-p00.l/360)*iw, sx1=(1.5-p10.l/360)*iw;
       const sy0=(0.5-p00.b/180)*ih, sy1=(0.5-p01.b/180)*ih;
       drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
