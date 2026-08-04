@@ -513,6 +513,7 @@
   }
   .sky-search-popup.show{opacity:1;}
   .mobile-sky-search-control{display:none;}
+  .mobile-lens-mode-btn{display:none;}
 
   .sky-info-popup{
     position:absolute;
@@ -1648,6 +1649,52 @@
       font-size:16px;
     }
     body.ar-active .mobile-sky-search-control{display:none;}
+    .mobile-lens-mode-btn{
+      display:flex;
+      position:absolute;
+      top:53px;
+      left:9px;
+      z-index:12;
+      width:36px;
+      height:36px;
+      padding:0;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--line);
+      border-radius:50%;
+      background:rgba(18,21,43,0.88);
+      color:var(--star-white);
+      opacity:0.7;
+      box-shadow:0 2px 8px rgba(0,0,0,0.28);
+    }
+    .mobile-lens-mode-btn.active{
+      color:var(--core-amber);
+      border-color:var(--core-amber);
+    }
+    .mobile-lens-mode-icon{
+      display:block;
+      box-sizing:border-box;
+      width:19px;
+      height:13px;
+      border:2px solid currentColor;
+      pointer-events:none;
+    }
+    .mobile-lens-mode-btn.active .mobile-lens-mode-icon{
+      width:19px;
+      height:19px;
+      border-radius:50%;
+    }
+    .mobile-lens-mode-btn.active .mobile-lens-mode-icon::after{
+      content:"";
+      display:block;
+      width:9px;
+      height:13px;
+      margin:1px auto 0;
+      border-right:1.5px solid currentColor;
+      border-radius:50%;
+      opacity:.8;
+    }
+    body.ar-active .mobile-lens-mode-btn{display:none;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -1967,6 +2014,9 @@
                 </svg>
                 <select id="mobileSkySearchSelect" aria-label="星空検索"></select>
               </div>
+              <button id="mobileLensModeBtn" type="button" class="mobile-lens-mode-btn" aria-label="通常レンズから対角魚眼へ切り替える" title="通常レンズ">
+                <span class="mobile-lens-mode-icon" aria-hidden="true"></span>
+              </button>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
@@ -2253,6 +2303,21 @@ function project(az,alt,az0,alt0){
   const Zc=dot(P,F), Xc=dot(P,R), Yc=dot(P,Up);
   if(Zc<=0.02) return null;
   return {dx:Xc/Zc, dy:Yc/Zc};
+}
+/* 対角魚眼(等立体角投影): 画面の対角線に180°が収まる魚眼レンズの見え方へ変換する。 */
+function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H){
+  const F=toVec(az0,alt0);
+  const R=[cos(az0),-sin(az0),0];
+  const Up=cross(R,F);
+  const P=toVec(az,alt);
+  const Zc=clamp(dot(P,F),-1,1), Xc=dot(P,R), Yc=dot(P,Up);
+  const theta=Math.acos(Zc);
+  if(theta>Math.PI/2+1e-6) return null; // 対角180°なので、正面側の半球だけを表示する
+  const sinTheta=Math.sin(theta);
+  if(sinTheta<1e-8) return [W/2,H/2];
+  const diagonalRadius=Math.hypot(W,H)/2;
+  const radius=diagonalRadius*Math.sin(theta/2)/Math.SQRT1_2;
+  return [W/2+(Xc/sinTheta)*radius, H/2-(Yc/sinTheta)*radius];
 }
 /* 東西南北成分を持つベクトル(E,N,U)からAlt/Azへ逆変換 (ドラッグ操作で新しい向きを求めるのに使用) */
 function altAzFromVec(v){
@@ -2720,7 +2785,7 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), skySearchPopup:$("skySearchPopup"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3081,6 +3146,22 @@ el.mobileSkySearchSelect.innerHTML=el.skySearchSelect.innerHTML;
 el.skySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.skySearchSelect));
 el.mobileSkySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.mobileSkySearchSelect));
 
+/* スマホ限定: 通常レンズ／対角魚眼の切り替え。AR中は描画側で常に通常投影へ戻す。 */
+let mobileLensMode="normal";
+function syncMobileLensModeButton(){
+  const fisheye=mobileLensMode==="fisheye";
+  el.mobileLensModeBtn.classList.toggle("active",fisheye);
+  el.mobileLensModeBtn.setAttribute("aria-label",fisheye ? "対角魚眼から通常レンズへ切り替える" : "通常レンズから対角魚眼へ切り替える");
+  el.mobileLensModeBtn.title=fisheye ? "対角魚眼" : "通常レンズ";
+}
+syncMobileLensModeButton();
+el.mobileLensModeBtn.addEventListener("click",()=>{
+  mobileLensMode=mobileLensMode==="fisheye" ? "normal" : "fisheye";
+  syncMobileLensModeButton();
+  showSkySearchPopup(mobileLensMode==="fisheye" ? "対角魚眼モード" : "通常レンズモード");
+  update();
+});
+
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
 let playbackTimer=null;
 let playbackAccumMinutes=0;
@@ -3266,6 +3347,12 @@ function photoDragBegin(pos){
   // ドラッグ開始時点の画角(FOV)を固定して使う(ドラッグ中は焦点距離が変わらないため)
   photoDragFovH = state?state.fovH:60;
   photoDragFovV = state?state.fovV:40;
+  if(mobileLensMode==="fisheye" && !arActive && window.innerWidth<=760){
+    const W=el.photoCanvas.width, H=el.photoCanvas.height, diagonal=Math.hypot(W,H);
+    // 対角180°の等立体角魚眼で、左右端・上下端に対応する実画角をドラッグ感度へ反映する。
+    photoDragFovH=4*Math.asin((W/diagonal)*Math.SQRT1_2)/D2R;
+    photoDragFovV=4*Math.asin((H/diagonal)*Math.SQRT1_2)/D2R;
+  }
   el.photoCanvas.classList.add("dragging");
 }
 function photoDragMove(pos){
@@ -4034,6 +4121,7 @@ function collectPersistedSettings(){
     lat:el.lat.value, lon:el.lon.value, tz:el.tz.value, citySelect:el.citySelect.value,
     focalLength:el.focalLength.value, aperture:el.aperture.value, isoSlider:el.isoSlider.value,
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
+    mobileLensMode:mobileLensMode,
     observedPlaceName:currentObservedPlaceName,
   };
 }
@@ -4063,6 +4151,10 @@ async function loadPersistedSettings(){
     if(s.shutter!==undefined) el.shutter.value=s.shutter;
     if(s.sensor!==undefined) el.sensor.value=s.sensor;
     if(s.lp!==undefined) el.lp.value=s.lp;
+    if(s.mobileLensMode==="normal" || s.mobileLensMode==="fisheye"){
+      mobileLensMode=s.mobileLensMode;
+      syncMobileLensModeButton();
+    }
     if(s.orientation!==undefined){
       orientation=s.orientation;
       [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
@@ -4678,8 +4770,15 @@ function drawPhoto(ctx,s){
     }
   }
 
-  const scale=(W/2)/Math.tan(s.fovH/2*D2R);
+  // 魚眼はスマホの通常シミュレーター限定。ARではカメラ映像との位置合わせを守るため通常投影を維持する。
+  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
+    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  const rectilinearScale=(W/2)/Math.tan(s.fovH/2*D2R);
+  // 等立体角投影の中心付近における1ラジアン当たりの縮尺。天の川の帯幅計算にも共用する。
+  const fisheyeScale=Math.hypot(W,H)/(2*Math.SQRT2);
+  const scale=useDiagonalFisheye ? fisheyeScale : rectilinearScale;
   function toXY(az,alt){
+    if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H);
     const p=project(az,alt,s.facingAz,s.facingAlt);
     if(!p) return null;
     return [W/2+p.dx*scale, H/2-p.dy*scale];
@@ -5896,6 +5995,9 @@ const METEOR_SHOWERS=[
 
 /* toXYと同じ投影式を、drawPhotoの外からでも使えるようにした汎用版 */
 function projectToPhotoXY(az,alt,s,W,H){
+  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
+    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H);
   const scale=(W/2)/Math.tan(s.fovH/2*D2R);
   const p=project(az,alt,s.facingAz,s.facingAlt);
   if(!p) return null;
