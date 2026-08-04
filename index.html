@@ -514,6 +514,7 @@
   .sky-search-popup.show{opacity:1;}
   .mobile-sky-search-control{display:none;}
   .mobile-lens-mode-btn{display:none;}
+  .mobile-mw-frame-btn{display:none;}
 
   .sky-info-popup{
     position:absolute;
@@ -1710,6 +1711,34 @@
       opacity:.8;
     }
     body.ar-active .mobile-lens-mode-btn{display:none;}
+    .mobile-mw-frame-btn{
+      display:flex;
+      position:absolute;
+      top:97px;
+      left:9px;
+      z-index:12;
+      width:36px;
+      height:36px;
+      padding:0;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--line);
+      border-radius:50%;
+      background:rgba(18,21,43,0.88);
+      color:var(--star-white);
+      opacity:0.7;
+      box-shadow:0 2px 8px rgba(0,0,0,0.28);
+    }
+    .mobile-mw-frame-btn.active{
+      color:var(--core-amber);
+      border-color:var(--core-amber);
+    }
+    .mobile-mw-frame-btn svg{
+      width:22px;
+      height:22px;
+      pointer-events:none;
+    }
+    body.ar-active .mobile-mw-frame-btn{display:none;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -2031,6 +2060,13 @@
               </div>
               <button id="mobileLensModeBtn" type="button" class="mobile-lens-mode-btn" aria-label="通常レンズから対角魚眼へ切り替える" title="通常レンズ">
                 <span class="mobile-lens-mode-icon" aria-hidden="true"></span>
+              </button>
+              <button id="mobileMwFrameBtn" type="button" class="mobile-mw-frame-btn" aria-label="天の川の自動構図を選ぶ" title="天の川 自動構図">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 17C7 8 13 5 21 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  <circle cx="12" cy="11" r="2.5" stroke="currentColor" stroke-width="1.6"/>
+                  <path d="M12 7V5M12 17V15M8 11H6M18 11H16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
               </button>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
@@ -2803,7 +2839,7 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), skySearchPopup:$("skySearchPopup"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3201,6 +3237,67 @@ el.mobileLensModeBtn.addEventListener("click",()=>{
   syncMobileLensModeButton();
   showSkySearchPopup(mobileLensMode==="fisheye" ? "対角魚眼モード" : "通常レンズモード");
   update();
+});
+
+/* スマホ限定: 天の川の自動構図を「中心→アーチ全体→地景込み」の順に切り替える。 */
+const MW_FRAMING_MODES=["core","arch","landscape"];
+let mwFramingModeIndex=-1;
+function setFramingFocalLength(value){
+  const min=+el.focalLength.min, max=+el.focalLength.max;
+  const focal=clamp(Math.round(value),min,max);
+  el.focalLength.value=String(focal);
+  if(mobileLensMode==="fisheye" && window.innerWidth<=760) fisheyeLensFocalLength=focal;
+  else normalLensFocalLength=focal;
+}
+function syncMwFramingButton(mode){
+  const icons={
+    core:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 17C7 8 13 5 21 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="11" r="2.6" stroke="currentColor" stroke-width="1.6"/><path d="M12 6.5V4.5M12 17.5V15.5M7.5 11H5.5M18.5 11H16.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    arch:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 17.5C6 5.5 18 5.5 21.5 17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 18.5H19" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="12" cy="7.5" r="1.3" fill="currentColor"/></svg>',
+    landscape:'<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 13C7 7 13 5 21 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M2.5 17.5L7 14.5L10 16.5L14 13.5L21.5 18.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 20H21" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
+  };
+  el.mobileMwFrameBtn.innerHTML=icons[mode]||icons.core;
+  el.mobileMwFrameBtn.classList.toggle("active",!!mode);
+  const label=mode==="core"?"天の川中心":mode==="arch"?"アーチ全体":mode==="landscape"?"地景込み":"天の川 自動構図";
+  el.mobileMwFrameBtn.title=label;
+  el.mobileMwFrameBtn.setAttribute("aria-label",`${label}の構図。押すと次の構図へ切り替え`);
+}
+function applyMilkyWayFraming(mode){
+  if(!state) return false;
+  const visibleMw=state.mwPoints.filter(p=>p.alt>=0);
+  const gc=state.gcAltAz;
+
+  if(mode==="core"){
+    // 銀河中心を画面中央へ置く。焦点距離は利用者が選んだ現在値を維持する。
+    el.facingAz.value=norm360(gc.az);
+    el.facingAlt.value=clamp(Math.round(gc.alt),-30,85);
+  } else if(mode==="arch"){
+    if(visibleMw.length<2) return false;
+    // 地平線上に見える天の川の最高点をアーチ中央の方位とし、水平線〜最高点の中間を向く。
+    const apex=visibleMw.reduce((best,p)=>p.alt>best.alt?p:best,visibleMw[0]);
+    const minAlt=Math.min(...visibleMw.map(p=>p.alt));
+    el.facingAz.value=norm360(apex.az);
+    el.facingAlt.value=clamp(Math.round((minAlt+apex.alt)/2),-10,70);
+    setFramingFocalLength(8); // アーチを最大限収めるため、それぞれのレンズモードの最広角へ移動
+  } else {
+    // 銀河中心の方位を保ちつつ視線を水平線側へ下げ、空約2/3・地景約1/3の構成にする。
+    const target=gc.alt>=0 ? gc : (visibleMw.length ? visibleMw.reduce((best,p)=>p.coreWeight>best.coreWeight?p:best,visibleMw[0]) : gc);
+    el.facingAz.value=norm360(target.az);
+    el.facingAlt.value=clamp(Math.round(Math.max(2,target.alt*0.45)),-5,35);
+    setFramingFocalLength(mobileLensMode==="fisheye" ? 12 : 14);
+  }
+  update();
+  return true;
+}
+syncMwFramingButton(null);
+el.mobileMwFrameBtn.addEventListener("click",()=>{
+  mwFramingModeIndex=(mwFramingModeIndex+1)%MW_FRAMING_MODES.length;
+  const mode=MW_FRAMING_MODES[mwFramingModeIndex];
+  if(!applyMilkyWayFraming(mode)){
+    showSkySearchPopup("天の川が地平線上にありません");
+    return;
+  }
+  syncMwFramingButton(mode);
+  showSkySearchPopup(mode==="core"?"天の川中心":mode==="arch"?"アーチ全体":"地景込み");
 });
 
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
