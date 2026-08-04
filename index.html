@@ -512,6 +512,7 @@
     z-index:15;
   }
   .sky-search-popup.show{opacity:1;}
+  .mobile-sky-search-control{display:none;}
 
   .sky-info-popup{
     position:absolute;
@@ -1573,6 +1574,36 @@
   /* スマホ画面: 月・太陽・天の川のタイムライン行を詰めて縦の余白を減らす
      (このブロックはファイル内の他のベースルールより後に置くことで、確実に上書きされるようにしている) */
   @media (max-width:760px){
+    .card-title-row{margin-bottom:4px;}
+    .sky-search-wrap{display:none;}
+    .mobile-sky-search-control{
+      display:flex;
+      position:absolute;
+      top:9px;
+      left:9px;
+      z-index:12;
+      width:36px;
+      height:36px;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--line);
+      border-radius:50%;
+      background:rgba(18,21,43,0.88);
+      color:var(--star-white);
+      box-shadow:0 2px 8px rgba(0,0,0,0.28);
+    }
+    .mobile-sky-search-control svg{width:20px;height:20px;pointer-events:none;}
+    #mobileSkySearchSelect{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      margin:0;
+      opacity:0;
+      cursor:pointer;
+      font-size:16px;
+    }
+    body.ar-active .mobile-sky-search-control{display:none;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -1885,6 +1916,13 @@
               <video id="arCameraVideo" class="ar-camera-video" playsinline muted></video>
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
+              <div class="mobile-sky-search-control" aria-label="星空検索">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.8"/>
+                  <path d="M15.4 15.4L21 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+                <select id="mobileSkySearchSelect" aria-label="星空検索"></select>
+              </div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
@@ -2638,7 +2676,7 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), skySearchPopup:$("skySearchPopup"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -2931,9 +2969,9 @@ function showSkySearchPopup(message){
     skySearchPopupTimer=null;
   },2000);
 }
-el.skySearchSelect.addEventListener("change",()=>{
-  const val=el.skySearchSelect.value;
-  el.skySearchSelect.value=""; // 選択後は毎回「星空検索」に戻し、続けて別の対象を選べるようにする
+function handleSkySearchSelection(selectEl){
+  const val=selectEl.value;
+  selectEl.value=""; // 選択後は毎回「星空検索」に戻し、続けて別の対象を選べるようにする
   if(!val || !state) return;
 
   let target=null, displayName="";
@@ -2993,7 +3031,11 @@ el.skySearchSelect.addEventListener("change",()=>{
   el.facingAz.value=((aa.az%360)+360)%360;
   el.facingAlt.value=clamp(Math.round(aa.alt),-30,85);
   update();
-});
+}
+// スマホ用の虫眼鏡でも、PC用プルダウンと同じ候補・検索処理を利用する。
+el.mobileSkySearchSelect.innerHTML=el.skySearchSelect.innerHTML;
+el.skySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.skySearchSelect));
+el.mobileSkySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.mobileSkySearchSelect));
 
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
 let playbackTimer=null;
