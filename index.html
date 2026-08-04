@@ -2320,7 +2320,7 @@ function project(az,alt,az0,alt0){
   return {dx:Xc/Zc, dy:Yc/Zc};
 }
 /* 対角魚眼(等立体角投影): 画面の対角線に180°が収まる魚眼レンズの見え方へ変換する。 */
-function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H){
+function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=15.3,sensorCrop=1){
   const F=toVec(az0,alt0);
   const R=[cos(az0),-sin(az0),0];
   const Up=cross(R,F);
@@ -2330,8 +2330,11 @@ function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H){
   if(theta>Math.PI/2+1e-6) return null; // 対角180°なので、正面側の半球だけを表示する
   const sinTheta=Math.sin(theta);
   if(sinTheta<1e-8) return [W/2,H/2];
-  const diagonalRadius=Math.hypot(W,H)/2;
-  const radius=diagonalRadius*Math.sin(theta/2)/Math.SQRT1_2;
+  // 35mmフルサイズの対角長43.2666mmをキャンバス対角へ対応させ、実焦点距離で像高を計算する。
+  // APS-Cなどはcrop倍した35mm換算焦点距離として扱うため、同じレンズでもセンサーに応じて画角が変わる。
+  const pixelsPerMm=Math.hypot(W,H)/43.2666;
+  const effectiveFocal=focalLength*sensorCrop;
+  const radius=2*effectiveFocal*pixelsPerMm*Math.sin(theta/2);
   return [W/2+(Xc/sinTheta)*radius, H/2-(Yc/sinTheta)*radius];
 }
 /* 東西南北成分を持つベクトル(E,N,U)からAlt/Azへ逆変換 (ドラッグ操作で新しい向きを求めるのに使用) */
@@ -3163,6 +3166,22 @@ el.mobileSkySearchSelect.addEventListener("change",()=>handleSkySearchSelection(
 
 /* スマホ限定: 通常レンズ／対角魚眼の切り替え。AR中は描画側で常に通常投影へ戻す。 */
 let mobileLensMode="normal";
+let normalLensFocalLength=+el.focalLength.value||24;
+let fisheyeLensFocalLength=15;
+function applyMobileLensFocalRange(){
+  const fisheyeAvailable=mobileLensMode==="fisheye" && window.innerWidth<=760;
+  if(fisheyeAvailable){
+    el.focalLength.min="8";
+    el.focalLength.max="16";
+    el.focalLength.step="1";
+    el.focalLength.value=String(clamp(Math.round(fisheyeLensFocalLength),8,16));
+  } else {
+    el.focalLength.min="8";
+    el.focalLength.max="50";
+    el.focalLength.step="1";
+    el.focalLength.value=String(clamp(Math.round(normalLensFocalLength),8,50));
+  }
+}
 function syncMobileLensModeButton(){
   const fisheye=mobileLensMode==="fisheye";
   el.mobileLensModeBtn.classList.toggle("active",fisheye);
@@ -3171,7 +3190,14 @@ function syncMobileLensModeButton(){
 }
 syncMobileLensModeButton();
 el.mobileLensModeBtn.addEventListener("click",()=>{
-  mobileLensMode=mobileLensMode==="fisheye" ? "normal" : "fisheye";
+  if(mobileLensMode==="fisheye"){
+    fisheyeLensFocalLength=clamp(+el.focalLength.value||15,8,16);
+    mobileLensMode="normal";
+  } else {
+    normalLensFocalLength=clamp(+el.focalLength.value||24,8,50);
+    mobileLensMode="fisheye";
+  }
+  applyMobileLensFocalRange();
   syncMobileLensModeButton();
   showSkySearchPopup(mobileLensMode==="fisheye" ? "対角魚眼モード" : "通常レンズモード");
   update();
@@ -3362,12 +3388,6 @@ function photoDragBegin(pos){
   // ドラッグ開始時点の画角(FOV)を固定して使う(ドラッグ中は焦点距離が変わらないため)
   photoDragFovH = state?state.fovH:60;
   photoDragFovV = state?state.fovV:40;
-  if(mobileLensMode==="fisheye" && !arActive && window.innerWidth<=760){
-    const W=el.photoCanvas.width, H=el.photoCanvas.height, diagonal=Math.hypot(W,H);
-    // 対角180°の等立体角魚眼で、左右端・上下端に対応する実画角をドラッグ感度へ反映する。
-    photoDragFovH=4*Math.asin((W/diagonal)*Math.SQRT1_2)/D2R;
-    photoDragFovV=4*Math.asin((H/diagonal)*Math.SQRT1_2)/D2R;
-  }
   el.photoCanvas.classList.add("dragging");
 }
 function photoDragMove(pos){
@@ -4098,9 +4118,15 @@ const mobileHeaderMQ = (typeof window.matchMedia === "function")
   ? window.matchMedia("(max-width:900px)")
   : { matches: window.innerWidth <= 900, addEventListener: null };
 // ベストタイムバーなど、CSS側の760pxブレークポイントと合わせるための判定(mobileHeaderMQとは別に用意)
-const compactUiMQ = (typeof window.matchMedia === "function")
+  const compactUiMQ = (typeof window.matchMedia === "function")
   ? window.matchMedia("(max-width:760px)")
   : { matches: window.innerWidth <= 760, addEventListener: null };
+if(compactUiMQ.addEventListener){
+  compactUiMQ.addEventListener("change",()=>{
+    applyMobileLensFocalRange();
+    update();
+  });
+}
 function layoutHeaderForViewport(){
   const isMobile = mobileHeaderMQ.matches;
   const targetParent = isMobile ? el.toggleBtnRow : el.headerRightGroup;
@@ -4137,6 +4163,8 @@ function collectPersistedSettings(){
     focalLength:el.focalLength.value, aperture:el.aperture.value, isoSlider:el.isoSlider.value,
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
     mobileLensMode:mobileLensMode,
+    normalLensFocalLength:normalLensFocalLength,
+    fisheyeLensFocalLength:fisheyeLensFocalLength,
     observedPlaceName:currentObservedPlaceName,
   };
 }
@@ -4166,10 +4194,11 @@ async function loadPersistedSettings(){
     if(s.shutter!==undefined) el.shutter.value=s.shutter;
     if(s.sensor!==undefined) el.sensor.value=s.sensor;
     if(s.lp!==undefined) el.lp.value=s.lp;
-    if(s.mobileLensMode==="normal" || s.mobileLensMode==="fisheye"){
-      mobileLensMode=s.mobileLensMode;
-      syncMobileLensModeButton();
-    }
+    normalLensFocalLength=clamp(+(s.normalLensFocalLength??s.focalLength??24),8,50);
+    fisheyeLensFocalLength=clamp(+(s.fisheyeLensFocalLength??15),8,16);
+    if(s.mobileLensMode==="normal" || s.mobileLensMode==="fisheye") mobileLensMode=s.mobileLensMode;
+    applyMobileLensFocalRange();
+    syncMobileLensModeButton();
     if(s.orientation!==undefined){
       orientation=s.orientation;
       [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
@@ -4532,12 +4561,15 @@ function computeState(){
   const lp=LP_LEVELS[+el.lp.value];
   const facingAz=+el.facingAz.value, facingAlt=+el.facingAlt.value;
 
+  if(mobileLensMode==="fisheye" && window.innerWidth<=760) fisheyeLensFocalLength=clamp(focalLength,8,16);
+  else normalLensFocalLength=clamp(focalLength,8,50);
+
   el.flVal.textContent=`${focalLength} mm`;
   const showFisheyeBadge = mobileLensMode==="fisheye" && !arActive &&
     ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
   el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
   el.focalBadge.innerHTML=showFisheyeBadge
-    ? `<span>15㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
+    ? `<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
     : `${focalLength}<span class="focal-badge-unit">mm</span>`;
   el.apVal.textContent=`F${aperture.toFixed(1)}`;
   el.isoVal.textContent=`ISO ${iso}`;
@@ -4563,8 +4595,17 @@ function computeState(){
   /* 構図(横位置=センサー長辺が水平/縦位置=センサー短辺が水平) */
   const halfW = orientation==="portrait" ? 12 : 18;
   const halfH = orientation==="portrait" ? 18 : 12;
-  const fovH = 2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
-  const fovV = 2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
+  const fisheyeProjectionActive = mobileLensMode==="fisheye" && !arActive &&
+    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  let fovH, fovV;
+  if(fisheyeProjectionActive){
+    // 等立体角魚眼 r=2f sin(theta/2)。センサー端が180°像円の外側なら、見える範囲は180°で頭打ちにする。
+    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(2*sensor.crop*focalLength)))*R2D);
+    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(2*sensor.crop*focalLength)))*R2D);
+  } else {
+    fovH=2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
+    fovV=2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
+  }
 
   /* 日の出没・月の出没・ベストタイム・タイムライン区間・太陽/月の軌跡は「日付・場所」だけに依存し、
      時刻スライダーの値(何時かの選択)には依存しない。再生アニメーション中は時刻だけが毎フレーム変わるため、
@@ -4794,11 +4835,11 @@ function drawPhoto(ctx,s){
   const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
     ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
   const rectilinearScale=(W/2)/Math.tan(s.fovH/2*D2R);
-  // 等立体角投影の中心付近における1ラジアン当たりの縮尺。天の川の帯幅計算にも共用する。
-  const fisheyeScale=Math.hypot(W,H)/(2*Math.SQRT2);
+  // 等立体角投影の中心付近における1ラジアン当たりの縮尺。焦点距離とセンサーサイズに連動する。
+  const fisheyeScale=s.focalLength*s.sensor.crop*Math.hypot(W,H)/43.2666;
   const scale=useDiagonalFisheye ? fisheyeScale : rectilinearScale;
   function toXY(az,alt){
-    if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H);
+    if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H,s.focalLength,s.sensor.crop);
     const p=project(az,alt,s.facingAz,s.facingAlt);
     if(!p) return null;
     return [W/2+p.dx*scale, H/2-p.dy*scale];
@@ -5414,6 +5455,20 @@ function drawPhoto(ctx,s){
     }
     ctx.restore();
   }
+
+  // 短い焦点距離では180°の像円がセンサー内に収まるため、像円の外側を黒くして円周魚眼らしく見せる。
+  if(useDiagonalFisheye){
+    const imageCircleRadius=2*s.focalLength*s.sensor.crop*(Math.hypot(W,H)/43.2666)*Math.SQRT1_2;
+    if(imageCircleRadius<Math.hypot(W,H)/2){
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0,0,W,H);
+      ctx.arc(W/2,H/2,imageCircleRadius,0,Math.PI*2);
+      ctx.fillStyle="#000";
+      ctx.fill("evenodd");
+      ctx.restore();
+    }
+  }
 }
 
 /* =========================================================
@@ -6017,7 +6072,7 @@ const METEOR_SHOWERS=[
 function projectToPhotoXY(az,alt,s,W,H){
   const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
     ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
-  if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H);
+  if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H,s.focalLength,s.sensor.crop);
   const scale=(W/2)/Math.tan(s.fovH/2*D2R);
   const p=project(az,alt,s.facingAz,s.facingAlt);
   if(!p) return null;
