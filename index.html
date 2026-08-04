@@ -3310,6 +3310,7 @@ let arMagneticDeclination=0; // 撮影地点の磁気偏角。webkitCompassHeadi
 let arCompassOffsetSamples=[]; // 一時的な磁気ノイズを平均化するための北補正サンプル
 let arLastLocalAz=null; // 天頂付近で方位が数学的に不定になるため、最後に信頼できた相対方位を保持
 let arLastFrameTime=null;
+let arAzMovingUntil=0; // 実際のパンを検出した後、短時間だけデッドバンドを縮めて滑らかに追従する
 
 function getScreenAngle(){
   if(screen.orientation && typeof screen.orientation.angle==="number") return screen.orientation.angle;
@@ -3553,6 +3554,7 @@ async function startArMode(){
   arMagneticDeclination=estimateJapanMagneticDeclination(parseFloat(el.lat.value),parseFloat(el.lon.value),new Date());
   arLastLocalAz=null;
   arLastFrameTime=null;
+  arAzMovingUntil=0;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
   // beta: 動きが速いほど追従を優先する度合い
   arAzFilter = new CircularOneEuroFilter(30, 1.0, 0.4, 1.0);
@@ -3568,8 +3570,8 @@ async function startArMode(){
       if(!arActive) return;
       el.facingAz.value = arSmoothedAz.toFixed(1);
       el.facingAlt.value = arSmoothedAlt.toFixed(1);
-      update();
-      renderArDebugOverlay();
+      updateArFrame();
+      if(el.arDebugOverlay.classList.contains("show")) renderArDebugOverlay();
     });
   }
 
@@ -3650,7 +3652,12 @@ async function startArMode(){
         // 静止中に電子コンパスが方位を探すような微小振動だけを止める。
         // デッドバンドを超えた分だけ追従するため、ゆっくりした実際のパン操作は妨げない。
         const filteredDiff=shortestAngleDelta(arSmoothedAz,filteredAz);
-        const azDeadband=compassAccuracy!==null && compassAccuracy>20 ? 1.8 : 1.2;
+        const stationaryDeadband=compassAccuracy!==null && compassAccuracy>20 ? 1.8 : 1.2;
+        // 静止用しきい値を一度明確に超えたら「操作中」と判断し、約0.3秒間は
+        // しきい値を小さく保つ。これにより「止まる→まとめて動く」の反復を防ぐ。
+        if(Math.abs(filteredDiff)>stationaryDeadband) arAzMovingUntil=nowSec+0.30;
+        else if(nowSec<arAzMovingUntil && Math.abs(filteredDiff)>0.35) arAzMovingUntil=nowSec+0.18;
+        const azDeadband=nowSec<arAzMovingUntil ? 0.25 : stationaryDeadband;
         if(Math.abs(filteredDiff)>azDeadband){
           const deadbandTarget=((arSmoothedAz+Math.sign(filteredDiff)*(Math.abs(filteredDiff)-azDeadband))%360+360)%360;
           arSmoothedAz = smoothAngleTowards(arSmoothedAz,deadbandTarget,follow);
@@ -5724,6 +5731,17 @@ function applyCanvasSize(){
   el.compassStrip.width=el.photoCanvas.width;
   el.meteorCanvas.width=el.photoCanvas.width;
   el.meteorCanvas.height=el.photoCanvas.height;
+}
+
+/* AR中の姿勢更新専用。
+   通常のupdate()は月・太陽・ベストタイム・各タイムラインなど画面全体を更新するため重い。
+   ARの各フレームでは、向きによって変化する星空とコンパスだけを描き直す。
+   canvasのwidth/heightも毎フレーム再設定しない（再設定は描画バッファを破棄するため）。 */
+function updateArFrame(){
+  if(!arActive) return;
+  state=computeState();
+  drawPhoto(photoCtx,state);
+  drawCompassStrip(compassCtx,state);
 }
 
 function update(){
