@@ -830,9 +830,10 @@
     background:rgba(0,0,0,0.6);
     color:#7CFC9A;
     font-family:'IBM Plex Mono',monospace;
-    font-size:10px;
-    line-height:1.5;
-    white-space:pre;
+    max-width:calc(100% - 12px);
+    font-size:9px;
+    line-height:1.35;
+    white-space:pre-wrap;
     pointer-events:none;
   }
   body.ar-active .ar-debug-overlay.show{display:block;}
@@ -3316,6 +3317,10 @@ let arCompassHeadingSamples=[]; // iOS絶対コンパスの短時間円周平均
 let arStableCompassHeading=null; // 静止デッドバンド適用後の真北基準方位
 let arCompassHeadingJumpStreak=0;
 let arCompassHeadingJumpTarget=null;
+let arDebugPrevSample=null;
+let arDebugLastEvent=null;
+let arDebugHighAltitudeCaptured=false;
+let arDebugSampleHistory=[];
 let arLastFrameTime=null;
 
 function getScreenAngle(){
@@ -3400,15 +3405,47 @@ function hideArStatus(){
 function renderArDebugOverlay(){
   const d=arDebugData;
   const fmt=(v,digits=1)=>(v==null ? "—" : Number(v).toFixed(digits));
+  const event=arDebugLastEvent;
+  const eventText=event
+    ? `\n【自動保存された変化】 ${event.reason}\n前 αβγ ${fmt(event.before.alpha)}/${fmt(event.before.beta)}/${fmt(event.before.gamma)}  compass ${fmt(event.before.compass)}  screen ${event.before.screen}\n後 αβγ ${fmt(event.after.alpha)}/${fmt(event.after.beta)}/${fmt(event.after.gamma)}  compass ${fmt(event.after.compass)}  screen ${event.after.screen}\n前→後  az ${fmt(event.before.finalAz)}→${fmt(event.after.finalAz)}  alt ${fmt(event.before.alt)}→${fmt(event.after.alt)}`
+    : "\n【自動保存された変化】まだありません";
   el.arDebugOverlay.textContent =
-`raw α/β/γ: ${fmt(d.rawAlpha)} / ${fmt(d.rawBeta)} / ${fmt(d.rawGamma)}
-compassHeading: ${fmt(d.compassHeading)}
-compassAccuracy: ${fmt(d.compassAccuracy)}
-screenAngle: ${d.screenAngle!=null?d.screenAngle:"—"}
-local az / north offset: ${fmt(d.localAz)} / ${fmt(arNorthOffset)}
-target az/alt: ${fmt(d.targetAz)} / ${fmt(d.targetAlt)}
-final az/alt: ${fmt(arSmoothedAz)} / ${fmt(arSmoothedAlt)}
-compass補正: ${d.compassCorrectionActive ? "有効" : "固定"}`;
+`AR診断 v110（回転後にこの画面を撮影）
+α/β/γ: ${fmt(d.rawAlpha)} / ${fmt(d.rawBeta)} / ${fmt(d.rawGamma)}
+compass 生/安定: ${fmt(d.compassHeading)} / ${fmt(arStableCompassHeading)}  精度±${fmt(d.compassAccuracy)}°
+screen: ${d.screenAngle!=null?d.screenAngle:"—"}° ${d.screenType||"—"}
+local/target/final az: ${fmt(d.localAz)} / ${fmt(d.targetAz)} / ${fmt(arSmoothedAz)}
+target/final alt: ${fmt(d.targetAlt)} / ${fmt(arSmoothedAlt)}
+北補正/偏角: ${fmt(arNorthOffset)} / ${fmt(arMagneticDeclination)}${eventText}`;
+}
+
+function captureArDiagnosticSample(sample){
+  const prev=arDebugPrevSample;
+  const older=arDebugSampleHistory.length>=12 ? arDebugSampleHistory[0] : null;
+  const reasons=[];
+  if(prev){
+    if(Math.abs(shortestAngleDelta(prev.alpha,sample.alpha))>80) reasons.push("alpha大変化");
+    if(Math.abs(prev.beta-sample.beta)>80) reasons.push("beta大変化");
+    if(Math.abs(prev.gamma-sample.gamma)>80) reasons.push("gamma大変化");
+    if(prev.compass!=null && sample.compass!=null && Math.abs(shortestAngleDelta(prev.compass,sample.compass))>60) reasons.push("compass大変化");
+    if(prev.screen!==sample.screen) reasons.push("画面方向変更");
+    if(prev.finalAz!=null && sample.finalAz!=null && Math.abs(shortestAngleDelta(prev.finalAz,sample.finalAz))>55) reasons.push("表示方位大変化");
+    if(!arDebugHighAltitudeCaptured && Math.abs(sample.alt)>=72){
+      reasons.push("高度72度到達");
+      arDebugHighAltitudeCaptured=true;
+    }
+  }
+  if(older){
+    if(Math.abs(shortestAngleDelta(older.alpha,sample.alpha))>100) reasons.push("約0.2秒でalpha反転");
+    if(older.compass!=null && sample.compass!=null && Math.abs(shortestAngleDelta(older.compass,sample.compass))>100) reasons.push("約0.2秒でcompass反転");
+    if(older.finalAz!=null && sample.finalAz!=null && Math.abs(shortestAngleDelta(older.finalAz,sample.finalAz))>80) reasons.push("約0.2秒で表示反転");
+  }
+  if(prev && reasons.length){
+    arDebugLastEvent={reason:[...new Set(reasons)].join("・"),before:{...(older||prev)},after:{...sample}};
+  }
+  arDebugPrevSample={...sample};
+  arDebugSampleHistory.push({...sample});
+  if(arDebugSampleHistory.length>12) arDebugSampleHistory.shift();
 }
 
 /* ===== 1€ Filter (One Euro Filter) =====
@@ -3566,6 +3603,10 @@ async function startArMode(){
   arStableCompassHeading=null;
   arCompassHeadingJumpStreak=0;
   arCompassHeadingJumpTarget=null;
+  arDebugPrevSample=null;
+  arDebugLastEvent=null;
+  arDebugHighAltitudeCaptured=false;
+  arDebugSampleHistory=[];
   arLastFrameTime=null;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
   // beta: 動きが速いほど追従を優先する度合い
@@ -3737,6 +3778,7 @@ async function startArMode(){
     arDebugData.compassHeading = typeof e.webkitCompassHeading==="number" ? e.webkitCompassHeading : null;
     arDebugData.compassAccuracy = compassAccuracy;
     arDebugData.screenAngle = screenAngle;
+    arDebugData.screenType = screen.orientation?.type || "unknown";
     arDebugData.localAz = localAz;
     arDebugData.targetAz = targetAz; arDebugData.targetAlt = targetAlt;
     arDebugData.compassCorrectionActive=compassCorrectionActive;
@@ -3767,6 +3809,16 @@ async function startArMode(){
       arSmoothedAlt += (filteredAlt-arSmoothedAlt)*altFollow;
     }
 
+    captureArDiagnosticSample({
+      alpha:e.alpha||0,
+      beta:e.beta||0,
+      gamma:e.gamma||0,
+      compass:compassAz,
+      screen:screenAngle,
+      alt:targetAlt,
+      finalAz:arSmoothedAz
+    });
+
     // deviceorientationは高頻度(端末によっては60回/秒)で発火するため、
     // 実際の再描画は画面のフレームごとに1回にまとめて負荷と揺れを抑える
     scheduleArRender();
@@ -3778,6 +3830,7 @@ async function startArMode(){
   el.arModeBtn.classList.add("active");
   hideArStatus();
   arDebugData={};
+  el.arDebugOverlay.classList.add("show"); // v110診断版: 180度回転の原因特定用
   update(); // ARの3:4キャンバスサイズや水平線ラインを、最初のセンサー値を待たずすぐに反映する
 }
 
