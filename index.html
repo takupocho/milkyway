@@ -3352,8 +3352,10 @@ el.mobileMwFrameBtn.addEventListener("click",()=>{
 
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
 let playbackTimer=null;
-let playbackAccumMinutes=0;
 let playbackLastTime=0;
+let playbackVisualMinutes=0;
+let playbackLastUiTime=0;
+let playbackLastRenderTime=0;
 let lockAzToGc=false;
 el.lockAzToGcBtn.addEventListener("click",()=>{
   lockAzToGc=!lockAzToGc;
@@ -3458,8 +3460,10 @@ function jdForSliderMinutes(minutes){
 let starTrailDelayTimer=null;
 function startPlayback(){
   if(playbackTimer) return;
-  playbackAccumMinutes=0;
+  playbackVisualMinutes=+el.timeSlider.value;
   playbackLastTime=performance.now();
+  playbackLastUiTime=playbackLastTime;
+  playbackLastRenderTime=0;
   el.playPauseBtn.textContent="⏸";
   el.playPauseBtn.setAttribute("aria-label","一時停止");
   el.playPauseBtn.classList.add("playing");
@@ -3480,47 +3484,87 @@ function startPlayback(){
     }, delaySec*1000);
   }
 }
+/* 再生中の見た目だけを小数時刻へ進める。
+   タイムライン・ベストタイム表などの日単位情報は再利用し、動いて見える天体だけを更新する。 */
+function refreshPlaybackCelestialState(jdPreview,newAz){
+  if(!state) return;
+  const sun=sunPosition(jdPreview), moon=moonPosition(jdPreview);
+  state.jd=jdPreview;
+  state.sun=sun;
+  state.sunAltAz=raDecToAltAz(sun.ra,sun.dec,jdPreview,state.lat,state.lon);
+  state.moon=moon;
+  state.moonAltAz=raDecToAltAz(moon.ra,moon.dec,jdPreview,state.lat,state.lon);
+  state.gcAltAz=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
+  state.mwPoints=MW_CENTER.map(p=>{
+    const aa=raDecToAltAz(p.ra,p.dec,jdPreview,state.lat,state.lon);
+    return {l:p.l,coreWeight:p.coreWeight,alt:aa.alt,az:aa.az};
+  });
+  state.starsNow=STARS.map(star=>{
+    const aa=raDecToAltAz(star.ra,star.dec,jdPreview,state.lat,state.lon);
+    return {alt:aa.alt,az:aa.az,mag:star.mag,ra:star.ra,dec:star.dec};
+  });
+  state.twilight=state.sunAltAz.alt>=0 ? 1 : (state.sunAltAz.alt<=-18 ? 0 : (state.sunAltAz.alt+18)/18);
+  state.moonContribution=state.moonAltAz.alt>0 ? moon.illum*(state.moonAltAz.alt/90)*0.7 : 0;
+  state.skyBrightness=clamp(state.lp.base+state.twilight+state.moonContribution*0.55,0,1);
+  if(lockAzToGc){
+    state.facingAz=newAz;
+    el.facingAz.value=newAz;
+    el.azVal.textContent=`${Math.round(newAz)}°`;
+  }
+}
+function updatePlaybackClockLabel(minutes){
+  const rounded=Math.floor(minutes);
+  const dayOffset=Math.floor(rounded/1440), hh=Math.floor(rounded/60)%24, mm=rounded%60;
+  el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")+`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+}
 function playbackTick(now){
   if(!playbackTimer) return;
-  const dtSec=(now-playbackLastTime)/1000;
+  // バックグラウンド復帰時に巨大な時間ジャンプが起きないよう、1フレームの経過を上限0.1秒にする。
+  const dtSec=Math.min(0.1,(now-playbackLastTime)/1000);
   playbackLastTime=now;
   const speed=parseFloat(el.animationSpeedSelect.value)||20; // 分/秒
-  playbackAccumMinutes += speed*dtSec;
+  playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,1800);
+  const finished=playbackVisualMinutes>=1800;
 
-  // 毎フレーム: 方位固定がONなら、まだ確定していない経過分も含めた「現在の瞬間」でGC方位を滑らかに追従させる。
-  // 重い全体再計算(星・天の川・タイムラインなど)は行わず、カメラの向きに関わる部分だけを軽量に再描画する。
-  if(lockAzToGc && state){
-    const previewVal=clamp((+el.timeSlider.value)+playbackAccumMinutes,0,1800);
-    const lat=parseFloat(el.lat.value), lon=parseFloat(el.lon.value);
-    const jdPreview=jdForSliderMinutes(previewVal);
-    const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,lat,lon);
-    const newAz=((gcAA.az%360)+360)%360;
-    el.facingAz.value=newAz;
-    state.facingAz=newAz;
-    el.azVal.textContent=`${Math.round(newAz)}°`;
+  // リアル天の川は30fps、従来表示は最大60fps。座標はどちらも小数時刻で連続的に進める。
+  const targetFrameMs=realMilkyWayEnabled ? 1000/30 : 1000/60;
+  if(now-playbackLastRenderTime>=targetFrameMs-1){
+    playbackLastRenderTime=now;
+    const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
+    const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
+    const newAz=norm360(gcAA.az);
+    refreshPlaybackCelestialState(jdPreview,newAz);
+    updatePlaybackClockLabel(playbackVisualMinutes);
     drawPhoto(photoCtx,state);
     drawDial(dialCtx,state);
     drawCompassStrip(compassCtx,state);
   }
 
-  if(playbackAccumMinutes>=1){
-    const wholeMin=Math.floor(playbackAccumMinutes);
-    playbackAccumMinutes -= wholeMin;
-    let newVal=(+el.timeSlider.value)+wholeMin;
-    const finished = newVal>=1800;
-    if(finished) newVal=1800;
-    el.timeSlider.value=newVal;
-    update(); // ここでフルの再計算を行う。facingAzは上ですでに最新の値に更新済みなのでそのまま使われる
-    if(finished){ stopPlayback(); return; }
+  // DOM・タイムラインを含む重い全画面更新は4回/秒に抑え、その直後に小数時刻の星空を描き戻す。
+  if(now-playbackLastUiTime>=250 || finished){
+    playbackLastUiTime=now;
+    el.timeSlider.value=Math.floor(playbackVisualMinutes);
+    update();
+    const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
+    const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
+    refreshPlaybackCelestialState(jdPreview,norm360(gcAA.az));
+    drawPhoto(photoCtx,state);
+    drawDial(dialCtx,state);
+    drawCompassStrip(compassCtx,state);
   }
+  if(finished){ stopPlayback(false); return; }
   requestAnimationFrame(playbackTick);
 }
-function stopPlayback(){
+function stopPlayback(commit=true){
   playbackTimer=null;
   el.playPauseBtn.textContent="▶";
   el.playPauseBtn.setAttribute("aria-label","再生");
   el.playPauseBtn.classList.remove("playing");
   if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
+  if(commit){
+    el.timeSlider.value=clamp(Math.round(playbackVisualMinutes),0,1800);
+    update();
+  }
 }
 el.playPauseBtn.addEventListener("click",()=>{
   if(playbackTimer) stopPlayback(); else startPlayback();
