@@ -601,7 +601,7 @@
     border-color:var(--core-amber);
     font-weight:700;
   }
-  /* 縦横切り替えボタン: アイコンを大きくし、幅を固定して▭/▯切り替え時にボタンサイズが変わらないようにする */
+  /* 縦横切り替えボタン: 文字記号ではなくCSSの長方形で、縦横とも見やすい比率に統一する */
   .orientation-toggle-btn{
     width:40px;
     padding-top:7px;
@@ -613,6 +613,19 @@
     display:inline-flex;
     align-items:center;
     justify-content:center;
+  }
+  .orientation-icon{
+    display:block;
+    box-sizing:border-box;
+    width:22px;
+    height:14px;
+    border:2px solid currentColor;
+    border-radius:0;
+    pointer-events:none;
+  }
+  .orientation-toggle-btn.portrait .orientation-icon{
+    width:14px;
+    height:22px;
   }
   .focal-badge{
     font-family:'IBM Plex Mono',monospace;
@@ -682,6 +695,15 @@
       padding-right:0;
       font-size:15px;
       border-radius:12px;
+    }
+    .orientation-icon{
+      width:20px;
+      height:12px;
+      border-width:2px;
+    }
+    .orientation-toggle-btn.portrait .orientation-icon{
+      width:12px;
+      height:20px;
     }
     .ar-toggle-btn{
       display:inline-block;
@@ -1461,6 +1483,10 @@
   .seg-btn{
     flex:1;
     width:auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:7px;
     border:none;
     border-radius:0;
     background:var(--panel-raised);
@@ -1470,6 +1496,19 @@
   .seg-btn:hover{background:#1a1f42;border-color:transparent;}
   .seg-btn + .seg-btn{border-left:1px solid var(--line);}
   .seg-btn.active{background:var(--core-amber);color:#1c1120;font-weight:700;}
+  .seg-orientation-icon{
+    display:inline-block;
+    box-sizing:border-box;
+    flex:none;
+    width:20px;
+    height:12px;
+    border:2px solid currentColor;
+    pointer-events:none;
+  }
+  .seg-orientation-icon.portrait{
+    width:12px;
+    height:20px;
+  }
 
   /* ---------- Map card ---------- */
   #mapCard{display:none;}
@@ -1714,8 +1753,8 @@
           <div class="field">
             <label class="top">構図</label>
             <div class="seg" id="orientationSeg">
-              <button type="button" class="seg-btn active" data-o="landscape">▭ 横位置</button>
-              <button type="button" class="seg-btn" data-o="portrait">▯ 縦位置</button>
+              <button type="button" class="seg-btn active" data-o="landscape"><span class="seg-orientation-icon" aria-hidden="true"></span>横位置</button>
+              <button type="button" class="seg-btn" data-o="portrait"><span class="seg-orientation-icon portrait" aria-hidden="true"></span>縦位置</button>
             </div>
           </div>
           <div class="field">
@@ -1903,7 +1942,7 @@
             <div class="toggle-btn-row" id="toggleBtnRow">
               <button id="mobileSettingsBtn" type="button" class="constellation-toggle-btn settings-toggle-btn">⚙ 設定</button>
               <button id="mobileDisplayOptionsBtn" type="button" class="constellation-toggle-btn display-options-btn">表示</button>
-              <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn" aria-label="縦横を切り替える">▭</button>
+              <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn" aria-label="縦横を切り替える"><span class="orientation-icon" aria-hidden="true"></span></button>
               <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn">AR</button>
               <span class="focal-badge" id="focalBadge">24<span class="focal-badge-unit">mm</span></span>
               <div class="display-options-popup" id="displayOptionsPopup">
@@ -3322,7 +3361,7 @@ let orientation="landscape";
 function setOrientation(newOrientation){
   orientation=newOrientation;
   [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
-  el.mobileOrientationToggleBtn.textContent = orientation==="portrait" ? "▯" : "▭";
+  el.mobileOrientationToggleBtn.classList.toggle("portrait", orientation==="portrait");
   update();
 }
 el.orientationSeg.addEventListener("click",(e)=>{
@@ -4024,7 +4063,7 @@ async function loadPersistedSettings(){
     if(s.orientation!==undefined){
       orientation=s.orientation;
       [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
-      el.mobileOrientationToggleBtn.textContent = orientation==="portrait" ? "▯" : "▭";
+      el.mobileOrientationToggleBtn.classList.toggle("portrait", orientation==="portrait");
     }
     if(s.observedPlaceName){
       el.observedPlaceName.style.display="block";
