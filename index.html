@@ -3306,6 +3306,8 @@ let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
 let arAzFilter=null, arAltFilter=null; // 1€ Filterのインスタンス(AR開始時に生成)
 let arDebugData={}; // 検証用: センサーの生データと計算結果を保持
 let arNorthOffset=null; // 端末の相対姿勢を真北基準へ合わせる補正。高仰角では固定してコンパス暴れを防ぐ
+let arMagneticDeclination=0; // 撮影地点の磁気偏角。webkitCompassHeading(磁北)を真北へ直す
+let arCompassOffsetSamples=[]; // 一時的な磁気ノイズを平均化するための北補正サンプル
 let arLastLocalAz=null; // 天頂付近で方位が数学的に不定になるため、最後に信頼できた相対方位を保持
 let arLastFrameTime=null;
 
@@ -3343,14 +3345,39 @@ function shortestAngleDelta(from,to){
   return ((to-from+540)%360)-180;
 }
 
-/* iOSのwebkitCompassHeadingはalphaとは別物なので、姿勢行列のalphaとしては使用しない。
-   ただし低仰角では従来の実機結果と整合しやすいため、真北へ合わせるための参照値としてだけ使う。 */
-function computeCompassReferenceDirection(e,screenAngle){
-  if(typeof e.webkitCompassHeading!=="number" || !Number.isFinite(e.webkitCompassHeading)) return null;
-  const dir=computeArDirection(e.webkitCompassHeading,e.beta||0,e.gamma||0,screenAngle);
-  // (以前ここにあった+180度の補正は、targetAz計算式で行っている鏡像反転と重複していたため削除。
-  //  回転方向の補正は鏡像反転の1箇所だけで行う)
-  return dir.azimuth;
+function normalizeAngle(value){
+  return ((value%360)+360)%360;
+}
+
+function circularMeanDegrees(values){
+  if(!values.length) return null;
+  let x=0, y=0;
+  for(const value of values){
+    const rad=value*Math.PI/180;
+    x+=Math.cos(rad); y+=Math.sin(rad);
+  }
+  const strength=Math.hypot(x,y)/values.length;
+  return {angle:normalizeAngle(Math.atan2(y,x)*180/Math.PI),strength};
+}
+
+/* WMM2025を日本域(北緯24〜46度・東経123〜146度)で近似した磁気偏角。
+   webkitCompassHeadingが示す磁北を、星図と同じ真北へ補正する。 */
+function estimateJapanMagneticDeclination(lat,lon,date=new Date()){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<24||lat>46||lon<123||lon>146) return 0;
+  const x=(lat-35)/10, z=(lon-135)/10;
+  const year=date.getUTCFullYear()+(date-Date.UTC(date.getUTCFullYear(),0,1))/(365.25*86400000);
+  const t=clamp(year,2025,2030)-2027.5;
+  return -8.3180654668-3.1013187433*x+0.7971069256*z
+    +0.0246740767*x*x-0.2426597882*x*z+0.9366464885*z*z
+    +0.0434613695*x*x*x+0.1146936554*x*x*z+0.0637985203*x*z*z-0.0681038760*z*z*z
+    -0.0397501449*t+0.0090431489*t*x+0.0011565217*t*z;
+}
+
+/* iOSの生コンパス値は姿勢行列のalphaへ混ぜない。
+   磁気偏角だけを加え、端末姿勢とは独立した真北の参照値として使用する。 */
+function computeCompassReferenceDirection(e){
+  if(typeof e.webkitCompassHeading!=="number" || !Number.isFinite(e.webkitCompassHeading) || e.webkitCompassHeading<0) return null;
+  return normalizeAngle(e.webkitCompassHeading+arMagneticDeclination);
 }
 
 function showArStatus(html){
@@ -3522,6 +3549,8 @@ async function startArMode(){
   arOutlierStreak=0;
   arOutlierTarget=null;
   arNorthOffset=null;
+  arCompassOffsetSamples=[];
+  arMagneticDeclination=estimateJapanMagneticDeclination(parseFloat(el.lat.value),parseFloat(el.lon.value),new Date());
   arLastLocalAz=null;
   arLastFrameTime=null;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
@@ -3562,33 +3591,36 @@ async function startArMode(){
 
     // コンパスは低仰角かつ精度が極端に悪くない時だけ、北基準オフセットの校正に使用する。
     // 高仰角では補正値を完全に固定し、iPhone特有の180度ジャンプを画面へ伝えない。
-    const compassAz=computeCompassReferenceDirection(e,screenAngle);
+    const compassAz=computeCompassReferenceDirection(e);
     const compassAccuracy=typeof e.webkitCompassAccuracy==="number" ? e.webkitCompassAccuracy : null;
-    const accuracyOK=compassAccuracy===null || compassAccuracy<=35;
-    const compassCorrectionActive=compassAz!==null && accuracyOK && Math.abs(targetAlt)<38;
+    const accuracyOK=compassAccuracy===null || (compassAccuracy>=0 && compassAccuracy<=45);
+    const compassCorrectionActive=compassAz!==null && accuracyOK && Math.abs(targetAlt)<55;
     // targetAzは最終的に -(localAz + arNorthOffset) として計算されるため、
     // targetAz = compassAz となるように校正するには arNorthOffset = -compassAz - localAz が必要。
     // (以前はtargetAz = localAz + arNorthOffsetの式向けの校正式のままだったため、
     //  鏡像反転を追加した後もこの校正式だけ更新されておらず、方位が実際とズレる原因になっていた)
-    const desiredNorthOffset=(v=>((v%360)+360)%360)(-compassAz-localAz);
+    const desiredNorthOffset=compassCorrectionActive ? normalizeAngle(-compassAz-localAz) : null;
     if(arNorthOffset===null){
-      arNorthOffset=compassCorrectionActive ? desiredNorthOffset : 0;
+      if(compassCorrectionActive){
+        arNorthOffset=desiredNorthOffset;
+        arCompassOffsetSamples=[desiredNorthOffset];
+      }
     } else if(compassCorrectionActive){
-      const offsetError=shortestAngleDelta(arNorthOffset,desiredNorthOffset);
-      // 大きな磁気外乱は無視。通常のドリフトだけを約数秒かけて静かに補正する。
-      // 誤差が小さい(=通常のコンパスのブレ・ドリフト)場合は素早く補正し、精度を優先する。
-      // 誤差が大きい(=ジンバルロックなどによる一時的な外れ値の可能性)場合だけ、これまで通り慎重に補正する。
-      if(Math.abs(offsetError)<20){
-        const correctionRate = Math.abs(offsetError)<8 ? 0.25 : 0.05;
-        arNorthOffset += offsetError*correctionRate;
+      arCompassOffsetSamples.push(desiredNorthOffset);
+      if(arCompassOffsetSamples.length>9) arCompassOffsetSamples.shift();
+      const mean=circularMeanDegrees(arCompassOffsetSamples);
+      if(mean && mean.strength>0.85){
+        const offsetError=shortestAngleDelta(arNorthOffset,mean.angle);
+        // 磁気外乱による大きな飛びは捨て、通常のドリフトだけを静かに追従する。
+        if(Math.abs(offsetError)<25) arNorthOffset=normalizeAngle(arNorthOffset+offsetError*0.035);
       }
     }
 
     // iPhone実機では北(0度)・南(180度)は一致する一方、東西の回転方向だけが反転していたため、
     // 真北基準へ補正したセンサー方位を北軸で鏡像反転する。
     // 手動補正は反転後に加え、右ボタン=プラス方向という操作感を維持する。
-    let targetAz = -(localAz + arNorthOffset) + arOrientationOffset;
-    targetAz = ((targetAz%360)+360)%360;
+    let targetAz = -(localAz + (arNorthOffset??0)) + arOrientationOffset;
+    targetAz = normalizeAngle(targetAz);
 
     // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
     arDebugData.rawAlpha=e.alpha; arDebugData.rawBeta=e.beta; arDebugData.rawGamma=e.gamma;
