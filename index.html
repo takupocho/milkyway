@@ -3311,6 +3311,7 @@ let arCompassLargeErrorStreak=0; // 持続する大きな誤差を磁気外乱�
 let arCompassLargeErrorDirection=0;
 let arMagneticDeclination=0; // 磁北から真北へ変換する磁気偏角(東偏を正)
 let arLastLocalAz=null; // 天頂付近で方位が数学的に不定になるため、最後に信頼できた相対方位を保持
+let arLastAbsoluteAz=null; // 北補正後の最終方位を保持し、天頂付近の180度反転を遮断する
 let arLastFrameTime=null;
 
 function getScreenAngle(){
@@ -3556,6 +3557,7 @@ async function startArMode(){
   arCompassLargeErrorDirection=0;
   arMagneticDeclination=estimateJapanMagneticDeclination(parseFloat(el.lat.value),parseFloat(el.lon.value),new Date());
   arLastLocalAz=null;
+  arLastAbsoluteAz=null;
   arLastFrameTime=null;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
   // beta: 動きが速いほど追従を優先する度合い
@@ -3582,7 +3584,8 @@ async function startArMode(){
     const screenAngle=getScreenAngle();
     // alpha/beta/gammaは必ず同じイベントの一組として使う。webkitCompassHeadingをalphaへ混ぜない。
     const localDir=computeArDirection(e.alpha,e.beta||0,e.gamma||0);
-    let localAz=localDir.azimuth;
+    const rawLocalAz=localDir.azimuth;
+    let localAz=rawLocalAz;
     const targetAlt=clamp(localDir.altitude+arAltitudeOffset,-89,89);
 
     // 天頂に近づくと視線の水平成分が消え、方位がわずかなノイズで大きく回る。
@@ -3600,22 +3603,27 @@ async function startArMode(){
     // iOSは精度不明時に負値を返す場合があるため、負のaccuracyは有効値として扱わない。
     const accuracyOK=compassAccuracy===null || (compassAccuracy>=0 && compassAccuracy<=45);
     const compassCorrectionActive=compassAz!==null && accuracyOK;
+    // alpha/gammaが別の等価表現へ切り替わりやすい高仰角では、永続的な北補正値を更新しない。
+    // 絶対コンパス値は後段でそのフレームの180度切替を相殺するためには引き続き利用する。
+    const compassCalibrationActive=compassCorrectionActive && Math.abs(targetAlt)<58;
     const desiredNorthOffset=compassCorrectionActive
       ? normalizeAngle(compassAz-localDir.relativeTopHeading)
       : null;
+    let stableDesiredNorthOffset=desiredNorthOffset;
 
-    if(desiredNorthOffset!==null){
+    if(desiredNorthOffset!==null && compassCalibrationActive){
       arCompassOffsetSamples.push(desiredNorthOffset);
       if(arCompassOffsetSamples.length>24) arCompassOffsetSamples.shift();
       const initialMean=circularMeanDegrees(arCompassOffsetSamples);
+      if(initialMean.strength>0.75) stableDesiredNorthOffset=initialMean.angle;
       // 3サンプル以上が同じ補正方向で合意した時だけ初期ロック。無効時に0度で確定しない。
       if(arNorthOffset===null && arCompassOffsetSamples.length>=3 && initialMean.strength>0.92){
         arNorthOffset=initialMean.angle;
       }
     }
 
-    if(arNorthOffset!==null && desiredNorthOffset!==null){
-      const offsetError=shortestAngleDelta(arNorthOffset,desiredNorthOffset);
+    if(arNorthOffset!==null && stableDesiredNorthOffset!==null && compassCalibrationActive){
+      const offsetError=shortestAngleDelta(arNorthOffset,stableDesiredNorthOffset);
       if(Math.abs(offsetError)<25){
         // 通常のジャイロドリフトはコンパスへゆっくり追従。パン中の磁気ノイズを画面へ直接伝えない。
         arNorthOffset=normalizeAngle(arNorthOffset+offsetError*0.018);
@@ -3636,8 +3644,26 @@ async function startArMode(){
     // 最初の3サンプルを待つ間も、その時点の有効な絶対方位を暫定使用して開始直後から北を合わせる。
     const sensorNorthOffset = arNorthOffset!==null ? arNorthOffset
       : (desiredNorthOffset!==null ? desiredNorthOffset : (e.absolute===true ? 0 : null));
-    let targetAz = normalizeAngle(localAz+(sensorNorthOffset||0)
-      +(compassAz!==null ? arMagneticDeclination : 0)+arOrientationOffset);
+    const declinationCorrection=compassAz!==null ? arMagneticDeclination : 0;
+    const stableOffsetTarget=normalizeAngle(localAz+(sensorNorthOffset||0)
+      +declinationCorrection+arOrientationOffset);
+
+    // 高仰角ではrawLocalAzとrelativeTopHeadingが同時に約180度切り替わることがある。
+    // 同じイベントの絶対コンパスから作った補正を即時合成すれば、この2つの変化が相殺される。
+    const directCompassTarget=desiredNorthOffset!==null
+      ? normalizeAngle(rawLocalAz+desiredNorthOffset+declinationCorrection+arOrientationOffset)
+      : stableOffsetTarget;
+    const highAltitudeCompassBlend=clamp((Math.abs(targetAlt)-55)/12,0,1);
+    let targetAz=smoothAngleTowards(stableOffsetTarget,directCompassTarget,highAltitudeCompassBlend);
+
+    // 天頂では方位自体が数学的に不定。65度以上で現れる70度超の瞬間ジャンプを遮断し、
+    // 68度から徐々に方位変化を弱め、80度以上では最後の有効方位を完全に保持する。
+    if(arLastAbsoluteAz===null) arLastAbsoluteAz=targetAz;
+    const absoluteJump=Math.abs(shortestAngleDelta(arLastAbsoluteAz,targetAz));
+    if(Math.abs(targetAlt)>=65 && absoluteJump>70) targetAz=arLastAbsoluteAz;
+    const absoluteZenithBlend=clamp((Math.abs(targetAlt)-68)/12,0,1);
+    targetAz=smoothAngleTowards(arLastAbsoluteAz,targetAz,1-absoluteZenithBlend);
+    if(absoluteZenithBlend<1) arLastAbsoluteAz=targetAz;
 
     // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
     arDebugData.rawAlpha=e.alpha; arDebugData.rawBeta=e.beta; arDebugData.rawGamma=e.gamma;
@@ -3647,6 +3673,7 @@ async function startArMode(){
     arDebugData.localAz = localAz;
     arDebugData.targetAz = targetAz; arDebugData.targetAlt = targetAlt;
     arDebugData.compassCorrectionActive=compassCorrectionActive;
+    arDebugData.compassCalibrationActive=compassCalibrationActive;
     arDebugData.magneticDeclination=arMagneticDeclination;
 
     const nowSec = performance.now()/1000;
