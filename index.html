@@ -3576,7 +3576,12 @@ async function startArMode(){
     } else if(compassCorrectionActive){
       const offsetError=shortestAngleDelta(arNorthOffset,desiredNorthOffset);
       // 大きな磁気外乱は無視。通常のドリフトだけを約数秒かけて静かに補正する。
-      if(Math.abs(offsetError)<20) arNorthOffset += offsetError*0.012;
+      // 誤差が小さい(=通常のコンパスのブレ・ドリフト)場合は素早く補正し、精度を優先する。
+      // 誤差が大きい(=ジンバルロックなどによる一時的な外れ値の可能性)場合だけ、これまで通り慎重に補正する。
+      if(Math.abs(offsetError)<20){
+        const correctionRate = Math.abs(offsetError)<8 ? 0.25 : 0.05;
+        arNorthOffset += offsetError*correctionRate;
+      }
     }
 
     // iPhone実機では北(0度)・南(180度)は一致する一方、東西の回転方向だけが反転していたため、
