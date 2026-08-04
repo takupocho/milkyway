@@ -3305,18 +3305,8 @@ let arSmoothedAz=null, arSmoothedAlt=null; // センサーの小刻みなノイ�
 let arGridVisible=false; // 高度方位グリッドの表示ON/OFF
 let arAzFilter=null, arAltFilter=null; // 1€ Filterのインスタンス(AR開始時に生成)
 let arDebugData={}; // 検証用: センサーの生データと計算結果を保持
-let arNorthOffset=null; // 相対姿勢を磁北基準へ合わせるヨー補正(旧名を互換のため維持)
-let arCompassOffsetSamples=[]; // 起動直後の複数サンプルから安定した北基準を決める
-let arCompassLargeErrorStreak=0; // 持続する大きな誤差を磁気外乱ではなく実際のドリフトと判断するための連続数
-let arCompassLargeErrorDirection=0;
-let arMagneticDeclination=0; // 磁北から真北へ変換する磁気偏角(東偏を正)
+let arNorthOffset=null; // 端末の相対姿勢を真北基準へ合わせる補正。高仰角では固定してコンパス暴れを防ぐ
 let arLastLocalAz=null; // 天頂付近で方位が数学的に不定になるため、最後に信頼できた相対方位を保持
-let arLastAbsoluteAz=null; // 北補正後の最終方位を保持し、天頂付近の180度反転を遮断する
-let arCompassHeadingSamples=[]; // iOS絶対コンパスの短時間円周平均用
-let arStableCompassHeading=null; // 静止デッドバンド適用後の真北基準方位
-let arCompassHeadingJumpStreak=0;
-let arCompassHeadingJumpTarget=null;
-let arDirectCompassWasAvailable=false; // 絶対コンパス初回受信時に旧座標系のフィルター履歴を破棄する
 let arLastFrameTime=null;
 
 function getScreenAngle(){
@@ -3325,39 +3315,14 @@ function getScreenAngle(){
   return 0;
 }
 
-function normalizeAngle(v){
-  return ((v%360)+360)%360;
-}
+/* デバイスの生の傾きセンサー値(alpha/beta/gamma)から、背面カメラが向いている方位・仰角を計算する。
+   標準的なdeviceorientationのZXY回転順に基づき、画面の向き(縦/横持ち)による軸の入れ替えも考慮する。 */
+function computeArDirection(alpha,beta,gamma,screenAngle){
+  let a=alpha, b=beta, g=gamma;
+  if(screenAngle===90){ const t=b; b=-g; g=t; }
+  else if(screenAngle===-90 || screenAngle===270){ const t=b; b=g; g=-t; }
+  else if(screenAngle===180){ b=-b; g=-g; }
 
-function circularMeanDegrees(values){
-  if(!values.length) return {angle:null,strength:0};
-  let x=0,y=0;
-  for(const v of values){
-    const r=v*Math.PI/180;
-    x+=Math.cos(r); y+=Math.sin(r);
-  }
-  return {angle:normalizeAngle(Math.atan2(y,x)*180/Math.PI),strength:Math.hypot(x,y)/values.length};
-}
-
-/* WMM2025を日本域(北緯24〜46度・東経123〜146度)で三次多項式近似した磁気偏角。
-   2025〜2030年のWMM2025計算値に対する最大近似誤差は約0.04度。
-   戻り値は東偏を正、西偏を負とし、磁方位+偏角=真方位で使用する。 */
-function estimateJapanMagneticDeclination(lat,lon,date=new Date()){
-  if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<24||lat>46||lon<123||lon>146) return 0;
-  const x=(lat-35)/10, z=(lon-135)/10;
-  const year=date.getUTCFullYear()+(date-Date.UTC(date.getUTCFullYear(),0,1))/(365.25*86400000);
-  const t=clamp(year,2025,2030)-2027.5;
-  return -8.3180654668-3.1013187433*x+0.7971069256*z
-    +0.0246740767*x*x-0.2426597882*x*z+0.9366464885*z*z
-    +0.0434613695*x*x*x+0.1146936554*x*x*z+0.0637985203*x*z*z-0.0681038760*z*z*z
-    -0.0397501449*t+0.0090431489*t*x+0.0011565217*t*z;
-}
-
-/* W3C Device OrientationのZ-X'-Y''回転で、端末座標の背面カメラ光軸(0,0,-1)を
-   地球座標へ変換する。画面回転はセンサー座標系を変えないためbeta/gammaの入替は行わない。
-   iOSのalphaは相対基準でも、光軸と端末上辺の相対関係は正しく保たれる。 */
-function computeArDirection(alpha,beta,gamma){
-  const a=alpha, b=beta, g=gamma;
   const d2r=Math.PI/180;
   const cA=Math.cos(a*d2r), sA=Math.sin(a*d2r);
   const cB=Math.cos(b*d2r), sB=Math.sin(b*d2r);
@@ -3368,24 +3333,24 @@ function computeArDirection(alpha,beta,gamma){
   const rY = -sA*sG + cA*sB*cG;
   const rZ = -cB*cG;
 
-  // 地球座標はX=東、Y=北、Z=上。方位角は北0度から東回り。
-  const azimuth = normalizeAngle(Math.atan2(rX,rY) * (180/Math.PI));
+  let azimuth = Math.atan2(-rX,rY) * (180/Math.PI);
+  if(azimuth<0) azimuth += 360;
   const altitude = Math.asin(clamp(rZ,-1,1)) * (180/Math.PI);
-  // 水平な端末上辺の相対方位は360-alpha。絶対コンパスとの差がワールド基準ヨー補正になる。
-  const relativeTopHeading=normalizeAngle(360-a);
-  return {azimuth, altitude, relativeTopHeading, horizontalStrength:Math.hypot(rX,rY)};
+  return {azimuth, altitude};
 }
 
 function shortestAngleDelta(from,to){
   return ((to-from+540)%360)-180;
 }
 
-/* iOSのwebkitCompassHeadingは磁北基準の絶対方位。その値をalphaへ代入して姿勢行列を
-   再計算すると傾きが二重適用されるため、北基準ヨーの校正値としてだけ使用する。 */
-function computeCompassReferenceDirection(e){
+/* iOSのwebkitCompassHeadingはalphaとは別物なので、姿勢行列のalphaとしては使用しない。
+   ただし低仰角では従来の実機結果と整合しやすいため、真北へ合わせるための参照値としてだけ使う。 */
+function computeCompassReferenceDirection(e,screenAngle){
   if(typeof e.webkitCompassHeading!=="number" || !Number.isFinite(e.webkitCompassHeading)) return null;
-  if(e.webkitCompassHeading<0) return null;
-  return normalizeAngle(e.webkitCompassHeading);
+  const dir=computeArDirection(e.webkitCompassHeading,e.beta||0,e.gamma||0,screenAngle);
+  // (以前ここにあった+180度の補正は、targetAz計算式で行っている鏡像反転と重複していたため削除。
+  //  回転方向の補正は鏡像反転の1箇所だけで行う)
+  return dir.azimuth;
 }
 
 function showArStatus(html){
@@ -3557,17 +3522,7 @@ async function startArMode(){
   arOutlierStreak=0;
   arOutlierTarget=null;
   arNorthOffset=null;
-  arCompassOffsetSamples=[];
-  arCompassLargeErrorStreak=0;
-  arCompassLargeErrorDirection=0;
-  arMagneticDeclination=estimateJapanMagneticDeclination(parseFloat(el.lat.value),parseFloat(el.lon.value),new Date());
   arLastLocalAz=null;
-  arLastAbsoluteAz=null;
-  arCompassHeadingSamples=[];
-  arStableCompassHeading=null;
-  arCompassHeadingJumpStreak=0;
-  arCompassHeadingJumpTarget=null;
-  arDirectCompassWasAvailable=false;
   arLastFrameTime=null;
   // mincutoff: 低いほど強く滑らかにする(ジンバルロック対策で信頼度に応じて動的に下げる)
   // beta: 動きが速いほど追従を優先する度合い
@@ -3593,9 +3548,8 @@ async function startArMode(){
     if(e.alpha==null) return;
     const screenAngle=getScreenAngle();
     // alpha/beta/gammaは必ず同じイベントの一組として使う。webkitCompassHeadingをalphaへ混ぜない。
-    const localDir=computeArDirection(e.alpha,e.beta||0,e.gamma||0);
-    const rawLocalAz=localDir.azimuth;
-    let localAz=rawLocalAz;
+    const localDir=computeArDirection(e.alpha,e.beta||0,e.gamma||0,screenAngle);
+    let localAz=localDir.azimuth;
     const targetAlt=clamp(localDir.altitude+arAltitudeOffset,-89,89);
 
     // 天頂に近づくと視線の水平成分が消え、方位がわずかなノイズで大きく回る。
@@ -3606,138 +3560,35 @@ async function startArMode(){
     localAz=((arLastLocalAz+localDelta*(1-zenithBlend))%360+360)%360;
     if(zenithBlend<1) arLastLocalAz=localAz;
 
-    // iPhoneの絶対コンパスは端末姿勢へ再投入せず、相対alphaを磁北へ合わせるヨー校正だけに使う。
-    // 起動時の端末角度には依存させず、複数サンプルの円周平均で初期方位を決める。
-    const compassAz=computeCompassReferenceDirection(e);
+    // コンパスは低仰角かつ精度が極端に悪くない時だけ、北基準オフセットの校正に使用する。
+    // 高仰角では補正値を完全に固定し、iPhone特有の180度ジャンプを画面へ伝えない。
+    const compassAz=computeCompassReferenceDirection(e,screenAngle);
     const compassAccuracy=typeof e.webkitCompassAccuracy==="number" ? e.webkitCompassAccuracy : null;
-    // iOSは精度不明時に負値を返す場合があるため、負のaccuracyは有効値として扱わない。
-    const accuracyOK=compassAccuracy===null || (compassAccuracy>=0 && compassAccuracy<=45);
-    const compassCorrectionActive=compassAz!==null && accuracyOK;
-
-    /* iOS専用の主方位経路。
-       webkitCompassHeadingをalphaへ混ぜず、磁気偏角だけ加えてARの左右方位として直接使う。
-       静止中の微小ノイズはデッドバンド内で完全に止め、大きな瞬間ジャンプは連続確認なしでは採用しない。 */
-    if(compassCorrectionActive){
-      const rawTrueCompass=normalizeAngle(compassAz+arMagneticDeclination);
-      if(arStableCompassHeading===null){
-        arStableCompassHeading=rawTrueCompass;
-        arCompassHeadingSamples=[rawTrueCompass];
-      } else {
-        const rawError=shortestAngleDelta(arStableCompassHeading,rawTrueCompass);
-        const absRawError=Math.abs(rawError);
-        let acceptHeading=true;
-
-        // 高仰角の大きな変化は、端末姿勢表現の切替または磁気外乱として完全に遮断する。
-        if(Math.abs(targetAlt)>=60 && absRawError>25){
-          acceptHeading=false;
-        } else if(absRawError>100){
-          // 低仰角でも180度級の値は12イベント連続して初めて実際の旋回とみなす。
-          if(arCompassHeadingJumpTarget!==null && Math.abs(shortestAngleDelta(arCompassHeadingJumpTarget,rawTrueCompass))<12){
-            arCompassHeadingJumpStreak++;
-          } else {
-            arCompassHeadingJumpTarget=rawTrueCompass;
-            arCompassHeadingJumpStreak=1;
-          }
-          acceptHeading=arCompassHeadingJumpStreak>=12;
-        } else {
-          arCompassHeadingJumpStreak=0;
-          arCompassHeadingJumpTarget=null;
-        }
-
-        if(acceptHeading){
-          arCompassHeadingSamples.push(rawTrueCompass);
-          if(arCompassHeadingSamples.length>5) arCompassHeadingSamples.shift();
-          const compassMean=circularMeanDegrees(arCompassHeadingSamples);
-          if(compassMean.strength>0.72){
-            // 明確に端末が動いている時は平均窓の遅れを避けて現在値へ追従し、静止付近だけ平均値を使う。
-            const compassCandidate=absRawError>4 ? rawTrueCompass : compassMean.angle;
-            const meanError=shortestAngleDelta(arStableCompassHeading,compassCandidate);
-            const absMeanError=Math.abs(meanError);
-            // 約1.2度以内は出力を全く動かさない。動きが大きい時だけ追従を速める。
-            const deadband=compassAccuracy!==null && compassAccuracy>20 ? 1.8 : 1.2;
-            let follow=0;
-            if(absMeanError>deadband){
-              follow=absMeanError<5 ? 0.25 : (absMeanError<20 ? 0.55 : 0.80);
-              // 天頂へ近づくほど左右方位の更新量を減らし、80度以上では完全に保持する。
-              follow*=clamp((80-Math.abs(targetAlt))/12,0,1);
-            }
-            if(follow>0) arStableCompassHeading=smoothAngleTowards(arStableCompassHeading,compassCandidate,follow);
-          }
-        }
-      }
-    }
-    // alpha/gammaが別の等価表現へ切り替わりやすい高仰角では、永続的な北補正値を更新しない。
-    // 絶対コンパス値は後段でそのフレームの180度切替を相殺するためには引き続き利用する。
-    const compassCalibrationActive=compassCorrectionActive && Math.abs(targetAlt)<58;
-    const desiredNorthOffset=compassCorrectionActive
-      ? normalizeAngle(compassAz-localDir.relativeTopHeading)
-      : null;
-    let stableDesiredNorthOffset=desiredNorthOffset;
-
-    if(desiredNorthOffset!==null && compassCalibrationActive){
-      arCompassOffsetSamples.push(desiredNorthOffset);
-      if(arCompassOffsetSamples.length>24) arCompassOffsetSamples.shift();
-      const initialMean=circularMeanDegrees(arCompassOffsetSamples);
-      if(initialMean.strength>0.75) stableDesiredNorthOffset=initialMean.angle;
-      // 3サンプル以上が同じ補正方向で合意した時だけ初期ロック。無効時に0度で確定しない。
-      if(arNorthOffset===null && arCompassOffsetSamples.length>=3 && initialMean.strength>0.92){
-        arNorthOffset=initialMean.angle;
+    const accuracyOK=compassAccuracy===null || compassAccuracy<=35;
+    const compassCorrectionActive=compassAz!==null && accuracyOK && Math.abs(targetAlt)<38;
+    // targetAzは最終的に -(localAz + arNorthOffset) として計算されるため、
+    // targetAz = compassAz となるように校正するには arNorthOffset = -compassAz - localAz が必要。
+    // (以前はtargetAz = localAz + arNorthOffsetの式向けの校正式のままだったため、
+    //  鏡像反転を追加した後もこの校正式だけ更新されておらず、方位が実際とズレる原因になっていた)
+    const desiredNorthOffset=(v=>((v%360)+360)%360)(-compassAz-localAz);
+    if(arNorthOffset===null){
+      arNorthOffset=compassCorrectionActive ? desiredNorthOffset : 0;
+    } else if(compassCorrectionActive){
+      const offsetError=shortestAngleDelta(arNorthOffset,desiredNorthOffset);
+      // 大きな磁気外乱は無視。通常のドリフトだけを約数秒かけて静かに補正する。
+      // 誤差が小さい(=通常のコンパスのブレ・ドリフト)場合は素早く補正し、精度を優先する。
+      // 誤差が大きい(=ジンバルロックなどによる一時的な外れ値の可能性)場合だけ、これまで通り慎重に補正する。
+      if(Math.abs(offsetError)<20){
+        const correctionRate = Math.abs(offsetError)<8 ? 0.25 : 0.05;
+        arNorthOffset += offsetError*correctionRate;
       }
     }
 
-    if(arNorthOffset!==null && stableDesiredNorthOffset!==null && compassCalibrationActive){
-      const offsetError=shortestAngleDelta(arNorthOffset,stableDesiredNorthOffset);
-      if(Math.abs(offsetError)<25){
-        // 通常のジャイロドリフトはコンパスへゆっくり追従。パン中の磁気ノイズを画面へ直接伝えない。
-        arNorthOffset=normalizeAngle(arNorthOffset+offsetError*0.018);
-        arCompassLargeErrorStreak=0;
-      } else {
-        // 大きな誤差でも同方向に持続する場合は、起動後の環境変化・実ドリフトとして復帰させる。
-        const errorDirection=Math.sign(offsetError);
-        if(errorDirection===arCompassLargeErrorDirection) arCompassLargeErrorStreak++;
-        else { arCompassLargeErrorDirection=errorDirection; arCompassLargeErrorStreak=1; }
-        if(arCompassLargeErrorStreak>=24){
-          arNorthOffset=normalizeAngle(arNorthOffset+offsetError*0.035);
-        }
-      }
-    }
-
-    // 相対カメラ光軸 + iPhoneの磁北校正 + WMM2025磁気偏角 = 天体計算と同じ真北方位。
-    // absolute=trueの端末でwebkitCompassHeadingがない場合はalpha自体を絶対基準として使用する。
-    // 最初の3サンプルを待つ間も、その時点の有効な絶対方位を暫定使用して開始直後から北を合わせる。
-    const sensorNorthOffset = arNorthOffset!==null ? arNorthOffset
-      : (desiredNorthOffset!==null ? desiredNorthOffset : (e.absolute===true ? 0 : null));
-    const declinationCorrection=compassAz!==null ? arMagneticDeclination : 0;
-    const stableOffsetTarget=normalizeAngle(localAz+(sensorNorthOffset||0)
-      +declinationCorrection+arOrientationOffset);
-
-    // 高仰角ではrawLocalAzとrelativeTopHeadingが同時に約180度切り替わることがある。
-    // 同じイベントの絶対コンパスから作った補正を即時合成すれば、この2つの変化が相殺される。
-    const directCompassTarget=desiredNorthOffset!==null
-      ? normalizeAngle(rawLocalAz+desiredNorthOffset+declinationCorrection+arOrientationOffset)
-      : stableOffsetTarget;
-    const highAltitudeCompassBlend=clamp((Math.abs(targetAlt)-55)/12,0,1);
-    let targetAz=smoothAngleTowards(stableOffsetTarget,directCompassTarget,highAltitudeCompassBlend);
-
-    // 天頂では方位自体が数学的に不定。65度以上で現れる70度超の瞬間ジャンプを遮断し、
-    // 68度から徐々に方位変化を弱め、80度以上では最後の有効方位を完全に保持する。
-    if(arLastAbsoluteAz===null) arLastAbsoluteAz=targetAz;
-    const absoluteJump=Math.abs(shortestAngleDelta(arLastAbsoluteAz,targetAz));
-    if(Math.abs(targetAlt)>=65 && absoluteJump>70) targetAz=arLastAbsoluteAz;
-    const absoluteZenithBlend=clamp((Math.abs(targetAlt)-68)/12,0,1);
-    targetAz=smoothAngleTowards(arLastAbsoluteAz,targetAz,1-absoluteZenithBlend);
-    if(absoluteZenithBlend<1) arLastAbsoluteAz=targetAz;
-
-    // iPhoneでは姿勢由来のtargetAzを使わず、安定化したwebkitCompassHeadingを最終方位に採用する。
-    // これによりalpha/gammaが180度切り替わってもAR表示には一切伝わらない。
-    let directCompassJustActivated=false;
-    if(arStableCompassHeading!==null){
-      targetAz=normalizeAngle(arStableCompassHeading+arOrientationOffset);
-      if(!arDirectCompassWasAvailable){
-        arDirectCompassWasAvailable=true;
-        directCompassJustActivated=true;
-      }
-    }
+    // iPhone実機では北(0度)・南(180度)は一致する一方、東西の回転方向だけが反転していたため、
+    // 真北基準へ補正したセンサー方位を北軸で鏡像反転する。
+    // 手動補正は反転後に加え、右ボタン=プラス方向という操作感を維持する。
+    let targetAz = -(localAz + arNorthOffset) + arOrientationOffset;
+    targetAz = ((targetAz%360)+360)%360;
 
     // 検証用デバッグ表示に、生のセンサー値と計算途中の値を記録しておく
     arDebugData.rawAlpha=e.alpha; arDebugData.rawBeta=e.beta; arDebugData.rawGamma=e.gamma;
@@ -3747,26 +3598,10 @@ async function startArMode(){
     arDebugData.localAz = localAz;
     arDebugData.targetAz = targetAz; arDebugData.targetAlt = targetAlt;
     arDebugData.compassCorrectionActive=compassCorrectionActive;
-    arDebugData.compassCalibrationActive=compassCalibrationActive;
-    arDebugData.magneticDeclination=arMagneticDeclination;
 
     const nowSec = performance.now()/1000;
     const dt=arLastFrameTime===null ? 1/60 : clamp(nowSec-arLastFrameTime,1/240,0.1);
     arLastFrameTime=nowSec;
-
-    // AR開始直後は姿勢イベントがコンパス値より先に届くことがある。
-    // 絶対コンパスを初めて受信した瞬間は旧姿勢方位から補間せず、フィルターを正しい方位へ同期する。
-    if(directCompassJustActivated){
-      arSmoothedAz=targetAz;
-      arAzFilter.reset();
-      arAzFilter.filter(targetAz,nowSec);
-      if(arSmoothedAlt===null){
-        arSmoothedAlt=targetAlt;
-        arAltFilter.filter(targetAlt,nowSec);
-      }
-      arOutlierStreak=0;
-      arOutlierTarget=null;
-    }
 
     if(arSmoothedAz===null){
       arSmoothedAz=targetAz;
@@ -3775,12 +3610,19 @@ async function startArMode(){
       arAltFilter.filter(targetAlt, nowSec);
     } else {
       // 180度級の磁気外乱は受け入れず、通常の素早いパン操作はOne Euro Filterへ渡す。
-      if(!directCompassJustActivated && isAzimuthTrustworthy(arSmoothedAz,targetAz,95,4)){
+      if(isAzimuthTrustworthy(arSmoothedAz,targetAz,95,4)){
         arAzFilter.inner.mincutoff = zenithBlend>0 ? 0.35 : 0.8;
         const filteredAz = arAzFilter.filter(targetAz, nowSec);
         // フレームレート非依存。静止時は安定しつつ、操作時に遅れすぎない追従速度。
         const follow=1-Math.exp(-(zenithBlend>0 ? 7 : 11)*dt);
-        arSmoothedAz = smoothAngleTowards(arSmoothedAz,filteredAz,follow);
+        // 静止中に電子コンパスが方位を探すような微小振動だけを止める。
+        // デッドバンドを超えた分だけ追従するため、ゆっくりした実際のパン操作は妨げない。
+        const filteredDiff=shortestAngleDelta(arSmoothedAz,filteredAz);
+        const azDeadband=compassAccuracy!==null && compassAccuracy>20 ? 1.8 : 1.2;
+        if(Math.abs(filteredDiff)>azDeadband){
+          const deadbandTarget=((arSmoothedAz+Math.sign(filteredDiff)*(Math.abs(filteredDiff)-azDeadband))%360+360)%360;
+          arSmoothedAz = smoothAngleTowards(arSmoothedAz,deadbandTarget,follow);
+        }
       }
       arAltFilter.mincutoff=0.8;
       const filteredAlt = arAltFilter.filter(targetAlt, nowSec);
