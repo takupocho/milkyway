@@ -1949,6 +1949,8 @@
         <div class="ctrl-group-body">
           <button id="showBelowHorizonBtn" type="button" class="toggle-btn active"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
+          <button id="realMilkyWayBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌌 天の川をリアル表示する</span><span id="realMilkyWayState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:8px;">ESOの全天実写パノラマを日時・方位・画角に合わせて投影し、実際の暗黒帯や銀河中心の形を再現します。画像: ESO/S. Brunier (CC BY 4.0)</p>
           <div class="field" style="margin-top:8px;">
             <label class="top">南半球の透明度 <span class="val mono" id="belowHorizonOpacityVal">100%</span></label>
             <input type="range" id="belowHorizonOpacitySlider" min="0" max="100" step="5" value="100">
@@ -2341,6 +2343,28 @@ for(let l=0;l<360;l+=2){
   MW_TOP.push(galacticToEquatorial(l,9));
   MW_BOTTOM.push(galacticToEquatorial(l,-9));
 }
+
+/* ESO/S. Brunier全天パノラマ用メッシュ。銀河座標上の固定格子を一度だけ赤道座標へ変換する。 */
+const REAL_MW_L_STEP=8, REAL_MW_B_STEP=6, REAL_MW_B_LIMIT=30;
+const REAL_MW_GRID=[];
+for(let b=-REAL_MW_B_LIMIT;b<=REAL_MW_B_LIMIT;b+=REAL_MW_B_STEP){
+  const row=[];
+  for(let l=0;l<=360;l+=REAL_MW_L_STEP) row.push({l,b,...galacticToEquatorial(norm360(l),b)});
+  REAL_MW_GRID.push(row);
+}
+const realMilkyWayImage=new Image();
+realMilkyWayImage.crossOrigin="anonymous";
+realMilkyWayImage.src="https://cdn.eso.org/images/screen/eso0932a.jpg";
+let realMilkyWayTexture=null;
+realMilkyWayImage.addEventListener("load",()=>{
+  const c=document.createElement("canvas");
+  c.width=realMilkyWayImage.naturalWidth*2; c.height=realMilkyWayImage.naturalHeight;
+  const cctx=c.getContext("2d");
+  cctx.drawImage(realMilkyWayImage,0,0);
+  cctx.drawImage(realMilkyWayImage,realMilkyWayImage.naturalWidth,0);
+  realMilkyWayTexture=c;
+  if(typeof update==="function") update();
+});
 
 /* 投影: 天球上の(az,alt)をカメラのフレーム内(dx,dy) [tan角単位] に変換 */
 function toVec(az,alt){ return [cos(alt)*sin(az), cos(alt)*cos(az), sin(alt)]; }
@@ -2852,6 +2876,7 @@ const el={
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
   showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
+  realMilkyWayBtn:$("realMilkyWayBtn"), realMilkyWayState:$("realMilkyWayState"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
@@ -3370,6 +3395,15 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
   showBelowHorizon=!showBelowHorizon;
   el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
   el.showBelowHorizonState.textContent = showBelowHorizon ? "ON" : "OFF";
+  update();
+});
+/* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
+let realMilkyWayEnabled=false;
+el.realMilkyWayBtn.addEventListener("click",()=>{
+  realMilkyWayEnabled=!realMilkyWayEnabled;
+  el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
+  el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
+  scheduleSaveSettings();
   update();
 });
 el.belowHorizonOpacitySlider.addEventListener("input",()=>{
@@ -4262,6 +4296,7 @@ function collectPersistedSettings(){
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
+    realMilkyWayEnabled:realMilkyWayEnabled,
     observedPlaceName:currentObservedPlaceName,
   };
 }
@@ -4294,6 +4329,9 @@ async function loadPersistedSettings(){
     normalLensFocalLength=clamp(+(s.normalLensFocalLength??s.focalLength??24),8,50);
     fisheyeLensFocalLength=clamp(+(s.fisheyeLensFocalLength??15),8,16);
     if(s.mobileLensMode==="normal" || s.mobileLensMode==="fisheye") mobileLensMode=s.mobileLensMode;
+    realMilkyWayEnabled=!!s.realMilkyWayEnabled;
+    el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
+    el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     applyMobileLensFocalRange();
     syncMobileLensModeButton();
     if(s.orientation!==undefined){
@@ -4898,6 +4936,53 @@ function seededSilhouette(){
   return seededSilhouette._pts;
 }
 
+/* 画像上の三角形を画面上の三角形へアフィン変換して描く。全天画像を通常・魚眼の両投影へ追従させるための軽量メッシュ描画。 */
+function drawTextureTriangle(ctx,img,s0,s1,s2,d0,d1,d2){
+  const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]);
+  if(Math.abs(den)<1e-6) return;
+  const a=(d0[0]*(s1[1]-s2[1])+d1[0]*(s2[1]-s0[1])+d2[0]*(s0[1]-s1[1]))/den;
+  const c=(d0[0]*(s2[0]-s1[0])+d1[0]*(s0[0]-s2[0])+d2[0]*(s1[0]-s0[0]))/den;
+  const e=(d0[0]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[0]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[0]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+  const b=(d0[1]*(s1[1]-s2[1])+d1[1]*(s2[1]-s0[1])+d2[1]*(s0[1]-s1[1]))/den;
+  const d=(d0[1]*(s2[0]-s1[0])+d1[1]*(s0[0]-s2[0])+d2[1]*(s1[0]-s0[0]))/den;
+  const f=(d0[1]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[1]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[1]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(d0[0],d0[1]); ctx.lineTo(d1[0],d1[1]); ctx.lineTo(d2[0],d2[1]); ctx.closePath(); ctx.clip();
+  ctx.setTransform(a,b,c,d,e,f); ctx.drawImage(img,0,0); ctx.restore();
+}
+
+function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
+  if(!realMilkyWayEnabled || !realMilkyWayTexture || arActive) return;
+  const iw=realMilkyWayImage.naturalWidth, ih=realMilkyWayImage.naturalHeight;
+  const projected=REAL_MW_GRID.map(row=>row.map(p=>{
+    const aa=raDecToAltAz(p.ra,p.dec,s.jd,s.lat,s.lon);
+    return {...p,alt:aa.alt,pt:toXY(aa.az,aa.alt)};
+  }));
+  ctx.save();
+  ctx.globalCompositeOperation="screen";
+  for(let r=0;r<projected.length-1;r++){
+    const bMid=(projected[r][0].b+projected[r+1][0].b)/2;
+    const edgeFade=clamp((REAL_MW_B_LIMIT-Math.abs(bMid))/12,0,1);
+    if(edgeFade<=0) continue;
+    for(let k=0;k<projected[r].length-1;k++){
+      const p00=projected[r][k],p10=projected[r][k+1],p01=projected[r+1][k],p11=projected[r+1][k+1];
+      if(!p00.pt||!p10.pt||!p01.pt||!p11.pt) continue;
+      if(!showBelowHorizon && Math.max(p00.alt,p10.alt,p01.alt,p11.alt)<-2) continue;
+      const pts=[p00.pt,p10.pt,p01.pt,p11.pt];
+      const minX=Math.min(...pts.map(p=>p[0])),maxX=Math.max(...pts.map(p=>p[0]));
+      const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
+      if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
+      const belowFactor=(p00.alt+p10.alt+p01.alt+p11.alt)/4<0 ? (+el.belowHorizonOpacitySlider.value||0)/100 : 1;
+      ctx.globalAlpha=clamp(vis*0.92*edgeFade*belowFactor,0,0.92);
+      const sx0=(1.5-p00.l/360)*iw, sx1=(1.5-p10.l/360)*iw;
+      const sy0=(0.5-p00.b/180)*ih, sy1=(0.5-p01.b/180)*ih;
+      drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
+      drawTextureTriangle(ctx,realMilkyWayTexture,[sx1,sy0],[sx1,sy1],[sx0,sy1],p10.pt,p11.pt,p01.pt);
+    }
+  }
+  ctx.restore();
+}
+
 /* 星座・惑星・恒星・太陽・月の名称クリック検出用の領域(このフレームの描画内容に合わせて毎回作り直す) */
 let photoClickRegions=[];
 function drawPhoto(ctx,s){
@@ -4944,6 +5029,9 @@ function drawPhoto(ctx,s){
 
   const vis = 1-s.skyBrightness; // 全体の見えやすさ係数
   const starOpacity = (+el.starOpacitySlider.value||50)/100; // 星の透明度(スタートレイルで描く星全体に均一に適用、0.1〜1.0)
+
+  // 実写モードは空背景の直後に描き、星座・惑星・ベストタイムの白い玉など既存の案内表示は上へ重ねる。
+  drawRealMilkyWay(ctx,s,toXY,W,H,vis);
 
   // 星
   const trailSec = s.shutter;
@@ -5048,7 +5136,7 @@ function drawPhoto(ctx,s){
   }
   ctx.restore();
 
-  // 天の川帯 (中心線+スクリーン上での垂直オフセットで太さを表現)
+  // 天の川帯 (リアル表示OFF時のみ。中心線+スクリーン上での垂直オフセットで太さを表現)
   ctx.save();
   ctx.globalCompositeOperation="lighter";
   const nMwPts=s.mwPoints.length;
@@ -5057,7 +5145,8 @@ function drawPhoto(ctx,s){
   // 太い帯⇔細い線⇔消えるを行き来するちらつきの原因になっていたため、
   // 中心線が投影できてさえいれば必ず一定の太さで描けるよう、スクリーン空間での垂直オフセットに変更した。
   const mwHalfWidthPx = scale * (9*D2R);
-  for(let i=0;i<nMwPts;i++){
+  // AR中または画像未読込時は、位置合わせと表示欠落を避けるため従来の軽量な帯へ自動フォールバックする。
+  for(let i=0;(!realMilkyWayEnabled || arActive || !realMilkyWayTexture) && i<nMwPts;i++){
     const j=(i+1)%nMwPts; // 最後の点を最初の点へつなぎ、360度の輪として閉じる(銀河中心の継ぎ目もこれで無くなる)
     const c0=s.mwPoints[i], c1=s.mwPoints[j];
     // 南半球を可視化中は水平線の下も描画する。それ以外は今まで通り地平線付近で打ち切る
