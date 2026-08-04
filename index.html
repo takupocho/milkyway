@@ -5315,9 +5315,6 @@ function drawPhoto(ctx,s){
   // 地平線シルエット (方位に応じてスクロールする360度パノラマ)
   // ARモード中は、実際のカメラ映像に映る地面がそのまま見えるように、この暗いシルエットは描画しない
   if(!arActive){
-    // 仰角の変化に合わせて地平線の位置も星空と同じだけ連動して動くよう、人為的なクランプは行わない
-    const horizonP = toXY(s.facingAz,0) || (s.facingAlt<0 ? [W/2, -H*10] : [W/2, H*10]);
-    const baseY = horizonP[1];
     const {trees}=seededSilhouette();
     function ridgeHeightAt(az){
       // seededSilhouette()は3度刻み・120区間(0〜357度)の高さを360度でループさせて参照する
@@ -5325,34 +5322,80 @@ function drawPhoto(ctx,s){
       const idx=((Math.round(az/3)%120)+120)%120;
       return ridgePts[idx][1];
     }
-    const half=s.fovH/2, pad=6, stepDeg=3;
-    const startAz=s.facingAz-half-pad, endAz=s.facingAz+half+pad;
     // 南半球可視化時の地面の不透明度: スライダー(0〜100%)、100%で真っ暗(1.0)になるようにする
     const belowHorizonOpacityRaw=+el.belowHorizonOpacitySlider.value;
     const belowHorizonAlpha = 1.0 * ((isNaN(belowHorizonOpacityRaw)?100:belowHorizonOpacityRaw)/100);
-    ctx.beginPath();
-    ctx.moveTo(0,H);
-    for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
-      const y=ridgeHeightAt(az);
-      const x=W/2+(az-s.facingAz)/s.fovH*W;
-      ctx.lineTo(x, baseY - y*0.4);
-    }
-    ctx.lineTo(W,H);
-    ctx.closePath();
-    ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
-    ctx.fill();
-    trees.forEach(t=>{
-      const diff=angDiff(s.facingAz,t.az);
-      if(Math.abs(diff)>half+3) return;
-      const tx=W/2+diff/s.fovH*W, ty=baseY-6;
+    const groundColor=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
+
+    if(useDiagonalFisheye){
+      // 高度0°の各方位を魚眼投影して結ぶことで、仰角に応じて湾曲する本来の水平線を作る。
+      // 山の高さも角度へ換算して同じ投影へ通すため、天球と地面がずれずに一緒に動く。
+      const pixelsPerDegree=Math.max(0.01,fisheyeScale*D2R);
+      const terrainPoints=[];
+      for(let diff=-89.5;diff<=89.5;diff+=1){
+        const az=norm360(s.facingAz+diff);
+        const terrainAlt=ridgeHeightAt(az)*0.4/pixelsPerDegree;
+        const p=toXY(az,terrainAlt);
+        if(p) terrainPoints.push(p);
+      }
+      if(terrainPoints.length>=2){
+        ctx.beginPath();
+        ctx.moveTo(0,H);
+        ctx.lineTo(terrainPoints[0][0],terrainPoints[0][1]);
+        for(let i=1;i<terrainPoints.length;i++) ctx.lineTo(terrainPoints[i][0],terrainPoints[i][1]);
+        ctx.lineTo(W,H);
+        ctx.closePath();
+        ctx.fillStyle=groundColor;
+        ctx.fill();
+      }
+
+      // 木も根元(高度0°)と先端(高さに相当する高度)を魚眼投影し、水平線の曲率へ沿わせる。
+      trees.forEach(t=>{
+        const diff=angDiff(s.facingAz,t.az);
+        if(Math.abs(diff)>=89) return;
+        const base=toXY(t.az,0);
+        const top=toXY(t.az,t.h/pixelsPerDegree);
+        if(!base||!top) return;
+        const vx=top[0]-base[0], vy=top[1]-base[1], len=Math.hypot(vx,vy)||1;
+        const nx=-vy/len, ny=vx/len, halfWidth=t.w/2;
+        ctx.beginPath();
+        ctx.moveTo(top[0],top[1]);
+        ctx.lineTo(base[0]+nx*halfWidth,base[1]+ny*halfWidth);
+        ctx.lineTo(base[0]-nx*halfWidth,base[1]-ny*halfWidth);
+        ctx.closePath();
+        ctx.fillStyle=groundColor;
+        ctx.fill();
+      });
+    } else {
+      // 通常レンズは従来どおりの直線的なシルエット描画を維持する。
+      const horizonP = toXY(s.facingAz,0) || (s.facingAlt<0 ? [W/2, -H*10] : [W/2, H*10]);
+      const baseY = horizonP[1];
+      const half=s.fovH/2, pad=6, stepDeg=3;
+      const startAz=s.facingAz-half-pad, endAz=s.facingAz+half+pad;
       ctx.beginPath();
-      ctx.moveTo(tx,ty);
-      ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
-      ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
+      ctx.moveTo(0,H);
+      for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
+        const y=ridgeHeightAt(az);
+        const x=W/2+(az-s.facingAz)/s.fovH*W;
+        ctx.lineTo(x, baseY-y*0.4);
+      }
+      ctx.lineTo(W,H);
       ctx.closePath();
-      ctx.fillStyle=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
+      ctx.fillStyle=groundColor;
       ctx.fill();
-    });
+      trees.forEach(t=>{
+        const diff=angDiff(s.facingAz,t.az);
+        if(Math.abs(diff)>half+3) return;
+        const tx=W/2+diff/s.fovH*W, ty=baseY-6;
+        ctx.beginPath();
+        ctx.moveTo(tx,ty);
+        ctx.lineTo(tx-t.w/2,ty+t.h*0.55);
+        ctx.lineTo(tx+t.w/2,ty+t.h*0.55);
+        ctx.closePath();
+        ctx.fillStyle=groundColor;
+        ctx.fill();
+      });
+    }
   }
 
   // 水平線(高度0°)を明るいグレーの点線で表示(トグルON時のみ)
@@ -5363,9 +5406,12 @@ function drawPhoto(ctx,s){
     ctx.setLineDash([7,6]);
     ctx.beginPath();
     let started=false;
-    for(let az=Math.floor(startAz/stepDeg)*stepDeg; az<=endAz; az+=stepDeg){
+    const horizonHalf=useDiagonalFisheye ? 89.5 : s.fovH/2+6;
+    const horizonStep=useDiagonalFisheye ? 1 : 3;
+    for(let diff=-horizonHalf;diff<=horizonHalf;diff+=horizonStep){
+      const az=norm360(s.facingAz+diff);
       const p=toXY(az,0);
-      if(!p) continue;
+      if(!p){ started=false; continue; }
       if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
       else ctx.lineTo(p[0],p[1]);
     }
