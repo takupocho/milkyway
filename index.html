@@ -5312,10 +5312,13 @@ function drawTimelineBar(canvas,intervals,opts){
   const targetWidth=Math.max(200,displayWidth);
   if(Math.abs(canvas.width-targetWidth)>1) canvas.width=targetWidth;
 
-  // スマホ画面かつ単一行モードの時は、ラベルが1行分で収まるぶんキャンバスの高さも縮めて縦の余白を詰める
+  // スマホ画面かつ単一行モードの時は、ラベルが1行分で収まるぶんキャンバスの高さも縮めて縦の余白を詰める。
+  // labelsOutside(天の川バー)はキャンバス上に一切ラベルを描かないため、さらに小さく、バー本体だけが
+  // 収まる高さ(14px)にする。以前は30pxのままだったため、バーの下に見えない余白が残ってしまっていた。
   const isMobileView=(typeof mobileHeaderMQ!=="undefined") && mobileHeaderMQ.matches;
   const wantsCompact = opts.singleRow || opts.labelsOutside;
-  if(wantsCompact && isMobileView && canvas.height!==30){ canvas.height=30; canvas.style.height="30px"; }
+  const compactH = opts.labelsOutside ? 14 : 30;
+  if(wantsCompact && isMobileView && canvas.height!==compactH){ canvas.height=compactH; canvas.style.height=compactH+"px"; }
   else if((!wantsCompact || !isMobileView) && canvas.height!==44){ canvas.height=44; canvas.style.height="44px"; }
 
   const ctx=canvas.getContext("2d");
