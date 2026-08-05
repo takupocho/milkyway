@@ -1229,9 +1229,19 @@
   .real-mw-credit a:hover,.real-mw-credit a:focus{text-decoration:underline;color:#fff;}
   body.real-mw-credit-visible:not(.ar-active) .real-mw-credit{display:block;}
   .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 9px);}
+  .terrain-credit{
+    display:none;position:absolute;left:7px;bottom:7px;z-index:7;
+    padding:2px 5px;border-radius:4px;background:rgba(3,5,14,.52);
+    color:rgba(235,238,248,.7);font:500 8px/1.25 'Inter',sans-serif;
+    pointer-events:none;
+  }
+  body.real-terrain-visible:not(.ar-active) .terrain-credit{display:block;}
+  .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 7px);}
   @media(max-width:760px){
     .real-mw-credit{right:6px;bottom:6px;padding:2px 5px;font-size:8px;}
     .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 6px);}
+    .terrain-credit{left:6px;bottom:6px;}
+    .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 6px);}
     .simulation-clock-overlay{top:6px;gap:10px;}
     .simulation-clock-date{font-size:11px;}
     .simulation-clock-time{font-size:18px;}
@@ -2327,6 +2337,7 @@
                 <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
                 <span> · Modified</span>
               </div>
+              <div class="terrain-credit" aria-label="地形データの出典">地形：国土地理院 標高タイルを加工</div>
               <div class="mobile-sky-search-control" aria-label="星空検索">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.8"/>
@@ -5546,6 +5557,153 @@ function seededSilhouette(){
   return seededSilhouette._pts;
 }
 
+/* 国土地理院の標高PNGから、観測地点を中心とした360°の実地形スカイラインを作る。
+   描画中に通信は行わず、場所が変わった時だけ非同期取得して結果をキャッシュする。 */
+const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
+const realTerrainProfileCache=new Map();
+const gsiDemTileCache=new Map();
+const TERRAIN_DISTANCES_KM=[0.05,0.1,0.2,0.35,0.5,0.75,1,1.5,2,3,4.5,6,8,11,15,20,28,38,52,70,90];
+function terrainDestination(lat,lon,bearingDeg,distanceKm){
+  const R=6371,br=bearingDeg*D2R,p1=lat*D2R,l1=lon*D2R,d=distanceKm/R;
+  const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(br));
+  const l2=l1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));
+  return [p2*R2D,((l2*R2D+540)%360)-180];
+}
+function terrainTilePoint(lat,lon,z){
+  const n=2**z,clampedLat=clamp(lat,-85.05112878,85.05112878);
+  const xf=(lon+180)/360*n;
+  const yf=(1-Math.asinh(Math.tan(clampedLat*D2R))/Math.PI)/2*n;
+  const x=Math.floor(xf),y=Math.floor(yf);
+  return {z,x,y,px:clamp(Math.floor((xf-x)*256),0,255),py:clamp(Math.floor((yf-y)*256),0,255),key:`${z}/${x}/${y}`};
+}
+async function imageBlobToPixels(blob){
+  let source=null,url="";
+  try{
+    if(typeof createImageBitmap==="function") source=await createImageBitmap(blob);
+    else{
+      url=URL.createObjectURL(blob);
+      source=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=url;});
+    }
+    const canvas=document.createElement("canvas");canvas.width=256;canvas.height=256;
+    const c=canvas.getContext("2d",{willReadFrequently:true});
+    c.drawImage(source,0,0,256,256);
+    return c.getImageData(0,0,256,256).data;
+  }finally{
+    if(source&&typeof source.close==="function") source.close();
+    if(url) URL.revokeObjectURL(url);
+  }
+}
+function loadGsiDemTile(tile){
+  if(gsiDemTileCache.has(tile.key)) return gsiDemTileCache.get(tile.key);
+  const promise=fetch(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${tile.z}/${tile.x}/${tile.y}.png`,{mode:"cors",cache:"force-cache"})
+    .then(r=>{if(!r.ok) throw new Error(`DEM ${r.status}`);return r.blob();})
+    .then(imageBlobToPixels).catch(()=>null);
+  gsiDemTileCache.set(tile.key,promise);
+  return promise;
+}
+function decodeGsiElevation(pixels,px,py){
+  if(!pixels) return null;
+  const i=(py*256+px)*4;
+  if(pixels[i+3]===0) return null;
+  const x=pixels[i]*65536+pixels[i+1]*256+pixels[i+2];
+  if(x===8388608) return null;
+  return (x<8388608?x:x-16777216)*0.01;
+}
+async function loadTilesWithLimit(tiles,limit=6){
+  let index=0;
+  async function worker(){while(index<tiles.length){const tile=tiles[index++];await loadGsiDemTile(tile);}}
+  await Promise.all(Array.from({length:Math.min(limit,tiles.length)},worker));
+}
+async function buildRealTerrainProfile(lat,lon,token){
+  const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
+  const samples=[];
+  const tilesByKey=new Map(observerRefs.map(t=>[t.key,t]));
+  for(let az=0;az<360;az++){
+    const ray=[];
+    for(const distanceKm of TERRAIN_DISTANCES_KM){
+      const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
+      const primaryZoom=distanceKm<=3?14:distanceKm<=15?12:10;
+      const zooms=primaryZoom===14?[14,12,10]:primaryZoom===12?[12,10]:[10];
+      const refs=zooms.map(z=>terrainTilePoint(pLat,pLon,z));
+      refs.forEach(t=>tilesByKey.set(t.key,t));
+      ray.push({distanceKm,refs});
+    }
+    samples.push(ray);
+  }
+  await loadTilesWithLimit([...tilesByKey.values()]);
+  if(token!==realTerrainState.requestToken) return null;
+  async function elevationFromRefs(refs){
+    for(const ref of refs){
+      const elevation=decodeGsiElevation(await loadGsiDemTile(ref),ref.px,ref.py);
+      if(Number.isFinite(elevation)) return elevation;
+    }
+    return null;
+  }
+  const observerElevation=await elevationFromRefs(observerRefs);
+  if(!Number.isFinite(observerElevation)) return null;
+  const eyeElevation=observerElevation+1.6;
+  const profile=new Array(360).fill(0);
+  let validCount=0;
+  for(let az=0;az<360;az++){
+    let highest=0;
+    for(const sample of samples[az]){
+      const elevation=await elevationFromRefs(sample.refs);
+      if(!Number.isFinite(elevation)) continue;
+      validCount++;
+      const metres=sample.distanceKm*1000;
+      // 標準的な大気差を含む7/6地球半径モデルで、遠方地形の沈み込みを補正する。
+      const curvatureDrop=metres*metres/(2*6371000*(7/6));
+      const apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
+      if(apparentAlt>highest) highest=apparentAlt;
+    }
+    profile[az]=clamp(highest,0,45);
+  }
+  if(validCount<720) return null;
+  return {profile,observerElevation};
+}
+function requestRealTerrainProfile(lat,lon){
+  if(arActive) return;
+  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if(realTerrainState.key===key&&realTerrainState.profile) return;
+  if(realTerrainState.failedKey===key) return;
+  const cached=realTerrainProfileCache.get(key);
+  if(cached){
+    Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
+    document.body.classList.add("real-terrain-visible");
+    return;
+  }
+  if(realTerrainState.loadingKey===key) return;
+  const token=++realTerrainState.requestToken;
+  realTerrainState.loadingKey=key;
+  realTerrainState.failedKey="";
+  document.body.classList.remove("real-terrain-visible");
+  buildRealTerrainProfile(lat,lon,token).then(result=>{
+    if(token!==realTerrainState.requestToken) return;
+    realTerrainState.loadingKey="";
+    if(!result){
+      realTerrainState.key=key;realTerrainState.failedKey=key;realTerrainState.profile=null;realTerrainState.observerElevation=null;
+      document.body.classList.remove("real-terrain-visible");
+      return;
+    }
+    realTerrainProfileCache.set(key,result);
+    while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
+    Object.assign(realTerrainState,{key,failedKey:"",...result});
+    document.body.classList.add("real-terrain-visible");
+    if(typeof update==="function") update();
+  });
+}
+function realTerrainAltitudeAt(az){
+  const profile=realTerrainState.profile;
+  if(!profile) return null;
+  const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+  return lerp(profile[i0],profile[i1],t);
+}
+window.addEventListener("online",()=>{
+  gsiDemTileCache.clear();
+  realTerrainState.failedKey="";
+  if(state&&!arActive) requestRealTerrainProfile(state.lat,state.lon);
+});
+
 /* 画像上の三角形を画面上の三角形へアフィン変換して描く。全天画像を通常・魚眼の両投影へ追従させるための軽量メッシュ描画。 */
 function drawTextureTriangle(ctx,img,s0,s1,s2,d0,d1,d2){
   const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]);
@@ -6122,7 +6280,25 @@ function drawPhoto(ctx,s){
     const belowHorizonAlpha = 1.0 * ((isNaN(belowHorizonOpacityRaw)?100:belowHorizonOpacityRaw)/100);
     const groundColor=showBelowHorizon ? `rgba(5,6,8,${belowHorizonAlpha})` : "#050608";
 
-    if(useDiagonalFisheye){
+    const realTerrainReady=realTerrainState.profile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
+    if(realTerrainReady){
+      // 実標高の稜線を天体と同じ投影へ通す。通常・縦構図・魚眼のすべてで位置が一致する。
+      const half=useDiagonalFisheye?89.5:s.fovH/2+7;
+      const step=useDiagonalFisheye?0.75:Math.max(0.25,Math.min(1,s.fovH/160));
+      const terrainPoints=[];
+      for(let diff=-half;diff<=half;diff+=step){
+        const az=norm360(s.facingAz+diff);
+        const p=toXY(az,realTerrainAltitudeAt(az));
+        if(p&&Number.isFinite(p[0])&&Number.isFinite(p[1])) terrainPoints.push(p);
+      }
+      if(terrainPoints.length>=2){
+        ctx.beginPath();
+        ctx.moveTo(0,H);
+        ctx.lineTo(terrainPoints[0][0],terrainPoints[0][1]);
+        for(let i=1;i<terrainPoints.length;i++) ctx.lineTo(terrainPoints[i][0],terrainPoints[i][1]);
+        ctx.lineTo(W,H);ctx.closePath();ctx.fillStyle=groundColor;ctx.fill();
+      }
+    } else if(useDiagonalFisheye){
       // 高度0°の各方位を魚眼投影して結ぶことで、仰角に応じて湾曲する本来の水平線を作る。
       // 山の高さも角度へ換算して同じ投影へ通すため、天球と地面がずれずに一緒に動く。
       const pixelsPerDegree=Math.max(0.01,fisheyeScale*D2R);
@@ -6854,6 +7030,7 @@ function update(){
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
   state=computeState();
+  requestRealTerrainProfile(state.lat,state.lon);
   drawDial(dialCtx,state);
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
