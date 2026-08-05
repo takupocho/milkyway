@@ -1077,6 +1077,7 @@
   }
   .osm-map-panel.show{display:block;}
   .osm-map{width:100%;height:100%;background:#d8d8d8;}
+  .osm-map .leaflet-tile{max-width:none!important;max-height:none!important;}
   .photo-canvas-wrap.portrait .osm-map-panel{left:16.6667%;right:16.6667%;}
   .osm-map-actions{
     position:absolute;
@@ -1119,6 +1120,38 @@
   }
   .osm-location-marker::after{
     content:"";position:absolute;left:5px;top:5px;width:4px;height:4px;border-radius:50%;background:#10142a;
+  }
+  .osm-center-target{
+    position:absolute;
+    left:50%;
+    top:50%;
+    z-index:1001;
+    width:34px;
+    height:34px;
+    transform:translate(-50%,-50%);
+    border:2px solid #fff;
+    border-radius:50%;
+    filter:drop-shadow(0 1px 3px rgba(0,0,0,.9));
+    pointer-events:none;
+  }
+  .osm-center-target::before,.osm-center-target::after{
+    content:"";
+    position:absolute;
+    left:50%;top:50%;
+    background:#fff;
+    transform:translate(-50%,-50%);
+  }
+  .osm-center-target::before{width:46px;height:2px;}
+  .osm-center-target::after{width:2px;height:46px;}
+  .osm-center-target-dot{
+    position:absolute;
+    left:50%;top:50%;
+    width:6px;height:6px;
+    z-index:1;
+    transform:translate(-50%,-50%);
+    border:1px solid #fff;
+    border-radius:50%;
+    background:var(--core-amber);
   }
   .real-mw-credit{
     display:none;
@@ -2265,6 +2298,7 @@
               </button>
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="観測地点を選択するOpenStreetMap"></div>
+                <div class="osm-center-target" aria-hidden="true"><span class="osm-center-target-dot"></span></div>
                 <div class="osm-map-actions">
                   <button id="osmLocateBtn" type="button">◎ 現在地</button>
                   <button id="osmApplyBtn" type="button" class="primary">この場所に設定</button>
@@ -3583,10 +3617,10 @@ el.mobileClockToggleBtn.addEventListener("click",()=>{
   scheduleSaveSettings();
 });
 
-/* スマホ用OpenStreetMap。地図タップまたはドラッグ可能なマーカーで観測地点を選択する。 */
+/* スマホ用OpenStreetMap。画面中央の照準位置を観測地点として選択する。 */
 let osmMapScreenOpen=false;
 let osmMapInstance=null;
-let osmMapMarker=null;
+let osmTileLayer=null;
 let osmCandidateLat=null;
 let osmCandidateLon=null;
 function updateOsmCoordinateLabel(){
@@ -3598,9 +3632,13 @@ function setOsmCandidate(lat,lon,moveMap=false){
   lon=((+lon+180)%360+360)%360-180;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
   osmCandidateLat=lat; osmCandidateLon=lon;
-  if(osmMapMarker) osmMapMarker.setLatLng([lat,lon]);
   if(moveMap&&osmMapInstance) osmMapInstance.setView([lat,lon],Math.max(15,osmMapInstance.getZoom()));
   updateOsmCoordinateLabel();
+}
+function syncOsmCandidateToCenter(){
+  if(!osmMapInstance) return;
+  const center=osmMapInstance.getCenter();
+  setOsmCandidate(center.lat,center.lng);
 }
 function initOsmMap(){
   if(osmMapInstance) return true;
@@ -3610,20 +3648,30 @@ function initOsmMap(){
   }
   const lat=Number.isFinite(+el.lat.value)?+el.lat.value:34.69;
   const lon=Number.isFinite(+el.lon.value)?+el.lon.value:135.19;
-  osmMapInstance=L.map(el.osmMap,{zoomControl:true,attributionControl:true}).setView([lat,lon],13);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  osmMapInstance=L.map(el.osmMap,{zoomControl:true,attributionControl:true,zoomAnimation:false}).setView([lat,lon],13);
+  osmTileLayer=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
     maxZoom:19,
+    minZoom:2,
+    keepBuffer:4,
+    updateWhenIdle:false,
+    updateWhenZooming:false,
+    detectRetina:false,
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
   }).addTo(osmMapInstance);
-  const markerIcon=L.divIcon({className:"",html:'<div class="osm-location-marker"></div>',iconSize:[20,20],iconAnchor:[10,20]});
-  osmMapMarker=L.marker([lat,lon],{draggable:true,icon:markerIcon,title:"観測地点"}).addTo(osmMapInstance);
-  osmMapMarker.on("dragend",()=>{const p=osmMapMarker.getLatLng();setOsmCandidate(p.lat,p.lng);});
-  osmMapInstance.on("click",e=>setOsmCandidate(e.latlng.lat,e.latlng.lng));
+  /* 一時的なタイル取得失敗だけを1回再試行し、空白ブロックを残りにくくする。 */
+  osmTileLayer.on("tileerror",e=>{
+    const tile=e.tile;
+    if(!tile||tile.dataset.osmRetried==="1") return;
+    tile.dataset.osmRetried="1";
+    const original=tile.src.split("?")[0];
+    setTimeout(()=>{if(osmMapScreenOpen) tile.src=`${original}?retry=${Date.now()}`;},300);
+  });
+  osmMapInstance.on("move",syncOsmCandidateToCenter);
+  osmMapInstance.on("moveend",syncOsmCandidateToCenter);
   setOsmCandidate(lat,lon);
   return true;
 }
 function setOsmMapScreenOpen(open){
-  if(open&&!initOsmMap()) return;
   osmMapScreenOpen=!!open;
   el.osmMapPanel.classList.toggle("show",osmMapScreenOpen);
   el.osmMapPanel.setAttribute("aria-hidden",String(!osmMapScreenOpen));
@@ -3633,9 +3681,20 @@ function setOsmMapScreenOpen(open){
   el.mobileMapToggleBtn.title=label;
   if(osmMapScreenOpen){
     if(playbackTimer) stopPlayback();
-    setOsmCandidate(+el.lat.value,+el.lon.value);
-    osmMapInstance.setView([osmCandidateLat,osmCandidateLon],osmMapInstance.getZoom());
-    requestAnimationFrame(()=>osmMapInstance.invalidateSize());
+    /* display:noneの状態では地図サイズを測れないため、表示後のフレームで初期化する。 */
+    requestAnimationFrame(()=>{
+      if(!osmMapScreenOpen) return;
+      if(!initOsmMap()){
+        setOsmMapScreenOpen(false);
+        return;
+      }
+      const lat=Number.isFinite(+el.lat.value)?+el.lat.value:34.69;
+      const lon=Number.isFinite(+el.lon.value)?+el.lon.value:135.19;
+      osmMapInstance.invalidateSize({pan:false});
+      osmMapInstance.setView([lat,lon],osmMapInstance.getZoom(),{animate:false});
+      setOsmCandidate(lat,lon);
+      requestAnimationFrame(()=>osmMapInstance.invalidateSize({pan:false}));
+    });
   }
 }
 el.mobileMapToggleBtn.addEventListener("click",()=>setOsmMapScreenOpen(!osmMapScreenOpen));
