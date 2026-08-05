@@ -604,6 +604,20 @@
     line-height:1.7;
     color:rgba(255,255,255,0.9);
   }
+  .sky-info-popup.mountain-detail{
+    background:rgba(12,15,31,0.92);
+    border-color:var(--core-amber);
+    text-align:center;
+  }
+  .sky-info-popup.mountain-detail .sky-info-title{
+    font-size:clamp(24px,4.2vw,38px);
+    margin-bottom:10px;
+  }
+  .sky-info-popup.mountain-detail .sky-info-body{
+    font-size:clamp(18px,3.2vw,28px);
+    line-height:1.45;
+    color:#f7d39a;
+  }
 
   .header-right-group{
     display:flex;
@@ -3547,6 +3561,7 @@ const SKY_SEARCH_INFO={
 };
 el.skyInfoPopup.addEventListener("click",()=>{
   el.skyInfoPopup.classList.remove("show");
+  el.skyInfoPopup.classList.remove("mountain-detail");
 });
 
 let skySearchPopupTimer=null;
@@ -3611,6 +3626,7 @@ function handleSkySearchSelection(selectEl){
   el.skySearchPopup.classList.remove("show");
   const info=SKY_SEARCH_INFO[val];
   if(info){
+    el.skyInfoPopup.classList.remove("mountain-detail");
     el.skyInfoTitle.textContent=info.title;
     const belowHorizonWarning = aa.alt<=-2
       ? `<span style="color:var(--alert);font-weight:700;">現在南半球で夜空にはでていません。</span><br>`
@@ -4218,12 +4234,23 @@ function photoDragMove(pos){
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
 function handlePhotoTap(pos){
-  const hit=photoClickRegions.find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
+  // 後から描いたラベルを優先し、山名と星空名称が重なっても見た目どおりに反応させる。
+  const hit=[...photoClickRegions].reverse().find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
   if(!hit) return;
+  if(hit.mountain){
+    if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
+    el.skySearchPopup.classList.remove("show");
+    el.skyInfoPopup.classList.add("mountain-detail");
+    el.skyInfoTitle.textContent=hit.mountain.name;
+    el.skyInfoBody.innerHTML=`標高 <strong>${Math.round(hit.mountain.ele).toLocaleString()} m</strong><br><span style="font-size:.62em;color:rgba(255,255,255,.78)">観測地点から約 ${hit.mountain.distanceKm.toFixed(1)} km</span>`;
+    el.skyInfoPopup.classList.add("show");
+    return;
+  }
   const info=SKY_SEARCH_INFO[hit.infoKey];
   if(!info) return;
   if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
   el.skySearchPopup.classList.remove("show");
+  el.skyInfoPopup.classList.remove("mountain-detail");
   el.skyInfoTitle.textContent=info.title;
   const belowHorizonWarning = (hit.altitude!==undefined && hit.altitude<=-2)
     ? `<span style="color:var(--alert);font-weight:700;">現在南半球で夜空にはでていません。</span><br>`
@@ -5803,6 +5830,11 @@ const gsiDemTileCache=new Map();
 let mountainNamesVisible=true;
 const mountainNameState={key:"",loadingKey:"",failedKey:"",mountains:[],requestToken:0};
 const mountainNameCache=new Map();
+// 山頂ノードが「剣ヶ峰」「弥山」などの峰名でも、一般に知られた山名で案内する代表山域。
+const FAMOUS_MOUNTAIN_AREAS=[
+  {name:"富士山",lat:35.3606,lon:138.7274,radiusKm:2.5},
+  {name:"大山",lat:35.3712,lon:133.5462,radiusKm:4.0}
+];
 const TERRAIN_DISTANCES_KM=[0.05,0.1,0.2,0.35,0.5,0.75,1,1.5,2,3,4.5,6,8,11,15,20,28,38,52,70,90];
 const TERRAIN_DISTANCE_BANDS=[
   {min:0,max:1,key:"immediate"},
@@ -5959,7 +5991,7 @@ function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
   return {distanceKm,bearing:norm360(Math.atan2(y,x)*R2D)};
 }
 async function fetchMountainNodes(lat,lon){
-  const query=`[out:json][timeout:25];node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name"];out body;`;
+  const query=`[out:json][timeout:25];(node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name"];node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name:ja"];);out body;`;
   const endpoints=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
   let lastError=null;
   for(const endpoint of endpoints){
@@ -5968,12 +6000,15 @@ async function fetchMountainNodes(lat,lon){
       if(!response.ok) throw new Error(`Mountain API ${response.status}`);
       const json=await response.json();
       return (json.elements||[]).map(node=>{
-        const tags=node.tags||{},name=tags["name:ja"]||tags.name;
+        const tags=node.tags||{};
+        const famousArea=FAMOUS_MOUNTAIN_AREAS.find(area=>terrainDistanceAndBearing(node.lat,node.lon,area.lat,area.lon).distanceKm<=area.radiusKm);
+        const name=famousArea?.name||tags["name:ja"]||tags["official_name:ja"]||tags.name;
         const ele=parseFloat(String(tags.ele||"").replace(/,/g,""));
         const prominence=parseFloat(String(tags.prominence||"").replace(/,/g,""));
         if(!name||!Number.isFinite(ele)||!Number.isFinite(node.lat)||!Number.isFinite(node.lon)) return null;
         const db=terrainDistanceAndBearing(lat,lon,node.lat,node.lon);
-        return {name,lat:node.lat,lon:node.lon,ele,distanceKm:db.distanceKm,bearing:db.bearing,prominence:Number.isFinite(prominence)?prominence:0};
+        const notable=!!famousArea||!!tags.wikidata||!!tags.wikipedia;
+        return {name,lat:node.lat,lon:node.lon,ele,distanceKm:db.distanceKm,bearing:db.bearing,prominence:Number.isFinite(prominence)?prominence:0,notable};
       }).filter(Boolean);
     }catch(error){lastError=error;}
   }
@@ -6016,7 +6051,7 @@ function drawMountainNameLabels(ctx,s,toXY,W,H){
     if(!Number.isFinite(ridgeAlt)||apparentAlt<ridgeAlt-0.45||apparentAlt<-0.2) continue;
     const pt=toXY(mountain.bearing,Math.max(apparentAlt,ridgeAlt));
     if(!pt||pt[0]<-30||pt[0]>W+30||pt[1]<-20||pt[1]>H+40) continue;
-    const score=mountain.ele+mountain.prominence*2+Math.max(0,apparentAlt)*180-mountain.distanceKm*1.5;
+    const score=mountain.ele+mountain.prominence*2+Math.max(0,apparentAlt)*180-mountain.distanceKm*1.5+(mountain.notable?4500:0);
     candidates.push({...mountain,apparentAlt,pt,score});
   }
   candidates.sort((a,b)=>b.score-a.score);
@@ -6045,6 +6080,8 @@ function drawMountainNameLabels(ctx,s,toXY,W,H){
     ctx.fillStyle="rgba(7,9,20,.78)";ctx.fillRect(box.x1,box.y1,width,height);
     ctx.strokeStyle="rgba(232,166,89,.58)";ctx.strokeRect(box.x1+.5,box.y1+.5,width-1,height-1);
     ctx.fillStyle="rgba(248,246,238,.96)";ctx.fillText(label,box.cx,box.cy+.5);
+    const hitPad=W<700?14:7;
+    photoClickRegions.push({x1:box.x1-hitPad,y1:box.y1-hitPad,x2:box.x2+hitPad,y2:box.y2+hitPad,mountain});
     placed.push(box);placedNames.add(mountain.name);
   }
   ctx.restore();
@@ -6660,7 +6697,7 @@ function drawPhoto(ctx,s){
       const tctx=terrainCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
       const atmosphere=clamp(s.twilight*.65+s.moonContribution*.5+s.lp.base*.2,0,1);
       const bandStyles={
-        immediate:{top:[4,5,7],bottom:[10,11,14],boost:2},
+        immediate:{top:[4,5,7],bottom:[20,22,28],boost:4},
         near:{top:[8,10,15],bottom:[15,18,25],boost:5},
         middle:{top:[13,18,28],bottom:[22,29,42],boost:10},
         far:{top:[20,28,42],bottom:[31,42,58],boost:16},
