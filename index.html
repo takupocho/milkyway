@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3ynXo+TBkFkkdLWP0EqbM1lZ5B3A=" crossorigin="">
 <style>
   :root{
     --void:#080a14;
@@ -1064,6 +1065,61 @@
   .simulation-clock-date{font-size:14px;}
   .simulation-clock-time{font-size:23px;letter-spacing:.03em;}
   .mobile-clock-toggle-btn{display:none;}
+  .mobile-map-toggle-btn{display:none;}
+  .osm-map-panel{
+    display:none;
+    position:absolute;
+    inset:0;
+    z-index:10;
+    overflow:hidden;
+    border-radius:8px;
+    background:#10142a;
+  }
+  .osm-map-panel.show{display:block;}
+  .osm-map{width:100%;height:100%;background:#d8d8d8;}
+  .photo-canvas-wrap.portrait .osm-map-panel{left:16.6667%;right:16.6667%;}
+  .osm-map-actions{
+    position:absolute;
+    top:8px;
+    right:8px;
+    z-index:1000;
+    display:flex;
+    gap:6px;
+  }
+  .osm-map-actions button{
+    min-height:32px;
+    padding:6px 10px;
+    border:1px solid rgba(255,255,255,.7);
+    border-radius:16px;
+    background:rgba(16,20,42,.9);
+    color:#fff;
+    font:700 11px/1 'Inter',sans-serif;
+    box-shadow:0 2px 8px rgba(0,0,0,.35);
+  }
+  .osm-map-actions button.primary{border-color:var(--core-amber);color:var(--core-amber);}
+  .osm-map-coordinate{
+    position:absolute;
+    left:8px;
+    bottom:8px;
+    z-index:1000;
+    padding:5px 8px;
+    border-radius:5px;
+    background:rgba(16,20,42,.86);
+    color:#fff;
+    font:600 10px/1.25 'IBM Plex Mono',monospace;
+    pointer-events:none;
+  }
+  .osm-location-marker{
+    width:20px;height:20px;
+    border:3px solid #fff;
+    border-radius:50% 50% 50% 0;
+    background:var(--core-amber);
+    box-shadow:0 2px 7px rgba(0,0,0,.55);
+    transform:rotate(-45deg);
+  }
+  .osm-location-marker::after{
+    content:"";position:absolute;left:5px;top:5px;width:4px;height:4px;border-radius:50%;background:#10142a;
+  }
   .real-mw-credit{
     display:none;
     position:absolute;
@@ -1821,6 +1877,29 @@
     .mobile-clock-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
     .mobile-clock-toggle-btn.active .clock-hidden-slash{display:none;}
     body.ar-active .mobile-clock-toggle-btn{display:none;}
+    .mobile-map-toggle-btn{
+      display:flex;
+      position:absolute;
+      top:185px;
+      left:9px;
+      z-index:12;
+      width:36px;
+      height:36px;
+      padding:0;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--line);
+      border-radius:50%;
+      background:rgba(18,21,43,0.88);
+      color:var(--star-white);
+      opacity:.7;
+      box-shadow:0 2px 8px rgba(0,0,0,0.28);
+    }
+    .mobile-map-toggle-btn.active{color:var(--core-amber);border-color:var(--core-amber);opacity:.92;}
+    .mobile-map-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
+    body.ar-active .mobile-map-toggle-btn{display:none;}
+    .osm-map-actions{top:7px;right:7px;gap:4px;}
+    .osm-map-actions button{min-height:29px;padding:5px 8px;font-size:10px;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -2177,6 +2256,21 @@
                   <path class="clock-hidden-slash" d="M5 5L19 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>
               </button>
+              <button id="mobileMapToggleBtn" type="button" class="mobile-map-toggle-btn" aria-label="観測地点マップを表示する" title="観測地点マップ">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3.5 5.5L8.8 3.5L15.2 5.5L20.5 3.5V18.5L15.2 20.5L8.8 18.5L3.5 20.5V5.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <path d="M8.8 3.8V18.2M15.2 5.8V20.2" stroke="currentColor" stroke-width="1.4"/>
+                  <circle cx="12" cy="11.5" r="2.1" fill="currentColor"/>
+                </svg>
+              </button>
+              <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
+                <div id="osmMap" class="osm-map" aria-label="観測地点を選択するOpenStreetMap"></div>
+                <div class="osm-map-actions">
+                  <button id="osmLocateBtn" type="button">◎ 現在地</button>
+                  <button id="osmApplyBtn" type="button" class="primary">この場所に設定</button>
+                </div>
+                <div id="osmMapCoordinate" class="osm-map-coordinate"></div>
+              </div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
@@ -2337,6 +2431,7 @@
 
 </div>
 
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 (function(){
 "use strict";
@@ -2995,8 +3090,9 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
+  osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLocateBtn:$("osmLocateBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3486,6 +3582,88 @@ el.mobileClockToggleBtn.addEventListener("click",()=>{
   syncSimulationClockVisibility();
   scheduleSaveSettings();
 });
+
+/* スマホ用OpenStreetMap。地図タップまたはドラッグ可能なマーカーで観測地点を選択する。 */
+let osmMapScreenOpen=false;
+let osmMapInstance=null;
+let osmMapMarker=null;
+let osmCandidateLat=null;
+let osmCandidateLon=null;
+function updateOsmCoordinateLabel(){
+  if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
+  el.osmMapCoordinate.textContent=`緯度 ${osmCandidateLat.toFixed(5)} / 経度 ${osmCandidateLon.toFixed(5)}`;
+}
+function setOsmCandidate(lat,lon,moveMap=false){
+  lat=Math.max(-85,Math.min(85,+lat));
+  lon=((+lon+180)%360+360)%360-180;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  osmCandidateLat=lat; osmCandidateLon=lon;
+  if(osmMapMarker) osmMapMarker.setLatLng([lat,lon]);
+  if(moveMap&&osmMapInstance) osmMapInstance.setView([lat,lon],Math.max(15,osmMapInstance.getZoom()));
+  updateOsmCoordinateLabel();
+}
+function initOsmMap(){
+  if(osmMapInstance) return true;
+  if(typeof window.L==="undefined"){
+    alert("OpenStreetMapを読み込めませんでした。通信環境を確認して、もう一度お試しください。");
+    return false;
+  }
+  const lat=Number.isFinite(+el.lat.value)?+el.lat.value:34.69;
+  const lon=Number.isFinite(+el.lon.value)?+el.lon.value:135.19;
+  osmMapInstance=L.map(el.osmMap,{zoomControl:true,attributionControl:true}).setView([lat,lon],13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19,
+    attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
+  }).addTo(osmMapInstance);
+  const markerIcon=L.divIcon({className:"",html:'<div class="osm-location-marker"></div>',iconSize:[20,20],iconAnchor:[10,20]});
+  osmMapMarker=L.marker([lat,lon],{draggable:true,icon:markerIcon,title:"観測地点"}).addTo(osmMapInstance);
+  osmMapMarker.on("dragend",()=>{const p=osmMapMarker.getLatLng();setOsmCandidate(p.lat,p.lng);});
+  osmMapInstance.on("click",e=>setOsmCandidate(e.latlng.lat,e.latlng.lng));
+  setOsmCandidate(lat,lon);
+  return true;
+}
+function setOsmMapScreenOpen(open){
+  if(open&&!initOsmMap()) return;
+  osmMapScreenOpen=!!open;
+  el.osmMapPanel.classList.toggle("show",osmMapScreenOpen);
+  el.osmMapPanel.setAttribute("aria-hidden",String(!osmMapScreenOpen));
+  el.mobileMapToggleBtn.classList.toggle("active",osmMapScreenOpen);
+  const label=osmMapScreenOpen?"観測地点マップを閉じる":"観測地点マップを表示する";
+  el.mobileMapToggleBtn.setAttribute("aria-label",label);
+  el.mobileMapToggleBtn.title=label;
+  if(osmMapScreenOpen){
+    if(playbackTimer) stopPlayback();
+    setOsmCandidate(+el.lat.value,+el.lon.value);
+    osmMapInstance.setView([osmCandidateLat,osmCandidateLon],osmMapInstance.getZoom());
+    requestAnimationFrame(()=>osmMapInstance.invalidateSize());
+  }
+}
+el.mobileMapToggleBtn.addEventListener("click",()=>setOsmMapScreenOpen(!osmMapScreenOpen));
+el.osmLocateBtn.addEventListener("click",()=>{
+  if(!navigator.geolocation){alert("この環境では位置情報を取得できません。");return;}
+  const original=el.osmLocateBtn.textContent;
+  el.osmLocateBtn.textContent="取得中…";
+  el.osmLocateBtn.disabled=true;
+  navigator.geolocation.getCurrentPosition(pos=>{
+    el.osmLocateBtn.textContent=original; el.osmLocateBtn.disabled=false;
+    setOsmCandidate(pos.coords.latitude,pos.coords.longitude,true);
+  },()=>{
+    el.osmLocateBtn.textContent=original; el.osmLocateBtn.disabled=false;
+    alert("現在地を取得できませんでした。地図をタップして観測地点を選んでください。");
+  },{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
+});
+el.osmApplyBtn.addEventListener("click",()=>{
+  if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
+  el.lat.value=osmCandidateLat.toFixed(5);
+  el.lon.value=osmCandidateLon.toFixed(5);
+  el.tz.value=Math.max(-12,Math.min(14,Math.round(osmCandidateLon/7.5)/2));
+  el.citySelect.value=0;
+  update();
+  reverseGeocodeAndShow(osmCandidateLat,osmCandidateLon);
+  scheduleSaveSettings();
+  setOsmMapScreenOpen(false);
+});
+window.addEventListener("resize",()=>{if(osmMapScreenOpen&&osmMapInstance) requestAnimationFrame(()=>osmMapInstance.invalidateSize());});
 
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
 let playbackTimer=null;
