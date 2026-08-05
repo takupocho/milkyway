@@ -5805,7 +5805,8 @@ const mountainNameState={key:"",loadingKey:"",failedKey:"",mountains:[],requestT
 const mountainNameCache=new Map();
 const TERRAIN_DISTANCES_KM=[0.05,0.1,0.2,0.35,0.5,0.75,1,1.5,2,3,4.5,6,8,11,15,20,28,38,52,70,90];
 const TERRAIN_DISTANCE_BANDS=[
-  {min:0,max:5,key:"near"},
+  {min:0,max:1,key:"immediate"},
+  {min:1,max:5,key:"near"},
   {min:5,max:20,key:"middle"},
   {min:20,max:50,key:"far"},
   {min:50,max:Infinity,key:"distant"}
@@ -6634,22 +6635,27 @@ function drawPhoto(ctx,s){
     const realTerrainReady=realTerrainState.profile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
     if(realTerrainReady){
       // 距離帯別の稜線を遠方から手前へ重ね、夜の大気遠近法で奥行きを表現する。
-      // 4層は透明キャンバスへ一度不透明で合成し、最後に全体へ南半球透明度を適用する。
+      // 5層はそれぞれ稜線側を暗く、画面下側を少し明るい縦グラデーションで描く。
+      // 透明キャンバスへ一度不透明で合成し、最後に全体へ南半球透明度を適用する。
       const half=useDiagonalFisheye?89.5:s.fovH/2+7;
       const step=useDiagonalFisheye?0.75:Math.max(0.25,Math.min(1,s.fovH/160));
       const terrainCanvas=drawPhoto._terrainLayerCanvas||(drawPhoto._terrainLayerCanvas=document.createElement("canvas"));
       if(terrainCanvas.width!==W||terrainCanvas.height!==H){terrainCanvas.width=W;terrainCanvas.height=H;}
       const tctx=terrainCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
       const atmosphere=clamp(s.twilight*.65+s.moonContribution*.5+s.lp.base*.2,0,1);
-      const baseColors={
-        near:[5,6,8],middle:[11,13,20],far:[18,23,34],distant:[27,35,50]
+      const bandStyles={
+        immediate:{top:[4,5,7],bottom:[10,11,14],boost:2},
+        near:{top:[8,10,15],bottom:[15,18,25],boost:5},
+        middle:{top:[13,18,28],bottom:[22,29,42],boost:10},
+        far:{top:[20,28,42],bottom:[31,42,58],boost:16},
+        distant:{top:[28,39,56],bottom:[42,55,73],boost:22}
       };
-      const boosts={near:2,middle:7,far:14,distant:22};
-      function terrainBandColor(key){
-        const rgb=baseColors[key]||baseColors.near,b=boosts[key]||0;
-        return `rgb(${rgb.map(v=>Math.round(v+b*atmosphere)).join(",")})`;
+      function terrainBandColors(key){
+        const style=bandStyles[key]||bandStyles.immediate;
+        const brighten=rgb=>`rgb(${rgb.map(v=>Math.round(v+style.boost*atmosphere)).join(",")})`;
+        return {top:brighten(style.top),bottom:brighten(style.bottom)};
       }
-      function fillTerrainBand(profile,color){
+      function fillTerrainBand(profile,colors){
         const points=[];
         for(let diff=-half;diff<=half;diff+=step){
           const az=norm360(s.facingAz+diff);
@@ -6659,14 +6665,18 @@ function drawPhoto(ctx,s){
           if(p&&Number.isFinite(p[0])&&Number.isFinite(p[1])) points.push(p);
         }
         if(points.length<2) return;
+        const ridgeY=clamp(Math.min(...points.map(point=>point[1])),0,H-1);
+        const gradient=tctx.createLinearGradient(0,ridgeY,0,H);
+        gradient.addColorStop(0,colors.top);
+        gradient.addColorStop(1,colors.bottom);
         tctx.beginPath();tctx.moveTo(0,H);tctx.lineTo(points[0][0],points[0][1]);
         for(let i=1;i<points.length;i++) tctx.lineTo(points[i][0],points[i][1]);
-        tctx.lineTo(W,H);tctx.closePath();tctx.fillStyle=color;tctx.fill();
+        tctx.lineTo(W,H);tctx.closePath();tctx.fillStyle=gradient;tctx.fill();
       }
       const layers=(realTerrainState.terrainLayers&&realTerrainState.terrainLayers.length)
         ? [...realTerrainState.terrainLayers].reverse()
-        : [{key:"near",profile:realTerrainState.profile}];
-      layers.forEach(layer=>fillTerrainBand(layer.profile,terrainBandColor(layer.key)));
+        : [{key:"immediate",profile:realTerrainState.profile}];
+      layers.forEach(layer=>fillTerrainBand(layer.profile,terrainBandColors(layer.key)));
       ctx.save();ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;ctx.drawImage(terrainCanvas,0,0);ctx.restore();
     } else if(useDiagonalFisheye){
       // 高度0°の各方位を魚眼投影して結ぶことで、仰角に応じて湾曲する本来の水平線を作る。
