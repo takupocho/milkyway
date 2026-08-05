@@ -6731,6 +6731,28 @@ function drawPhoto(ctx,s){
         : [{key:"immediate",profile:realTerrainState.profile}];
       layers.forEach(layer=>fillTerrainBand(layer.profile,terrainBandColors(layer.key)));
       ctx.save();ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;ctx.drawImage(terrainCanvas,0,0);ctx.restore();
+
+      // 距離帯ごとの境界は描かず、全距離を合成した最終稜線（空との境界）だけを1本描く。
+      ctx.save();
+      ctx.beginPath();
+      let skylineStarted=false;
+      for(let diff=-half;diff<=half;diff+=step){
+        const az=norm360(s.facingAz+diff);
+        const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+        const altitude=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+        const p=toXY(az,altitude);
+        if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){skylineStarted=false;continue;}
+        if(!skylineStarted){ctx.moveTo(p[0],p[1]);skylineStarted=true;}
+        else ctx.lineTo(p[0],p[1]);
+      }
+      ctx.strokeStyle="rgba(218,223,232,.76)";
+      ctx.lineWidth=clamp(W/820,1.15,1.8);
+      ctx.lineJoin="round";
+      ctx.lineCap="round";
+      ctx.shadowColor="rgba(230,234,242,.28)";
+      ctx.shadowBlur=2;
+      ctx.stroke();
+      ctx.restore();
     } else if(useDiagonalFisheye){
       // 高度0°の各方位を魚眼投影して結ぶことで、仰角に応じて湾曲する本来の水平線を作る。
       // 山の高さも角度へ換算して同じ投影へ通すため、天球と地面がずれずに一緒に動く。
