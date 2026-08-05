@@ -1206,7 +1206,10 @@
     right:8px;
     z-index:1000;
     display:flex;
+    flex-wrap:wrap;
+    justify-content:flex-end;
     gap:6px;
+    max-width:calc(100% - 16px);
   }
   .osm-map-actions button{
     min-height:32px;
@@ -1220,6 +1223,37 @@
   }
   .osm-map-actions button.primary{border-color:var(--core-amber);color:var(--core-amber);}
   .osm-map-actions button.layer-active{border-color:#7fc8ff;color:#bfe5ff;}
+  .osm-import-panel{
+    display:none;
+    position:absolute;
+    top:52px;
+    right:8px;
+    z-index:1003;
+    width:min(430px,calc(100% - 16px));
+    box-sizing:border-box;
+    padding:13px;
+    border:1px solid rgba(127,200,255,.8);
+    border-radius:12px;
+    background:rgba(12,16,34,.96);
+    box-shadow:0 8px 26px rgba(0,0,0,.5);
+    color:#fff;
+  }
+  .osm-import-panel.show{display:block;}
+  .osm-import-title{font:700 14px/1.3 'Inter',sans-serif;color:#d9efff;margin-bottom:5px;}
+  .osm-import-help{font:500 10.5px/1.55 'Inter',sans-serif;color:rgba(255,255,255,.72);margin-bottom:8px;}
+  .osm-import-input{
+    display:block;width:100%;min-height:72px;box-sizing:border-box;resize:vertical;
+    padding:9px;border:1px solid rgba(255,255,255,.35);border-radius:8px;
+    background:rgba(255,255,255,.08);color:#fff;font:500 12px/1.45 'Inter',sans-serif;
+  }
+  .osm-import-input:focus{outline:2px solid rgba(127,200,255,.5);border-color:#7fc8ff;}
+  .osm-import-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px;}
+  .osm-import-buttons button{
+    min-height:31px;padding:6px 10px;border:1px solid rgba(255,255,255,.45);border-radius:16px;
+    background:#191f3f;color:#fff;font:700 11px/1 'Inter',sans-serif;
+  }
+  .osm-import-buttons button.primary{border-color:#7fc8ff;color:#d9efff;}
+  .osm-import-status{min-height:17px;margin-top:7px;font:600 10.5px/1.5 'Inter',sans-serif;color:#f3c47d;}
   .osm-map-coordinate{
     position:absolute;
     left:8px;
@@ -2070,6 +2104,7 @@
     body.ar-active .mobile-map-toggle-btn{display:none;}
     .osm-map-actions{top:7px;right:7px;gap:4px;}
     .osm-map-actions button{min-height:29px;padding:5px 8px;font-size:10px;}
+    .osm-import-panel{top:74px;right:7px;width:calc(100% - 14px);padding:11px;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -2451,7 +2486,19 @@
                 <div class="osm-map-actions">
                   <button id="osmLayerToggleBtn" type="button" class="layer-active" aria-label="衛星画像に切り替える">地図</button>
                   <button id="osmLocateBtn" type="button">◎ 現在地</button>
+                  <button id="osmGoogleImportBtn" type="button">Gマップ読込</button>
                   <button id="osmApplyBtn" type="button" class="primary">この場所に設定</button>
+                </div>
+                <div id="osmGoogleImportPanel" class="osm-import-panel" role="dialog" aria-modal="false" aria-labelledby="osmImportTitle">
+                  <div id="osmImportTitle" class="osm-import-title">Googleマップの場所を読み込む</div>
+                  <div class="osm-import-help">Googleマップの「共有→リンクをコピー」で取得した文章・URL、または緯度と経度を貼り付けてください。</div>
+                  <textarea id="osmGoogleImportInput" class="osm-import-input" inputmode="url" placeholder="例：https://www.google.com/maps/@35.12345,134.56789,15z&#10;または 35.12345, 134.56789"></textarea>
+                  <div class="osm-import-buttons">
+                    <button id="osmGooglePasteBtn" type="button">貼り付け</button>
+                    <button id="osmGoogleImportCloseBtn" type="button">閉じる</button>
+                    <button id="osmGoogleImportRunBtn" type="button" class="primary">場所を読み込む</button>
+                  </div>
+                  <div id="osmGoogleImportStatus" class="osm-import-status" aria-live="polite"></div>
                 </div>
                 <div id="osmMapCoordinate" class="osm-map-coordinate"></div>
               </div>
@@ -3278,6 +3325,7 @@ const el={
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
+  osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3873,6 +3921,107 @@ function initOsmMap(){
   setOsmCandidate(lat,lon);
   return true;
 }
+function setGoogleMapsImportOpen(open){
+  el.osmGoogleImportPanel.classList.toggle("show",!!open);
+  el.osmGoogleImportBtn.classList.toggle("layer-active",!!open);
+  if(open){
+    el.osmGoogleImportStatus.textContent="";
+    setTimeout(()=>el.osmGoogleImportInput.focus(),0);
+  }
+}
+function validImportedCoordinate(lat,lon){
+  lat=+lat;lon=+lon;
+  return Number.isFinite(lat)&&Number.isFinite(lon)&&Math.abs(lat)<=90&&Math.abs(lon)<=180 ? {lat,lon} : null;
+}
+function decodeImportText(value){
+  let text=String(value||"").trim();
+  for(let i=0;i<3;i++){
+    try{const decoded=decodeURIComponent(text.replace(/\+/g," "));if(decoded===text) break;text=decoded;}catch(e){break;}
+  }
+  return text;
+}
+function extractGoogleMapsCoordinate(raw){
+  const source=String(raw||"");
+  const decoded=decodeImportText(source);
+  const number="(-?\\d{1,3}(?:\\.\\d+)?)";
+  const patterns=[
+    new RegExp("!3d"+number+"!4d"+number,"i"),
+    new RegExp("@"+number+"\\s*[,、]\\s*"+number,"i"),
+    new RegExp("(?:[?&](?:q|query|center|ll|destination|origin)=)(?:loc:)?"+number+"\\s*[,、 ]\\s*"+number,"i"),
+    new RegExp("(?:^|[^\\d.-])"+number+"\\s*[,、]\\s*"+number+"(?:[^\\d.]|$)","i")
+  ];
+  for(const text of [source,decoded]){
+    for(const pattern of patterns){
+      const match=text.match(pattern);
+      if(!match) continue;
+      const coordinate=validImportedCoordinate(match[1],match[2]);
+      if(coordinate) return coordinate;
+    }
+  }
+  return null;
+}
+function extractSharedUrls(text){
+  return (String(text||"").match(/https?:\/\/[^\s<>"']+/gi)||[]).map(url=>url.replace(/[）)】\],。]+$/g,""));
+}
+async function expandGoogleMapsShortUrl(url){
+  if(!/(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url)) return url;
+  const controller=typeof AbortController!=="undefined"?new AbortController():null;
+  const timer=controller?setTimeout(()=>controller.abort(),7000):null;
+  try{
+    const response=await fetch(url,{method:"GET",redirect:"follow",cache:"no-store",credentials:"omit",signal:controller?.signal});
+    return response.url||url;
+  }finally{if(timer) clearTimeout(timer);}
+}
+function sharedAddressCandidates(raw){
+  const withoutUrls=String(raw||"").replace(/https?:\/\/[^\s<>"']+/gi," ");
+  return withoutUrls.split(/[\r\n]+/).map(line=>line.trim())
+    .filter(line=>line.length>=3&&line.length<=100&&!/^(共有|リンク|Google ?マップ|地図で見る)/i.test(line));
+}
+async function findImportedAddress(raw){
+  const candidates=sharedAddressCandidates(raw);
+  for(const query of candidates.slice(0,4)){
+    try{
+      const response=await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`,{cache:"no-store"});
+      if(!response.ok) continue;
+      const features=await response.json();
+      const coordinates=features?.[0]?.geometry?.coordinates;
+      const result=coordinates&&validImportedCoordinate(coordinates[1],coordinates[0]);
+      if(result) return {...result,label:features[0]?.properties?.title||query};
+    }catch(e){}
+  }
+  return null;
+}
+async function importGoogleMapsLocation(){
+  const raw=el.osmGoogleImportInput.value.trim();
+  if(!raw){el.osmGoogleImportStatus.textContent="共有リンク、共有文、または緯度・経度を入力してください。";return;}
+  el.osmGoogleImportRunBtn.disabled=true;
+  el.osmGoogleImportStatus.textContent="場所を確認しています…";
+  try{
+    let coordinate=extractGoogleMapsCoordinate(raw);
+    const urls=extractSharedUrls(raw);
+    if(!coordinate){
+      for(const url of urls){
+        try{
+          const expanded=await expandGoogleMapsShortUrl(url);
+          coordinate=extractGoogleMapsCoordinate(expanded);
+          if(coordinate) break;
+        }catch(e){}
+      }
+    }
+    if(!coordinate) coordinate=await findImportedAddress(raw);
+    if(!coordinate){
+      const shortOnly=urls.some(url=>/(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(url));
+      el.osmGoogleImportStatus.textContent=shortOnly
+        ? "短縮リンクを展開できませんでした。Googleマップで場所を長押しし、表示された緯度・経度を貼り付けてください。"
+        : "位置を読み取れませんでした。URL全体、または「緯度, 経度」を貼り付けてください。";
+      return;
+    }
+    setOsmCandidate(coordinate.lat,coordinate.lon,true);
+    el.osmGoogleImportStatus.textContent=`${coordinate.label?coordinate.label+" — ":""}緯度 ${coordinate.lat.toFixed(5)} / 経度 ${coordinate.lon.toFixed(5)}へ移動しました。「閉じる」で地図を確認してください。`;
+  }finally{
+    el.osmGoogleImportRunBtn.disabled=false;
+  }
+}
 function setOsmMapScreenOpen(open){
   osmMapScreenOpen=!!open;
   el.photoCanvasWrap.classList.toggle("osm-map-open",osmMapScreenOpen);
@@ -3882,6 +4031,7 @@ function setOsmMapScreenOpen(open){
   const label=osmMapScreenOpen?"観測地点マップを閉じる":"観測地点マップを表示する";
   el.mobileMapToggleBtn.setAttribute("aria-label",label);
   el.mobileMapToggleBtn.title=label;
+  if(!osmMapScreenOpen) setGoogleMapsImportOpen(false);
   if(osmMapScreenOpen){
     if(playbackTimer) stopPlayback();
     /* display:noneの状態では地図サイズを測れないため、表示後のフレームで初期化する。 */
@@ -3901,6 +4051,21 @@ function setOsmMapScreenOpen(open){
   }
 }
 el.mobileMapToggleBtn.addEventListener("click",()=>setOsmMapScreenOpen(!osmMapScreenOpen));
+el.osmGoogleImportBtn.addEventListener("click",()=>setGoogleMapsImportOpen(!el.osmGoogleImportPanel.classList.contains("show")));
+el.osmGoogleImportCloseBtn.addEventListener("click",()=>setGoogleMapsImportOpen(false));
+el.osmGoogleImportRunBtn.addEventListener("click",importGoogleMapsLocation);
+el.osmGooglePasteBtn.addEventListener("click",async()=>{
+  try{
+    if(!navigator.clipboard?.readText) throw new Error("clipboard unavailable");
+    const text=await navigator.clipboard.readText();
+    if(!text) throw new Error("clipboard empty");
+    el.osmGoogleImportInput.value=text;
+    el.osmGoogleImportStatus.textContent="貼り付けました。「場所を読み込む」を押してください。";
+  }catch(e){
+    el.osmGoogleImportStatus.textContent="自動貼り付けが許可されませんでした。入力欄を長押しして貼り付けてください。";
+    el.osmGoogleImportInput.focus();
+  }
+});
 el.osmLayerToggleBtn.addEventListener("click",()=>{
   osmSatelliteMode=!osmSatelliteMode;
   syncOsmBaseLayer();
