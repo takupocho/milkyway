@@ -6115,7 +6115,8 @@ function drawPhoto(ctx,s){
   const tapPad = isMobileView ? 10 : 0; // スマホではタップ判定を周囲に広げる
 
   // ARモード中は、背景の空色を塗りつぶすとカメラ映像が暗くなってしまうため、
-  // 通常モードの時だけ空のグラデーション背景・光害の色かぶりを描画する
+  // 通常モードの時だけ空のグラデーション背景を描画する。
+  // 光害は高度0°の投影位置が必要なため、toXY()定義後に水平線へ追従させて描く。
   if(!arActive){
     const pal=skyPalette(s.sunAltAz.alt);
     const g=ctx.createLinearGradient(0,0,0,H);
@@ -6123,14 +6124,6 @@ function drawPhoto(ctx,s){
     g.addColorStop(1,`rgb(${pal.h.join(",")})`);
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-    // 光害による地平線側の色かぶり
-    if(s.lp.base>0.05){
-      const lg=ctx.createLinearGradient(0,H*0.55,0,H);
-      const a=s.lp.base*0.55;
-      lg.addColorStop(0,`rgba(232,166,89,0)`);
-      lg.addColorStop(1,`rgba(232,150,89,${a})`);
-      ctx.fillStyle=lg; ctx.fillRect(0,H*0.55,W,H*0.45);
-    }
   }
 
   // 魚眼はPC・スマホの通常シミュレーターで使用。ARではカメラ映像との位置合わせを守るため通常投影を維持する。
@@ -6144,6 +6137,29 @@ function drawPhoto(ctx,s){
     const p=project(az,alt,s.facingAz,s.facingAlt);
     if(!p) return null;
     return [W/2+p.dx*scale, H/2-p.dy*scale];
+  }
+
+  // 光害の明るさを画面下端ではなく、現在の構図における高度0°の水平線へ固定する。
+  // 水平線の上約22°から下約10°までを赤紫寄りにぼかし、後で描く実地形が手前から自然に隠す。
+  if(!arActive&&s.lp.base>0.05){
+    const horizonPoint=toXY(s.facingAz,0);
+    const upperPoint=toXY(s.facingAz,22);
+    const lowerPoint=toXY(s.facingAz,-10);
+    if(horizonPoint&&upperPoint&&lowerPoint){
+      const horizonY=horizonPoint[1];
+      const topY=Math.min(upperPoint[1],horizonY);
+      const bottomY=Math.max(lowerPoint[1],horizonY);
+      const span=Math.max(1,bottomY-topY);
+      const horizonStop=clamp((horizonY-topY)/span,0.08,0.92);
+      const a=s.lp.base*0.55;
+      const lg=ctx.createLinearGradient(0,topY,0,bottomY);
+      lg.addColorStop(0,"rgba(232,126,142,0)");
+      lg.addColorStop(Math.max(0,horizonStop*.58),`rgba(214,105,142,${a*.28})`);
+      lg.addColorStop(horizonStop,`rgba(232,124,137,${a})`);
+      lg.addColorStop(1,`rgba(157,82,144,${a*.16})`);
+      ctx.fillStyle=lg;
+      ctx.fillRect(0,Math.max(-H,topY),W,Math.min(H*3,span));
+    }
   }
 
   const vis = 1-s.skyBrightness; // 全体の見えやすさ係数
