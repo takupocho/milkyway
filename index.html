@@ -6633,7 +6633,8 @@ function drawPhoto(ctx,s){
 
     const realTerrainReady=realTerrainState.profile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
     if(realTerrainReady){
-      // 距離帯別の稜線を遠方から手前へ重ね、夜の大気遠近法で奥行きを表現する。
+      // 距離帯別の稜線を遠方から手前へ重ねる。平地を担う近距離層は少し明るく、
+      // 遠方の山ほど暗くして、夜景らしい地形の奥行きを表現する。
       // 4層は透明キャンバスへ一度不透明で合成し、最後に全体へ南半球透明度を適用する。
       const half=useDiagonalFisheye?89.5:s.fovH/2+7;
       const step=useDiagonalFisheye?0.75:Math.max(0.25,Math.min(1,s.fovH/160));
@@ -6642,9 +6643,9 @@ function drawPhoto(ctx,s){
       const tctx=terrainCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
       const atmosphere=clamp(s.twilight*.65+s.moonContribution*.5+s.lp.base*.2,0,1);
       const baseColors={
-        near:[5,6,8],middle:[11,13,20],far:[18,23,34],distant:[27,35,50]
+        near:[24,26,30],middle:[17,19,24],far:[10,12,17],distant:[5,6,9]
       };
-      const boosts={near:2,middle:7,far:14,distant:22};
+      const boosts={near:10,middle:7,far:4,distant:2};
       function terrainBandColor(key){
         const rgb=baseColors[key]||baseColors.near,b=boosts[key]||0;
         return `rgb(${rgb.map(v=>Math.round(v+b*atmosphere)).join(",")})`;
