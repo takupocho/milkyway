@@ -326,7 +326,7 @@
   .month-row-time.none{color:var(--dim-2);}
 
 
-  select, input[type="number"], input[type="date"]{
+  select, input[type="number"], input[type="date"], input[type="text"]{
     width:100%;
     background:var(--panel-raised);
     border:1px solid var(--line);
@@ -337,6 +337,12 @@
     font-size:12.5px;
   }
   select:focus, input:focus{outline:2px solid var(--violet);outline-offset:1px;}
+  .saved-location-panel{margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft);}
+  .saved-location-title{margin:0 0 7px;color:var(--star-white);font-size:12px;font-weight:700;}
+  .saved-location-panel input,.saved-location-panel select{width:100%;margin-bottom:7px;}
+  .saved-location-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+  .saved-location-actions button{min-width:0;padding:7px 4px;font-size:10px;}
+  #deleteSavedLocationBtn{color:var(--alert);}
 
   input[type="range"]{
     width:100%;
@@ -1122,6 +1128,51 @@
   .simulation-clock-time{font-size:23px;letter-spacing:.03em;}
   .mobile-clock-toggle-btn{display:none;}
   .mobile-map-toggle-btn{display:none;}
+  /* PCもスマホと同じ5アイコンを、同じ位置・間隔で縦配置する。 */
+  @media (min-width:761px){
+    .mobile-sky-search-control,
+    .mobile-lens-mode-btn,
+    .mobile-mw-frame-btn,
+    .mobile-clock-toggle-btn,
+    .mobile-map-toggle-btn{
+      display:flex;position:absolute;left:9px;z-index:12;
+      width:36px;height:36px;padding:0;align-items:center;justify-content:center;
+      border:1px solid var(--line);border-radius:50%;
+      background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
+      box-shadow:0 2px 8px rgba(0,0,0,.28);
+    }
+    .mobile-sky-search-control{top:9px;}
+    .mobile-lens-mode-btn{top:53px;}
+    .mobile-mw-frame-btn{top:97px;}
+    .mobile-clock-toggle-btn{top:141px;}
+    .mobile-map-toggle-btn{top:185px;}
+    .mobile-sky-search-control svg{width:20px;height:20px;pointer-events:none;}
+    #mobileSkySearchSelect{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;font-size:16px;}
+    .mobile-lens-mode-btn.active,.mobile-mw-frame-btn.active,.mobile-clock-toggle-btn.active{
+      color:var(--core-amber);border-color:var(--core-amber);
+    }
+    .mobile-lens-mode-icon{display:block;box-sizing:border-box;width:19px;height:13px;border:2px solid currentColor;pointer-events:none;}
+    .mobile-lens-mode-btn.active .mobile-lens-mode-icon{width:19px;height:19px;border-radius:50%;}
+    .mobile-lens-mode-btn.active .mobile-lens-mode-icon::after{
+      content:"";display:block;width:9px;height:13px;margin:1px auto 0;
+      border-right:1.5px solid currentColor;border-radius:50%;opacity:.8;
+    }
+    .mobile-mw-frame-btn svg{width:22px;height:22px;pointer-events:none;}
+    .mobile-clock-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
+    .mobile-clock-toggle-btn.active .clock-hidden-slash{display:none;}
+    .mobile-map-toggle-btn.active{color:var(--core-amber);border-color:var(--core-amber);opacity:.92;}
+    .mobile-map-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
+    body.ar-active .mobile-sky-search-control,
+    body.ar-active .mobile-lens-mode-btn,
+    body.ar-active .mobile-mw-frame-btn,
+    body.ar-active .mobile-clock-toggle-btn,
+    body.ar-active .mobile-map-toggle-btn{display:none;}
+  }
+  /* 地図モードではPC・スマホとも地図アイコンだけを残す。 */
+  .photo-canvas-wrap.osm-map-open .mobile-sky-search-control,
+  .photo-canvas-wrap.osm-map-open .mobile-lens-mode-btn,
+  .photo-canvas-wrap.osm-map-open .mobile-mw-frame-btn,
+  .photo-canvas-wrap.osm-map-open .mobile-clock-toggle-btn{display:none;}
   .osm-map-panel{
     display:none;
     position:absolute;
@@ -2060,6 +2111,16 @@
           </div>
           <button id="geoBtn" type="button">📍 現在地を取得</button>
           <button id="mapToggleBtn" type="button" class="toggle-btn"><span>🗺 地図で選ぶ</span><span id="mapToggleState" class="mono" style="color:var(--dim-2);font-size:11px;">非表示</span></button>
+          <div class="saved-location-panel">
+            <p class="saved-location-title">📌 登録した観測地・撮影計画</p>
+            <input id="savedLocationName" type="text" maxlength="40" placeholder="撮影地名（例：六甲山展望台）">
+            <select id="savedLocationSelect" aria-label="登録した観測地"><option value="">都道府県・市区町村から選択</option></select>
+            <div class="saved-location-actions">
+              <button id="registerLocationBtn" type="button">登録</button>
+              <button id="loadSavedLocationBtn" type="button">呼び出す</button>
+              <button id="deleteSavedLocationBtn" type="button">削除</button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -2313,6 +2374,7 @@
                 <button id="namedStarsToggleBtn" type="button" class="constellation-toggle-btn active">恒星</button>
                 <button id="starGroupsToggleBtn" type="button" class="constellation-toggle-btn">星のグループ</button>
                 <button id="popupShowLabelsBtn" type="button" class="constellation-toggle-btn active">名称表示</button>
+                <button id="popupMountainNamesBtn" type="button" class="constellation-toggle-btn active">山名表示</button>
                 <div class="display-popup-section-title">シミュレーション画面</div>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
                 <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
@@ -3179,6 +3241,7 @@ const ISO_STEPS=[100,200,400,800,1600,3200,6400,12800,25600,51200];
 const $=(id)=>document.getElementById(id);
 const el={
   citySelect:$("citySelect"), lat:$("lat"), lon:$("lon"), tz:$("tz"), geoBtn:$("geoBtn"), observedPlaceName:$("observedPlaceName"),
+  savedLocationName:$("savedLocationName"), savedLocationSelect:$("savedLocationSelect"), registerLocationBtn:$("registerLocationBtn"), loadSavedLocationBtn:$("loadSavedLocationBtn"), deleteSavedLocationBtn:$("deleteSavedLocationBtn"),
   mapToggleBtn:$("mapToggleBtn"), mapToggleState:$("mapToggleState"), mapCard:$("mapCard"), mapCanvas:$("mapCanvas"),
   zoomInBtn:$("zoomInBtn"), zoomOutBtn:$("zoomOutBtn"), mapResetBtn:$("mapResetBtn"), mapScaleLabel:$("mapScaleLabel"),
   dateInput:$("dateInput"), timeSlider:$("timeSlider"), timeLabel:$("timeLabel"), timeDateLabel:$("timeDateLabel"), nowBtn:$("nowBtn"),
@@ -3225,7 +3288,7 @@ const el={
   cardTitleRow:$("cardTitleRow"), headerRightGroup:$("headerRightGroup"), toggleBtnRow:$("toggleBtnRow"), todayDate:$("todayDate"), moonToday:$("moonToday"),
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
-  namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"),
+  namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), displayOptionsPopup:$("displayOptionsPopup"),
@@ -3564,12 +3627,12 @@ el.mobileSkySearchSelect.innerHTML=el.skySearchSelect.innerHTML;
 el.skySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.skySearchSelect));
 el.mobileSkySearchSelect.addEventListener("change",()=>handleSkySearchSelection(el.mobileSkySearchSelect));
 
-/* スマホ限定: 通常レンズ／対角魚眼の切り替え。AR中は描画側で常に通常投影へ戻す。 */
+/* PC・スマホ共通: 通常レンズ／対角魚眼の切り替え。AR中は描画側で常に通常投影へ戻す。 */
 let mobileLensMode="normal";
 let normalLensFocalLength=+el.focalLength.value||24;
 let fisheyeLensFocalLength=15;
 function applyMobileLensFocalRange(){
-  const fisheyeAvailable=mobileLensMode==="fisheye" && window.innerWidth<=760;
+  const fisheyeAvailable=mobileLensMode==="fisheye";
   if(fisheyeAvailable){
     el.focalLength.min="8";
     el.focalLength.max="16";
@@ -3603,14 +3666,14 @@ el.mobileLensModeBtn.addEventListener("click",()=>{
   update();
 });
 
-/* スマホ限定: 天の川の自動構図を「中心→アーチ全体→地景込み」の順に切り替える。 */
+/* PC・スマホ共通: 天の川の自動構図を「中心→アーチ全体→地景込み」の順に切り替える。 */
 const MW_FRAMING_MODES=["core","arch","landscape"];
 let mwFramingModeIndex=-1;
 function setFramingFocalLength(value){
   const min=+el.focalLength.min, max=+el.focalLength.max;
   const focal=clamp(Math.round(value),min,max);
   el.focalLength.value=String(focal);
-  if(mobileLensMode==="fisheye" && window.innerWidth<=760) fisheyeLensFocalLength=focal;
+  if(mobileLensMode==="fisheye") fisheyeLensFocalLength=focal;
   else normalLensFocalLength=focal;
 }
 function syncMwFramingButton(mode){
@@ -3873,6 +3936,7 @@ el.lockAzToGcBtn.addEventListener("click",()=>{
     update();
   }
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 /* スタートレイル演出のON/OFF */
 let starTrailMode=false;
@@ -3905,12 +3969,14 @@ el.starTrailBtn.addEventListener("click",()=>{
   }
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 el.starTrailTaperBtn.addEventListener("click",()=>{
   starTrailTaper=!starTrailTaper;
   el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 function formatTrailLength(totalMin){
   const h=Math.floor(totalMin/60), m=totalMin%60;
@@ -3934,6 +4000,7 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
   el.showBelowHorizonState.textContent = showBelowHorizon ? "ON" : "OFF";
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 /* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
 let realMilkyWayEnabled=false;
@@ -3942,14 +4009,15 @@ el.realMilkyWayBtn.addEventListener("click",()=>{
   el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
   el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
   document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
-  scheduleSaveSettings();
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 /* 水平線(高度0°)を点線で表示するON/OFF */
 let showHorizonLine=false;
@@ -3959,6 +4027,7 @@ el.showHorizonLineBtn.addEventListener("click",()=>{
   el.showHorizonLineState.textContent = showHorizonLine ? "ON" : "OFF";
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
 });
 el.normalStarOpacitySlider.addEventListener("input",()=>{
   el.normalStarOpacityVal.textContent=`${el.normalStarOpacitySlider.value}%`;
@@ -3991,6 +4060,7 @@ el.popupSouth50Btn.addEventListener("click",()=>{
   el.showBelowHorizonState.textContent=showBelowHorizon ? "ON" : "OFF";
   syncDisplayPopupControls();
   update();
+  scheduleSaveSettings();
 });
 syncDisplayPopupControls();
 /* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
@@ -4716,6 +4786,7 @@ el.constellationToggleBtn.addEventListener("click",()=>{
   constellationsVisible=!constellationsVisible;
   el.constellationToggleBtn.classList.toggle("active",constellationsVisible);
   update();
+  scheduleSaveSettings();
 });
 
 /* 惑星表示のON/OFF */
@@ -4724,6 +4795,7 @@ el.planetToggleBtn.addEventListener("click",()=>{
   planetsVisible=!planetsVisible;
   el.planetToggleBtn.classList.toggle("active",planetsVisible);
   update();
+  scheduleSaveSettings();
 });
 
 /* 恒星(恒星リストの明るい星)表示のON/OFF。星座とは独立して切り替えられる */
@@ -4732,6 +4804,7 @@ el.namedStarsToggleBtn.addEventListener("click",()=>{
   namedStarsVisible=!namedStarsVisible;
   el.namedStarsToggleBtn.classList.toggle("active",namedStarsVisible);
   update();
+  scheduleSaveSettings();
 });
 
 /* 星のグループ(夏の大三角など)表示のON/OFF。星座とは独立して切り替えられる */
@@ -4740,6 +4813,7 @@ el.starGroupsToggleBtn.addEventListener("click",()=>{
   starGroupsVisible=!starGroupsVisible;
   el.starGroupsToggleBtn.classList.toggle("active",starGroupsVisible);
   update();
+  scheduleSaveSettings();
 });
 
 /* 星座・惑星・太陽・月の名称表示ON/OFF(設定パネル内のボタンと、撮影シミュレーションの「表示」ポップアップ内のボタンの両方から切り替え可能。常に見た目を同期させる) */
@@ -4750,9 +4824,17 @@ function toggleShowSkyLabels(){
   el.showSkyLabelsState.textContent = showSkyLabels ? "ON" : "OFF";
   el.popupShowLabelsBtn.classList.toggle("active",showSkyLabels);
   update();
+  scheduleSaveSettings();
 }
 el.showSkyLabelsBtn.addEventListener("click",toggleShowSkyLabels);
 el.popupShowLabelsBtn.addEventListener("click",toggleShowSkyLabels);
+el.popupMountainNamesBtn.addEventListener("click",()=>{
+  mountainNamesVisible=!mountainNamesVisible;
+  el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
+  if(mountainNamesVisible&&state) requestMountainNames(state.lat,state.lon);
+  scheduleSaveSettings();
+  update();
+});
 
 /* 流星群の極大±1週間に該当する星座を自動表示するON/OFF */
 let autoShowShowerConst=false;
@@ -4852,6 +4934,9 @@ el.mobileDisplayOptionsBtn.addEventListener("click",(e)=>{
   syncDisplayPopupControls();
   el.displayOptionsPopup.classList.toggle("show");
 });
+el.displayOptionsPopup.addEventListener("click",e=>{
+  if(e.target.closest("button")) scheduleSaveSettings();
+});
 document.addEventListener("click",(e)=>{
   if(!el.displayOptionsPopup.classList.contains("show")) return;
   if(e.target.closest("#displayOptionsPopup, #mobileDisplayOptionsBtn")) return;
@@ -4898,11 +4983,23 @@ el.dateCollapseToggle.addEventListener("click",()=>{
   el.dateCollapseToggle.classList.toggle("open",dateCollapseOpen);
 });
 
-/* ===== 設定の記憶 (観測地点・カメラ設定・構図のみ。日時や撮影方向は対象外) =====
-   Cookieはこの環境(プレビューやローカルファイルとして開いた場合)では安定して
-   動作しないため、代わりにアーティファクト用の永続ストレージ(window.storage)を使う。
-   利用できない環境では自動的に無効化され、通常通り動作する。 */
+/* ===== 設定と登録観測地の記憶 =====
+   GitHub Pages・通常ブラウザではlocalStorageを使用し、対応環境ではwindow.storageにも同期する。 */
 const SETTINGS_KEY="milkyway-settings-v1";
+const SAVED_LOCATIONS_KEY="milkyway-saved-locations-v1";
+async function persistentGet(key){
+  try{const value=localStorage.getItem(key);if(value!==null) return value;}catch(e){}
+  if(typeof window.storage!=="undefined"){
+    try{const res=await window.storage.get(key,false);return res&&res.value?res.value:null;}catch(e){}
+  }
+  return null;
+}
+async function persistentSet(key,value){
+  try{localStorage.setItem(key,value);}catch(e){}
+  if(typeof window.storage!=="undefined"){
+    try{await window.storage.set(key,value,false);}catch(e){}
+  }
+}
 function collectPersistedSettings(){
   return {
     lat:el.lat.value, lon:el.lon.value, tz:el.tz.value, citySelect:el.citySelect.value,
@@ -4912,26 +5009,34 @@ function collectPersistedSettings(){
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
     realMilkyWayEnabled:realMilkyWayEnabled,
+    mountainNamesVisible:mountainNamesVisible,
+    constellationsVisible:constellationsVisible,
+    planetsVisible:planetsVisible,
+    namedStarsVisible:namedStarsVisible,
+    starGroupsVisible:starGroupsVisible,
+    showSkyLabels:showSkyLabels,
+    showHorizonLine:showHorizonLine,
+    showBelowHorizon:showBelowHorizon,
+    belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
+    lockAzToGc:lockAzToGc,
+    starTrailMode:starTrailMode,
+    starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
     observedPlaceName:currentObservedPlaceName,
   };
 }
 let saveSettingsTimer=null;
 function scheduleSaveSettings(){
-  if(typeof window.storage==="undefined") return;
   clearTimeout(saveSettingsTimer);
   saveSettingsTimer=setTimeout(async ()=>{
-    try{
-      await window.storage.set(SETTINGS_KEY, JSON.stringify(collectPersistedSettings()), false);
-    }catch(e){ /* 保存できない環境では無視して通常通り動作させる */ }
+    await persistentSet(SETTINGS_KEY,JSON.stringify(collectPersistedSettings()));
   },400);
 }
 async function loadPersistedSettings(){
-  if(typeof window.storage==="undefined"){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
   try{
-    const res=await window.storage.get(SETTINGS_KEY,false);
-    if(!res || !res.value){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; } // 初回訪問時はデフォルト地点(神戸)の観測地点名を自動取得する
-    const s=JSON.parse(res.value);
+    const stored=await persistentGet(SETTINGS_KEY);
+    if(!stored){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
+    const s=JSON.parse(stored);
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
     if(s.tz!==undefined) el.tz.value=s.tz;
@@ -4949,6 +5054,36 @@ async function loadPersistedSettings(){
     el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
     el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
+    mountainNamesVisible=s.mountainNamesVisible!==false;
+    el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
+    constellationsVisible=s.constellationsVisible!==false;
+    planetsVisible=s.planetsVisible!==false;
+    namedStarsVisible=s.namedStarsVisible!==false;
+    starGroupsVisible=!!s.starGroupsVisible;
+    showSkyLabels=s.showSkyLabels!==false;
+    showHorizonLine=!!s.showHorizonLine;
+    showBelowHorizon=s.showBelowHorizon!==false;
+    if(s.belowHorizonOpacity!==undefined) el.belowHorizonOpacitySlider.value=s.belowHorizonOpacity;
+    el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
+    lockAzToGc=!!s.lockAzToGc;
+    starTrailMode=!!s.starTrailMode;
+    starTrailTaper=!!s.starTrailTaper;
+    starTrailGrowProgress=starTrailMode?1:0;
+    el.constellationToggleBtn.classList.toggle("active",constellationsVisible);
+    el.planetToggleBtn.classList.toggle("active",planetsVisible);
+    el.namedStarsToggleBtn.classList.toggle("active",namedStarsVisible);
+    el.starGroupsToggleBtn.classList.toggle("active",starGroupsVisible);
+    el.showSkyLabelsBtn.classList.toggle("active",showSkyLabels);
+    el.showSkyLabelsState.textContent=showSkyLabels?"ON":"OFF";
+    el.popupShowLabelsBtn.classList.toggle("active",showSkyLabels);
+    el.showHorizonLineBtn.classList.toggle("active",showHorizonLine);
+    el.showHorizonLineState.textContent=showHorizonLine?"ON":"OFF";
+    el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
+    el.showBelowHorizonState.textContent=showBelowHorizon?"ON":"OFF";
+    el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
+    el.lockAzToGcState.textContent=lockAzToGc?"ON":"OFF";
+    el.starTrailBtn.classList.toggle("active",starTrailMode);
+    el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
     syncDisplayPopupControls();
     simulationClockVisible=s.simulationClockVisible!==false;
     syncSimulationClockVisibility();
@@ -4961,6 +5096,7 @@ async function loadPersistedSettings(){
     }
     if(s.observedPlaceName){
       el.observedPlaceName.style.display="block";
+      currentObservedPlaceLat=+el.lat.value;currentObservedPlaceLon=+el.lon.value;
       setObservedPlaceDisplay(s.observedPlaceName, false);
     }
     update();
@@ -5141,6 +5277,7 @@ let reverseGeocodeSeq=0;
 /* 観測地点名を、設定パネル内の表示とスマホの日付下のコンパクト表示の両方に反映する。
    isStatusがtrueの時は「取得中…」等のステータス文言なので、コンパクト表示側は空にしておく。 */
 let currentObservedPlaceName="";
+let currentObservedPlaceLat=null,currentObservedPlaceLon=null;
 function setObservedPlaceDisplay(text, isStatus){
   el.observedPlaceName.textContent = `観測地点：${text}`;
   if(isStatus){
@@ -5171,12 +5308,13 @@ async function reverseGeocodeAndShow(lat, lon){
     const key = String(parseInt(muniCd,10)); // 先頭の0を落として対応表のキーに合わせる
     if(MUNI_LOOKUP[key]){
       const [prefName, muniName] = MUNI_LOOKUP[key].split(",");
+      currentObservedPlaceLat=lat;currentObservedPlaceLon=lon;
       setObservedPlaceDisplay(`${prefName}${muniName}`, false);
     } else {
       // 町村など個別データが無い場合は、市区町村コードの先頭(都道府県番号)から都道府県名だけでも表示する
       const prefNum = String(muniCd.length>=5 ? parseInt(muniCd.slice(0,2),10) : parseInt(muniCd.slice(0,1),10));
       const prefName = PREF_LOOKUP[prefNum];
-      if(prefName) setObservedPlaceDisplay(prefName, false);
+      if(prefName){currentObservedPlaceLat=lat;currentObservedPlaceLon=lon;setObservedPlaceDisplay(prefName, false);}
       else setObservedPlaceDisplay("（取得できませんでした）", true);
     }
   } catch(err){
@@ -5184,6 +5322,108 @@ async function reverseGeocodeAndShow(lat, lon){
     setObservedPlaceDisplay("（通信エラーのため取得できませんでした）", true);
   }
 }
+
+/* 登録観測地：都道府県ごとのoptgroup内で、市区町村名と撮影地名を表示する。 */
+let savedObservingLocations=[];
+const PREFECTURE_ORDER=["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+function classifyObservedPlace(placeName){
+  const text=String(placeName||"").trim();
+  const prefMatch=text.match(/^(北海道|東京都|京都府|大阪府|.{2,3}県)/);
+  const prefecture=prefMatch?prefMatch[1]:"その他";
+  const rest=prefMatch?text.slice(prefecture.length):text;
+  const cityMatch=rest.match(/^(.+?(?:市|区|町|村))/);
+  return {prefecture,city:cityMatch?cityMatch[1]:"市区町村未取得"};
+}
+function savedLocationSort(a,b){
+  const ai=PREFECTURE_ORDER.indexOf(a.prefecture),bi=PREFECTURE_ORDER.indexOf(b.prefecture);
+  const ap=ai<0?999:ai,bp=bi<0?999:bi;
+  return ap-bp||a.city.localeCompare(b.city,"ja")||a.title.localeCompare(b.title,"ja");
+}
+function renderSavedLocationSelect(selectedId=""){
+  el.savedLocationSelect.textContent="";
+  const first=document.createElement("option");first.value="";first.textContent="都道府県・市区町村から選択";el.savedLocationSelect.appendChild(first);
+  const groups=new Map();
+  [...savedObservingLocations].sort(savedLocationSort).forEach(location=>{
+    if(!groups.has(location.prefecture)){
+      const group=document.createElement("optgroup");group.label=location.prefecture;groups.set(location.prefecture,group);el.savedLocationSelect.appendChild(group);
+    }
+    let simulationLabel="";
+    if(location.date&&Number.isFinite(+location.timeMinutes)){
+      const minutes=+location.timeMinutes,dayPrefix=minutes>=1440?"翌":"";
+      const hh=String(Math.floor(minutes/60)%24).padStart(2,"0"),mm=String(Math.floor(minutes)%60).padStart(2,"0");
+      simulationLabel=`｜${location.date.replace(/-/g,"/")} ${dayPrefix}${hh}:${mm}`;
+    }
+    if(Number.isFinite(+location.focalLength)&&Number.isFinite(+location.facingAz)&&Number.isFinite(+location.facingAlt)){
+      simulationLabel+=`｜${Math.round(+location.focalLength)}mm 方${Math.round(+location.facingAz)}° 仰${Math.round(+location.facingAlt)}°`;
+    }
+    const option=document.createElement("option");option.value=location.id;option.textContent=`${location.city}｜${location.title}${simulationLabel}`;groups.get(location.prefecture).appendChild(option);
+  });
+  if(selectedId) el.savedLocationSelect.value=selectedId;
+}
+async function saveObservingLocations(){
+  await persistentSet(SAVED_LOCATIONS_KEY,JSON.stringify(savedObservingLocations));
+}
+async function loadSavedLocations(){
+  try{
+    const stored=await persistentGet(SAVED_LOCATIONS_KEY);
+    savedObservingLocations=stored?JSON.parse(stored):[];
+    if(!Array.isArray(savedObservingLocations)) savedObservingLocations=[];
+  }catch(e){savedObservingLocations=[];}
+  renderSavedLocationSelect();
+}
+el.registerLocationBtn.addEventListener("click",async()=>{
+  const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)){alert("観測地点の緯度・経度を設定してください。");return;}
+  if(!Number.isFinite(currentObservedPlaceLat)||!Number.isFinite(currentObservedPlaceLon)||Math.abs(currentObservedPlaceLat-lat)>0.0001||Math.abs(currentObservedPlaceLon-lon)>0.0001){
+    await reverseGeocodeAndShow(lat,lon);
+  }
+  const placeMatches=Number.isFinite(currentObservedPlaceLat)&&Number.isFinite(currentObservedPlaceLon)&&Math.abs(currentObservedPlaceLat-lat)<=0.0001&&Math.abs(currentObservedPlaceLon-lon)<=0.0001;
+  const placeName=(placeMatches?currentObservedPlaceName:"")||`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  const classification=classifyObservedPlace(placeName);
+  const customTitle=el.savedLocationName.value.trim();
+  const title=customTitle||placeName;
+  const duplicate=savedObservingLocations.find(item=>Math.abs(item.lat-lat)<0.00001&&Math.abs(item.lon-lon)<0.00001&&item.title===title);
+  const location={
+    id:duplicate?duplicate.id:`loc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+    title,placeName,prefecture:classification.prefecture,city:classification.city,
+    lat,lon,tz:Number.isFinite(tz)?tz:Math.round(lon/15),
+    date:el.dateInput.value,timeMinutes:+el.timeSlider.value,is15hMode:is15hMode,
+    focalLength:+el.focalLength.value,lensMode:mobileLensMode,
+    facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
+    updatedAt:Date.now()
+  };
+  if(duplicate) Object.assign(duplicate,location); else savedObservingLocations.push(location);
+  await saveObservingLocations();renderSavedLocationSelect(location.id);el.savedLocationName.value="";
+  alert(duplicate?"登録済みの観測地を更新しました。":"観測地を登録しました。");
+});
+el.loadSavedLocationBtn.addEventListener("click",()=>{
+  const location=savedObservingLocations.find(item=>item.id===el.savedLocationSelect.value);
+  if(!location){alert("呼び出す観測地を選択してください。");return;}
+  el.lat.value=Number(location.lat).toFixed(5);el.lon.value=Number(location.lon).toFixed(5);el.tz.value=location.tz;el.citySelect.value=0;
+  currentObservedPlaceLat=Number(location.lat);currentObservedPlaceLon=Number(location.lon);
+  el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
+  // v152以前に登録した「場所だけ」のデータには無い項目なので、存在する値だけを復元する。
+  if(location.date) el.dateInput.value=location.date;
+  if(typeof location.is15hMode==="boolean"){is15hMode=location.is15hMode;applyTimeRangeMode();}
+  if(Number.isFinite(+location.timeMinutes)) el.timeSlider.value=clamp(+location.timeMinutes,+el.timeSlider.min,+el.timeSlider.max);
+  if(location.lensMode==="normal"||location.lensMode==="fisheye") mobileLensMode=location.lensMode;
+  if(Number.isFinite(+location.focalLength)){
+    const focal=+location.focalLength;
+    if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focal,8,16); else normalLensFocalLength=clamp(focal,8,50);
+    applyMobileLensFocalRange();el.focalLength.value=clamp(focal,+el.focalLength.min,+el.focalLength.max);syncMobileLensModeButton();
+  }
+  if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
+  if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
+  if(location.orientation==="portrait"||location.orientation==="landscape") setOrientation(location.orientation); else update();
+  scheduleSaveSettings();
+});
+el.deleteSavedLocationBtn.addEventListener("click",async()=>{
+  const location=savedObservingLocations.find(item=>item.id===el.savedLocationSelect.value);
+  if(!location){alert("削除する観測地を選択してください。");return;}
+  if(!confirm(`「${location.title}」を登録一覧から削除しますか？`)) return;
+  savedObservingLocations=savedObservingLocations.filter(item=>item.id!==location.id);
+  await saveObservingLocations();renderSavedLocationSelect();el.savedLocationName.value="";
+});
 
 /* マウス操作: ドラッグでパン、ドラッグなしクリックで地点選択、ホイールでズーム */
 let mapDragging=false, mapDragMoved=false, mapDragStart=[0,0], mapDragStartView=null;
@@ -5317,12 +5557,11 @@ function computeState(){
   const lp=LP_LEVELS[+el.lp.value];
   const facingAz=+el.facingAz.value, facingAlt=+el.facingAlt.value;
 
-  if(mobileLensMode==="fisheye" && window.innerWidth<=760) fisheyeLensFocalLength=clamp(focalLength,8,16);
+  if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
   else normalLensFocalLength=clamp(focalLength,8,50);
 
   el.flVal.textContent=`${focalLength} mm`;
-  const showFisheyeBadge = mobileLensMode==="fisheye" && !arActive &&
-    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  const showFisheyeBadge = mobileLensMode==="fisheye" && !arActive;
   el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
   el.focalBadge.innerHTML=showFisheyeBadge
     ? `<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
@@ -5351,8 +5590,7 @@ function computeState(){
   /* 構図(横位置=センサー長辺が水平/縦位置=センサー短辺が水平) */
   const halfW = orientation==="portrait" ? 12 : 18;
   const halfH = orientation==="portrait" ? 18 : 12;
-  const fisheyeProjectionActive = mobileLensMode==="fisheye" && !arActive &&
-    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  const fisheyeProjectionActive = mobileLensMode==="fisheye" && !arActive;
   let fovH, fovV;
   if(fisheyeProjectionActive){
     // 等立体角魚眼 r=2f sin(theta/2)。センサー端が180°像円の外側なら、見える範囲は180°で頭打ちにする。
@@ -5562,6 +5800,9 @@ function seededSilhouette(){
 const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
 const realTerrainProfileCache=new Map();
 const gsiDemTileCache=new Map();
+let mountainNamesVisible=true;
+const mountainNameState={key:"",loadingKey:"",failedKey:"",mountains:[],requestToken:0};
+const mountainNameCache=new Map();
 const TERRAIN_DISTANCES_KM=[0.05,0.1,0.2,0.35,0.5,0.75,1,1.5,2,3,4.5,6,8,11,15,20,28,38,52,70,90];
 function terrainDestination(lat,lon,bearingDeg,distanceKm){
   const R=6371,br=bearingDeg*D2R,p1=lat*D2R,l1=lon*D2R,d=distanceKm/R;
@@ -5698,10 +5939,110 @@ function realTerrainAltitudeAt(az){
   const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
   return lerp(profile[i0],profile[i1],t);
 }
+function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
+  const p1=lat1*D2R,p2=lat2*D2R,dp=(lat2-lat1)*D2R,dl=(lon2-lon1)*D2R;
+  const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  const distanceKm=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(0,1-a)));
+  const y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return {distanceKm,bearing:norm360(Math.atan2(y,x)*R2D)};
+}
+async function fetchMountainNodes(lat,lon){
+  const query=`[out:json][timeout:25];node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name"];out body;`;
+  const endpoints=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  let lastError=null;
+  for(const endpoint of endpoints){
+    try{
+      const response=await fetch(endpoint,{method:"POST",mode:"cors",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:`data=${encodeURIComponent(query)}`});
+      if(!response.ok) throw new Error(`Mountain API ${response.status}`);
+      const json=await response.json();
+      return (json.elements||[]).map(node=>{
+        const tags=node.tags||{},name=tags["name:ja"]||tags.name;
+        const ele=parseFloat(String(tags.ele||"").replace(/,/g,""));
+        const prominence=parseFloat(String(tags.prominence||"").replace(/,/g,""));
+        if(!name||!Number.isFinite(ele)||!Number.isFinite(node.lat)||!Number.isFinite(node.lon)) return null;
+        const db=terrainDistanceAndBearing(lat,lon,node.lat,node.lon);
+        return {name,lat:node.lat,lon:node.lon,ele,distanceKm:db.distanceKm,bearing:db.bearing,prominence:Number.isFinite(prominence)?prominence:0};
+      }).filter(Boolean);
+    }catch(error){lastError=error;}
+  }
+  throw lastError||new Error("Mountain data unavailable");
+}
+function requestMountainNames(lat,lon){
+  if(!mountainNamesVisible||arActive) return;
+  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if(mountainNameState.key===key&&mountainNameState.mountains.length) return;
+  if(mountainNameState.failedKey===key||mountainNameState.loadingKey===key) return;
+  const cached=mountainNameCache.get(key);
+  if(cached){Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:cached});return;}
+  const token=++mountainNameState.requestToken;
+  mountainNameState.loadingKey=key;mountainNameState.failedKey="";
+  fetchMountainNodes(lat,lon).then(mountains=>{
+    if(token!==mountainNameState.requestToken) return;
+    mountainNameState.loadingKey="";mountainNameState.key=key;
+    if(!mountains.length){mountainNameState.failedKey=key;mountainNameState.mountains=[];return;}
+    mountainNameState.mountains=mountains;
+    mountainNameCache.set(key,mountains);
+    while(mountainNameCache.size>3) mountainNameCache.delete(mountainNameCache.keys().next().value);
+    if(typeof update==="function") update();
+  }).catch(()=>{
+    if(token!==mountainNameState.requestToken) return;
+    mountainNameState.loadingKey="";mountainNameState.failedKey=key;mountainNameState.key=key;mountainNameState.mountains=[];
+  });
+}
+function drawMountainNameLabels(ctx,s,toXY,W,H){
+  if(!mountainNamesVisible||arActive||!realTerrainState.profile||!Number.isFinite(realTerrainState.observerElevation)) return;
+  const key=`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
+  if(mountainNameState.key!==key||!mountainNameState.mountains.length) return;
+  const observerEye=realTerrainState.observerElevation+1.6;
+  const candidates=[];
+  for(const mountain of mountainNameState.mountains){
+    const metres=mountain.distanceKm*1000;
+    if(metres<150||metres>90000) continue;
+    const drop=metres*metres/(2*6371000*(7/6));
+    const apparentAlt=Math.atan2(mountain.ele-observerEye-drop,metres)*R2D;
+    const ridgeAlt=realTerrainAltitudeAt(mountain.bearing);
+    if(!Number.isFinite(ridgeAlt)||apparentAlt<ridgeAlt-0.45||apparentAlt<-0.2) continue;
+    const pt=toXY(mountain.bearing,Math.max(apparentAlt,ridgeAlt));
+    if(!pt||pt[0]<-30||pt[0]>W+30||pt[1]<-20||pt[1]>H+40) continue;
+    const score=mountain.ele+mountain.prominence*2+Math.max(0,apparentAlt)*180-mountain.distanceKm*1.5;
+    candidates.push({...mountain,apparentAlt,pt,score});
+  }
+  candidates.sort((a,b)=>b.score-a.score);
+  const placed=[];
+  const placedNames=new Set();
+  const fontSize=Math.max(12,Math.round(W/85));
+  ctx.save();ctx.font=`700 ${fontSize}px 'Inter',sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const mountain of candidates){
+    if(placed.length>=6) break;
+    if(placedNames.has(mountain.name)) continue;
+    const label=`${mountain.name} ${Math.round(mountain.ele).toLocaleString()}m`;
+    const width=ctx.measureText(label).width+14,height=fontSize+10;
+    const offsets=[[0,-24],[0,-42],[-width*.35,-30],[width*.35,-30],[0,-58]];
+    let box=null;
+    for(const [ox,oy] of offsets){
+      const cx=clamp(mountain.pt[0]+ox,width/2+4,W-width/2-4),cy=mountain.pt[1]+oy;
+      const test={x1:cx-width/2,y1:cy-height/2,x2:cx+width/2,y2:cy+height/2,cx,cy};
+      if(test.y1<4||test.y2>H-4) continue;
+      if(placed.some(p=>!(test.x2+5<p.x1||test.x1-5>p.x2||test.y2+4<p.y1||test.y1-4>p.y2))) continue;
+      box=test;break;
+    }
+    if(!box) continue;
+    ctx.beginPath();ctx.moveTo(mountain.pt[0],mountain.pt[1]);ctx.lineTo(box.cx,box.y2);
+    ctx.strokeStyle="rgba(245,205,135,.82)";ctx.lineWidth=1.2;ctx.stroke();
+    ctx.beginPath();ctx.arc(mountain.pt[0],mountain.pt[1],2.4,0,Math.PI*2);ctx.fillStyle="#e8a659";ctx.fill();
+    ctx.fillStyle="rgba(7,9,20,.78)";ctx.fillRect(box.x1,box.y1,width,height);
+    ctx.strokeStyle="rgba(232,166,89,.58)";ctx.strokeRect(box.x1+.5,box.y1+.5,width-1,height-1);
+    ctx.fillStyle="rgba(248,246,238,.96)";ctx.fillText(label,box.cx,box.cy+.5);
+    placed.push(box);placedNames.add(mountain.name);
+  }
+  ctx.restore();
+}
 window.addEventListener("online",()=>{
   gsiDemTileCache.clear();
   realTerrainState.failedKey="";
+  mountainNameState.failedKey="";
   if(state&&!arActive) requestRealTerrainProfile(state.lat,state.lon);
+  if(state&&!arActive) requestMountainNames(state.lat,state.lon);
 });
 
 /* 画像上の三角形を画面上の三角形へアフィン変換して描く。全天画像を通常・魚眼の両投影へ追従させるための軽量メッシュ描画。 */
@@ -5780,9 +6121,8 @@ function drawPhoto(ctx,s){
     }
   }
 
-  // 魚眼はスマホの通常シミュレーター限定。ARではカメラ映像との位置合わせを守るため通常投影を維持する。
-  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
-    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  // 魚眼はPC・スマホの通常シミュレーターで使用。ARではカメラ映像との位置合わせを守るため通常投影を維持する。
+  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive;
   const rectilinearScale=(W/2)/Math.tan(s.fovH/2*D2R);
   // 等立体角投影の中心付近における1ラジアン当たりの縮尺。焦点距離とセンサーサイズに連動する。
   const fisheyeScale=s.focalLength*s.sensor.crop*Math.hypot(W,H)/43.2666;
@@ -6390,6 +6730,9 @@ function drawPhoto(ctx,s){
     ctx.setLineDash([]);
     ctx.restore();
   }
+
+  // 実地形と照合して見えている主要な山を、重ならない範囲で最大6山表示する。
+  drawMountainNameLabels(ctx,s,toXY,W,H);
 
   // ISOグレイン
   if(s.grainAmount>0.02){
@@ -7031,6 +7374,7 @@ function update(){
   applyCanvasSize();
   state=computeState();
   requestRealTerrainProfile(state.lat,state.lon);
+  requestMountainNames(state.lat,state.lon);
   drawDial(dialCtx,state);
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
@@ -7088,8 +7432,7 @@ const METEOR_SHOWERS=[
 
 /* toXYと同じ投影式を、drawPhotoの外からでも使えるようにした汎用版 */
 function projectToPhotoXY(az,alt,s,W,H){
-  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive &&
-    ((typeof compactUiMQ!=="undefined" && compactUiMQ.matches) || window.innerWidth<=760);
+  const useDiagonalFisheye = mobileLensMode==="fisheye" && !arActive;
   if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H,s.focalLength,s.sensor.crop);
   const scale=(W/2)/Math.tan(s.fovH/2*D2R);
   const p=project(az,alt,s.facingAz,s.facingAlt);
@@ -7227,6 +7570,7 @@ setTimeout(spawnMeteor, 3000+Math.random()*6000); // 初回も少し早めに(3�
 update();
 if(monthTableVisible) renderMonthTable();
 loadPersistedSettings();
+loadSavedLocations();
 
 })();
 
