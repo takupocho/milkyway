@@ -1098,6 +1098,7 @@
     box-shadow:0 2px 8px rgba(0,0,0,.35);
   }
   .osm-map-actions button.primary{border-color:var(--core-amber);color:var(--core-amber);}
+  .osm-map-actions button.layer-active{border-color:#7fc8ff;color:#bfe5ff;}
   .osm-map-coordinate{
     position:absolute;
     left:8px;
@@ -2300,6 +2301,7 @@
                 <div id="osmMap" class="osm-map" aria-label="観測地点を選択するOpenStreetMap"></div>
                 <div class="osm-center-target" aria-hidden="true"><span class="osm-center-target-dot"></span></div>
                 <div class="osm-map-actions">
+                  <button id="osmLayerToggleBtn" type="button" class="layer-active" aria-label="衛星画像に切り替える">地図</button>
                   <button id="osmLocateBtn" type="button">◎ 現在地</button>
                   <button id="osmApplyBtn" type="button" class="primary">この場所に設定</button>
                 </div>
@@ -3126,7 +3128,7 @@ const el={
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
-  osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLocateBtn:$("osmLocateBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
+  osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3621,6 +3623,9 @@ el.mobileClockToggleBtn.addEventListener("click",()=>{
 let osmMapScreenOpen=false;
 let osmMapInstance=null;
 let osmTileLayer=null;
+let osmStreetLayer=null;
+let osmSatelliteLayer=null;
+let osmSatelliteMode=false;
 let osmCandidateLat=null;
 let osmCandidateLon=null;
 function updateOsmCoordinateLabel(){
@@ -3640,6 +3645,27 @@ function syncOsmCandidateToCenter(){
   const center=osmMapInstance.getCenter();
   setOsmCandidate(center.lat,center.lng);
 }
+function retryOsmTileFromAnotherHost(tile){
+  if(!tile||tile.dataset.osmRetried==="1") return;
+  tile.dataset.osmRetried="1";
+  const match=tile.src.match(/^https:\/\/([abc])\.tile\.openstreetmap\.org\/(.+)$/);
+  if(!match) return;
+  const nextHost=match[1]==="a"?"b":match[1]==="b"?"c":"a";
+  setTimeout(()=>{if(osmMapScreenOpen) tile.src=`https://${nextHost}.tile.openstreetmap.org/${match[2]}`;},250);
+}
+function syncOsmBaseLayer(){
+  if(!osmMapInstance||!osmStreetLayer||!osmSatelliteLayer) return;
+  const nextLayer=osmSatelliteMode?osmSatelliteLayer:osmStreetLayer;
+  const oldLayer=osmSatelliteMode?osmStreetLayer:osmSatelliteLayer;
+  if(osmMapInstance.hasLayer(oldLayer)) osmMapInstance.removeLayer(oldLayer);
+  if(!osmMapInstance.hasLayer(nextLayer)) nextLayer.addTo(osmMapInstance);
+  osmTileLayer=nextLayer;
+  el.osmLayerToggleBtn.textContent=osmSatelliteMode?"衛星":"地図";
+  el.osmLayerToggleBtn.classList.toggle("layer-active",!osmSatelliteMode);
+  const label=osmSatelliteMode?"通常地図に切り替える":"衛星画像に切り替える";
+  el.osmLayerToggleBtn.setAttribute("aria-label",label);
+  el.osmLayerToggleBtn.title=label;
+}
 function initOsmMap(){
   if(osmMapInstance) return true;
   if(typeof window.L==="undefined"){
@@ -3649,7 +3675,9 @@ function initOsmMap(){
   const lat=Number.isFinite(+el.lat.value)?+el.lat.value:34.69;
   const lon=Number.isFinite(+el.lon.value)?+el.lon.value:135.19;
   osmMapInstance=L.map(el.osmMap,{zoomControl:true,attributionControl:true,zoomAnimation:false}).setView([lat,lon],13);
-  osmTileLayer=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  /* a/b/cの3ホストへ分散し、同一ホストへの連続取得による規則的な欠落を防ぐ。 */
+  osmStreetLayer=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    subdomains:["a","b","c"],
     maxZoom:19,
     minZoom:2,
     keepBuffer:4,
@@ -3657,15 +3685,18 @@ function initOsmMap(){
     updateWhenZooming:false,
     detectRetina:false,
     attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>'
-  }).addTo(osmMapInstance);
-  /* 一時的なタイル取得失敗だけを1回再試行し、空白ブロックを残りにくくする。 */
-  osmTileLayer.on("tileerror",e=>{
-    const tile=e.tile;
-    if(!tile||tile.dataset.osmRetried==="1") return;
-    tile.dataset.osmRetried="1";
-    const original=tile.src.split("?")[0];
-    setTimeout(()=>{if(osmMapScreenOpen) tile.src=`${original}?retry=${Date.now()}`;},300);
   });
+  osmStreetLayer.on("tileerror",e=>retryOsmTileFromAnotherHost(e.tile));
+  osmSatelliteLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+    maxZoom:19,
+    minZoom:2,
+    keepBuffer:4,
+    updateWhenIdle:false,
+    updateWhenZooming:false,
+    detectRetina:false,
+    attribution:'Tiles &copy; Esri — Sources: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+  });
+  syncOsmBaseLayer();
   osmMapInstance.on("move",syncOsmCandidateToCenter);
   osmMapInstance.on("moveend",syncOsmCandidateToCenter);
   setOsmCandidate(lat,lon);
@@ -3698,6 +3729,10 @@ function setOsmMapScreenOpen(open){
   }
 }
 el.mobileMapToggleBtn.addEventListener("click",()=>setOsmMapScreenOpen(!osmMapScreenOpen));
+el.osmLayerToggleBtn.addEventListener("click",()=>{
+  osmSatelliteMode=!osmSatelliteMode;
+  syncOsmBaseLayer();
+});
 el.osmLocateBtn.addEventListener("click",()=>{
   if(!navigator.geolocation){alert("この環境では位置情報を取得できません。");return;}
   const original=el.osmLocateBtn.textContent;
