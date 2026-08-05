@@ -5220,10 +5220,10 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
       const minX=Math.min(...pts.map(p=>p[0])),maxX=Math.max(...pts.map(p=>p[0]));
       const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
       if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
-      const belowFactor=(p00.alt+p10.alt+p01.alt+p11.alt)/4<0 ? (+el.belowHorizonOpacitySlider.value||0)/100 : 1;
       // 天の川以外の透明化と端のフェードは画像の各画素に焼き込み済み。
-      // 格子ごとに透明度を変えないことで、斜めに見えていた階段状の階調をなくす。
-      ctx.globalAlpha=clamp(vis*1.08*belowFactor,0,1);
+      // 水平線の上下でもメッシュ単位の透明度変更は行わない。南半球の透明度は、この後に描く
+      // 地景レイヤーの連続したマスクへ一元化し、水平線付近の三角形・段差を防ぐ。
+      ctx.globalAlpha=clamp(vis*1.08,0,1);
       const sx0=(1.5-p00.l/360)*iw, sx1=(1.5-p10.l/360)*iw;
       const sy0=(0.5-p00.b/180)*ih, sy1=(0.5-p01.b/180)*ih;
       drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
