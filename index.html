@@ -682,7 +682,19 @@
     border:1px solid var(--line);
     backdrop-filter:blur(6px);
     -webkit-backdrop-filter:blur(6px);
+    width:min(720px,calc(100vw - 40px));
+    box-sizing:border-box;
   }
+  .display-popup-section-title{
+    flex:0 0 100%;
+    margin:7px 0 0;
+    color:var(--star-white);
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.06em;
+  }
+  .display-popup-section-title:first-of-type{margin-top:4px;}
+  .display-control-btn{border-radius:8px;}
   @media (max-width:900px){
     /* 上のモバイル用ブロック(760px以下)の.constellation-toggle-btnはこのベースルールより
        前に書かれているため、詳細度が同じ場合は後に書かれたベースルールが勝ってしまい、
@@ -2117,6 +2129,14 @@
                 <button id="namedStarsToggleBtn" type="button" class="constellation-toggle-btn active">恒星</button>
                 <button id="starGroupsToggleBtn" type="button" class="constellation-toggle-btn">星のグループ</button>
                 <button id="popupShowLabelsBtn" type="button" class="constellation-toggle-btn active">名称表示</button>
+                <div class="display-popup-section-title">シミュレーション画面</div>
+                <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
+                <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
+                <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
+                <div class="display-popup-section-title">アニメーション</div>
+                <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
+                <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
+                <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
             </div>
             <div class="photo-canvas-wrap" id="photoCanvasWrap">
@@ -3002,6 +3022,8 @@ const el={
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"),
+  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -3480,6 +3502,7 @@ el.lockAzToGcBtn.addEventListener("click",()=>{
     el.facingAz.value=Math.round(state.gcAltAz.az);
     update();
   }
+  syncDisplayPopupControls();
 });
 /* スタートレイル演出のON/OFF */
 let starTrailMode=false;
@@ -3511,11 +3534,13 @@ el.starTrailBtn.addEventListener("click",()=>{
     starTrailGrowProgress=0;
   }
   update();
+  syncDisplayPopupControls();
 });
 el.starTrailTaperBtn.addEventListener("click",()=>{
   starTrailTaper=!starTrailTaper;
   el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
   update();
+  syncDisplayPopupControls();
 });
 function formatTrailLength(totalMin){
   const h=Math.floor(totalMin/60), m=totalMin%60;
@@ -3538,6 +3563,7 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
   el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
   el.showBelowHorizonState.textContent = showBelowHorizon ? "ON" : "OFF";
   update();
+  syncDisplayPopupControls();
 });
 /* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
 let realMilkyWayEnabled=false;
@@ -3548,10 +3574,12 @@ el.realMilkyWayBtn.addEventListener("click",()=>{
   document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
   scheduleSaveSettings();
   update();
+  syncDisplayPopupControls();
 });
 el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
   update();
+  syncDisplayPopupControls();
 });
 /* 水平線(高度0°)を点線で表示するON/OFF */
 let showHorizonLine=false;
@@ -3560,11 +3588,41 @@ el.showHorizonLineBtn.addEventListener("click",()=>{
   el.showHorizonLineBtn.classList.toggle("active",showHorizonLine);
   el.showHorizonLineState.textContent = showHorizonLine ? "ON" : "OFF";
   update();
+  syncDisplayPopupControls();
 });
 el.normalStarOpacitySlider.addEventListener("input",()=>{
   el.normalStarOpacityVal.textContent=`${el.normalStarOpacitySlider.value}%`;
   update();
 });
+
+/* 「表示」ポップアップ内の6ボタンを、設定画面側の既存機能と常に同期する。 */
+function syncDisplayPopupControls(){
+  if(!el.popupRealMilkyWayBtn) return;
+  el.popupRealMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
+  el.popupHorizonLineBtn.classList.toggle("active",showHorizonLine);
+  el.popupSouth50Btn.classList.toggle("active",showBelowHorizon && +el.belowHorizonOpacitySlider.value===50);
+  el.popupLockGcBtn.classList.toggle("active",lockAzToGc);
+  el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
+  el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
+}
+el.popupRealMilkyWayBtn.addEventListener("click",()=>el.realMilkyWayBtn.click());
+el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click());
+el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
+el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
+el.popupTrailTaperBtn.addEventListener("click",()=>el.starTrailTaperBtn.click());
+el.popupSouth50Btn.addEventListener("click",()=>{
+  const currentlyOn=showBelowHorizon && +el.belowHorizonOpacitySlider.value===50;
+  showBelowHorizon=!currentlyOn;
+  if(!currentlyOn){
+    el.belowHorizonOpacitySlider.value=50;
+    el.belowHorizonOpacityVal.textContent="50%";
+  }
+  el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
+  el.showBelowHorizonState.textContent=showBelowHorizon ? "ON" : "OFF";
+  syncDisplayPopupControls();
+  update();
+});
+syncDisplayPopupControls();
 /* 指定した時刻スライダーの分数(0〜1800)に対応するユリウス日を計算する(computeState内のロジックと同じ) */
 function jdForSliderMinutes(minutes){
   const [y,mo,da]=el.dateInput.value.split("-").map(Number);
@@ -4421,6 +4479,7 @@ el.mobileSettingsBtn.addEventListener("click",()=>setMobileSettingsOpen(!mobileS
 /* スマホ用「表示」ボタン: 星座・惑星などの表示切り替えボタンをまとめた半透明ポップアップの開閉 */
 el.mobileDisplayOptionsBtn.addEventListener("click",(e)=>{
   e.stopPropagation();
+  syncDisplayPopupControls();
   el.displayOptionsPopup.classList.toggle("show");
 });
 document.addEventListener("click",(e)=>{
@@ -4520,6 +4579,7 @@ async function loadPersistedSettings(){
     el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
     el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
+    syncDisplayPopupControls();
     simulationClockVisible=s.simulationClockVisible!==false;
     syncSimulationClockVisibility();
     applyMobileLensFocalRange();
