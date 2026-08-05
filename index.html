@@ -1030,6 +1030,28 @@
     touch-action:none;
   }
   #photoCanvas.dragging{cursor:grabbing;}
+  .simulation-clock-overlay{
+    position:absolute;
+    top:16px;
+    left:50%;
+    z-index:8;
+    transform:translateX(-50%);
+    display:flex;
+    align-items:baseline;
+    justify-content:center;
+    gap:13px;
+    color:var(--core-amber);
+    opacity:.6;
+    font-family:'IBM Plex Mono',monospace;
+    font-weight:700;
+    white-space:nowrap;
+    pointer-events:none;
+    text-shadow:0 1px 4px rgba(0,0,0,.9);
+  }
+  .simulation-clock-overlay.hidden,body.ar-active .simulation-clock-overlay{display:none;}
+  .simulation-clock-date{font-size:14px;}
+  .simulation-clock-time{font-size:23px;letter-spacing:.03em;}
+  .mobile-clock-toggle-btn{display:none;}
   .real-mw-credit{
     display:none;
     position:absolute;
@@ -1052,6 +1074,9 @@
   @media(max-width:760px){
     .real-mw-credit{right:6px;bottom:6px;padding:2px 5px;font-size:8px;}
     .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 6px);}
+    .simulation-clock-overlay{top:12px;gap:10px;}
+    .simulation-clock-date{font-size:11px;}
+    .simulation-clock-time{font-size:18px;}
   }
   #meteorCanvas{
     position:absolute;
@@ -1762,6 +1787,28 @@
       pointer-events:none;
     }
     body.ar-active .mobile-mw-frame-btn{display:none;}
+    .mobile-clock-toggle-btn{
+      display:flex;
+      position:absolute;
+      top:141px;
+      left:9px;
+      z-index:12;
+      width:36px;
+      height:36px;
+      padding:0;
+      align-items:center;
+      justify-content:center;
+      border:1px solid var(--line);
+      border-radius:50%;
+      background:rgba(18,21,43,0.88);
+      color:var(--star-white);
+      opacity:.7;
+      box-shadow:0 2px 8px rgba(0,0,0,0.28);
+    }
+    .mobile-clock-toggle-btn.active{color:var(--core-amber);border-color:var(--core-amber);}
+    .mobile-clock-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
+    .mobile-clock-toggle-btn.active .clock-hidden-slash{display:none;}
+    body.ar-active .mobile-clock-toggle-btn{display:none;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -2076,10 +2123,15 @@
               <video id="arCameraVideo" class="ar-camera-video" playsinline muted></video>
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
+              <div id="simulationClockOverlay" class="simulation-clock-overlay" aria-live="off">
+                <span id="simulationClockDate" class="simulation-clock-date"></span>
+                <span id="simulationClockTime" class="simulation-clock-time"></span>
+              </div>
               <div class="real-mw-credit" aria-label="リアル天の川画像のクレジット">
                 <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">Image: ESO/S. Brunier</a>
                 <span aria-hidden="true"> · </span>
                 <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
+                <span> · Modified</span>
               </div>
               <div class="mobile-sky-search-control" aria-label="星空検索">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -2096,6 +2148,13 @@
                   <path d="M3 17C7 8 13 5 21 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                   <circle cx="12" cy="11" r="2.5" stroke="currentColor" stroke-width="1.6"/>
                   <path d="M12 7V5M12 17V15M8 11H6M18 11H16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button id="mobileClockToggleBtn" type="button" class="mobile-clock-toggle-btn active" aria-label="日時表示を隠す" title="日時表示を隠す">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/>
+                  <path d="M12 7.5V12L15.5 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path class="clock-hidden-slash" d="M5 5L19 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 </svg>
               </button>
               <div class="sky-search-popup" id="skySearchPopup"></div>
@@ -2916,7 +2975,8 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), skySearchPopup:$("skySearchPopup"),
+  simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3378,6 +3438,33 @@ el.mobileMwFrameBtn.addEventListener("click",()=>{
   showSkySearchPopup(mode==="core"?"天の川中心":mode==="arch"?"アーチ全体":"地景込み");
 });
 
+/* シミュレーション日時の画面内表示。スマホの時計アイコンで表示/非表示を切り替える。 */
+let simulationClockVisible=true;
+function syncSimulationClockVisibility(){
+  el.simulationClockOverlay.classList.toggle("hidden",!simulationClockVisible);
+  el.mobileClockToggleBtn.classList.toggle("active",simulationClockVisible);
+  const label=simulationClockVisible ? "日時表示を隠す" : "日時表示を表示する";
+  el.mobileClockToggleBtn.setAttribute("aria-label",label);
+  el.mobileClockToggleBtn.title=label;
+}
+function updateSimulationClock(minutes){
+  const [baseY,baseMo,baseDa]=el.dateInput.value.split("-").map(Number);
+  if(!baseY||!baseMo||!baseDa) return;
+  const wholeMinutes=Math.max(0,Math.floor(minutes));
+  const dayOffset=Math.floor(wholeMinutes/1440);
+  const hh=Math.floor(wholeMinutes/60)%24, mm=wholeMinutes%60;
+  const d=new Date(Date.UTC(baseY,baseMo-1,baseDa+dayOffset));
+  const weekdays=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"];
+  el.simulationClockDate.textContent=`${d.getUTCFullYear()}.${String(d.getUTCMonth()+1).padStart(2,"0")}.${String(d.getUTCDate()).padStart(2,"0")}${weekdays[d.getUTCDay()]}`;
+  el.simulationClockTime.textContent=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+}
+syncSimulationClockVisibility();
+el.mobileClockToggleBtn.addEventListener("click",()=>{
+  simulationClockVisible=!simulationClockVisible;
+  syncSimulationClockVisibility();
+  scheduleSaveSettings();
+});
+
 /* 再生ボタン: 時刻を自動で早送りし、撮影シミュレーションをアニメーション表示する */
 let playbackTimer=null;
 let playbackLastTime=0;
@@ -3545,6 +3632,7 @@ function updatePlaybackClockLabel(minutes){
   const rounded=Math.floor(minutes);
   const dayOffset=Math.floor(rounded/1440), hh=Math.floor(rounded/60)%24, mm=rounded%60;
   el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")+`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  updateSimulationClock(minutes);
 }
 function playbackTick(now){
   if(!playbackTimer) return;
@@ -4395,6 +4483,7 @@ function collectPersistedSettings(){
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
     realMilkyWayEnabled:realMilkyWayEnabled,
+    simulationClockVisible:simulationClockVisible,
     observedPlaceName:currentObservedPlaceName,
   };
 }
@@ -4431,6 +4520,8 @@ async function loadPersistedSettings(){
     el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
     el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
+    simulationClockVisible=s.simulationClockVisible!==false;
+    syncSimulationClockVisibility();
     applyMobileLensFocalRange();
     syncMobileLensModeButton();
     if(s.orientation!==undefined){
@@ -4763,6 +4854,7 @@ function computeState(){
   const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
   const timeWeekdayCircled=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"][dispDateObj.getUTCDay()];
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}${timeWeekdayCircled}`;
+  updateSimulationClock(minutes);
 
   const utcMs = Date.UTC(y,(mo-1),da,hh,mm,0) - tz*3600000;
   const dateUTC = new Date(utcMs);
