@@ -1517,7 +1517,12 @@
     margin-top:2px;
     border-radius:0 0 8px 8px;
     background:#0a0c1c;
+    cursor:ew-resize;
+    touch-action:none;
+    user-select:none;
+    -webkit-user-select:none;
   }
+  #compassStrip.dragging{cursor:grabbing;}
   /* ベースルールの直後に置くことで、詳細度が同じでも正しく上書きされるようにする */
   @media (max-width:760px){
     #compassStrip{height:30px;margin-top:0;}
@@ -2771,7 +2776,7 @@
                 </button>
               </div>
             </div>
-            <canvas id="compassStrip" width="1200" height="42"></canvas>
+            <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
             <div class="best-time-bar" id="bestTimeBar">
               <div class="best-time-text">
                 <div class="best-time-top-row">
@@ -4061,6 +4066,7 @@ let osmSatelliteLayer=null;
 let osmSatelliteMode=false;
 let osmCandidateLat=null;
 let osmCandidateLon=null;
+let osmFovFill=null;
 let osmFovOutline=null;
 let osmFovCenterline=null;
 function updateOsmCoordinateLabel(){
@@ -4109,9 +4115,11 @@ function updateOsmFovOverlay(currentState=state){
   outline.push([center.lat,center.lng]);
   const centerEnd=destinationLatLng(center.lat,center.lng,currentState.facingAz,radiusMeters);
   if(!osmFovOutline){
+    osmFovFill=L.polygon(outline,{pane:"overlayPane",interactive:false,className:"osm-fov-fill",stroke:false,fill:true,fillColor:"#ff4f9a",fillOpacity:.20}).addTo(osmMapInstance);
     osmFovOutline=L.polyline(outline,{pane:"overlayPane",interactive:false,className:"osm-fov-outline",color:"#f2ad55",weight:2.4,opacity:.95,dashArray:"7 7",lineCap:"round",lineJoin:"round"}).addTo(osmMapInstance);
     osmFovCenterline=L.polyline([[center.lat,center.lng],centerEnd],{pane:"overlayPane",interactive:false,className:"osm-fov-centerline",color:"#fff",weight:1.25,opacity:.72,dashArray:"2 7",lineCap:"round"}).addTo(osmMapInstance);
   }else{
+    osmFovFill.setLatLngs(outline);
     osmFovOutline.setLatLngs(outline);
     osmFovCenterline.setLatLngs([[center.lat,center.lng],centerEnd]);
   }
@@ -7870,6 +7878,7 @@ function drawCompassStrip(ctx,s){
   ctx.fillStyle="#0a0c1c"; ctx.fillRect(0,0,W,H);
 
   const fovH=s.fovH, centerAz=s.facingAz;
+  canvas.setAttribute("aria-valuenow",String(Math.round(norm360(centerAz))));
   const baseY=13;
   // キャンバスの高さが低い(スマホ用に縮小されている)場合は、目盛りとラベルの間隔をより詰める
   const labelOffset = H<40 ? 12 : 22;
@@ -7929,6 +7938,74 @@ function drawCompassStrip(ctx,s){
   ctx.fillText(`${Math.round(centerAz)}°`, cx+10, baseY);
   ctx.textAlign="left";
 }
+
+/* 方位バーを直接左右へスライドして撮影方位を変更する。
+   バーそのものをつかむ感覚に合わせ、左へ動かすと表示方位が増える向きにする。 */
+let compassDragActive=false;
+let compassDragPointerId=null;
+let compassDragStartX=0;
+let compassDragStartAz=0;
+let compassDragFov=60;
+let compassDragPendingAz=null;
+let compassDragRaf=0;
+function previewCompassAzimuth(azimuth){
+  const az=norm360(azimuth);
+  el.facingAz.value=az.toFixed(2);
+  if(state){
+    state.facingAz=az;
+    el.azVal.textContent=`${Math.round(az)}°`;
+    drawCompassStrip(compassCtx,state);
+    updateOsmFovOverlay(state);
+  }
+}
+function queueCompassAzimuth(azimuth){
+  compassDragPendingAz=azimuth;
+  if(compassDragRaf) return;
+  compassDragRaf=requestAnimationFrame(()=>{
+    compassDragRaf=0;
+    if(compassDragPendingAz!==null) previewCompassAzimuth(compassDragPendingAz);
+    compassDragPendingAz=null;
+  });
+}
+el.compassStrip.addEventListener("pointerdown",e=>{
+  if(e.button!==undefined&&e.button!==0) return;
+  if(playbackTimer) stopPlayback(true);
+  compassDragActive=true;
+  compassDragPointerId=e.pointerId;
+  compassDragStartX=e.clientX;
+  compassDragStartAz=state?state.facingAz:(+el.facingAz.value||0);
+  compassDragFov=Math.max(1,state&&Number.isFinite(state.fovH)?state.fovH:60);
+  el.compassStrip.classList.add("dragging");
+  el.compassStrip.setPointerCapture?.(e.pointerId);
+  e.preventDefault();
+});
+el.compassStrip.addEventListener("pointermove",e=>{
+  if(!compassDragActive||e.pointerId!==compassDragPointerId) return;
+  const width=Math.max(1,el.compassStrip.getBoundingClientRect().width);
+  queueCompassAzimuth(compassDragStartAz-(e.clientX-compassDragStartX)/width*compassDragFov);
+  e.preventDefault();
+});
+function finishCompassDrag(e){
+  if(!compassDragActive||(e&&e.pointerId!==compassDragPointerId)) return;
+  compassDragActive=false;
+  el.compassStrip.classList.remove("dragging");
+  if(compassDragPendingAz!==null) previewCompassAzimuth(compassDragPendingAz);
+  compassDragPendingAz=null;
+  if(compassDragRaf){cancelAnimationFrame(compassDragRaf);compassDragRaf=0;}
+  update();
+  scheduleSaveSettings();
+}
+el.compassStrip.addEventListener("pointerup",finishCompassDrag);
+el.compassStrip.addEventListener("pointercancel",finishCompassDrag);
+el.compassStrip.addEventListener("keydown",e=>{
+  if(e.key!=="ArrowLeft"&&e.key!=="ArrowRight") return;
+  const step=e.shiftKey?5:1;
+  const direction=e.key==="ArrowRight"?1:-1;
+  el.facingAz.value=norm360((state?state.facingAz:+el.facingAz.value)+direction*step);
+  update();
+  scheduleSaveSettings();
+  e.preventDefault();
+});
 
 /* =========================================================
    6.6 タイムラインバー描画 (月の出没・日の出没・天の川ベストタイムを可視化)
