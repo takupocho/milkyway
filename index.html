@@ -1198,9 +1198,10 @@
   .plan-card-place{margin:0 0 6px;color:rgba(255,255,255,.62);font:500 10px/1.35 'Inter',sans-serif;}
   .plan-card-photo{display:block;width:100%;height:128px;margin:7px 0;border:0;border-radius:8px;object-fit:cover;background:#050711;cursor:pointer;}
   .plan-card-details{display:flex;flex-wrap:wrap;gap:4px 10px;color:#d9efff;font:600 10px/1.45 'IBM Plex Mono',monospace;}
-  .plan-card-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px;}
+  .plan-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px;}
   .plan-card-actions button{min-height:30px;padding:5px 10px;font-size:10px;}
   .plan-card-actions .load{border-color:#7fc8ff;color:#d9efff;}
+  .plan-card-actions .edit{border-color:var(--core-amber);color:var(--core-amber);}
   .plan-card-actions .delete{color:var(--alert);}
   .plan-empty{padding:24px 12px;text-align:center;color:rgba(255,255,255,.58);font:600 11px/1.6 'Inter',sans-serif;}
   .photo-viewer-overlay{display:none;position:fixed;inset:0;z-index:10040;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));box-sizing:border-box;background:rgba(0,0,0,.92);}
@@ -5833,6 +5834,7 @@ async function reverseGeocodeAndShow(lat, lon){
 /* 登録観測地：都道府県ごとのoptgroup内で、市区町村名と撮影地名を表示する。 */
 let savedObservingLocations=[];
 let activeLoadedPlanId="";
+let editingSavedPlanId="";
 let pendingPlanPhoto=null;
 let pendingPlanPhotoRemoved=false;
 let planSaveExistingPhotoRecord=null;
@@ -5962,7 +5964,9 @@ async function registerCurrentObservingPlan(customTitle=""){
   const placeName=(placeMatches?currentObservedPlaceName:"")||`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   const classification=classifyObservedPlace(placeName);
   const title=String(customTitle||"").trim()||placeName;
-  const duplicate=savedObservingLocations.find(item=>Math.abs(item.lat-lat)<0.00001&&Math.abs(item.lon-lon)<0.00001&&item.title===title);
+  // 「編集」から開いた場合は、タイトルを変更しても同じ登録データを更新する。
+  const editingLocation=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
+  const duplicate=editingLocation||savedObservingLocations.find(item=>Math.abs(item.lat-lat)<0.00001&&Math.abs(item.lon-lon)<0.00001&&item.title===title);
   const location={
     id:duplicate?duplicate.id:`loc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
     title,placeName,prefecture:classification.prefecture,city:classification.city,
@@ -6038,7 +6042,7 @@ function renderCurrentPlanPreview(){
 function setPlanModalOpen(kind,open){
   const overlay=kind==="save"?el.planSaveOverlay:el.planLoadOverlay;
   overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
-  if(!open){if(kind==="save")resetPlanPhotoEditor();return;}
+  if(!open){if(kind==="save"){resetPlanPhotoEditor();editingSavedPlanId="";}return;}
   if(kind==="save"){
     renderCurrentPlanPreview();el.planSaveName.value=el.savedLocationName.value||"";
     preparePlanPhotoEditor();
@@ -6088,8 +6092,9 @@ function renderSavedPlansList(query=""){
     values.forEach(value=>{const span=document.createElement("span");span.textContent=value;details.appendChild(span);});
     const actions=document.createElement("div");actions.className="plan-card-actions";
     const del=document.createElement("button");del.type="button";del.className="delete";del.textContent="削除";del.addEventListener("click",()=>removeSavedObservingPlan(location));
+    const edit=document.createElement("button");edit.type="button";edit.className="edit";edit.textContent="編集";edit.addEventListener("click",()=>{applySavedObservingPlan(location);setPlanModalOpen("load",false);editingSavedPlanId=location.id;setPlanModalOpen("save",true);});
     const load=document.createElement("button");load.type="button";load.className="load";load.textContent="この計画を読み込む";load.addEventListener("click",()=>{applySavedObservingPlan(location);setPlanModalOpen("load",false);});
-    actions.append(del,load);card.append(title,place);if(photo)card.appendChild(photo);card.append(details,actions);el.planLoadList.appendChild(card);
+    actions.append(del,edit,load);card.append(title,place);if(photo)card.appendChild(photo);card.append(details,actions);el.planLoadList.appendChild(card);
   });
 }
 async function openPlanPhotoViewer(location){
@@ -6117,7 +6122,7 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
 document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay);
-el.quickSavePlanBtn.addEventListener("click",()=>setPlanModalOpen("save",true));
+el.quickSavePlanBtn.addEventListener("click",()=>{editingSavedPlanId="";setPlanModalOpen("save",true);});
 el.quickLoadPlanBtn.addEventListener("click",()=>setPlanModalOpen("load",true));
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planSaveCancelBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
