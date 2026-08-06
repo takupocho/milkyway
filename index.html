@@ -2598,6 +2598,7 @@
                 <button id="popupMountainNamesBtn" type="button" class="constellation-toggle-btn active">山名表示</button>
                 <div class="display-popup-section-title">シミュレーション画面</div>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
+                <button id="popupMilkyWayPositionTrailBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">天の川の位置軌跡</button>
                 <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
                 <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
@@ -3590,7 +3591,7 @@ const el={
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
-  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"),
+  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4492,6 +4493,8 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
 });
 /* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
 let realMilkyWayEnabled=false;
+/* ベストタイム中に天の川上へ並ぶ白い丸（位置軌跡）の表示ON/OFF。既存表示を維持するため初期値はON。 */
+let milkyWayPositionTrailVisible=true;
 el.realMilkyWayBtn.addEventListener("click",()=>{
   realMilkyWayEnabled=!realMilkyWayEnabled;
   el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
@@ -4541,6 +4544,8 @@ el.normalStarOpacitySlider.addEventListener("input",()=>{
 function syncDisplayPopupControls(){
   if(!el.popupRealMilkyWayBtn) return;
   el.popupRealMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
+  el.popupMilkyWayPositionTrailBtn.classList.toggle("active",milkyWayPositionTrailVisible);
+  el.popupMilkyWayPositionTrailBtn.setAttribute("aria-pressed",String(milkyWayPositionTrailVisible));
   el.popupHorizonLineBtn.classList.toggle("active",showHorizonLine);
   el.popupSouth50Btn.classList.toggle("active",showBelowHorizon && +el.belowHorizonOpacitySlider.value===50);
   el.popupSkylineBtn.classList.toggle("active",showSkylineBoundary);
@@ -4552,6 +4557,12 @@ function syncDisplayPopupControls(){
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
 el.popupRealMilkyWayBtn.addEventListener("click",()=>el.realMilkyWayBtn.click());
+el.popupMilkyWayPositionTrailBtn.addEventListener("click",()=>{
+  milkyWayPositionTrailVisible=!milkyWayPositionTrailVisible;
+  syncDisplayPopupControls();
+  update();
+  scheduleSaveSettings();
+});
 el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click());
 el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
@@ -5586,6 +5597,7 @@ function collectPersistedSettings(){
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
     realMilkyWayEnabled:realMilkyWayEnabled,
+    milkyWayPositionTrailVisible:milkyWayPositionTrailVisible,
     mountainNamesVisible:mountainNamesVisible,
     constellationsVisible:constellationsVisible,
     planetsVisible:planetsVisible,
@@ -5633,6 +5645,7 @@ async function loadPersistedSettings(){
     el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
     el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
+    milkyWayPositionTrailVisible=s.milkyWayPositionTrailVisible!==false;
     mountainNamesVisible=s.mountainNamesVisible!==false;
     el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
     constellationsVisible=s.constellationsVisible!==false;
@@ -7250,7 +7263,7 @@ function drawPhoto(ctx,s){
 
   // ベストタイム中は天の川を丸(ビーズ状)で強調オーバーレイ表示(開始・終了付近は速くフェードイン・アウトする)
   const inBestWindow = s.bestWindow && s.jd>=s.bestWindow.start && s.jd<=s.bestWindow.end;
-  if(inBestWindow){
+  if(inBestWindow && milkyWayPositionTrailVisible){
     const fadeMinutes=4; // この分数だけかけて素早くフェードイン・アウトする
     const minutesSinceStart=(s.jd-s.bestWindow.start)*1440;
     const minutesUntilEnd=(s.bestWindow.end-s.jd)*1440;
