@@ -1173,6 +1173,10 @@
   body.icon-help-visible .photo-canvas-wrap:not(.osm-map-open) .sim-right-help::before{right:100%;}
   body.icon-help-visible .photo-canvas-wrap.osm-map-open .osm-map-actions button::after{content:attr(data-help);opacity:1;right:calc(100% + 12px);padding:6px 9px;border:1px solid rgba(255,255,255,.28);}
   body.icon-help-visible .photo-canvas-wrap.osm-map-open .osm-map-actions button::before{content:"";position:absolute;right:100%;top:50%;width:12px;height:1px;background:rgba(255,255,255,.78);pointer-events:none;}
+  body.icon-controls-hidden .photo-canvas-wrap .sim-left-help,
+  body.icon-controls-hidden .photo-canvas-wrap .sim-right-help,
+  body.icon-controls-hidden .photo-canvas-wrap .osm-map-actions{display:none!important;}
+  .info-toggle-btn.icons-hidden-state{border-color:var(--violet);color:#c9c2ff;}
   .plan-quick-actions button:hover,.plan-quick-actions button:focus-visible{border-color:var(--core-amber);color:var(--core-amber);}
   .plan-quick-actions button:active{opacity:.72;}
   .photo-canvas-wrap.osm-map-open .plan-quick-actions,body.ar-active .plan-quick-actions{display:none;}
@@ -5442,14 +5446,19 @@ function setMobileSettingsOpen(open){
 }
 el.mobileSettingsBtn.addEventListener("click",()=>setMobileSettingsOpen(!mobileSettingsOpen));
 
-/* iボタン: 通常画面・地図画面それぞれのアイコン説明を一括表示／一括非表示にする。 */
-let iconHelpVisible=false;
-function setIconHelpVisible(visible){
-  iconHelpVisible=!!visible;document.body.classList.toggle("icon-help-visible",iconHelpVisible);
-  el.iconInfoBtn.classList.toggle("active",iconHelpVisible);el.iconInfoBtn.setAttribute("aria-pressed",String(iconHelpVisible));
-  el.iconInfoBtn.setAttribute("aria-label",iconHelpVisible?"アイコンの説明を非表示":"アイコンの説明を表示");
+/* iボタン: 0=アイコン、1=アイコン+説明、2=説明と画面内アイコンを非表示、の3段階で循環する。 */
+let iconHelpMode=0;
+function setIconHelpMode(mode){
+  iconHelpMode=((mode%3)+3)%3;
+  document.body.classList.toggle("icon-help-visible",iconHelpMode===1);
+  document.body.classList.toggle("icon-controls-hidden",iconHelpMode===2);
+  el.iconInfoBtn.classList.toggle("active",iconHelpMode===1);
+  el.iconInfoBtn.classList.toggle("icons-hidden-state",iconHelpMode===2);
+  el.iconInfoBtn.setAttribute("aria-pressed",iconHelpMode===1?"true":iconHelpMode===2?"mixed":"false");
+  const labels=["アイコンの説明を表示","説明と画面内アイコンを非表示","画面内アイコンを表示"];
+  el.iconInfoBtn.setAttribute("aria-label",labels[iconHelpMode]);el.iconInfoBtn.title=labels[iconHelpMode];
 }
-el.iconInfoBtn.addEventListener("click",e=>{e.stopPropagation();el.displayOptionsPopup.classList.remove("show");setIconHelpVisible(!iconHelpVisible);});
+el.iconInfoBtn.addEventListener("click",e=>{e.stopPropagation();el.displayOptionsPopup.classList.remove("show");setIconHelpMode(iconHelpMode+1);});
 
 /* スマホ用「表示」ボタン: 星座・惑星などの表示切り替えボタンをまとめた半透明ポップアップの開閉 */
 el.mobileDisplayOptionsBtn.addEventListener("click",(e)=>{
