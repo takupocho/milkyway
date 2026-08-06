@@ -5496,6 +5496,22 @@ async function planPhotoPut(record){
   const db=await openPlanPhotoDb();
   return new Promise((resolve,reject)=>{const tx=db.transaction("photos","readwrite");tx.objectStore("photos").put(record);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
 }
+function planPhotoBlob(record,full=true){
+  if(!record)return null;
+  const blob=full?(record.fullBlob||record.thumbBlob):(record.thumbBlob||record.fullBlob);if(blob instanceof Blob)return blob;
+  const buffer=full?(record.fullBuffer||record.thumbBuffer):(record.thumbBuffer||record.fullBuffer);
+  return buffer?new Blob([buffer],{type:record.mimeType||"image/jpeg"}):null;
+}
+function locationHasPhoto(location){return !!(location&&(location.photoId||location.photoPreviewDataUrl));}
+async function planPhotoForLocation(location){
+  if(!location)return null;
+  if(location.photoId){
+    try{const record=await planPhotoGet(location.photoId);if(planPhotoBlob(record,true))return record;}catch(e){}
+  }
+  if(location.photoPreviewDataUrl)return {id:location.photoId||"fallback",fullDataUrl:location.photoPreviewDataUrl,thumbDataUrl:location.photoPreviewDataUrl,exif:location.photoExif||null,fallback:true};
+  return null;
+}
+function blobToDataUrl(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(reader.error);reader.readAsDataURL(blob);});}
 async function planPhotoDelete(id){
   if(!id) return;const db=await openPlanPhotoDb();
   return new Promise((resolve,reject)=>{const tx=db.transaction("photos","readwrite");tx.objectStore("photos").delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
@@ -5896,8 +5912,23 @@ async function loadSavedLocations(){
     savedObservingLocations=stored?JSON.parse(stored):[];
     if(!Array.isArray(savedObservingLocations)) savedObservingLocations=[];
   }catch(e){savedObservingLocations=[];}
+  await repairSavedPlanPhotoLinks();
   renderSavedLocationSelect();
   renderSavedPlansList();
+}
+async function repairSavedPlanPhotoLinks(){
+  let changed=false;
+  for(const location of savedObservingLocations){
+    if(locationHasPhoto(location))continue;
+    const expectedId=`photo_${location.id}`;
+    try{
+      const record=await planPhotoGet(expectedId);if(!planPhotoBlob(record,true))continue;
+      location.photoId=expectedId;location.photoExif=record.exif||null;
+      const thumb=planPhotoBlob(record,false);if(thumb)location.photoPreviewDataUrl=await blobToDataUrl(thumb);
+      changed=true;
+    }catch(e){}
+  }
+  if(changed)await saveObservingLocations();
 }
 function revokeObjectUrl(url){if(url)try{URL.revokeObjectURL(url);}catch(e){}}
 function canvasToPhotoBlob(canvas,quality){
@@ -5974,8 +6005,9 @@ function resetPlanPhotoEditor(){
   revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";pendingPlanPhoto=null;pendingPlanPhotoRemoved=false;planSaveExistingPhotoRecord=null;
   el.planPhotoInput.value="";el.planPhotoSelectBtn.textContent="写真を選択";el.planPhotoPreview.removeAttribute("src");el.planPhotoPreviewWrap.classList.remove("show");el.planPhotoRemoveBtn.hidden=true;el.planPhotoStatus.textContent="";
 }
-function showPlanPhotoPreview(blob,statusText=""){
-  revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl=URL.createObjectURL(blob);el.planPhotoPreview.src=planSavePhotoObjectUrl;
+function showPlanPhotoPreview(source,statusText=""){
+  revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";
+  if(typeof source==="string")el.planPhotoPreview.src=source;else{planSavePhotoObjectUrl=URL.createObjectURL(source);el.planPhotoPreview.src=planSavePhotoObjectUrl;}
   el.planPhotoPreviewWrap.classList.add("show");el.planPhotoRemoveBtn.hidden=false;el.planPhotoStatus.textContent=statusText;
 }
 function activeEditingPlan(){
@@ -5985,30 +6017,35 @@ function activeEditingPlan(){
 }
 async function preparePlanPhotoEditor(){
   resetPlanPhotoEditor();const editorVersion=planPhotoEditorVersion;const location=activeEditingPlan();
-  if(!location?.photoId)return;
+  if(!locationHasPhoto(location))return;
   el.planPhotoStatus.textContent="登録写真を読み込んでいます…";
   try{
-    const record=await planPhotoGet(location.photoId);if(!record)return;
+    const record=await planPhotoForLocation(location);if(!record){el.planPhotoStatus.textContent="写真データ本体が見つかりません。「写真を選択」から登録し直してください。";return;}
     if(editorVersion!==planPhotoEditorVersion||!el.planSaveOverlay.classList.contains("show"))return;
-    planSaveExistingPhotoRecord=record;showPlanPhotoPreview(record.fullBlob||record.thumbBlob,"登録済みの写真です。変更または削除できます。");
+    planSaveExistingPhotoRecord=record;showPlanPhotoPreview(record.fullDataUrl||planPhotoBlob(record,true),record.fallback?"バックアップ画像から復元しました。写真を選び直して保存すると本体も修復されます。":"登録済みの写真です。変更または削除できます。");
   }catch(e){el.planPhotoStatus.textContent="登録写真を読み込めませんでした。";}
 }
 async function persistPlanPhotoForLocation(location){
   if(!location)return;
   if(pendingPlanPhoto){
     const photoId=`photo_${location.id}`;
-    await planPhotoPut({id:photoId,fullBlob:pendingPlanPhoto.fullBlob,thumbBlob:pendingPlanPhoto.thumbBlob,width:pendingPlanPhoto.width,height:pendingPlanPhoto.height,originalName:pendingPlanPhoto.originalName,exif:pendingPlanPhoto.exif||null,updatedAt:Date.now()});
+    const fullBuffer=await pendingPlanPhoto.fullBlob.arrayBuffer(),thumbBuffer=await pendingPlanPhoto.thumbBlob.arrayBuffer();
+    await planPhotoPut({id:photoId,fullBuffer,thumbBuffer,mimeType:"image/jpeg",width:pendingPlanPhoto.width,height:pendingPlanPhoto.height,originalName:pendingPlanPhoto.originalName,exif:pendingPlanPhoto.exif||null,updatedAt:Date.now()});
+    const verified=await planPhotoGet(photoId);if(!planPhotoBlob(verified,true))throw new Error("写真データの保存確認に失敗しました。端末の空き容量をご確認ください。");
     if(location.photoId&&location.photoId!==photoId)await planPhotoDelete(location.photoId).catch(()=>{});
-    location.photoId=photoId;await saveObservingLocations();return;
+    location.photoId=photoId;location.photoPreviewDataUrl=await blobToDataUrl(pendingPlanPhoto.thumbBlob);location.photoExif=pendingPlanPhoto.exif||null;await saveObservingLocations();return;
   }
   if(pendingPlanPhotoRemoved){
     if(location.photoId)await planPhotoDelete(location.photoId).catch(()=>{});
-    delete location.photoId;await saveObservingLocations();return;
+    delete location.photoId;delete location.photoPreviewDataUrl;delete location.photoExif;await saveObservingLocations();return;
   }
   // 登録済み計画を別タイトルで保存した場合は、表示中の写真も新しい計画へ複製する。
   if(planSaveExistingPhotoRecord&&!location.photoId){
     const photoId=`photo_${location.id}`;
-    await planPhotoPut({...planSaveExistingPhotoRecord,id:photoId,updatedAt:Date.now()});location.photoId=photoId;await saveObservingLocations();
+    if(!planSaveExistingPhotoRecord.fallback)await planPhotoPut({...planSaveExistingPhotoRecord,id:photoId,updatedAt:Date.now()});
+    location.photoId=photoId;
+    const thumb=planPhotoBlob(planSaveExistingPhotoRecord,false);if(thumb)location.photoPreviewDataUrl=await blobToDataUrl(thumb);else if(planSaveExistingPhotoRecord.thumbDataUrl)location.photoPreviewDataUrl=planSaveExistingPhotoRecord.thumbDataUrl;
+    location.photoExif=planSaveExistingPhotoRecord.exif||null;await saveObservingLocations();
   }
 }
 async function registerCurrentObservingPlan(customTitle=""){
@@ -6033,11 +6070,12 @@ async function registerCurrentObservingPlan(customTitle=""){
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
     updatedAt:Date.now()
   };
-  if(duplicate) Object.assign(duplicate,location); else savedObservingLocations.push(location);
+  let savedLocation=location;
+  if(duplicate){Object.assign(duplicate,location);savedLocation=duplicate;}else savedObservingLocations.push(location);
   await saveObservingLocations();
-  renderSavedLocationSelect(location.id);
+  renderSavedLocationSelect(savedLocation.id);
   renderSavedPlansList(el.planLoadSearch.value);
-  return {location,updated:!!duplicate};
+  return {location:savedLocation,updated:!!duplicate};
 }
 function applySavedObservingPlan(location){
   if(!location) return false;
@@ -6136,9 +6174,9 @@ function renderSavedPlansList(query=""){
     const title=document.createElement("h5");title.className="plan-card-title";title.textContent=location.title;
     const place=document.createElement("p");place.className="plan-card-place";place.textContent=location.placeName||`${Number(location.lat).toFixed(5)}, ${Number(location.lon).toFixed(5)}`;
     let photo=null;
-    if(location.photoId){
+    if(locationHasPhoto(location)){
       photo=document.createElement("img");photo.className="plan-card-photo";photo.alt=`${location.title}の登録写真`;photo.loading="lazy";photo.title="タップして拡大表示";
-      planPhotoGet(location.photoId).then(record=>{if(!record||!photo.isConnected)return;const url=URL.createObjectURL(record.thumbBlob||record.fullBlob);planThumbObjectUrls.push(url);photo.src=url;}).catch(()=>{photo.remove();});
+      planPhotoForLocation(location).then(record=>{if(!record||!photo.isConnected){photo.remove();return;}if(record.thumbDataUrl)photo.src=record.thumbDataUrl;else{const blob=planPhotoBlob(record,false);if(!blob){photo.remove();return;}const url=URL.createObjectURL(blob);planThumbObjectUrls.push(url);photo.src=url;}}).catch(()=>{photo.remove();});
       photo.addEventListener("click",()=>openPlanPhotoViewer(location));
     }
     const details=document.createElement("div");details.className="plan-card-details";
@@ -6156,16 +6194,17 @@ function renderSavedPlansList(query=""){
   });
 }
 async function openPlanPhotoViewer(location){
-  if(!location?.photoId)return;
+  if(!locationHasPhoto(location))return;
   try{
-    const record=await planPhotoGet(location.photoId);if(!record){syncQuickPhotoButton(null);return;}
-    revokeObjectUrl(photoViewerObjectUrl);photoViewerObjectUrl=URL.createObjectURL(record.fullBlob||record.thumbBlob);
-    el.photoViewerImage.src=photoViewerObjectUrl;el.photoViewerCaption.textContent=location.title;renderPhotoExif(record.exif);el.photoViewerOverlay.classList.add("show");el.photoViewerOverlay.setAttribute("aria-hidden","false");
+    const record=await planPhotoForLocation(location);if(!record){alert("写真データ本体を読み込めませんでした。「編集」から写真を選び直して保存してください。");return;}
+    revokeObjectUrl(photoViewerObjectUrl);photoViewerObjectUrl="";
+    if(record.fullDataUrl)el.photoViewerImage.src=record.fullDataUrl;else{const blob=planPhotoBlob(record,true);if(!blob)throw new Error("photo missing");photoViewerObjectUrl=URL.createObjectURL(blob);el.photoViewerImage.src=photoViewerObjectUrl;}
+    el.photoViewerCaption.textContent=location.title;renderPhotoExif(record.exif);el.photoViewerOverlay.classList.add("show");el.photoViewerOverlay.setAttribute("aria-hidden","false");
   }catch(e){alert("登録写真を読み込めませんでした。");}
 }
 function syncQuickPhotoButton(location){
-  el.quickPhotoBtn.hidden=!location?.photoId;
-  if(location?.photoId){el.quickPhotoBtn.setAttribute("aria-label",`${location.title}の登録写真を表示`);el.quickPhotoBtn.title="登録写真を表示";}
+  el.quickPhotoBtn.hidden=!locationHasPhoto(location);
+  if(locationHasPhoto(location)){el.quickPhotoBtn.setAttribute("aria-label",`${location.title}の登録写真を表示`);el.quickPhotoBtn.title="登録写真を表示";}
 }
 function formatExifExposure(value){
   value=+value;if(!Number.isFinite(value)||value<=0)return "";
@@ -6204,7 +6243,7 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
 document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay);
 el.quickSavePlanBtn.addEventListener("click",()=>{editingSavedPlanId="";setPlanModalOpen("save",true);});
 el.quickLoadPlanBtn.addEventListener("click",()=>setPlanModalOpen("load",true));
-el.quickPhotoBtn.addEventListener("click",()=>{const location=savedObservingLocations.find(item=>item.id===activeLoadedPlanId);if(location?.photoId)openPlanPhotoViewer(location);else syncQuickPhotoButton(null);});
+el.quickPhotoBtn.addEventListener("click",()=>{const location=savedObservingLocations.find(item=>item.id===activeLoadedPlanId);if(locationHasPhoto(location))openPlanPhotoViewer(location);});
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planSaveCancelBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planLoadCloseBtn.addEventListener("click",()=>setPlanModalOpen("load",false));
