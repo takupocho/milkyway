@@ -1176,6 +1176,16 @@
   .plan-preview-item.wide{grid-column:1/-1;}
   .plan-preview-label{display:block;margin-bottom:3px;color:rgba(255,255,255,.5);font:600 9px/1.2 'Inter',sans-serif;}
   .plan-preview-value{display:block;color:#fff;font:650 11.5px/1.45 'IBM Plex Mono',monospace;word-break:break-word;}
+  .plan-photo-section{margin:0 0 12px;padding:10px;border:1px solid rgba(154,164,210,.28);border-radius:10px;background:rgba(255,255,255,.035);}
+  .plan-photo-heading{margin:0 0 7px;color:#d9efff;font:700 12px/1.3 'Inter',sans-serif;}
+  .plan-photo-help{margin:0 0 8px;color:rgba(255,255,255,.55);font:500 9.5px/1.5 'Inter',sans-serif;}
+  .plan-photo-controls{display:flex;flex-wrap:wrap;gap:7px;align-items:center;}
+  .plan-photo-controls button{min-height:32px;padding:6px 10px;font-size:10px;}
+  .plan-photo-controls .remove{color:var(--alert);}
+  .plan-photo-preview-wrap{display:none;position:relative;margin-top:9px;border-radius:9px;overflow:hidden;background:#050711;}
+  .plan-photo-preview-wrap.show{display:block;}
+  .plan-photo-preview{display:block;width:100%;max-height:260px;object-fit:contain;}
+  .plan-photo-status{margin-top:6px;color:var(--core-amber);font:600 9.5px/1.45 'Inter',sans-serif;}
   .plan-modal-actions{display:flex;justify-content:flex-end;gap:7px;}
   .plan-modal-actions button{min-height:34px;padding:7px 13px;}
   .plan-modal-actions .primary{border-color:var(--core-amber);color:var(--core-amber);}
@@ -1186,12 +1196,19 @@
   .plan-card{padding:10px;border:1px solid rgba(154,164,210,.32);border-radius:10px;background:rgba(255,255,255,.045);}
   .plan-card-title{margin:0 0 4px;color:#fff;font:700 13px/1.35 'Inter',sans-serif;}
   .plan-card-place{margin:0 0 6px;color:rgba(255,255,255,.62);font:500 10px/1.35 'Inter',sans-serif;}
+  .plan-card-photo{display:block;width:100%;height:128px;margin:7px 0;border:0;border-radius:8px;object-fit:cover;background:#050711;cursor:pointer;}
   .plan-card-details{display:flex;flex-wrap:wrap;gap:4px 10px;color:#d9efff;font:600 10px/1.45 'IBM Plex Mono',monospace;}
   .plan-card-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:8px;}
   .plan-card-actions button{min-height:30px;padding:5px 10px;font-size:10px;}
   .plan-card-actions .load{border-color:#7fc8ff;color:#d9efff;}
   .plan-card-actions .delete{color:var(--alert);}
   .plan-empty{padding:24px 12px;text-align:center;color:rgba(255,255,255,.58);font:600 11px/1.6 'Inter',sans-serif;}
+  .photo-viewer-overlay{display:none;position:fixed;inset:0;z-index:10040;align-items:center;justify-content:center;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));box-sizing:border-box;background:rgba(0,0,0,.92);}
+  .photo-viewer-overlay.show{display:flex;}
+  .photo-viewer-content{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+  .photo-viewer-image{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;box-shadow:0 8px 34px rgba(0,0,0,.6);}
+  .photo-viewer-close{position:absolute;top:4px;right:4px;z-index:2;width:42px;height:42px;padding:0;border-radius:50%;background:rgba(18,21,43,.9);font-size:22px;}
+  .photo-viewer-caption{position:absolute;left:50%;bottom:5px;transform:translateX(-50%);max-width:calc(100% - 24px);padding:6px 10px;border-radius:8px;background:rgba(5,8,20,.74);color:#fff;font:700 11px/1.3 'Inter',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   @media(max-width:760px){
     .plan-quick-actions{top:7px;right:7px;gap:6px;}
     .plan-quick-actions button{width:39px;height:39px;border-radius:11px;}
@@ -2650,6 +2667,14 @@
                   <p class="plan-modal-help">現在の観測地点、日時、レンズ、撮影方向、縦横構図をまとめて登録します。</p>
                   <input id="planSaveName" class="plan-save-name" type="text" maxlength="40" placeholder="撮影地名・計画名（例：六甲山展望台 夏の天の川）">
                   <div id="planSavePreview" class="plan-preview"></div>
+                  <div class="plan-photo-section">
+                    <h4 class="plan-photo-heading">実際に撮影した写真</h4>
+                    <p class="plan-photo-help">iPhoneの写真ライブラリなどから選択できます。表示用に縮小・圧縮し、この端末内へ保存します。</p>
+                    <input id="planPhotoInput" type="file" accept="image/*" hidden>
+                    <div class="plan-photo-controls"><button id="planPhotoSelectBtn" type="button">写真を選択</button><button id="planPhotoRemoveBtn" type="button" class="remove" hidden>写真を削除</button></div>
+                    <div id="planPhotoPreviewWrap" class="plan-photo-preview-wrap"><img id="planPhotoPreview" class="plan-photo-preview" alt="登録する実写真のプレビュー"></div>
+                    <div id="planPhotoStatus" class="plan-photo-status" aria-live="polite"></div>
+                  </div>
                   <div class="plan-modal-actions"><button id="planSaveCancelBtn" type="button">キャンセル</button><button id="planSaveRunBtn" type="button" class="primary">この内容を保存</button></div>
                 </section>
               </div>
@@ -2660,6 +2685,13 @@
                   <input id="planLoadSearch" class="plan-search" type="text" inputmode="search" placeholder="撮影地名・都道府県・市区町村を検索">
                   <div id="planLoadList" class="plan-load-list"></div>
                 </section>
+              </div>
+              <div id="photoViewerOverlay" class="photo-viewer-overlay" aria-hidden="true">
+                <div class="photo-viewer-content" role="dialog" aria-modal="true" aria-label="登録写真を拡大表示">
+                  <button id="photoViewerCloseBtn" class="photo-viewer-close" type="button" aria-label="写真を閉じる">×</button>
+                  <img id="photoViewerImage" class="photo-viewer-image" alt="登録した実写真">
+                  <div id="photoViewerCaption" class="photo-viewer-caption"></div>
+                </div>
               </div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
@@ -3464,7 +3496,9 @@ const el={
   savedLocationName:$("savedLocationName"), savedLocationSelect:$("savedLocationSelect"), registerLocationBtn:$("registerLocationBtn"), loadSavedLocationBtn:$("loadSavedLocationBtn"), deleteSavedLocationBtn:$("deleteSavedLocationBtn"),
   quickSavePlanBtn:$("quickSavePlanBtn"), quickLoadPlanBtn:$("quickLoadPlanBtn"),
   planSaveOverlay:$("planSaveOverlay"), planSaveCloseBtn:$("planSaveCloseBtn"), planSaveCancelBtn:$("planSaveCancelBtn"), planSaveName:$("planSaveName"), planSavePreview:$("planSavePreview"), planSaveRunBtn:$("planSaveRunBtn"),
+  planPhotoInput:$("planPhotoInput"), planPhotoSelectBtn:$("planPhotoSelectBtn"), planPhotoRemoveBtn:$("planPhotoRemoveBtn"), planPhotoPreviewWrap:$("planPhotoPreviewWrap"), planPhotoPreview:$("planPhotoPreview"), planPhotoStatus:$("planPhotoStatus"),
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
+  photoViewerOverlay:$("photoViewerOverlay"), photoViewerCloseBtn:$("photoViewerCloseBtn"), photoViewerImage:$("photoViewerImage"), photoViewerCaption:$("photoViewerCaption"),
   mapToggleBtn:$("mapToggleBtn"), mapToggleState:$("mapToggleState"), mapCard:$("mapCard"), mapCanvas:$("mapCanvas"),
   zoomInBtn:$("zoomInBtn"), zoomOutBtn:$("zoomOutBtn"), mapResetBtn:$("mapResetBtn"), mapScaleLabel:$("mapScaleLabel"),
   dateInput:$("dateInput"), timeSlider:$("timeSlider"), timeLabel:$("timeLabel"), timeDateLabel:$("timeDateLabel"), nowBtn:$("nowBtn"),
@@ -5430,6 +5464,31 @@ el.dateCollapseToggle.addEventListener("click",()=>{
    GitHub Pages・通常ブラウザではlocalStorageを使用し、対応環境ではwindow.storageにも同期する。 */
 const SETTINGS_KEY="milkyway-settings-v1";
 const SAVED_LOCATIONS_KEY="milkyway-saved-locations-v1";
+const PLAN_PHOTO_DB_NAME="milkyway-plan-photos-v1";
+let planPhotoDbPromise=null;
+function openPlanPhotoDb(){
+  if(planPhotoDbPromise) return planPhotoDbPromise;
+  planPhotoDbPromise=new Promise((resolve,reject)=>{
+    if(!window.indexedDB){reject(new Error("IndexedDB unavailable"));return;}
+    const request=indexedDB.open(PLAN_PHOTO_DB_NAME,1);
+    request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains("photos"))db.createObjectStore("photos",{keyPath:"id"});};
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error("写真保存領域を開けませんでした"));
+  });
+  return planPhotoDbPromise;
+}
+async function planPhotoGet(id){
+  if(!id) return null;const db=await openPlanPhotoDb();
+  return new Promise((resolve,reject)=>{const request=db.transaction("photos","readonly").objectStore("photos").get(id);request.onsuccess=()=>resolve(request.result||null);request.onerror=()=>reject(request.error);});
+}
+async function planPhotoPut(record){
+  const db=await openPlanPhotoDb();
+  return new Promise((resolve,reject)=>{const tx=db.transaction("photos","readwrite");tx.objectStore("photos").put(record);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+}
+async function planPhotoDelete(id){
+  if(!id) return;const db=await openPlanPhotoDb();
+  return new Promise((resolve,reject)=>{const tx=db.transaction("photos","readwrite");tx.objectStore("photos").delete(id);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+}
 async function persistentGet(key){
   try{const value=localStorage.getItem(key);if(value!==null) return value;}catch(e){}
   if(typeof window.storage!=="undefined"){
@@ -5773,6 +5832,14 @@ async function reverseGeocodeAndShow(lat, lon){
 
 /* 登録観測地：都道府県ごとのoptgroup内で、市区町村名と撮影地名を表示する。 */
 let savedObservingLocations=[];
+let activeLoadedPlanId="";
+let pendingPlanPhoto=null;
+let pendingPlanPhotoRemoved=false;
+let planSaveExistingPhotoRecord=null;
+let planSavePhotoObjectUrl="";
+let photoViewerObjectUrl="";
+let planThumbObjectUrls=[];
+let planPhotoEditorVersion=0;
 const PREFECTURE_ORDER=["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
 function classifyObservedPlace(placeName){
   const text=String(placeName||"").trim();
@@ -5820,6 +5887,71 @@ async function loadSavedLocations(){
   renderSavedLocationSelect();
   renderSavedPlansList();
 }
+function revokeObjectUrl(url){if(url)try{URL.revokeObjectURL(url);}catch(e){}}
+function canvasToPhotoBlob(canvas,quality){
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error("画像を変換できませんでした")),"image/jpeg",quality));
+}
+async function compressPlanPhoto(file){
+  if(!file||!file.type.startsWith("image/")) throw new Error("画像ファイルを選択してください。");
+  const sourceUrl=URL.createObjectURL(file);
+  try{
+    const img=new Image();img.decoding="async";img.src=sourceUrl;
+    await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error("写真を読み込めませんでした。"));});
+    const sourceW=img.naturalWidth,sourceH=img.naturalHeight;
+    if(!sourceW||!sourceH) throw new Error("写真の大きさを確認できませんでした。");
+    const fullScale=Math.min(1,1800/Math.max(sourceW,sourceH));
+    const fullCanvas=document.createElement("canvas");fullCanvas.width=Math.max(1,Math.round(sourceW*fullScale));fullCanvas.height=Math.max(1,Math.round(sourceH*fullScale));
+    const fullCtx=fullCanvas.getContext("2d",{alpha:false});fullCtx.fillStyle="#000";fullCtx.fillRect(0,0,fullCanvas.width,fullCanvas.height);fullCtx.drawImage(img,0,0,fullCanvas.width,fullCanvas.height);
+    const fullBlob=await canvasToPhotoBlob(fullCanvas,.84);
+    const thumbScale=Math.min(1,420/Math.max(fullCanvas.width,fullCanvas.height));
+    const thumbCanvas=document.createElement("canvas");thumbCanvas.width=Math.max(1,Math.round(fullCanvas.width*thumbScale));thumbCanvas.height=Math.max(1,Math.round(fullCanvas.height*thumbScale));
+    const thumbCtx=thumbCanvas.getContext("2d",{alpha:false});thumbCtx.fillStyle="#000";thumbCtx.fillRect(0,0,thumbCanvas.width,thumbCanvas.height);thumbCtx.drawImage(fullCanvas,0,0,thumbCanvas.width,thumbCanvas.height);
+    const thumbBlob=await canvasToPhotoBlob(thumbCanvas,.76);
+    return {fullBlob,thumbBlob,width:fullCanvas.width,height:fullCanvas.height,originalName:file.name||"photo.jpg"};
+  }finally{URL.revokeObjectURL(sourceUrl);}
+}
+function resetPlanPhotoEditor(){
+  planPhotoEditorVersion++;
+  revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";pendingPlanPhoto=null;pendingPlanPhotoRemoved=false;planSaveExistingPhotoRecord=null;
+  el.planPhotoInput.value="";el.planPhotoSelectBtn.textContent="写真を選択";el.planPhotoPreview.removeAttribute("src");el.planPhotoPreviewWrap.classList.remove("show");el.planPhotoRemoveBtn.hidden=true;el.planPhotoStatus.textContent="";
+}
+function showPlanPhotoPreview(blob,statusText=""){
+  revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl=URL.createObjectURL(blob);el.planPhotoPreview.src=planSavePhotoObjectUrl;
+  el.planPhotoPreviewWrap.classList.add("show");el.planPhotoRemoveBtn.hidden=false;el.planPhotoStatus.textContent=statusText;
+}
+function activeEditingPlan(){
+  const location=savedObservingLocations.find(item=>item.id===activeLoadedPlanId);if(!location)return null;
+  const lat=+el.lat.value,lon=+el.lon.value;
+  return Math.abs(+location.lat-lat)<=.00001&&Math.abs(+location.lon-lon)<=.00001&&el.savedLocationName.value===location.title?location:null;
+}
+async function preparePlanPhotoEditor(){
+  resetPlanPhotoEditor();const editorVersion=planPhotoEditorVersion;const location=activeEditingPlan();
+  if(!location?.photoId)return;
+  el.planPhotoStatus.textContent="登録写真を読み込んでいます…";
+  try{
+    const record=await planPhotoGet(location.photoId);if(!record)return;
+    if(editorVersion!==planPhotoEditorVersion||!el.planSaveOverlay.classList.contains("show"))return;
+    planSaveExistingPhotoRecord=record;showPlanPhotoPreview(record.fullBlob||record.thumbBlob,"登録済みの写真です。変更または削除できます。");
+  }catch(e){el.planPhotoStatus.textContent="登録写真を読み込めませんでした。";}
+}
+async function persistPlanPhotoForLocation(location){
+  if(!location)return;
+  if(pendingPlanPhoto){
+    const photoId=`photo_${location.id}`;
+    await planPhotoPut({id:photoId,fullBlob:pendingPlanPhoto.fullBlob,thumbBlob:pendingPlanPhoto.thumbBlob,width:pendingPlanPhoto.width,height:pendingPlanPhoto.height,originalName:pendingPlanPhoto.originalName,updatedAt:Date.now()});
+    if(location.photoId&&location.photoId!==photoId)await planPhotoDelete(location.photoId).catch(()=>{});
+    location.photoId=photoId;await saveObservingLocations();return;
+  }
+  if(pendingPlanPhotoRemoved){
+    if(location.photoId)await planPhotoDelete(location.photoId).catch(()=>{});
+    delete location.photoId;await saveObservingLocations();return;
+  }
+  // 登録済み計画を別タイトルで保存した場合は、表示中の写真も新しい計画へ複製する。
+  if(planSaveExistingPhotoRecord&&!location.photoId){
+    const photoId=`photo_${location.id}`;
+    await planPhotoPut({...planSaveExistingPhotoRecord,id:photoId,updatedAt:Date.now()});location.photoId=photoId;await saveObservingLocations();
+  }
+}
 async function registerCurrentObservingPlan(customTitle=""){
   const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)){alert("観測地点の緯度・経度を設定してください。");return null;}
@@ -5848,6 +5980,7 @@ async function registerCurrentObservingPlan(customTitle=""){
 }
 function applySavedObservingPlan(location){
   if(!location) return false;
+  activeLoadedPlanId=location.id;
   el.lat.value=Number(location.lat).toFixed(5);el.lon.value=Number(location.lon).toFixed(5);el.tz.value=location.tz;el.citySelect.value=0;
   currentObservedPlaceLat=Number(location.lat);currentObservedPlaceLon=Number(location.lon);
   el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
@@ -5870,7 +6003,9 @@ function applySavedObservingPlan(location){
 async function removeSavedObservingPlan(location){
   if(!location) return false;
   if(!confirm(`「${location.title}」を登録一覧から削除しますか？`)) return;
+  if(location.photoId)await planPhotoDelete(location.photoId).catch(()=>{});
   savedObservingLocations=savedObservingLocations.filter(item=>item.id!==location.id);
+  if(activeLoadedPlanId===location.id)activeLoadedPlanId="";
   await saveObservingLocations();renderSavedLocationSelect();renderSavedPlansList(el.planLoadSearch.value);el.savedLocationName.value="";
   return true;
 }
@@ -5903,9 +6038,10 @@ function renderCurrentPlanPreview(){
 function setPlanModalOpen(kind,open){
   const overlay=kind==="save"?el.planSaveOverlay:el.planLoadOverlay;
   overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
-  if(!open) return;
+  if(!open){if(kind==="save")resetPlanPhotoEditor();return;}
   if(kind==="save"){
     renderCurrentPlanPreview();el.planSaveName.value=el.savedLocationName.value||"";
+    preparePlanPhotoEditor();
     setTimeout(()=>el.planSaveName.focus(),0);
   }else{
     renderSavedPlansList("");el.planLoadSearch.value="";
@@ -5919,7 +6055,7 @@ function renderSavedPlansList(query=""){
     if(!normalized) return true;
     return [location.title,location.placeName,location.prefecture,location.city].join(" ").toLocaleLowerCase("ja").includes(normalized);
   });
-  el.planLoadList.textContent="";
+  planThumbObjectUrls.forEach(revokeObjectUrl);planThumbObjectUrls=[];el.planLoadList.textContent="";
   if(!locations.length){
     const empty=document.createElement("div");empty.className="plan-empty";
     empty.textContent=savedObservingLocations.length?"検索条件に一致する撮影計画はありません。":"まだ撮影計画が登録されていません。右上の「保存」から登録できます。";
@@ -5937,6 +6073,12 @@ function renderSavedPlansList(query=""){
     const card=document.createElement("article");card.className="plan-card";
     const title=document.createElement("h5");title.className="plan-card-title";title.textContent=location.title;
     const place=document.createElement("p");place.className="plan-card-place";place.textContent=location.placeName||`${Number(location.lat).toFixed(5)}, ${Number(location.lon).toFixed(5)}`;
+    let photo=null;
+    if(location.photoId){
+      photo=document.createElement("img");photo.className="plan-card-photo";photo.alt=`${location.title}の登録写真`;photo.loading="lazy";photo.title="タップして拡大表示";
+      planPhotoGet(location.photoId).then(record=>{if(!record||!photo.isConnected)return;const url=URL.createObjectURL(record.thumbBlob||record.fullBlob);planThumbObjectUrls.push(url);photo.src=url;}).catch(()=>{photo.remove();});
+      photo.addEventListener("click",()=>openPlanPhotoViewer(location));
+    }
     const details=document.createElement("div");details.className="plan-card-details";
     const lens=Number.isFinite(+location.focalLength)?`${Math.round(+location.focalLength)}mm ${location.lensMode==="fisheye"?"魚眼":"通常"}`:"レンズ未登録";
     const direction=Number.isFinite(+location.facingAz)?`方位 ${Math.round(+location.facingAz)}°`:"方位未登録";
@@ -5947,8 +6089,19 @@ function renderSavedPlansList(query=""){
     const actions=document.createElement("div");actions.className="plan-card-actions";
     const del=document.createElement("button");del.type="button";del.className="delete";del.textContent="削除";del.addEventListener("click",()=>removeSavedObservingPlan(location));
     const load=document.createElement("button");load.type="button";load.className="load";load.textContent="この計画を読み込む";load.addEventListener("click",()=>{applySavedObservingPlan(location);setPlanModalOpen("load",false);});
-    actions.append(del,load);card.append(title,place,details,actions);el.planLoadList.appendChild(card);
+    actions.append(del,load);card.append(title,place);if(photo)card.appendChild(photo);card.append(details,actions);el.planLoadList.appendChild(card);
   });
+}
+async function openPlanPhotoViewer(location){
+  if(!location?.photoId)return;
+  try{
+    const record=await planPhotoGet(location.photoId);if(!record)return;
+    revokeObjectUrl(photoViewerObjectUrl);photoViewerObjectUrl=URL.createObjectURL(record.fullBlob||record.thumbBlob);
+    el.photoViewerImage.src=photoViewerObjectUrl;el.photoViewerCaption.textContent=location.title;el.photoViewerOverlay.classList.add("show");el.photoViewerOverlay.setAttribute("aria-hidden","false");
+  }catch(e){alert("登録写真を読み込めませんでした。");}
+}
+function closePlanPhotoViewer(){
+  el.photoViewerOverlay.classList.remove("show");el.photoViewerOverlay.setAttribute("aria-hidden","true");el.photoViewerImage.removeAttribute("src");revokeObjectUrl(photoViewerObjectUrl);photoViewerObjectUrl="";
 }
 el.registerLocationBtn.addEventListener("click",async()=>{
   const result=await registerCurrentObservingPlan(el.savedLocationName.value);
@@ -5963,7 +6116,7 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
   if(!location){alert("削除する観測地を選択してください。");return;}removeSavedObservingPlan(location);
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
-document.body.append(el.planSaveOverlay,el.planLoadOverlay);
+document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay);
 el.quickSavePlanBtn.addEventListener("click",()=>setPlanModalOpen("save",true));
 el.quickLoadPlanBtn.addEventListener("click",()=>setPlanModalOpen("load",true));
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
@@ -5973,19 +6126,43 @@ el.planSaveOverlay.addEventListener("click",e=>{if(e.target===el.planSaveOverlay
 el.planLoadOverlay.addEventListener("click",e=>{if(e.target===el.planLoadOverlay)setPlanModalOpen("load",false);});
 el.planLoadSearch.addEventListener("input",()=>renderSavedPlansList(el.planLoadSearch.value));
 el.planSaveName.addEventListener("keydown",e=>{if(e.key==="Enter")el.planSaveRunBtn.click();});
+el.planPhotoSelectBtn.addEventListener("click",()=>el.planPhotoInput.click());
+el.planPhotoInput.addEventListener("change",async()=>{
+  const file=el.planPhotoInput.files?.[0];if(!file)return;
+  const editorVersion=++planPhotoEditorVersion;
+  el.planPhotoSelectBtn.disabled=true;el.planPhotoStatus.textContent="写真を表示用に最適化しています…";
+  try{
+    const compressed=await compressPlanPhoto(file);if(editorVersion!==planPhotoEditorVersion)return;
+    pendingPlanPhoto=compressed;pendingPlanPhotoRemoved=false;
+    showPlanPhotoPreview(pendingPlanPhoto.fullBlob,`${pendingPlanPhoto.width} × ${pendingPlanPhoto.height}pxに最適化しました。撮影計画の保存時に登録されます。`);
+    el.planPhotoSelectBtn.textContent="写真を変更";
+  }catch(e){el.planPhotoStatus.textContent=e.message||"写真を処理できませんでした。";}
+  finally{el.planPhotoSelectBtn.disabled=false;}
+});
+el.planPhotoRemoveBtn.addEventListener("click",()=>{
+  planPhotoEditorVersion++;pendingPlanPhoto=null;pendingPlanPhotoRemoved=true;revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";
+  el.planPhotoInput.value="";el.planPhotoPreview.removeAttribute("src");el.planPhotoPreviewWrap.classList.remove("show");el.planPhotoRemoveBtn.hidden=true;el.planPhotoSelectBtn.textContent="写真を選択";el.planPhotoStatus.textContent="写真を削除する設定です。撮影計画を保存すると反映されます。";
+});
+el.photoViewerCloseBtn.addEventListener("click",closePlanPhotoViewer);
+el.photoViewerOverlay.addEventListener("click",e=>{if(e.target===el.photoViewerOverlay||e.target.classList.contains("photo-viewer-content"))closePlanPhotoViewer();});
 el.planSaveRunBtn.addEventListener("click",async()=>{
   el.planSaveRunBtn.disabled=true;el.planSaveRunBtn.textContent="保存中…";
   try{
     const result=await registerCurrentObservingPlan(el.planSaveName.value);
     if(!result) return;
+    await persistPlanPhotoForLocation(result.location);
+    activeLoadedPlanId=result.location.id;el.savedLocationName.value=result.location.title;
+    renderSavedLocationSelect(result.location.id);renderSavedPlansList(el.planLoadSearch.value);
     setPlanModalOpen("save",false);
     alert(result.updated?"同じ撮影計画を最新内容へ更新しました。":"観測値・撮影計画を保存しました。");
-  }finally{el.planSaveRunBtn.disabled=false;el.planSaveRunBtn.textContent="この内容を保存";}
+  }catch(e){alert(`撮影計画または写真を保存できませんでした。\n${e?.message||"端末の保存容量をご確認ください。"}`);}
+  finally{el.planSaveRunBtn.disabled=false;el.planSaveRunBtn.textContent="この内容を保存";}
 });
 document.addEventListener("keydown",e=>{
   if(e.key!=="Escape") return;
   if(el.planSaveOverlay.classList.contains("show")) setPlanModalOpen("save",false);
   if(el.planLoadOverlay.classList.contains("show")) setPlanModalOpen("load",false);
+  if(el.photoViewerOverlay.classList.contains("show")) closePlanPhotoViewer();
 });
 
 /* マウス操作: ドラッグでパン、ドラッグなしクリックで地点選択、ホイールでズーム */
