@@ -1323,10 +1323,10 @@
     left:50%;
     top:50%;
     z-index:1001;
-    width:34px;
-    height:34px;
+    width:17px;
+    height:17px;
     transform:translate(-50%,-50%);
-    border:2px solid #fff;
+    border:1.5px solid #fff;
     border-radius:50%;
     filter:drop-shadow(0 1px 3px rgba(0,0,0,.9));
     pointer-events:none;
@@ -1338,17 +1338,25 @@
     background:#fff;
     transform:translate(-50%,-50%);
   }
-  .osm-center-target::before{width:46px;height:2px;}
-  .osm-center-target::after{width:2px;height:46px;}
+  .osm-center-target::before{width:23px;height:1.5px;}
+  .osm-center-target::after{width:1.5px;height:23px;}
   .osm-center-target-dot{
     position:absolute;
     left:50%;top:50%;
-    width:6px;height:6px;
+    width:3px;height:3px;
     z-index:1;
     transform:translate(-50%,-50%);
     border:1px solid #fff;
     border-radius:50%;
     background:var(--core-amber);
+  }
+  .osm-map .osm-fov-outline{
+    stroke:var(--core-amber);
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.85));
+  }
+  .osm-map .osm-fov-centerline{
+    stroke:#fff;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.9));
   }
   .real-mw-credit{
     display:none;
@@ -3891,6 +3899,8 @@ let osmSatelliteLayer=null;
 let osmSatelliteMode=false;
 let osmCandidateLat=null;
 let osmCandidateLon=null;
+let osmFovOutline=null;
+let osmFovCenterline=null;
 function updateOsmCoordinateLabel(){
   if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   el.osmMapCoordinate.textContent=`緯度 ${osmCandidateLat.toFixed(5)} / 経度 ${osmCandidateLon.toFixed(5)}`;
@@ -3907,6 +3917,42 @@ function syncOsmCandidateToCenter(){
   if(!osmMapInstance) return;
   const center=osmMapInstance.getCenter();
   setOsmCandidate(center.lat,center.lng);
+  updateOsmFovOverlay();
+}
+function destinationLatLng(lat,lon,bearing,distanceMeters){
+  const earthRadius=6371008.8;
+  const angularDistance=distanceMeters/earthRadius;
+  const bearingRad=bearing*D2R, latRad=lat*D2R, lonRad=lon*D2R;
+  const destLat=Math.asin(Math.sin(latRad)*Math.cos(angularDistance)+Math.cos(latRad)*Math.sin(angularDistance)*Math.cos(bearingRad));
+  const destLon=lonRad+Math.atan2(Math.sin(bearingRad)*Math.sin(angularDistance)*Math.cos(latRad),Math.cos(angularDistance)-Math.sin(latRad)*Math.sin(destLat));
+  return [destLat*R2D,((destLon*R2D+540)%360)-180];
+}
+/* 現在の焦点距離・センサー・縦横構図から得た水平画角を、地図中心から見た撮影方位として描く。 */
+function updateOsmFovOverlay(currentState=state){
+  if(!osmMapInstance||!osmMapScreenOpen||!currentState||!Number.isFinite(currentState.fovH)) return;
+  const center=osmMapInstance.getCenter();
+  const size=osmMapInstance.getSize();
+  if(!size.x||!size.y) return;
+  const centerPoint=osmMapInstance.latLngToContainerPoint(center);
+  const radiusPx=Math.max(54,Math.min(size.x,size.y)*0.34);
+  const radiusPoint=L.point(centerPoint.x,Math.max(0,centerPoint.y-radiusPx));
+  const radiusMeters=Math.max(20,osmMapInstance.distance(center,osmMapInstance.containerPointToLatLng(radiusPoint)));
+  const half=Math.min(90,currentState.fovH/2);
+  const steps=Math.max(12,Math.ceil(currentState.fovH/5));
+  const outline=[[center.lat,center.lng]];
+  for(let i=0;i<=steps;i++){
+    const bearing=norm360(currentState.facingAz-half+currentState.fovH*i/steps);
+    outline.push(destinationLatLng(center.lat,center.lng,bearing,radiusMeters));
+  }
+  outline.push([center.lat,center.lng]);
+  const centerEnd=destinationLatLng(center.lat,center.lng,currentState.facingAz,radiusMeters);
+  if(!osmFovOutline){
+    osmFovOutline=L.polyline(outline,{pane:"overlayPane",interactive:false,className:"osm-fov-outline",color:"#f2ad55",weight:2.4,opacity:.95,dashArray:"7 7",lineCap:"round",lineJoin:"round"}).addTo(osmMapInstance);
+    osmFovCenterline=L.polyline([[center.lat,center.lng],centerEnd],{pane:"overlayPane",interactive:false,className:"osm-fov-centerline",color:"#fff",weight:1.25,opacity:.72,dashArray:"2 7",lineCap:"round"}).addTo(osmMapInstance);
+  }else{
+    osmFovOutline.setLatLngs(outline);
+    osmFovCenterline.setLatLngs([[center.lat,center.lng],centerEnd]);
+  }
 }
 /* iOS Safariでは複数のタイルホストへ分散すると、一部の画像要求だけが失敗したまま
    透明になる場合がある。最初は単一ホストを使い、失敗した画像だけを別ホストへ
@@ -3990,6 +4036,7 @@ function initOsmMap(){
   syncOsmBaseLayer();
   osmMapInstance.on("move",syncOsmCandidateToCenter);
   osmMapInstance.on("moveend",syncOsmCandidateToCenter);
+  osmMapInstance.on("zoomend",updateOsmFovOverlay);
   setOsmCandidate(lat,lon);
   return true;
 }
@@ -4119,7 +4166,10 @@ function setOsmMapScreenOpen(open){
       osmMapInstance.invalidateSize({pan:false});
       osmMapInstance.setView([lat,lon],osmMapInstance.getZoom(),{animate:false});
       setOsmCandidate(lat,lon);
-      requestAnimationFrame(()=>osmMapInstance.invalidateSize({pan:false}));
+      requestAnimationFrame(()=>{
+        osmMapInstance.invalidateSize({pan:false});
+        updateOsmFovOverlay();
+      });
     });
   }
 }
@@ -4601,6 +4651,10 @@ function setOrientation(newOrientation){
   [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
   el.mobileOrientationToggleBtn.classList.toggle("portrait", orientation==="portrait");
   update();
+  if(osmMapScreenOpen&&osmMapInstance) requestAnimationFrame(()=>{
+    osmMapInstance.invalidateSize({pan:false});
+    updateOsmFovOverlay(state);
+  });
 }
 el.orientationSeg.addEventListener("click",(e)=>{
   const btn=e.target.closest(".seg-btn");
@@ -7769,6 +7823,7 @@ function update(){
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
   state=computeState();
+  updateOsmFovOverlay(state);
   requestRealTerrainProfile(state.lat,state.lon);
   requestMountainNames(state.lat,state.lon);
   drawDial(dialCtx,state);
