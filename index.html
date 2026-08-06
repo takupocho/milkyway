@@ -1251,14 +1251,27 @@
   @keyframes mapActionPulse{to{transform:scale(.82);opacity:.55;}}
   .osm-map-actions button.primary{border-color:var(--core-amber);color:var(--core-amber);}
   .osm-map-actions button.layer-active{border-color:#7fc8ff;color:#bfe5ff;}
-  .osm-import-panel{
+  .osm-import-overlay{
     display:none;
-    position:absolute;
-    top:50%;
-    right:66px;
-    transform:translateY(-50%);
-    z-index:1003;
-    width:min(430px,calc(100% - 78px));
+    position:fixed;
+    inset:0;
+    z-index:10000;
+    box-sizing:border-box;
+    align-items:center;
+    justify-content:center;
+    padding:max(16px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+    background:rgba(5,8,20,.64);
+    -webkit-backdrop-filter:blur(4px);
+    backdrop-filter:blur(4px);
+  }
+  .osm-import-overlay.show{display:flex;}
+  .osm-import-panel{
+    display:block;
+    position:relative;
+    z-index:1;
+    width:min(520px,100%);
+    max-height:calc(100dvh - 32px);
+    overflow:auto;
     box-sizing:border-box;
     padding:13px;
     border:1px solid rgba(127,200,255,.8);
@@ -1267,7 +1280,6 @@
     box-shadow:0 8px 26px rgba(0,0,0,.5);
     color:#fff;
   }
-  .osm-import-panel.show{display:block;}
   .osm-import-title{font:700 14px/1.3 'Inter',sans-serif;color:#d9efff;margin-bottom:5px;}
   .osm-import-help{font:500 10.5px/1.55 'Inter',sans-serif;color:rgba(255,255,255,.72);margin-bottom:8px;}
   .osm-import-input{
@@ -2135,7 +2147,7 @@
     .osm-map-actions button{width:43px;height:40px;border-radius:12px;}
     .osm-map-actions button svg{width:24px;height:24px;}
     .osm-map-actions button::after{display:none;}
-    .osm-import-panel{top:50%;right:55px;width:calc(100% - 64px);padding:11px;}
+    .osm-import-panel{width:100%;padding:11px;}
     /* スマホでは撮影日の操作を上のベストタイム欄へ統合済み。
        空になった先頭列も非表示にして、残っていた14pxの行間をなくす。 */
     .datetime-row > .dt-col:first-child{ display:none; }
@@ -2538,7 +2550,8 @@
                     <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 10.5 11 8l8 2.5 8-3v15l-8 3-8-2.5-6 2.5v-15Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M11 8.3v14.4M19 10.8v14.4" stroke="currentColor" stroke-width="1.4"/><path d="M15 7a4 4 0 1 1 8 0c0 3-4 7-4 7s-4-4-4-7Z" fill="currentColor" stroke="#fff" stroke-width="1.1"/><circle cx="19" cy="7" r="1.6" fill="#10142a"/></svg>
                   </button>
                 </div>
-                <div id="osmGoogleImportPanel" class="osm-import-panel" role="dialog" aria-modal="false" aria-labelledby="osmImportTitle">
+                <div id="osmGoogleImportOverlay" class="osm-import-overlay" aria-hidden="true">
+                <div id="osmGoogleImportPanel" class="osm-import-panel" role="dialog" aria-modal="true" aria-labelledby="osmImportTitle">
                   <div id="osmImportTitle" class="osm-import-title">Googleマップの場所を読み込む</div>
                   <div class="osm-import-help">Googleマップの「共有→リンクをコピー」で取得した文章・URL、または緯度と経度を貼り付けてください。</div>
                   <textarea id="osmGoogleImportInput" class="osm-import-input" inputmode="url" placeholder="例：https://www.google.com/maps/@35.12345,134.56789,15z&#10;または 35.12345, 134.56789"></textarea>
@@ -2548,6 +2561,7 @@
                     <button id="osmGoogleImportRunBtn" type="button" class="primary">場所を読み込む</button>
                   </div>
                   <div id="osmGoogleImportStatus" class="osm-import-status" aria-live="polite"></div>
+                </div>
                 </div>
                 <div id="osmMapCoordinate" class="osm-map-coordinate"></div>
               </div>
@@ -3374,7 +3388,7 @@ const el={
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileMwFrameBtn:$("mobileMwFrameBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
-  osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"),
+  osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
   autoShowShowerConstBtn:$("autoShowShowerConstBtn"), autoShowShowerConstState:$("autoShowShowerConstState"),
@@ -3980,7 +3994,8 @@ function initOsmMap(){
   return true;
 }
 function setGoogleMapsImportOpen(open){
-  el.osmGoogleImportPanel.classList.toggle("show",!!open);
+  el.osmGoogleImportOverlay.classList.toggle("show",!!open);
+  el.osmGoogleImportOverlay.setAttribute("aria-hidden",open?"false":"true");
   el.osmGoogleImportBtn.classList.toggle("layer-active",!!open);
   if(open){
     el.osmGoogleImportStatus.textContent="";
@@ -4109,7 +4124,9 @@ function setOsmMapScreenOpen(open){
   }
 }
 el.mobileMapToggleBtn.addEventListener("click",()=>setOsmMapScreenOpen(!osmMapScreenOpen));
-el.osmGoogleImportBtn.addEventListener("click",()=>setGoogleMapsImportOpen(!el.osmGoogleImportPanel.classList.contains("show")));
+// 地図パネルの overflow の影響を受けないよう、モーダルは body 直下で表示する。
+document.body.appendChild(el.osmGoogleImportOverlay);
+el.osmGoogleImportBtn.addEventListener("click",()=>setGoogleMapsImportOpen(!el.osmGoogleImportOverlay.classList.contains("show")));
 el.osmGoogleOpenBtn.addEventListener("click",()=>{
   if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   const url=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${osmCandidateLat.toFixed(6)},${osmCandidateLon.toFixed(6)}`)}`;
@@ -4117,6 +4134,12 @@ el.osmGoogleOpenBtn.addEventListener("click",()=>{
   if(opened) opened.opener=null;
 });
 el.osmGoogleImportCloseBtn.addEventListener("click",()=>setGoogleMapsImportOpen(false));
+el.osmGoogleImportOverlay.addEventListener("click",e=>{
+  if(e.target===el.osmGoogleImportOverlay) setGoogleMapsImportOpen(false);
+});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&el.osmGoogleImportOverlay.classList.contains("show")) setGoogleMapsImportOpen(false);
+});
 el.osmGoogleImportRunBtn.addEventListener("click",importGoogleMapsLocation);
 el.osmGooglePasteBtn.addEventListener("click",async()=>{
   try{
