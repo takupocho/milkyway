@@ -3012,13 +3012,15 @@ realMilkyWayImage.addEventListener("load",()=>{
   };
   for(let y=0;y<ih;y++){
     const galLat=Math.abs((0.5-y/ih)*180);
-    // |b|≦12°は保持、12〜27°は画素単位で滑らかに透明化する。
-    const latitudeMask=1-smoothstep(12,27,galLat);
+    // 濃い銀河面は維持しつつ、外側へ広がる淡い白いモヤを従来より少しだけ狭くする。
+    // |b|≦11°は保持、11〜25°を画素単位で滑らかに透明化するため境界線は生じない。
+    const latitudeMask=1-smoothstep(11,25,galLat);
     for(let x=0;x<iw;x++){
       const i=(y*iw+x)*4;
       const lum=data[i]*0.2126+data[i+1]*0.7152+data[i+2]*0.0722;
-      // 黒に近い背景・撮像ノイズを除去し、淡い星雲から明るい銀河中心まで連続的に残す。
-      const signalMask=smoothstep(7,32,lum);
+      // 淡い低輝度成分だけをもう一段抑え、濃い模様・明るい銀河中心はほぼ従来どおり残す。
+      // 連続曲線で処理するため、切り抜いたような不自然な輪郭は作らない。
+      const signalMask=Math.pow(smoothstep(9,34,lum),1.12);
       const alpha=latitudeMask*signalMask;
       data[i+3]=Math.round(255*alpha);
     }
