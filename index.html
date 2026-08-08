@@ -2466,6 +2466,7 @@
             </select>
           </div>
           <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <button id="lockAzToSunBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>☀️ 方位を太陽の中心に固定</span><span id="lockAzToSunState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <div class="field" style="margin-top:8px;">
             <label class="top">スタートレイルの開始時間</label>
             <select id="starTrailStartDelaySelect">
@@ -2620,6 +2621,7 @@
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
                 <div class="display-popup-section-title">アニメーション</div>
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
+                <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
                 <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
@@ -3605,7 +3607,7 @@ const el={
   planetListToggle:$("planetListToggle"), planetListBody:$("planetListBody"), planetItemList:$("planetItemList"),
   starListToggle:$("starListToggle"), starListBody:$("starListBody"), starItemList:$("starItemList"),
   starGroupListToggle:$("starGroupListToggle"), starGroupListBody:$("starGroupListBody"), starGroupItemList:$("starGroupItemList"),
-  lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"),
+  lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"), lockAzToSunBtn:$("lockAzToSunBtn"), lockAzToSunState:$("lockAzToSunState"),
   starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
@@ -3627,7 +3629,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -4528,12 +4530,35 @@ let playbackVisualMinutes=0;
 let playbackLastUiTime=0;
 let playbackLastRenderTime=0;
 let lockAzToGc=false;
+let lockAzToSun=false;
 el.lockAzToGcBtn.addEventListener("click",()=>{
   lockAzToGc=!lockAzToGc;
+  if(lockAzToGc && lockAzToSun){
+    // 天の川中心と太陽中心は同時には固定できないため、片方をONにしたらもう片方はOFFにする
+    lockAzToSun=false;
+    el.lockAzToSunBtn.classList.remove("active");
+    el.lockAzToSunState.textContent="OFF";
+  }
   el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
   el.lockAzToGcState.textContent = lockAzToGc ? "ON" : "OFF";
   if(lockAzToGc && state && state.gcAltAz.alt>-90){
     el.facingAz.value=Math.round(state.gcAltAz.az);
+    update();
+  }
+  syncDisplayPopupControls();
+  scheduleSaveSettings();
+});
+el.lockAzToSunBtn.addEventListener("click",()=>{
+  lockAzToSun=!lockAzToSun;
+  if(lockAzToSun && lockAzToGc){
+    lockAzToGc=false;
+    el.lockAzToGcBtn.classList.remove("active");
+    el.lockAzToGcState.textContent="OFF";
+  }
+  el.lockAzToSunBtn.classList.toggle("active",lockAzToSun);
+  el.lockAzToSunState.textContent = lockAzToSun ? "ON" : "OFF";
+  if(lockAzToSun && state && state.sunAltAz){
+    el.facingAz.value=Math.round(state.sunAltAz.az);
     update();
   }
   syncDisplayPopupControls();
@@ -4677,6 +4702,7 @@ function syncDisplayPopupControls(){
   el.showSkylineBoundaryBtn.classList.toggle("active",showSkylineBoundary);
   el.showSkylineBoundaryState.textContent=showSkylineBoundary?"ON":"OFF";
   el.popupLockGcBtn.classList.toggle("active",lockAzToGc);
+  el.popupLockSunBtn.classList.toggle("active",lockAzToSun);
   el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
@@ -4689,6 +4715,7 @@ el.popupMilkyWayPositionTrailBtn.addEventListener("click",()=>{
 });
 el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click());
 el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
+el.popupLockSunBtn.addEventListener("click",()=>el.lockAzToSunBtn.click());
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
 el.popupTrailTaperBtn.addEventListener("click",()=>el.starTrailTaperBtn.click());
 el.popupSouth50Btn.addEventListener("click",()=>{
@@ -4766,6 +4793,11 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     state.facingAz=newAz;
     el.facingAz.value=newAz;
     el.azVal.textContent=`${Math.round(newAz)}°`;
+  }else if(lockAzToSun){
+    const sunAz=norm360(state.sunAltAz.az);
+    state.facingAz=sunAz;
+    el.facingAz.value=sunAz;
+    el.azVal.textContent=`${Math.round(sunAz)}°`;
   }
 }
 function updatePlaybackClockLabel(minutes){
@@ -5748,6 +5780,7 @@ function collectPersistedSettings(){
     mwTextureBOffsetDeg:mwTextureBOffsetDeg,
     autoJumpToBestTimeOnDateNav:autoJumpToBestTimeOnDateNav,
     lockAzToGc:lockAzToGc,
+    lockAzToSun:lockAzToSun,
     starTrailMode:starTrailMode,
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
@@ -5813,6 +5846,7 @@ async function loadPersistedSettings(){
       el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
     }
     lockAzToGc=!!s.lockAzToGc;
+    lockAzToSun=!!(s.lockAzToSun&&!lockAzToGc); // 万一両方保存されていても、天の川固定を優先し同時ONにはしない
     starTrailMode=!!s.starTrailMode;
     starTrailTaper=!!s.starTrailTaper;
     starTrailGrowProgress=starTrailMode?1:0;
@@ -5829,6 +5863,8 @@ async function loadPersistedSettings(){
     el.showBelowHorizonState.textContent=showBelowHorizon?"ON":"OFF";
     el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
     el.lockAzToGcState.textContent=lockAzToGc?"ON":"OFF";
+    el.lockAzToSunBtn.classList.toggle("active",lockAzToSun);
+    el.lockAzToSunState.textContent=lockAzToSun?"ON":"OFF";
     el.starTrailBtn.classList.toggle("active",starTrailMode);
     el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
     syncDisplayPopupControls();
