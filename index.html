@@ -2466,7 +2466,10 @@
             </select>
           </div>
           <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
-          <button id="lockAzToSunBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>☀️ 方位を太陽の中心に固定</span><span id="lockAzToSunState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button id="lockAzToSunBtn" type="button" class="toggle-btn" style="flex:1;margin-top:0;"><span>☀️ 太陽中心に固定</span><span id="lockAzToSunState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+            <button id="lockAzToMoonBtn" type="button" class="toggle-btn" style="flex:1;margin-top:0;"><span>🌙 月中心に固定</span><span id="lockAzToMoonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          </div>
           <div class="field" style="margin-top:8px;">
             <label class="top">スタートレイルの開始時間</label>
             <select id="starTrailStartDelaySelect">
@@ -2622,6 +2625,7 @@
                 <div class="display-popup-section-title">アニメーション</div>
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
+                <button id="popupLockMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">月中心に固定</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
                 <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
@@ -3607,7 +3611,7 @@ const el={
   planetListToggle:$("planetListToggle"), planetListBody:$("planetListBody"), planetItemList:$("planetItemList"),
   starListToggle:$("starListToggle"), starListBody:$("starListBody"), starItemList:$("starItemList"),
   starGroupListToggle:$("starGroupListToggle"), starGroupListBody:$("starGroupListBody"), starGroupItemList:$("starGroupItemList"),
-  lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"), lockAzToSunBtn:$("lockAzToSunBtn"), lockAzToSunState:$("lockAzToSunState"),
+  lockAzToGcBtn:$("lockAzToGcBtn"), lockAzToGcState:$("lockAzToGcState"), lockAzToSunBtn:$("lockAzToSunBtn"), lockAzToSunState:$("lockAzToSunState"), lockAzToMoonBtn:$("lockAzToMoonBtn"), lockAzToMoonState:$("lockAzToMoonState"),
   starTrailBtn:$("starTrailBtn"), starTrailTaperBtn:$("starTrailTaperBtn"),
   starTrailLengthSlider:$("starTrailLengthSlider"), starTrailLengthVal:$("starTrailLengthVal"),
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
@@ -3629,7 +3633,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -3897,6 +3901,16 @@ const SKY_SEARCH_INFO={
   "group:winter_hexagon":  {title:"冬のダイヤモンド", body:"冬の1等星6つが描く大きな六角形。冬の星座めぐりの目印になります。"},
 };
 el.skyInfoPopup.addEventListener("click",()=>{
+  el.skyInfoPopup.classList.remove("show");
+  el.skyInfoPopup.classList.remove("mountain-detail");
+});
+// ポップアップの外側をクリック/タップしても閉じるようにする。
+// 星の名前を「押した瞬間(pointerdown)」で閉じておくことで、続く「離した瞬間(pointerup)」で
+// handlePhotoTap()が新しい星の説明を開く処理と順序がぶつからないようにしている
+// (通常のclickイベントで判定すると、開いた直後に同じ操作のclickで即座に閉じてしまうため)。
+document.addEventListener("pointerdown",(e)=>{
+  if(!el.skyInfoPopup.classList.contains("show")) return;
+  if(e.target.closest("#skyInfoPopup")) return; // ポップアップ自身の上のクリックは既存のclickハンドラーに任せる
   el.skyInfoPopup.classList.remove("show");
   el.skyInfoPopup.classList.remove("mountain-detail");
 });
@@ -4531,39 +4545,35 @@ let playbackLastUiTime=0;
 let playbackLastRenderTime=0;
 let lockAzToGc=false;
 let lockAzToSun=false;
-el.lockAzToGcBtn.addEventListener("click",()=>{
-  lockAzToGc=!lockAzToGc;
-  if(lockAzToGc && lockAzToSun){
-    // 天の川中心と太陽中心は同時には固定できないため、片方をONにしたらもう片方はOFFにする
-    lockAzToSun=false;
-    el.lockAzToSunBtn.classList.remove("active");
-    el.lockAzToSunState.textContent="OFF";
-  }
+let lockAzToMoon=false;
+// 天の川中心・太陽中心・月中心の固定は同時には使えないため、共通の処理でON/OFFと排他制御をまとめる。
+function setAzLockTarget(target){
+  // target: "gc" | "sun" | "moon" | null(すべてOFF)
+  lockAzToGc = target==="gc";
+  lockAzToSun = target==="sun";
+  lockAzToMoon = target==="moon";
   el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
   el.lockAzToGcState.textContent = lockAzToGc ? "ON" : "OFF";
-  if(lockAzToGc && state && state.gcAltAz.alt>-90){
-    el.facingAz.value=Math.round(state.gcAltAz.az);
-    update();
-  }
-  syncDisplayPopupControls();
-  scheduleSaveSettings();
-});
-el.lockAzToSunBtn.addEventListener("click",()=>{
-  lockAzToSun=!lockAzToSun;
-  if(lockAzToSun && lockAzToGc){
-    lockAzToGc=false;
-    el.lockAzToGcBtn.classList.remove("active");
-    el.lockAzToGcState.textContent="OFF";
-  }
   el.lockAzToSunBtn.classList.toggle("active",lockAzToSun);
   el.lockAzToSunState.textContent = lockAzToSun ? "ON" : "OFF";
-  if(lockAzToSun && state && state.sunAltAz){
-    el.facingAz.value=Math.round(state.sunAltAz.az);
-    update();
+  el.lockAzToMoonBtn.classList.toggle("active",lockAzToMoon);
+  el.lockAzToMoonState.textContent = lockAzToMoon ? "ON" : "OFF";
+  if(state){
+    let az=null;
+    if(lockAzToGc && state.gcAltAz && state.gcAltAz.alt>-90) az=state.gcAltAz.az;
+    else if(lockAzToSun && state.sunAltAz) az=state.sunAltAz.az;
+    else if(lockAzToMoon && state.moonAltAz) az=state.moonAltAz.az;
+    if(az!==null){
+      el.facingAz.value=Math.round(norm360(az));
+      update();
+    }
   }
   syncDisplayPopupControls();
   scheduleSaveSettings();
-});
+}
+el.lockAzToGcBtn.addEventListener("click",()=>setAzLockTarget(lockAzToGc?null:"gc"));
+el.lockAzToSunBtn.addEventListener("click",()=>setAzLockTarget(lockAzToSun?null:"sun"));
+el.lockAzToMoonBtn.addEventListener("click",()=>setAzLockTarget(lockAzToMoon?null:"moon"));
 /* スタートレイル演出のON/OFF */
 let starTrailMode=false;
 let starTrailTaper=false;
@@ -4703,6 +4713,7 @@ function syncDisplayPopupControls(){
   el.showSkylineBoundaryState.textContent=showSkylineBoundary?"ON":"OFF";
   el.popupLockGcBtn.classList.toggle("active",lockAzToGc);
   el.popupLockSunBtn.classList.toggle("active",lockAzToSun);
+  el.popupLockMoonBtn.classList.toggle("active",lockAzToMoon);
   el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
@@ -4716,6 +4727,7 @@ el.popupMilkyWayPositionTrailBtn.addEventListener("click",()=>{
 el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click());
 el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
 el.popupLockSunBtn.addEventListener("click",()=>el.lockAzToSunBtn.click());
+el.popupLockMoonBtn.addEventListener("click",()=>el.lockAzToMoonBtn.click());
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
 el.popupTrailTaperBtn.addEventListener("click",()=>el.starTrailTaperBtn.click());
 el.popupSouth50Btn.addEventListener("click",()=>{
@@ -4798,6 +4810,11 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     state.facingAz=sunAz;
     el.facingAz.value=sunAz;
     el.azVal.textContent=`${Math.round(sunAz)}°`;
+  }else if(lockAzToMoon){
+    const moonAz=norm360(state.moonAltAz.az);
+    state.facingAz=moonAz;
+    el.facingAz.value=moonAz;
+    el.azVal.textContent=`${Math.round(moonAz)}°`;
   }
 }
 function updatePlaybackClockLabel(minutes){
@@ -5642,6 +5659,13 @@ el.displayOptionsPopup.addEventListener("click",e=>{
 });
 document.addEventListener("click",(e)=>{
   if(!el.displayOptionsPopup.classList.contains("show")) return;
+  // ポップアップ内の一部のボタンは、実体が外部の設定パネル側のボタンに対して
+  // .click()を呼ぶ「代理クリック」方式になっている。この場合、外部ボタンを対象とした
+  // 疑似的なクリックイベントがdocumentまでバブリングしてしまい、
+  // 対象要素がポップアップの外にあると判定されて閉じてしまっていた。
+  // プログラムから発火させた疑似クリック(isTrusted=false)はここでは無視し、
+  // 実際にユーザーがクリックした場合(isTrusted=true)だけを外側クリック判定に使う。
+  if(!e.isTrusted) return;
   if(e.target.closest("#displayOptionsPopup, #mobileDisplayOptionsBtn")) return;
   el.displayOptionsPopup.classList.remove("show");
 });
@@ -5781,6 +5805,7 @@ function collectPersistedSettings(){
     autoJumpToBestTimeOnDateNav:autoJumpToBestTimeOnDateNav,
     lockAzToGc:lockAzToGc,
     lockAzToSun:lockAzToSun,
+    lockAzToMoon:lockAzToMoon,
     starTrailMode:starTrailMode,
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
@@ -5847,6 +5872,7 @@ async function loadPersistedSettings(){
     }
     lockAzToGc=!!s.lockAzToGc;
     lockAzToSun=!!(s.lockAzToSun&&!lockAzToGc); // 万一両方保存されていても、天の川固定を優先し同時ONにはしない
+    lockAzToMoon=!!(s.lockAzToMoon&&!lockAzToGc&&!lockAzToSun); // 3つのうち1つだけがONになるようにする
     starTrailMode=!!s.starTrailMode;
     starTrailTaper=!!s.starTrailTaper;
     starTrailGrowProgress=starTrailMode?1:0;
@@ -5865,6 +5891,8 @@ async function loadPersistedSettings(){
     el.lockAzToGcState.textContent=lockAzToGc?"ON":"OFF";
     el.lockAzToSunBtn.classList.toggle("active",lockAzToSun);
     el.lockAzToSunState.textContent=lockAzToSun?"ON":"OFF";
+    el.lockAzToMoonBtn.classList.toggle("active",lockAzToMoon);
+    el.lockAzToMoonState.textContent=lockAzToMoon?"ON":"OFF";
     el.starTrailBtn.classList.toggle("active",starTrailMode);
     el.starTrailTaperBtn.classList.toggle("active",starTrailTaper);
     syncDisplayPopupControls();
