@@ -115,30 +115,35 @@
   .app{max-width:1280px;margin:0 auto;}
 
   /* ---------- Header ---------- */
+  .left-column{
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+  }
   .masthead{
-    margin-bottom:28px;
-    padding-bottom:22px;
+    padding-bottom:16px;
     border-bottom:1px solid var(--line-soft);
   }
   .eyebrow{
     font-family:'IBM Plex Mono',monospace;
-    font-size:11px;
-    letter-spacing:.22em;
+    font-size:10px;
+    line-height:1.5;
+    letter-spacing:.18em;
     color:var(--core-amber);
     text-transform:uppercase;
-    margin-bottom:10px;
+    margin-bottom:8px;
   }
   .masthead h1{
     font-family:'Fraunces',serif;
     font-weight:600;
-    font-size:clamp(28px,4vw,42px);
+    font-size:clamp(20px,2.2vw,25px);
     margin:0 0 8px;
     letter-spacing:-0.01em;
+    white-space:nowrap;
   }
   .masthead .sub{
     color:var(--dim);
-    font-size:14.5px;
-    max-width:640px;
+    font-size:12.5px;
     line-height:1.6;
     margin:0;
   }
@@ -515,11 +520,11 @@
   }
   .card-title-row{
     display:flex;
-    align-items:flex-start;
+    align-items:flex-end;
     justify-content:space-between;
     flex-wrap:wrap;
     gap:10px 20px;
-    margin:0 0 14px;
+    margin:0 0 7px;
   }
   .card-title{
     display:flex;
@@ -621,8 +626,29 @@
 
   .header-right-group{
     display:flex;
-    align-items:flex-start;
+    align-items:flex-end;
     gap:26px;
+    position:relative;
+  }
+  .header-left-group{
+    display:flex;
+    align-items:flex-end;
+    gap:14px;
+    position:relative;
+  }
+  /* PC画面で「表示」「アイコン説明」「縦横切替」「焦点距離」を行の左端にまとめた際、
+     見た目の高さを他の丸型アイコンボタン(44px)に揃える。 */
+  #headerLeftGroup .header-circle-btn,
+  #headerLeftGroup .orientation-toggle-btn,
+  #headerLeftGroup .focal-badge{
+    align-self:flex-end;
+  }
+  #headerLeftGroup .focal-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    height:44px;
+    padding:0 10px;
   }
   .today-date{
     display:flex;
@@ -683,10 +709,12 @@
   .header-circle-btn{width:44px;height:44px;min-width:44px;padding:0!important;border-radius:50%!important;display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:1;background:rgba(18,21,43,.72);}
   .header-circle-btn svg{width:22px;height:22px;pointer-events:none;}
   .header-circle-btn.info-toggle-btn{font:800 21px/1 Georgia,serif;}
-  /* 縦横切り替えボタン: 文字記号ではなくCSSの長方形で、縦横とも見やすい比率に統一する */
+  /* 縦横切り替えボタン: PC・スマホ共通で他の丸型アイコンボタン(header-circle-btn)と
+     同じ正方形(44px)にし、border-radius:50%(header-circle-btnで指定済み)により正円にする。
+     中の四角いアイコン(.orientation-icon)だけを長方形にして縦横比を表現する。 */
   .orientation-toggle-btn{
-    width:40px;
-    height:34px;
+    width:44px;
+    height:44px;
     padding-top:0;
     padding-bottom:0;
     padding-left:0;
@@ -1313,7 +1341,7 @@
     position:absolute;
     top:50%;
     right:8px;
-    z-index:1000;
+    z-index:1010;
     display:flex;
     flex-direction:column;
     gap:7px;
@@ -1518,6 +1546,7 @@
     border-top:1px solid var(--line-soft);
     border-bottom:1px solid var(--line-soft);
     background:rgba(232,166,89,0.05);
+    cursor:pointer;
   }
   .best-time-text{
     display:flex;
@@ -1545,13 +1574,7 @@
   }
   .best-time-value.none{color:var(--dim);font-weight:500;font-size:13px;}
   .jump-besttime-btn{
-    flex:none;
-    width:auto;
-    padding:6px 14px;
-    font-size:11px;
-    line-height:1.3;
-    font-weight:700;
-    border-radius:8px;
+    display:none;
   }
   .best-time-date-nav{display:none;}
   .date-nav-btn-wrap{
@@ -1716,6 +1739,12 @@
     color:var(--dim);
   }
   .time-range-mode-btn:hover{color:var(--star-white);border-color:var(--violet);}
+  .besttime-autojump-btn{margin-left:4px;}
+  .besttime-autojump-btn[aria-pressed="true"]{
+    background:rgba(232,166,89,0.18);
+    border-color:var(--core-amber);
+    color:var(--core-amber);
+  }
   .dt-date-row{
     display:flex;
     gap:8px;
@@ -2267,13 +2296,13 @@
 </div>
 <div class="app">
 
-  <header class="masthead">
-    <div class="eyebrow">Astro Almanac · Night Sky Instrument</div>
-    <h1>天の川撮影シミュレーター</h1>
-    <p class="sub">日時・場所・カメラ設定を入力すると、天の川の位置と写り方を天文計算に基づいて再現します。撮影計画に役立ててください。</p>
-  </header>
-
   <div class="layout">
+    <div class="left-column">
+      <header class="masthead">
+        <div class="eyebrow">Astro Almanac ·<br>Night Sky Instrument</div>
+        <h1>天の川撮影シミュレーター</h1>
+        <p class="sub">日時・場所・カメラ設定を入力すると、天の川の位置と写り方を天文計算に基づいて再現します。撮影計画に役立ててください。</p>
+      </header>
     <aside class="control-panel">
       <button id="closeSettingsBtn" type="button" class="close-settings-btn">✕ 閉じる(シミュレーション画面へ戻る)</button>
 
@@ -2469,6 +2498,15 @@
           <button id="realMilkyWayBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌌 天の川をリアル表示する</span><span id="realMilkyWayState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">ESOの全天実写パノラマを日時・方位・画角に合わせて投影し、実際の暗黒帯や銀河中心の形を再現します。画像: ESO/S. Brunier (CC BY 4.0)</p>
           <div class="field" style="margin-top:8px;">
+            <label class="top">天の川模様の位置調整・左右(度) <span class="val mono" id="mwTextureOffsetVal">0°</span></label>
+            <input type="range" id="mwTextureOffsetSlider" min="-90" max="90" step="1" value="0">
+          </div>
+          <div class="field" style="margin-top:8px;">
+            <label class="top">天の川模様の位置調整・上下(度) <span class="val mono" id="mwTextureBOffsetVal">0°</span></label>
+            <input type="range" id="mwTextureBOffsetSlider" min="-30" max="30" step="1" value="0">
+          </div>
+          <p class="map-hint" style="margin-top:4px;">実際の写真と見比べて模様がずれている場合、この位置合わせ用スライダーで微調整できます(反転は起きません)。</p>
+          <div class="field" style="margin-top:8px;">
             <label class="top">南半球の透明度 <span class="val mono" id="belowHorizonOpacityVal">100%</span></label>
             <input type="range" id="belowHorizonOpacitySlider" min="0" max="100" step="5" value="100">
           </div>
@@ -2489,15 +2527,15 @@
       </section>
 
     </aside>
+    </div>
 
     <main class="stage">
 
       <div class="dial-photo-row">
         <section class="card">
           <div class="card-title-row" id="cardTitleRow">
-            <h2 class="card-title">撮影シミュレーション<span class="card-note">露出・ノイズ・星の流れを反映</span></h2>
-            <div class="sky-search-wrap">
-              <select id="skySearchSelect">
+            <div class="sky-search-wrap" style="display:none;" aria-hidden="true">
+              <select id="skySearchSelect" tabindex="-1">
                 <option value="" selected>星空検索</option>
                 <option value="gc">天の川の中心</option>
                 <option value="sun">太陽</option>
@@ -2542,6 +2580,7 @@
                 </optgroup>
               </select>
             </div>
+            <div class="header-left-group" id="headerLeftGroup"></div>
             <div class="header-right-group" id="headerRightGroup">
               <div class="today-date" id="todayDate">
                 <span class="today-date-year" id="todayDateYear">2026</span>
@@ -2756,30 +2795,31 @@
               </div>
             </div>
             <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
-            <div class="best-time-bar" id="bestTimeBar">
-              <div class="best-time-text">
-                <div class="best-time-top-row">
-                  <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
-                  <button id="mobileMonthTableBtn" type="button" class="month-table-mobile-btn">▶月別表</button>
-                </div>
-                <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
-              </div>
-              <div class="best-time-date-nav" id="bestTimeDateNav">
-                <span class="date-nav-btn-wrap">
-                  <span class="date-nav-btn" id="mobileDateDisplay">—</span>
-                  <input type="date" id="mobileDateInputVisible" class="date-nav-input-overlay" tabindex="-1">
-                </span>
-                <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
-                <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
-                <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
-                <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
-                <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
-              </div>
-              <button id="jumpBestTimeBtn" type="button" class="jump-besttime-btn">開始<br>時間</button>
-            </div>
           </div>
           <div class="datetime-row">
             <div class="dt-col">
+              <div class="best-time-bar" id="bestTimeBar">
+                <div class="best-time-text">
+                  <div class="best-time-top-row">
+                    <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
+                    <button id="bestTimeAutoJumpBtn" type="button" class="time-range-mode-btn besttime-autojump-btn" aria-pressed="true" title="ON: 日付を送ると常に天の川のベストタイム開始時間になります / OFF: 時刻はそのままで日付だけ変わります">開始時間</button>
+                    <button id="mobileMonthTableBtn" type="button" class="month-table-mobile-btn">▶月別表</button>
+                  </div>
+                  <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
+                </div>
+                <div class="best-time-date-nav" id="bestTimeDateNav">
+                  <span class="date-nav-btn-wrap">
+                    <span class="date-nav-btn" id="mobileDateDisplay">—</span>
+                    <input type="date" id="mobileDateInputVisible" class="date-nav-input-overlay" tabindex="-1">
+                  </span>
+                  <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
+                  <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
+                  <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
+                  <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
+                  <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
+                </div>
+                <button id="jumpBestTimeBtn" type="button" class="jump-besttime-btn">開始<br>時間</button>
+              </div>
               <button type="button" class="date-collapse-toggle" id="dateCollapseToggle">
                 <span class="dt-title">撮影日を設定</span>
                 <span class="collapse-arrow" id="dateCollapseArrow">▼</span>
@@ -2991,6 +3031,15 @@ for(let l=0;l<360;l+=2){
 
 /* ESO/S. Brunier全天パノラマ用メッシュ。銀河座標上の固定格子を一度だけ赤道座標へ変換する。 */
 const REAL_MW_L_STEP=8, REAL_MW_B_STEP=6, REAL_MW_B_LIMIT=30;
+// 実際の写真と見比べて割り出した基準のキャリブレーション値(左右-3°・上下+2°)。
+// これを基準(0°)として、UIのスライダーではさらに追加で微調整できるようにする。
+const MW_TEXTURE_BASE_L=-3, MW_TEXTURE_BASE_B=2;
+// 実写パノラマ(ESO/Brunier)の画素と銀河経度の対応付けを、基準値からさらに補正するオフセット(度)。
+// UIのスライダーで調整できるようにしたletの変数。基準値は上のMW_TEXTURE_BASE_Lに焼き込み済みなので、
+// ここは0°を起点にする。
+let mwTextureLOffsetDeg=0;
+// 同様に、銀河緯度(上下方向)の対応付けを、基準値からさらに補正するオフセット(度)。
+let mwTextureBOffsetDeg=0;
 const REAL_MW_GRID=[];
 for(let b=-REAL_MW_B_LIMIT;b<=REAL_MW_B_LIMIT;b+=REAL_MW_B_STEP){
   const row=[];
@@ -3526,7 +3575,7 @@ const el={
   zoomInBtn:$("zoomInBtn"), zoomOutBtn:$("zoomOutBtn"), mapResetBtn:$("mapResetBtn"), mapScaleLabel:$("mapScaleLabel"),
   dateInput:$("dateInput"), timeSlider:$("timeSlider"), timeLabel:$("timeLabel"), timeDateLabel:$("timeDateLabel"), nowBtn:$("nowBtn"),
   prevMonthBtn:$("prevMonthBtn"), prevDayBtn:$("prevDayBtn"), nextDayBtn:$("nextDayBtn"), nextMonthBtn:$("nextMonthBtn"),
-  jumpBestTimeBtn:$("jumpBestTimeBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
+  jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   mwStartTimeLabel:$("mwStartTimeLabel"), mwEndTimeLabel:$("mwEndTimeLabel"),
   focalLength:$("focalLength"), flVal:$("flVal"), focalBadge:$("focalBadge"),
@@ -3560,6 +3609,8 @@ const el={
   showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
   realMilkyWayBtn:$("realMilkyWayBtn"), realMilkyWayState:$("realMilkyWayState"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
+  mwTextureOffsetSlider:$("mwTextureOffsetSlider"), mwTextureOffsetVal:$("mwTextureOffsetVal"),
+  mwTextureBOffsetSlider:$("mwTextureBOffsetSlider"), mwTextureBOffsetVal:$("mwTextureBOffsetVal"),
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
   showSkylineBoundaryBtn:$("showSkylineBoundaryBtn"), showSkylineBoundaryState:$("showSkylineBoundaryState"), skylineOpacitySlider:$("skylineOpacitySlider"), skylineOpacityVal:$("skylineOpacityVal"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
@@ -3568,7 +3619,7 @@ const el={
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
   moonTodayIcon:$("moonTodayIcon"), moonTodayName:$("moonTodayName"),
   todayDateYear:$("todayDateYear"), todayDateMain:$("todayDateMain"), todayDatePlace:$("todayDatePlace"),
-  cardTitleRow:$("cardTitleRow"), headerRightGroup:$("headerRightGroup"), toggleBtnRow:$("toggleBtnRow"), todayDate:$("todayDate"), moonToday:$("moonToday"),
+  cardTitleRow:$("cardTitleRow"), headerLeftGroup:$("headerLeftGroup"), headerRightGroup:$("headerRightGroup"), toggleBtnRow:$("toggleBtnRow"), todayDate:$("todayDate"), moonToday:$("moonToday"),
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
@@ -3714,6 +3765,18 @@ el.nowBtn.addEventListener("click",()=>{
 });
 
 /* 日付の前後移動(前日/翌日/前月/翌月) */
+// 「開始時間」ON/OFF: ONの場合、日付を送る(前日/翌日/前月/翌月)たびに天の川のベストタイム
+// 開始時刻へ自動でジャンプする(従来の挙動)。OFFの場合は現在設定している時刻をそのまま保ち、
+// 日付・月だけを送る。
+let autoJumpToBestTimeOnDateNav=true;
+function setAutoJumpToBestTimeOnDateNav(on){
+  autoJumpToBestTimeOnDateNav=!!on;
+  el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
+  scheduleSaveSettings();
+}
+el.bestTimeAutoJumpBtn.addEventListener("click",()=>{
+  setAutoJumpToBestTimeOnDateNav(!autoJumpToBestTimeOnDateNav);
+});
 function shiftSelectedDate(deltaDays,deltaMonths){
   const [y,mo,da]=el.dateInput.value.split("-").map(Number);
   const d=new Date(Date.UTC(y,mo-1,da));
@@ -3721,7 +3784,7 @@ function shiftSelectedDate(deltaDays,deltaMonths){
   if(deltaMonths) d.setUTCMonth(d.getUTCMonth()+deltaMonths);
   el.dateInput.value=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
   update();
-  if(state && state.bestWindow){
+  if(autoJumpToBestTimeOnDateNav && state && state.bestWindow){
     // その日のベストタイムがあれば開始時刻へ。無い日は時刻を変えず、前回表示していた時刻のまま日だけ送る
     const minutesFromMidnight=Math.round((state.bestWindow.start-state.jdMidnight)*1440);
     el.timeSlider.value=clamp(minutesFromMidnight,0,1800);
@@ -4554,6 +4617,18 @@ el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
   update();
   syncDisplayPopupControls();
+  scheduleSaveSettings();
+});
+el.mwTextureOffsetSlider.addEventListener("input",()=>{
+  mwTextureLOffsetDeg=+el.mwTextureOffsetSlider.value;
+  el.mwTextureOffsetVal.textContent=`${mwTextureLOffsetDeg}°`;
+  update();
+  scheduleSaveSettings();
+});
+el.mwTextureBOffsetSlider.addEventListener("input",()=>{
+  mwTextureBOffsetDeg=+el.mwTextureBOffsetSlider.value;
+  el.mwTextureBOffsetVal.textContent=`${mwTextureBOffsetDeg}°`;
+  update();
   scheduleSaveSettings();
 });
 /* 水平線(高度0°)を点線で表示するON/OFF */
@@ -5558,6 +5633,17 @@ function layoutHeaderForViewport(){
     targetParent.appendChild(el.todayDate);
     targetParent.appendChild(el.moonToday);
   }
+  // PC画面では「表示」「アイコン説明」「縦横切替」「焦点距離」を行の左端(headerLeftGroup)にまとめる。
+  // スマホ画面では元のtoggleBtnRow(操作アイコン行)に戻す。
+  // ポップアップ(displayOptionsPopup)は表示ボタンの直後に付いてくる形で一緒に移動させ、
+  // 常にボタンのすぐ下に開くようにする。
+  const iconGroupTargetParent = isMobile ? el.toggleBtnRow : el.headerLeftGroup;
+  if(el.mobileDisplayOptionsBtn.parentElement !== iconGroupTargetParent){
+    const iconInsertBeforeRef = isMobile ? el.arModeBtn : null;
+    [el.mobileDisplayOptionsBtn,el.displayOptionsPopup,el.iconInfoBtn,el.mobileOrientationToggleBtn,el.focalBadge].forEach(node=>{
+      iconGroupTargetParent.insertBefore(node,iconInsertBeforeRef);
+    });
+  }
   // 星座・惑星ボタンは、PC・スマホ共通で「表示」ポップアップの中に配置する
   if(el.constellationToggleBtn.parentElement !== el.displayOptionsPopup){
     el.displayOptionsPopup.appendChild(el.constellationToggleBtn);
@@ -5655,6 +5741,9 @@ function collectPersistedSettings(){
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
+    mwTextureLOffsetDeg:mwTextureLOffsetDeg,
+    mwTextureBOffsetDeg:mwTextureBOffsetDeg,
+    autoJumpToBestTimeOnDateNav:autoJumpToBestTimeOnDateNav,
     lockAzToGc:lockAzToGc,
     starTrailMode:starTrailMode,
     starTrailTaper:starTrailTaper,
@@ -5706,6 +5795,20 @@ async function loadPersistedSettings(){
     showBelowHorizon=s.showBelowHorizon!==false;
     if(s.belowHorizonOpacity!==undefined) el.belowHorizonOpacitySlider.value=s.belowHorizonOpacity;
     el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
+    if(s.mwTextureLOffsetDeg!==undefined){
+      mwTextureLOffsetDeg=s.mwTextureLOffsetDeg;
+      el.mwTextureOffsetSlider.value=mwTextureLOffsetDeg;
+      el.mwTextureOffsetVal.textContent=`${mwTextureLOffsetDeg}°`;
+    }
+    if(s.mwTextureBOffsetDeg!==undefined){
+      mwTextureBOffsetDeg=s.mwTextureBOffsetDeg;
+      el.mwTextureBOffsetSlider.value=mwTextureBOffsetDeg;
+      el.mwTextureBOffsetVal.textContent=`${mwTextureBOffsetDeg}°`;
+    }
+    if(s.autoJumpToBestTimeOnDateNav!==undefined){
+      autoJumpToBestTimeOnDateNav=!!s.autoJumpToBestTimeOnDateNav;
+      el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
+    }
     lockAzToGc=!!s.lockAzToGc;
     starTrailMode=!!s.starTrailMode;
     starTrailTaper=!!s.starTrailTaper;
@@ -6841,6 +6944,147 @@ async function loadTilesWithLimit(tiles,limit=6){
   async function worker(){while(index<tiles.length){const tile=tiles[index++];await loadGsiDemTile(tile);}}
   await Promise.all(Array.from({length:Math.min(limit,tiles.length)},worker));
 }
+// =========================================================
+// OSM(OpenStreetMap)の水域ポリゴンデータによる、より精度の高い水面判定。
+// 国土地理院DEMの「標高データなし(海)」「局所的な平坦さ(湖沼の推定)」だけでは
+// 実際の水域境界と完全には一致しないため、可能な場合はOverpass API経由で
+// 実際の湖沼・池・貯水池のポリゴン形状を取得し、点がその中に入るかで判定する。
+// 外部サービスのため、取得できない場合(CORS・通信不可など)は自動的に
+// 従来の標高ベースの判定のみにフォールバックする。
+// =========================================================
+const OSM_WATER_ENDPOINTS=[
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter",
+  "https://overpass-api.de/api/interpreter"
+];
+const osmWaterCache=new Map();
+function pointInPolygonLatLon(lat,lon,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const yi=ring[i][0],xi=ring[i][1],yj=ring[j][0],xj=ring[j][1];
+    const intersect=((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/((yj-yi)||1e-12)+xi);
+    if(intersect) inside=!inside;
+  }
+  return inside;
+}
+function ringWithBbox(points){
+  let minLat=Infinity,maxLat=-Infinity,minLon=Infinity,maxLon=-Infinity;
+  points.forEach(([plat,plon])=>{
+    if(plat<minLat) minLat=plat; if(plat>maxLat) maxLat=plat;
+    if(plon<minLon) minLon=plon; if(plon>maxLon) maxLon=plon;
+  });
+  return {points,minLat,maxLat,minLon,maxLon};
+}
+function pointInWaterRings(lat,lon,rings){
+  if(!rings) return false;
+  for(const ring of rings){
+    if(lat<ring.minLat||lat>ring.maxLat||lon<ring.minLon||lon>ring.maxLon) continue; // 高速な足切り
+    if(pointInPolygonLatLon(lat,lon,ring.points)) return true;
+  }
+  return false;
+}
+const OSM_WATER_RADIUS_KM=0.1; // Overpassへの問い合わせ範囲。陸地の水は50m以内のみ扱うため、そこに絞って軽量化する。
+// 距離帯ごとの「水面らしさ」プロファイルを方位方向に平滑化する。
+// 標高ベースの判定(特に平坦検出)は1度刻みでノイズが乗りやすく、そのままだと
+// 陸/水の判定が数度おきに細かく反転して縦筋のように見えてしまうため、
+// 数度幅の移動平均でならしてから使う(実際の海岸線のような大きな特徴は残る)。
+function smoothWaterProfile(arr,windowDeg){
+  const n=arr.length;
+  const out=new Array(n);
+  const buf=new Array(windowDeg*2+1);
+  for(let i=0;i<n;i++){
+    for(let k=-windowDeg;k<=windowDeg;k++) buf[k+windowDeg]=arr[(i+k+n)%n];
+    buf.sort((a,b)=>a-b);
+    out[i]=buf[windowDeg]; // 中央値: 数度幅にまとまったノイズの塊も除去しつつ、大きな特徴(島など)の輪郭は保ちやすい
+  }
+  return out;
+}
+// 有名な撮影スポットの湖沼を簡易的な楕円で近似した、最終フォールバック用リスト。
+// DEMの平坦検出・OSMデータのどちらでも拾いきれなかった場合に備える(通信不要・即時判定)。
+// 中心座標・大きさは公開情報からのおおよその近似値であり、厳密な湖岸線ではない。
+// elevationMは湖面の標高の目安。楕円の範囲内でも、実際の標高がこれと大きくずれる
+// (=すぐそばの山の斜面など)場合は水面として扱わないようにするための安全策。
+const KNOWN_WATER_BODIES=[
+  {name:"田貫湖",lat:35.3446,lon:138.5610,radiusNS_m:320,radiusEW_m:560,elevationM:650,elevationToleranceM:6}
+];
+function isInKnownWaterBody(lat,lon,elevation){
+  for(const w of KNOWN_WATER_BODIES){
+    const dLatM=(lat-w.lat)*111320;
+    const dLonM=(lon-w.lon)*111320*Math.cos(w.lat*Math.PI/180);
+    const nx=dLonM/w.radiusEW_m, ny=dLatM/w.radiusNS_m;
+    if(nx*nx+ny*ny>1) continue;
+    // 標高が湖面の想定値から大きく外れる場合は、楕円内でも山の斜面などとみなして水面扱いしない
+    if(Number.isFinite(elevation)&&Number.isFinite(w.elevationM)&&Math.abs(elevation-w.elevationM)>w.elevationToleranceM) continue;
+    return true;
+  }
+  return false;
+}
+// 陸地の水(湖・池)を判定する対象距離。海(nodata判定)は距離を絞らないが、
+// 陸地の水は近距離(50m以内)でのみ扱う(遠方では山の斜面などの誤検出が増えるため)。
+const LAND_WATER_MAX_KM=0.05;
+function computeOsmWaterFractionByBand(lat,lon,radiusKm,rings){
+  const bandProfiles=TERRAIN_DISTANCE_BANDS.map(()=>new Array(360).fill(0));
+  if(!rings||!rings.length) return bandProfiles;
+  for(let az=0;az<360;az++){
+    const counts=new Array(TERRAIN_DISTANCE_BANDS.length).fill(0);
+    const totals=new Array(TERRAIN_DISTANCE_BANDS.length).fill(0);
+    for(const distanceKm of TERRAIN_DISTANCES_KM){
+      if(distanceKm>radiusKm) continue;
+      const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>distanceKm>=band.min&&distanceKm<band.max);
+      if(layerIndex<0) continue;
+      totals[layerIndex]++;
+      const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
+      if(pointInWaterRings(pLat,pLon,rings)) counts[layerIndex]++;
+    }
+    TERRAIN_DISTANCE_BANDS.forEach((band,i)=>{bandProfiles[i][az]=totals[i]>0?counts[i]/totals[i]:0;});
+  }
+  return bandProfiles;
+}
+async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const res=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(query),signal:controller.signal});
+    if(!res.ok) throw new Error(`overpass ${res.status}`);
+    return await res.json();
+  }finally{
+    clearTimeout(timer);
+  }
+}
+function fetchOsmWaterRings(lat,lon,radiusKm){
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)},${radiusKm}`;
+  if(osmWaterCache.has(key)) return osmWaterCache.get(key);
+  const radiusM=Math.round(radiusKm*1000);
+  const query=`[out:json][timeout:20];(way["natural"="water"](around:${radiusM},${lat},${lon});relation["natural"="water"](around:${radiusM},${lat},${lon});way["landuse"="reservoir"](around:${radiusM},${lat},${lon});relation["landuse"="reservoir"](around:${radiusM},${lat},${lon}););out geom;`;
+  const promise=(async()=>{
+    for(const endpoint of OSM_WATER_ENDPOINTS){
+      try{
+        const data=await fetchOsmWaterRingsOnce(endpoint,query,8000);
+        const rings=[];
+        (data.elements||[]).forEach(elem=>{
+          if(elem.type==="way"&&Array.isArray(elem.geometry)){
+            const points=elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
+            if(points.length>=3) rings.push(ringWithBbox(points));
+          }else if(elem.type==="relation"&&Array.isArray(elem.members)){
+            elem.members.forEach(member=>{
+              if(member.role==="inner") return; // 島など内側の輪(穴)は水域から除く
+              if(member.type==="way"&&Array.isArray(member.geometry)){
+                const points=member.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
+                if(points.length>=3) rings.push(ringWithBbox(points));
+              }
+            });
+          }
+        });
+        return rings;
+      }catch(err){
+        // このミラーで失敗した場合は次の候補へ。全て失敗した場合は標高ベースの判定にフォールバックする。
+      }
+    }
+    return null;
+  })();
+  osmWaterCache.set(key,promise);
+  return promise;
+}
 async function buildRealTerrainProfile(lat,lon,token){
   const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
   const samples=[];
@@ -6853,7 +7097,7 @@ async function buildRealTerrainProfile(lat,lon,token){
       const zooms=primaryZoom===14?[14,12,10]:primaryZoom===12?[12,10]:[10];
       const refs=zooms.map(z=>terrainTilePoint(pLat,pLon,z));
       refs.forEach(t=>tilesByKey.set(t.key,t));
-      ray.push({distanceKm,refs});
+      ray.push({distanceKm,refs,lat:pLat,lon:pLon});
     }
     samples.push(ray);
   }
@@ -6869,29 +7113,112 @@ async function buildRealTerrainProfile(lat,lon,token){
   const observerElevation=await elevationFromRefs(observerRefs);
   if(!Number.isFinite(observerElevation)) return null;
   const eyeElevation=observerElevation+1.6;
-  const profile=new Array(360).fill(0);
-  const terrainLayers=TERRAIN_DISTANCE_BANDS.map(band=>({...band,profile:new Array(360).fill(0)}));
+
+  // 1巡目: 全方位×全距離の標高を先にグリッドとして取得する。
+  // (2巡目で近傍セルどうしを比較し、海だけでなく湖沼のような「平らな水面」も検出するため)
+  const nDist=TERRAIN_DISTANCES_KM.length;
+  const elevGrid=new Array(360);
   let validCount=0;
+  for(let az=0;az<360;az++){
+    const row=new Array(nDist);
+    for(let d=0;d<nDist;d++){
+      const elevation=await elevationFromRefs(samples[az][d].refs);
+      row[d]=elevation; // 数値、または標高データなし(海など)ならnull
+      if(Number.isFinite(elevation)) validCount++;
+    }
+    elevGrid[az]=row;
+  }
+  if(validCount<720) return null;
+
+  // 2巡目: 標高グリッドから稜線プロファイルと「水面らしさ」を算出する。
+  // この時点では標高データのみで判定する(OSMの実際の水域ポリゴンは、取得に時間が
+  // かかることがあるため、この関数の外側で非同期に取得して後から上書き・補強する)。
+  // 水面判定は2種類を組み合わせる:
+  //  (a) 標高データなし(nodata) … 海など、DEMの対象外エリア
+  //  (b) 周囲との高低差がほぼ無い「平坦」… 湖沼・池など、DEMには標高値があるが水面のため局所的に真っ平らな場所
+  // (b)は方位方向と距離方向、どちらか一方の軸で近傍2点とも十分平らならOKとする
+  // (両軸同時に要求すると、岸に近い場所で片方の軸だけ地形が混ざり検出漏れしやすいため)。
+  const profile=new Array(360).fill(0);
+  const terrainLayers=TERRAIN_DISTANCE_BANDS.map(band=>({...band,profile:new Array(360).fill(0),waterProfile:new Array(360).fill(0)}));
+  const FLAT_WATER_THRESHOLD_M=0.8; // これ未満の高低差なら「水面のように平ら」とみなす(DEMの計測誤差を考慮しやや余裕を持たせた値)
+  const WATER_MAX_VISIBLE_ALT_DEG=1.5; // この角度より高く見える地物がある距離帯は、水面判定を無条件で無効にする(水面は水平のはずのため)
+  // 陸地の水(湖・池)は近距離(50m以内)でのみ表現する。平坦検出や既知リストは、
+  // 遠方では山の斜面などを誤検出しやすく不安定なため、確実に見分けられる近距離だけに絞る。
+  // 一方、海(標高データなし=nodata)はDEMが元々カバーしていない範囲そのものなので、
+  // 距離を絞らず従来通り(50m〜90km)判定する。
+  const FLAT_WATER_MAX_KM=Math.min(30,LAND_WATER_MAX_KM); // これより遠方は平坦判定の対象外にする
+  const FLAT_WATER_AZ_STEP=2; // 方位方向の比較幅(度)。狭い水域でも近傍が対岸へ外れにくいよう控えめにする
+  const WATER_CHECK_MIN_KM=0.005; // 観測者の三脚の真下など、ごく直近(5m未満)のみノイズとして判定対象から除外する
+  function isFlatWater(az,d){
+    const e=elevGrid[az][d];
+    if(!Number.isFinite(e)) return false;
+    const azPrev=elevGrid[(az+360-FLAT_WATER_AZ_STEP)%360][d], azNext=elevGrid[(az+FLAT_WATER_AZ_STEP)%360][d];
+    const distPrev=d>0?elevGrid[az][d-1]:null, distNext=d<nDist-1?elevGrid[az][d+1]:null;
+    const neighbors=[azPrev,azNext,distPrev,distNext].filter(Number.isFinite);
+    if(neighbors.length<2) return false; // 比較材料が足りない場合は誤判定を避けて水面扱いにしない
+    const closeCount=neighbors.filter(n=>Math.abs(n-e)<FLAT_WATER_THRESHOLD_M).length;
+    return closeCount>=2; // 近傍4点(方位前後・距離内外)のうち2点以上がほぼ同じ高さなら平らとみなす
+  }
   for(let az=0;az<360;az++){
     let highest=0;
     const layerHighest=new Array(terrainLayers.length).fill(0);
-    for(const sample of samples[az]){
-      const elevation=await elevationFromRefs(sample.refs);
-      if(!Number.isFinite(elevation)) continue;
-      validCount++;
-      const metres=sample.distanceKm*1000;
+    // 水面らしさは距離帯(層)ごとに集計する。全距離をまとめた1個の値にしてしまうと、
+    // 「手前は海、途中に島がある」ような方位で島まで青く塗られてしまうため、
+    // 島がある距離帯だけは陸地色のまま残せるように、層ごとに独立して判定する。
+    const layerWaterCount=new Array(terrainLayers.length).fill(0);
+    const layerWaterTotal=new Array(terrainLayers.length).fill(0);
+    for(let d=0;d<nDist;d++){
+      const distanceKm=TERRAIN_DISTANCES_KM[d];
+      const sample=samples[az][d];
+      const elevation=elevGrid[az][d];
+      const isNoData=!Number.isFinite(elevation); // 海: 距離を絞らず全距離で判定する
+      const isFlat=!isNoData&&distanceKm<=FLAT_WATER_MAX_KM&&isFlatWater(az,d); // 陸地の水: 50m以内のみ
+      const isKnown=distanceKm<=LAND_WATER_MAX_KM&&isInKnownWaterBody(sample.lat,sample.lon,elevation); // 陸地の水: 50m以内のみ
+      const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>distanceKm>=band.min&&distanceKm<band.max);
+      const countsForWaterCheck=distanceKm>=WATER_CHECK_MIN_KM||isKnown;
+      if(countsForWaterCheck&&layerIndex>=0){
+        layerWaterTotal[layerIndex]++;
+        if(isNoData||isFlat||isKnown) layerWaterCount[layerIndex]++;
+      }
+      if(isNoData) continue;
+      const metres=distanceKm*1000;
       // 標準的な大気差を含む7/6地球半径モデルで、遠方地形の沈み込みを補正する。
       const curvatureDrop=metres*metres/(2*6371000*(7/6));
       const apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
       if(apparentAlt>highest) highest=apparentAlt;
-      const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>sample.distanceKm>=band.min&&sample.distanceKm<band.max);
       if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]) layerHighest[layerIndex]=apparentAlt;
     }
     profile[az]=clamp(highest,0,45);
-    terrainLayers.forEach((layer,index)=>{layer.profile[az]=clamp(layerHighest[index],0,45);});
+    terrainLayers.forEach((layer,index)=>{
+      layer.profile[az]=clamp(layerHighest[index],0,45);
+      // 水面は物理的に水平(見かけの高度がほぼ0°)なはず。この距離帯自身に
+      // 一定以上目立つ高さの地物(山の稜線など)が見えている場合は、
+      // 平坦検出などが誤って水面判定していても、山として扱うよう安全側に上書きする。
+      const looksLikeRisingTerrain=layerHighest[index]>WATER_MAX_VISIBLE_ALT_DEG;
+      layer.waterProfile[az]=looksLikeRisingTerrain?0:(layerWaterTotal[index]>0?clamp(layerWaterCount[index]/layerWaterTotal[index],0,1):0);
+    });
   }
-  if(validCount<720) return null;
+  terrainLayers.forEach(layer=>{layer.waterProfile=smoothWaterProfile(layer.waterProfile,6);});
   return {profile,terrainLayers,observerElevation};
+}
+// OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
+// Overpass APIの応答には数秒〜十数秒かかることがあるため、地形本体の描画は待たずに行い、
+// 取得でき次第、水面らしさをその距離帯・方位だけ底上げして再描画する(取得できなくても標高ベースの結果は残る)。
+function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
+  if(!resultObj||resultObj._osmRefinePending) return;
+  resultObj._osmRefinePending=true;
+  fetchOsmWaterRings(lat,lon,OSM_WATER_RADIUS_KM).then(rings=>{
+    if(!rings||!rings.length||!resultObj.terrainLayers) return; // 取得できなかった場合は標高ベースの判定のまま
+    const osmBandProfiles=computeOsmWaterFractionByBand(lat,lon,LAND_WATER_MAX_KM,rings);
+    resultObj.terrainLayers.forEach((layer,index)=>{
+      if(!layer.waterProfile) layer.waterProfile=new Array(360).fill(0);
+      const osmProfile=osmBandProfiles[index]||[];
+      for(let az=0;az<360;az++){
+        if((osmProfile[az]||0)>layer.waterProfile[az]) layer.waterProfile[az]=osmProfile[az];
+      }
+    });
+    if(realTerrainState.key===key&&typeof update==="function") update();
+  }).catch(()=>{});
 }
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
@@ -6902,6 +7229,7 @@ function requestRealTerrainProfile(lat,lon){
   if(cached){
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     document.body.classList.add("real-terrain-visible");
+    refineTerrainWaterWithOsm(lat,lon,key,cached);
     return;
   }
   if(realTerrainState.loadingKey===key) return;
@@ -6922,6 +7250,7 @@ function requestRealTerrainProfile(lat,lon){
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     document.body.classList.add("real-terrain-visible");
     if(typeof update==="function") update();
+    refineTerrainWaterWithOsm(lat,lon,key,result);
   });
 }
 function realTerrainAltitudeAt(az){
@@ -6929,6 +7258,38 @@ function realTerrainAltitudeAt(az){
   if(!profile) return null;
   const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
   return lerp(profile[i0],profile[i1],t);
+}
+// 実地形・簡易シルエットのどちらでも使える、方位から「地面(山)の見かけの高度」を返す共通ヘルパー。
+// 流れ星が山より奥に隠れるようにする際の、地平線・稜線の高さ判定に使う。
+function groundAltitudeAt(az){
+  const real=realTerrainAltitudeAt(az);
+  if(real!==null) return real;
+  const ridge=seededSilhouette().ridge;
+  const wrapped=((az%360)+360)%360;
+  const idx=Math.floor(wrapped/3);
+  const a=ridge[idx]||ridge[0], b=ridge[idx+1]||ridge[0];
+  const span=(b[0]-a[0])||3;
+  const t=(wrapped-a[0])/span;
+  return lerp(a[1],b[1],t);
+}
+// 現在の画面(方位・画角・レンズ)における「空と地面の境目」の画面Y座標を、
+// 横方向にサンプリングして保持しておく配列。流れ星は別レイヤーのcanvasに独立して
+// 描かれるため、ここで求めた境目より下(地面側)に流れ星がかからないよう、
+// 流れ星の描画側でこの配列を参照してクリップする。
+let terrainSkylineYByX=null;
+function buildSkylineYArray(samples,W,H){
+  if(!samples||samples.length<2) return null;
+  const sorted=[...samples].sort((a,b)=>a[0]-b[0]);
+  const arr=new Float32Array(Math.max(1,Math.ceil(W)));
+  let j=0;
+  for(let x=0;x<arr.length;x++){
+    while(j<sorted.length-2 && sorted[j+1][0]<x) j++;
+    const a=sorted[j], b=sorted[Math.min(j+1,sorted.length-1)];
+    const span=(b[0]-a[0])||1;
+    const t=clamp((x-a[0])/span,0,1);
+    arr[x]=x<sorted[0][0] ? sorted[0][1] : (x>sorted[sorted.length-1][0] ? sorted[sorted.length-1][1] : lerp(a[1],b[1],t));
+  }
+  return arr;
 }
 function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
   const p1=lat1*D2R,p2=lat2*D2R,dp=(lat2-lat1)*D2R,dl=(lon2-lon1)*D2R;
@@ -7078,8 +7439,17 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
       // 水平線の上下でもメッシュ単位の透明度変更は行わない。南半球の透明度は、この後に描く
       // 地景レイヤーの連続したマスクへ一元化し、水平線付近の三角形・段差を防ぐ。
       ctx.globalAlpha=clamp(vis*1.08,0,1);
-      const sx0=(1.5-p00.l/360)*iw, sx1=(1.5-p10.l/360)*iw;
-      const sy0=(0.5-p00.b/180)*ih, sy1=(0.5-p01.b/180)*ih;
+      // mwTextureLOffsetDeg / mwTextureBOffsetDeg: 実写パノラマ画像の「どのピクセルが
+      // 銀河経度・緯度のどこか」という対応付けをスライダーでさらに微調整するためのオフセット。
+      // 基準となるキャリブレーション値(左右-3°・上下+2°)は下のMW_TEXTURE_BASE_L/Bとして
+      // 定数側に焼き込み済みなので、このオフセットは基準からの追加調整分(初期値0°)を表す。
+      // ここで剰余(360度)を取って値を丸めてしまうと、元々の「テクスチャを横に2枚並べて
+      // 継ぎ目を作らない」仕組みが壊れて縦筋の破綻を起こすため、丸めずにそのまま加算する
+      // (doubled canvasの余白の範囲内なら問題なく描画できる)。
+      const texL0=p00.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg, texL1=p10.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg;
+      const sx0=(1.5-texL0/360)*iw, sx1=(1.5-texL1/360)*iw;
+      const texB0=p00.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg, texB1=p01.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg;
+      const sy0=(0.5-texB0/180)*ih, sy1=(0.5-texB1/180)*ih;
       drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
       drawTextureTriangle(ctx,realMilkyWayTexture,[sx1,sy0],[sx1,sy1],[sx0,sy1],p10.pt,p11.pt,p01.pt);
     }
@@ -7673,28 +8043,52 @@ function drawPhoto(ctx,s){
         const bottom=mixRGB(brighten(style.bottom),dayStyle.bottom,dayFactor);
         return {top:`rgb(${top.join(",")})`,bottom:`rgb(${bottom.join(",")})`};
       }
-      function fillTerrainBand(profile,colors){
+      function fillTerrainBand(layer,colors){
+        const WATER_RUN_THRESHOLD=0.5; // 距離帯ごとの水面らしさが、これ以上の方位だけを「水面」として塗る
         const points=[];
         for(let diff=-half;diff<=half;diff+=step){
           const az=norm360(s.facingAz+diff);
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-          const altitude=lerp(profile[i0]||0,profile[i1]||0,t);
+          const altitude=lerp(layer.profile[i0]||0,layer.profile[i1]||0,t);
           const p=toXY(az,altitude);
-          if(p&&Number.isFinite(p[0])&&Number.isFinite(p[1])) points.push(p);
+          if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
+          const wp=layer.waterProfile;
+          const water=wp?lerp(wp[i0]||0,wp[i1]||0,t):0;
+          points.push({x:p[0],y:p[1],water});
         }
         if(points.length<2) return;
-        const ridgeY=clamp(Math.min(...points.map(point=>point[1])),0,H-1);
+        const ridgeY=clamp(Math.min(...points.map(pt=>pt.y)),0,H-1);
         const gradient=tctx.createLinearGradient(0,ridgeY,0,H);
         gradient.addColorStop(0,colors.top);
         gradient.addColorStop(1,colors.bottom);
-        tctx.beginPath();tctx.moveTo(0,H);tctx.lineTo(points[0][0],points[0][1]);
-        for(let i=1;i<points.length;i++) tctx.lineTo(points[i][0],points[i][1]);
-        tctx.lineTo(W,H);tctx.closePath();tctx.fillStyle=gradient;tctx.fill();
+        // この距離帯の中でも、水面らしさが方位によって変わる(海の向こうに島があるなど)ことがあるため、
+        // 「陸地」と「水面」が連続する区間ごとに分けて、それぞれ1つの図形として1回だけ塗る。
+        // 隣の区間の始点も1点だけ重ねて含めることで、区間の境目に継ぎ目(縦筋)ができないようにする。
+        let i=0;
+        while(i<points.length){
+          const isWaterRun=points[i].water>=WATER_RUN_THRESHOLD;
+          let j=i;
+          while(j<points.length&&(points[j].water>=WATER_RUN_THRESHOLD)===isWaterRun) j++;
+          const run=points.slice(i,Math.min(j+1,points.length));
+          if(run.length>=1){
+            const startX=i===0?0:run[0].x; // 画面の左端は元の実装同様x=0まで途切れなく塗る
+            const endX=j>=points.length?W:run[run.length-1].x; // 右端はx=Wまで塗る
+            tctx.beginPath();tctx.moveTo(startX,H);tctx.lineTo(run[0].x,run[0].y);
+            for(let k=1;k<run.length;k++) tctx.lineTo(run[k].x,run[k].y);
+            tctx.lineTo(endX,H);tctx.closePath();
+            tctx.fillStyle=isWaterRun?`rgb(${seaRGB.join(",")})`:gradient;
+            tctx.fill();
+          }
+          i=j;
+        }
       }
+      const nightSeaRGB=[5,8,20];
+      const daySeaRGB=[24,38,86];
+      const seaRGB=mixRGB(nightSeaRGB,daySeaRGB,dayFactor);
       const layers=(realTerrainState.terrainLayers&&realTerrainState.terrainLayers.length)
         ? [...realTerrainState.terrainLayers].reverse()
-        : [{key:"immediate",profile:realTerrainState.profile}];
-      layers.forEach(layer=>fillTerrainBand(layer.profile,terrainBandColors(layer.key)));
+        : [{key:"immediate",profile:realTerrainState.profile,waterProfile:null}];
+      layers.forEach(layer=>fillTerrainBand(layer,terrainBandColors(layer.key)));
       ctx.save();ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;ctx.drawImage(terrainCanvas,0,0);ctx.restore();
 
       if(showSkylineBoundary){
@@ -7726,6 +8120,43 @@ function drawPhoto(ctx,s){
         ctx.shadowBlur=2*(1-dayFactor);
         ctx.stroke();
         ctx.restore();
+      }
+
+      // 波打ち際の足元描写: 観測地点自体はDEMで標高を取得できている(＝陸地に立っている)。
+      // 正面が海でも、実際にはカメラの少し下向きの構図で自分の足元の地面が写り込むはずなので、
+      // 「20m先の地面」を実際の目の高さ(1.6m)から見下ろす角度を基準に、そこから画面下端までを
+      // 陸地として塗る。カメラを下に向けるほどこの境界が画面中央側へ上がってきて足元が広く写り、
+      // 水平・上向きにするほど境界が水平線側へ寄って足元はほとんど写らなくなる
+      // (＝実際の広角レンズの見え方に合わせた表現)。
+      // 20mというやや余裕を持たせた距離を使うのは、あまり近い距離(数m)だと広角レンズの
+      // 投影で境界線がドーム状に強く歪んでしまうため。
+      {
+        const eyeHeightM=1.6;
+        const footingDistanceM=20;
+        const footingAngleDeg=-Math.atan2(eyeHeightM,footingDistanceM)*R2D;
+        const footingColors=terrainBandColors("immediate");
+        const footingStep=Math.min(step,0.4);
+        const footingPts=[];
+        for(let diff=-half;diff<=half;diff+=footingStep){
+          const p=toXY(norm360(s.facingAz+diff),footingAngleDeg);
+          if(p) footingPts.push(p);
+        }
+        if(footingPts.length>=2){
+          ctx.save();
+          ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;
+          const topY=Math.min(...footingPts.map(p=>p[1]));
+          const gradient=ctx.createLinearGradient(0,topY,0,H);
+          gradient.addColorStop(0,footingColors.top);
+          gradient.addColorStop(1,footingColors.bottom);
+          ctx.beginPath();
+          ctx.moveTo(footingPts[0][0],H);
+          footingPts.forEach(p=>ctx.lineTo(p[0],p[1]));
+          ctx.lineTo(footingPts[footingPts.length-1][0],H);
+          ctx.closePath();
+          ctx.fillStyle=gradient;
+          ctx.fill();
+          ctx.restore();
+        }
       }
     } else if(useDiagonalFisheye){
       // 高度0°の各方位を魚眼投影して結ぶことで、仰角に応じて湾曲する本来の水平線を作る。
@@ -7917,6 +8348,23 @@ function drawPhoto(ctx,s){
       ctx.fill("evenodd");
       ctx.restore();
     }
+  }
+
+  // 流れ星が山より奥に隠れるように、この画面(方位・画角・レンズ)における
+  // 「空と地面の境目」の画面Y座標を、横方向にサンプリングして保存しておく。
+  // (流れ星は別レイヤーのcanvasに独立して描かれるため、こちらで求めておいた
+  //  境目を流れ星の描画側から参照してクリップする)
+  {
+    const skyHalf=useDiagonalFisheye?89.5:s.fovH/2+2;
+    const skyStep=Math.max(0.3,(skyHalf*2)/220);
+    const skylineSamples=[];
+    for(let diff=-skyHalf; diff<=skyHalf; diff+=skyStep){
+      const az=norm360(s.facingAz+diff);
+      const alt=groundAltitudeAt(az);
+      const p=toXY(az,alt);
+      if(p) skylineSamples.push(p);
+    }
+    terrainSkylineYByX=buildSkylineYArray(skylineSamples,W,H);
   }
 }
 
@@ -8676,6 +9124,22 @@ function animateMeteors(now){
   const W=canvas.width, H=canvas.height;
   ctx.clearRect(0,0,W,H);
 
+  // 流れ星が山より奥に隠れるよう、drawPhoto()側で求めておいた「空と地面の境目」より
+  // 下(地面側)には描かれないようクリップする(境目が無い/未計算の場合は制限しない)。
+  ctx.save();
+  if(terrainSkylineYByX && terrainSkylineYByX.length){
+    const n=terrainSkylineYByX.length;
+    const lastX=Math.min(n-1,Math.round(W-1));
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.lineTo(W,0);
+    ctx.lineTo(W,terrainSkylineYByX[lastX]);
+    for(let x=lastX-4;x>=0;x-=4) ctx.lineTo(x,terrainSkylineYByX[x]);
+    ctx.lineTo(0,terrainSkylineYByX[0]);
+    ctx.closePath();
+    ctx.clip();
+  }
+
   meteorStates = meteorStates.filter(m=>{
     const t=(now-m.startTime)/m.duration;
     if(t>=1) return false;
@@ -8707,6 +9171,7 @@ function animateMeteors(now){
     ctx.beginPath(); ctx.arc(hx,hy,headR*3,0,Math.PI*2); ctx.fillStyle=g2; ctx.fill();
     return true;
   });
+  ctx.restore();
 
   if(meteorStates.length>0){
     requestAnimationFrame(animateMeteors);
