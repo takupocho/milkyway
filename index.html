@@ -2969,6 +2969,26 @@ function sunPosition(jd){
   return {ra,dec,lambda,eps,g};
 }
 
+// 月の輝面(明るく照らされている側)が、実際にその時刻・その場所からどの向きに
+// 傾いて見えるかを計算する。
+// (1) brightLimbPositionAngle: 天の北極を基準に輝面中心がどちらを向いているか(標準的な位置角)
+// (2) parallacticAngle: その瞬間、観測地点から見た「天の北極の方向」が「天頂の方向」に対して
+//     どれだけ傾いているか(緯度・月の時角・赤緯から決まる)
+// 2つを組み合わせる(位置角 - 視差角)ことで、実際のカメラ画像上での「上向き(天頂方向)」を
+// 基準にした輝面の傾き角が求まる。
+function moonBrightLimbPositionAngle(sunRaDeg,sunDecDeg,moonRaDeg,moonDecDeg){
+  const dRa=(sunRaDeg-moonRaDeg)*D2R;
+  const sunDec=sunDecDeg*D2R, moonDec=moonDecDeg*D2R;
+  const y=Math.cos(sunDec)*Math.sin(dRa);
+  const x=Math.sin(sunDec)*Math.cos(moonDec)-Math.cos(sunDec)*Math.sin(moonDec)*Math.cos(dRa);
+  return norm360(Math.atan2(y,x)*R2D);
+}
+function parallacticAngleDeg(latDeg,decDeg,hourAngleDeg){
+  const lat=latDeg*D2R, dec=decDeg*D2R, ha=hourAngleDeg*D2R;
+  const y=Math.sin(ha);
+  const x=Math.tan(lat)*Math.cos(dec)-Math.sin(dec)*Math.cos(ha);
+  return Math.atan2(y,x)*R2D;
+}
 function moonPosition(jd){
   const d=jd-2451543.5;
   const N=norm360(125.1228-0.0529538083*d);
@@ -7859,7 +7879,17 @@ function drawPhoto(ctx,s){
       g.addColorStop(1,"rgba(220,222,240,0)");
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
 
-      drawMoonPhaseShape(ctx,x,y,r,s.moon.elong,"#f4f1e6","#3d4058");
+      // 実際にその時刻・その場所から見た輝面の傾きを反映する
+      // (位置角 - 視差角で、画面の「上(天頂方向)」を基準にした回転角を求める)
+      const moonHaDeg=norm360(lstDeg(s.jd,s.lon)-s.moon.ra);
+      const brightLimbPA=moonBrightLimbPositionAngle(s.sun.ra,s.sun.dec,s.moon.ra,s.moon.dec);
+      const moonParallacticAngle=parallacticAngleDeg(s.lat,s.moon.dec,moonHaDeg);
+      const moonTiltDeg=brightLimbPA-moonParallacticAngle;
+      ctx.save();
+      ctx.translate(x,y);
+      ctx.rotate(moonTiltDeg*D2R);
+      drawMoonPhaseShape(ctx,0,0,r,s.moon.elong,"#f4f1e6","#3d4058");
+      ctx.restore();
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
       ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1; ctx.stroke();
       if(showSkyLabels){
