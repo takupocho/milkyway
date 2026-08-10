@@ -8721,28 +8721,72 @@ function drawPhoto(ctx,s){
         const summitAlt=apparentAtElevation(FUJI_VISUAL_PROFILE.summitM);
         const wrappedSummit=((fuji.bearing%360)+360)%360;
         const si0=Math.floor(wrappedSummit),si1=(si0+1)%360,st=wrappedSummit-si0;
-        const measuredSummit=lerp(realTerrainState.profile[si0]||0,realTerrainState.profile[si1]||0,st);
-        // 富士山が手前の山に隠れている、または画面外なら雪を重ねない。
-        if(measuredSummit>summitAlt+0.65||measuredSummit<summitAlt-1.35) return false;
+        // 全距離の最終稜線だけでは手前の地形と富士山を区別できないため、
+        // 富士山までの距離を含む距離帯の稜線を専用に参照する。
+        const fujiBand=(realTerrainState.terrainLayers||[]).find(layer=>fuji.distanceKm>=layer.min&&fuji.distanceKm<layer.max);
+        const fujiProfile=fujiBand&&fujiBand.profile?fujiBand.profile:realTerrainState.profile;
+        const measuredSummit=lerp(fujiProfile[si0]||0,fujiProfile[si1]||0,st);
+        // 1度刻みDEMが剣ヶ峰を外す場合があるため「低すぎる」側では除外しない。
+        // 理論上の山頂より明らかに高ければ、手前の山に隠れているものとして除外する。
+        if(measuredSummit>summitAlt+1.15) return false;
         const capRadiusKm=FUJI_VISUAL_PROFILE.baseRadiusKm*
           clamp((FUJI_VISUAL_PROFILE.summitM-snowlineM)/(FUJI_VISUAL_PROFILE.summitM-FUJI_VISUAL_PROFILE.baseM),0,1);
         const capHalfDeg=Math.atan2(capRadiusKm,fuji.distanceKm)*R2D;
         if(capHalfDeg<0.08) return false;
         const sampleStep=clamp(capHalfDeg/45,0.04,0.18);
+        const trianglePeak=(x,center,width)=>Math.max(0,1-Math.abs(x-center)/width);
+        // 富士山らしい雪の垂れを作る固定パターン。毎回形が変わらず、撮影計画を再現しても同じ形になる。
+        function jaggedSnowlineAt(normalizedX){
+          const edgeFade=Math.pow(clamp(1-Math.abs(normalizedX),0,1),.48);
+          const seasonalStrength=clamp((FUJI_VISUAL_PROFILE.summitM-snowlineM)/1650,.18,1);
+          // 遠景では細かなギザギザを弱め、近〜中距離では長短の雪筋をはっきり見せる。
+          const distanceStrength=clamp((92-fuji.distanceKm)/58,.28,1);
+          const maxDropM=(105+285*seasonalStrength)*distanceStrength;
+          const tongues=Math.max(
+            .52*trianglePeak(normalizedX,-.72,.11),
+            .86*trianglePeak(normalizedX,-.49,.095),
+            .58*trianglePeak(normalizedX,-.29,.13),
+            1.00*trianglePeak(normalizedX,-.06,.09),
+            .68*trianglePeak(normalizedX,.18,.12),
+            .91*trianglePeak(normalizedX,.42,.10),
+            .55*trianglePeak(normalizedX,.67,.12)
+          );
+          // 雪が上へ切れ込む谷も加え、規則的な王冠形にならないよう左右非対称にする。
+          const notches=Math.max(
+            .62*trianglePeak(normalizedX,-.61,.065),
+            .48*trianglePeak(normalizedX,-.38,.07),
+            .72*trianglePeak(normalizedX,.07,.075),
+            .43*trianglePeak(normalizedX,.30,.06),
+            .58*trianglePeak(normalizedX,.55,.075)
+          );
+          const localLine=snowlineM-edgeFade*maxDropM*tongues+edgeFade*maxDropM*.28*notches;
+          return clamp(localLine,FUJI_VISUAL_PROFILE.baseM+180,FUJI_VISUAL_PROFILE.summitM-80);
+        }
         const samples=[];
         for(let offset=-capHalfDeg;offset<=capHalfDeg+.0001;offset+=sampleStep){
           const az=norm360(fuji.bearing+offset);
+          const normalizedX=clamp(offset/capHalfDeg,-1,1);
+          const localSnowlineM=jaggedSnowlineAt(normalizedX);
           const lateralKm=Math.abs(Math.tan(offset*D2R)*fuji.distanceKm);
           const expectedElevation=FUJI_VISUAL_PROFILE.summitM-
             lateralKm*(FUJI_VISUAL_PROFILE.summitM-FUJI_VISUAL_PROFILE.baseM)/FUJI_VISUAL_PROFILE.baseRadiusKm;
-          if(expectedElevation<snowlineM){samples.push(null);continue;}
+          if(expectedElevation<localSnowlineM){samples.push(null);continue;}
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-          const ridgeAlt=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          const finalRidgeAlt=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          // 隣接方位も含めた最大値を使い、粗い1度サンプルが細い山頂を外しても雪冠を消さない。
+          const targetRidgeAlt=Math.max(
+            lerp(fujiProfile[i0]||0,fujiProfile[i1]||0,t),
+            fujiProfile[(i0+359)%360]||0,
+            fujiProfile[(i1+1)%360]||0
+          );
           const expectedAlt=apparentAtElevation(expectedElevation);
-          const snowlineAlt=apparentAtElevation(snowlineM);
-          // 実稜線と富士山専用プロファイルが一致する列だけを採用し、前景の山への雪の誤描画を防ぐ。
-          if(ridgeAlt<=snowlineAlt||ridgeAlt>expectedAlt+.55||ridgeAlt<expectedAlt-1.25){samples.push(null);continue;}
-          const top=toXY(az,ridgeAlt),bottom=toXY(az,snowlineAlt);
+          const snowlineAlt=apparentAtElevation(localSnowlineM);
+          // 富士山の距離帯に雪線以上の地形があり、最終稜線との間に別の前景がない列だけを採用する。
+          // 低い側の許容幅は広く取り、DEMが山頂を外した場合にも積雪が現れるようにする。
+          const hiddenByForeground=finalRidgeAlt>targetRidgeAlt+.7;
+          if(targetRidgeAlt<=snowlineAlt-.35||targetRidgeAlt>expectedAlt+1.05||hiddenByForeground){samples.push(null);continue;}
+          const visibleTopAlt=Math.max(snowlineAlt+.02,Math.min(finalRidgeAlt,expectedAlt+.15));
+          const top=toXY(az,visibleTopAlt),bottom=toXY(az,snowlineAlt);
           samples.push(top&&bottom&&[...top,...bottom].every(Number.isFinite)?{top,bottom}:null);
         }
         let painted=false,start=0;
@@ -8753,7 +8797,8 @@ function drawPhoto(ctx,s){
           if(run.length>=3){
             const topY=Math.min(...run.map(item=>item.top[1]));
             const bottomY=Math.max(...run.map(item=>item.bottom[1]));
-            const nightSnow=[54,60,74],daySnow=[224,229,234];
+            // 明るい屋外でも積雪が認識できるよう、夜側も青みを残した明るい雪色にする。
+            const nightSnow=[92,101,122],daySnow=[228,233,238];
             const moonLift=clamp(s.moonContribution*.55,0,.45);
             const snowRGB=mixRGB(nightSnow,daySnow,clamp(dayFactor+moonLift,0,1));
             const lowerRGB=snowRGB.map(value=>Math.round(value*.78));
