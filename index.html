@@ -7238,6 +7238,12 @@ const FAMOUS_MOUNTAIN_AREAS=[
   {name:"富士山",lat:35.3606,lon:138.7274,radiusKm:2.5},
   {name:"大山",lat:35.3712,lon:133.5462,radiusKm:4.0}
 ];
+// 富士山だけに使う専用描画情報。山名APIの成否に左右されないよう、山頂座標から直接判定する。
+const FUJI_VISUAL_PROFILE={name:"富士山",lat:35.3606,lon:138.7274,summitM:3776,baseM:1400,baseRadiusKm:13.5};
+function fujiSeasonalSnowline(month){
+  // 月ごとのおおよその見た目を優先した雪線。7〜9月は原則として雪化粧を描かない。
+  return [2350,2200,2250,2450,2850,3250,Infinity,Infinity,Infinity,3300,2750,2400][clamp(month-1,0,11)];
+}
 // 近距離の小丘・崖・盛土を取りこぼさない高密度サンプル。
 // 200m以内は5m、500m以内は10m、1km以内は25m間隔とし、遠方は従来の軽量な間隔を維持する。
 const TERRAIN_DISTANCES_KM=(()=>{
@@ -8702,6 +8708,71 @@ function drawPhoto(ctx,s){
         const bottom=mixRGB(brighten(style.bottom),dayStyle.bottom,dayFactor);
         return {top:`rgb(${top.join(",")})`,bottom:`rgb(${bottom.join(",")})`};
       }
+      function drawSeasonalFujiSnow(){
+        const snowlineM=fujiSeasonalSnowline(s.dateMo);
+        if(!Number.isFinite(snowlineM)) return false;
+        const fuji=terrainDistanceAndBearing(s.lat,s.lon,FUJI_VISUAL_PROFILE.lat,FUJI_VISUAL_PROFILE.lon);
+        // DEM取得範囲と同じ約90km圏内で、山体から少し離れた撮影地点だけを対象にする。
+        if(fuji.distanceKm<4||fuji.distanceKm>92) return false;
+        const observerEye=(realTerrainState.observerElevation||0)+1.6;
+        const distanceM=fuji.distanceKm*1000;
+        const curvatureDrop=distanceM*distanceM/(2*6371000*(7/6));
+        const apparentAtElevation=elevation=>Math.atan2(elevation-observerEye-curvatureDrop,distanceM)*R2D;
+        const summitAlt=apparentAtElevation(FUJI_VISUAL_PROFILE.summitM);
+        const wrappedSummit=((fuji.bearing%360)+360)%360;
+        const si0=Math.floor(wrappedSummit),si1=(si0+1)%360,st=wrappedSummit-si0;
+        const measuredSummit=lerp(realTerrainState.profile[si0]||0,realTerrainState.profile[si1]||0,st);
+        // 富士山が手前の山に隠れている、または画面外なら雪を重ねない。
+        if(measuredSummit>summitAlt+0.65||measuredSummit<summitAlt-1.35) return false;
+        const capRadiusKm=FUJI_VISUAL_PROFILE.baseRadiusKm*
+          clamp((FUJI_VISUAL_PROFILE.summitM-snowlineM)/(FUJI_VISUAL_PROFILE.summitM-FUJI_VISUAL_PROFILE.baseM),0,1);
+        const capHalfDeg=Math.atan2(capRadiusKm,fuji.distanceKm)*R2D;
+        if(capHalfDeg<0.08) return false;
+        const sampleStep=clamp(capHalfDeg/45,0.04,0.18);
+        const samples=[];
+        for(let offset=-capHalfDeg;offset<=capHalfDeg+.0001;offset+=sampleStep){
+          const az=norm360(fuji.bearing+offset);
+          const lateralKm=Math.abs(Math.tan(offset*D2R)*fuji.distanceKm);
+          const expectedElevation=FUJI_VISUAL_PROFILE.summitM-
+            lateralKm*(FUJI_VISUAL_PROFILE.summitM-FUJI_VISUAL_PROFILE.baseM)/FUJI_VISUAL_PROFILE.baseRadiusKm;
+          if(expectedElevation<snowlineM){samples.push(null);continue;}
+          const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+          const ridgeAlt=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          const expectedAlt=apparentAtElevation(expectedElevation);
+          const snowlineAlt=apparentAtElevation(snowlineM);
+          // 実稜線と富士山専用プロファイルが一致する列だけを採用し、前景の山への雪の誤描画を防ぐ。
+          if(ridgeAlt<=snowlineAlt||ridgeAlt>expectedAlt+.55||ridgeAlt<expectedAlt-1.25){samples.push(null);continue;}
+          const top=toXY(az,ridgeAlt),bottom=toXY(az,snowlineAlt);
+          samples.push(top&&bottom&&[...top,...bottom].every(Number.isFinite)?{top,bottom}:null);
+        }
+        let painted=false,start=0;
+        while(start<samples.length){
+          while(start<samples.length&&!samples[start]) start++;
+          let end=start;while(end<samples.length&&samples[end]) end++;
+          const run=samples.slice(start,end);
+          if(run.length>=3){
+            const topY=Math.min(...run.map(item=>item.top[1]));
+            const bottomY=Math.max(...run.map(item=>item.bottom[1]));
+            const nightSnow=[54,60,74],daySnow=[224,229,234];
+            const moonLift=clamp(s.moonContribution*.55,0,.45);
+            const snowRGB=mixRGB(nightSnow,daySnow,clamp(dayFactor+moonLift,0,1));
+            const lowerRGB=snowRGB.map(value=>Math.round(value*.78));
+            const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
+            gradient.addColorStop(0,`rgba(${snowRGB.join(",")},.92)`);
+            gradient.addColorStop(.72,`rgba(${lowerRGB.join(",")},.82)`);
+            gradient.addColorStop(1,`rgba(${lowerRGB.join(",")},.28)`);
+            ctx.save();
+            ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;
+            ctx.beginPath();ctx.moveTo(run[0].top[0],run[0].top[1]);
+            for(let i=1;i<run.length;i++) ctx.lineTo(run[i].top[0],run[i].top[1]);
+            for(let i=run.length-1;i>=0;i--) ctx.lineTo(run[i].bottom[0],run[i].bottom[1]);
+            ctx.closePath();ctx.fillStyle=gradient;ctx.fill();ctx.restore();
+            painted=true;
+          }
+          start=Math.max(end,start+1);
+        }
+        return painted;
+      }
       // 水際距離・距離帯・近距離メッシュのいずれかで確認できた水域方位。
       // 遠方地形を水平線で切る判定と、海色の下地描画で同じ結果を共有する。
       const confirmedWaterAz=new Array(360).fill(false);
@@ -9125,6 +9196,8 @@ function drawPhoto(ctx,s){
         if(immediate) fillTerrainBand(immediate,terrainBandColors("immediate"));
       }
       ctx.save();ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;ctx.drawImage(terrainCanvas,0,0);ctx.restore();
+      // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
+      drawSeasonalFujiSnow();
 
       if(showSkylineBoundary){
         // 距離帯ごとの境界は描かず、全距離を合成した最終稜線（空との境界）だけを1本描く。
