@@ -1528,11 +1528,38 @@
   }
   body.real-terrain-visible:not(.ar-active) .terrain-credit{display:block;}
   .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 7px);}
+  .external-data-monitor{
+    position:absolute;right:10px;bottom:34px;z-index:12;display:flex;flex-direction:column;align-items:center;gap:5px;
+  }
+  .external-data-reload-btn{
+    width:43px;height:43px;padding:0;border:1px solid rgba(154,164,210,.62);border-radius:50%;
+    display:grid;place-items:center;background:rgba(18,21,43,.82);color:rgba(255,255,255,.92);
+    box-shadow:0 2px 9px rgba(0,0,0,.38);opacity:.72;cursor:pointer;
+  }
+  .external-data-reload-btn:hover,.external-data-reload-btn:focus-visible{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
+  .external-data-reload-btn svg{width:24px;height:24px;pointer-events:none;}
+  .external-data-reload-btn.loading svg{animation:external-data-spin 1.15s linear infinite;}
+  @keyframes external-data-spin{to{transform:rotate(360deg);}}
+  .external-data-lamps{display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;border-radius:8px;background:rgba(3,5,14,.35);}
+  .external-data-lamp{
+    width:7px;height:7px;border:0;padding:0;border-radius:50%;background:#dc3e4f;
+    box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 4px rgba(220,62,79,.42);cursor:help;
+  }
+  .external-data-lamp.ready{background:#16b968;box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 5px rgba(22,185,104,.65);}
+  .external-data-lamp.loading{background:#dc3e4f;animation:external-data-pulse .82s ease-in-out infinite alternate;}
+  @keyframes external-data-pulse{from{opacity:.35}to{opacity:1}}
+  .photo-canvas-wrap.portrait .external-data-monitor{right:calc(16.6667% + 10px);}
+  .photo-canvas-wrap.osm-map-open .external-data-monitor,body.ar-active .external-data-monitor,body.icon-controls-hidden .external-data-monitor{display:none;}
   @media(max-width:760px){
     .real-mw-credit{right:6px;bottom:6px;padding:2px 5px;font-size:8px;}
     .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 6px);}
     .terrain-credit{left:6px;bottom:6px;}
     .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 6px);}
+    .external-data-monitor{right:7px;bottom:28px;gap:4px;}
+    .photo-canvas-wrap.portrait .external-data-monitor{right:calc(16.6667% + 7px);}
+    .external-data-reload-btn{width:38px;height:38px;}
+    .external-data-reload-btn svg{width:21px;height:21px;}
+    .external-data-lamp{width:6px;height:6px;}
     .simulation-clock-overlay{top:6px;gap:10px;}
     .simulation-clock-date{font-size:11px;}
     .simulation-clock-time{font-size:18px;}
@@ -2697,6 +2724,18 @@
                 <span> · Modified</span>
               </div>
               <div class="terrain-credit" aria-label="地形データの出典">地形：国土地理院 標高タイルを加工</div>
+              <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
+                <button id="externalDataReloadBtn" class="external-data-reload-btn" type="button" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <div class="external-data-lamps" aria-label="左から標高、水域、山頂、天の川写真、富士山情報">
+                  <button id="externalStatusElevation" class="external-data-lamp" type="button" aria-label="標高データ：未取得" title="標高データ：未取得"></button>
+                  <button id="externalStatusWater" class="external-data-lamp" type="button" aria-label="湖・池・貯水池・河川などの水域形状：未取得" title="湖・池・貯水池・河川などの水域形状：未取得"></button>
+                  <button id="externalStatusMountain" class="external-data-lamp" type="button" aria-label="山頂の名称・標高・座標：未取得" title="山頂の名称・標高・座標：未取得"></button>
+                  <button id="externalStatusMilkyway" class="external-data-lamp" type="button" aria-label="天の川の写真素材：未取得" title="天の川の写真素材：未取得"></button>
+                  <button id="externalStatusFuji" class="external-data-lamp" type="button" aria-label="富士山情報：未取得" title="富士山情報：未取得"></button>
+                </div>
+              </div>
               <div class="mobile-sky-search-control icon-help-target sim-left-help" data-help="星空を検索" aria-label="星空検索">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.8"/>
@@ -3129,9 +3168,26 @@ for(let b=-REAL_MW_B_LIMIT;b<=REAL_MW_B_LIMIT;b+=REAL_MW_B_STEP){
   for(let l=0;l<=360;l+=REAL_MW_L_STEP) row.push({l,b,...galacticToEquatorial(norm360(l),b)});
   REAL_MW_GRID.push(row);
 }
+const EXTERNAL_DATA_STATUS_CONFIG={
+  elevation:{id:"externalStatusElevation",label:"標高データ"},
+  water:{id:"externalStatusWater",label:"湖・池・貯水池・河川などの水域形状"},
+  mountain:{id:"externalStatusMountain",label:"山頂の名称・標高・座標"},
+  milkyway:{id:"externalStatusMilkyway",label:"天の川の写真素材"},
+  fuji:{id:"externalStatusFuji",label:"富士山情報"}
+};
+const externalDataStatuses=Object.fromEntries(Object.keys(EXTERNAL_DATA_STATUS_CONFIG).map(key=>[key,"idle"]));
+function setExternalDataStatus(key,status,detail=""){
+  const config=EXTERNAL_DATA_STATUS_CONFIG[key];if(!config) return;
+  externalDataStatuses[key]=status;
+  const lamp=document.getElementById(config.id);
+  const stateText=status==="ready"?"読み込み完了":(status==="loading"?"読み込み中":"未取得・取得失敗");
+  const text=`${config.label}：${stateText}${detail?`（${detail}）`:""}`;
+  if(lamp){lamp.classList.toggle("ready",status==="ready");lamp.classList.toggle("loading",status==="loading");lamp.title=text;lamp.setAttribute("aria-label",text);}
+  const reload=document.getElementById("externalDataReloadBtn");
+  if(reload) reload.classList.toggle("loading",Object.values(externalDataStatuses).some(value=>value==="loading"));
+}
 const realMilkyWayImage=new Image();
 realMilkyWayImage.crossOrigin="anonymous";
-realMilkyWayImage.src="https://cdn.eso.org/images/screen/eso0932a.jpg";
 let realMilkyWayTexture=null;
 realMilkyWayImage.addEventListener("load",()=>{
   const iw=realMilkyWayImage.naturalWidth, ih=realMilkyWayImage.naturalHeight;
@@ -3167,8 +3223,12 @@ realMilkyWayImage.addEventListener("load",()=>{
   const dctx=doubled.getContext("2d");
   dctx.drawImage(single,0,0); dctx.drawImage(single,iw,0);
   realMilkyWayTexture=doubled;
+  setExternalDataStatus("milkyway","ready",`${iw}×${ih}px`);
   if(typeof update==="function") update();
 });
+realMilkyWayImage.addEventListener("error",()=>setExternalDataStatus("milkyway","error","通信エラー"));
+setExternalDataStatus("milkyway","loading");
+realMilkyWayImage.src="https://cdn.eso.org/images/screen/eso0932a.jpg";
 
 /* 投影: 天球上の(az,alt)をカメラのフレーム内(dx,dy) [tan角単位] に変換 */
 function toVec(az,alt){ return [cos(alt)*sin(az), cos(alt)*cos(az), sin(alt)]; }
@@ -7751,10 +7811,20 @@ async function buildRealTerrainProfile(lat,lon,token){
 // Overpass APIの応答には数秒〜十数秒かかることがあるため、地形本体の描画は待たずに行い、
 // 取得でき次第、水面らしさをその距離帯・方位だけ底上げして再描画する(取得できなくても標高ベースの結果は残る)。
 function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
-  if(!resultObj||resultObj._osmRefinePending) return;
+  if(!resultObj) return;
+  if(resultObj._osmRefinePending){
+    setExternalDataStatus("water",resultObj._osmRefineStatus==="ready"?"ready":"loading",resultObj._osmRefineDetail||"");
+    return;
+  }
   resultObj._osmRefinePending=true;
+  resultObj._osmRefineStatus="loading";
+  setExternalDataStatus("water","loading");
   fetchOsmWaterRings(lat,lon,OSM_WATER_RADIUS_KM).then(rings=>{
-    if(!rings||!resultObj.terrainLayers) return; // nullは通信失敗。空配列は「水域なし」という有効な取得結果として処理する。
+    if(!rings||!resultObj.terrainLayers){
+      resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
+      setExternalDataStatus("water","error","通信エラー");
+      return;
+    } // nullは通信失敗。空配列は「水域なし」という有効な取得結果として処理する。
     const osmBandProfiles=computeOsmWaterFractionByBand(lat,lon,LAND_WATER_MAX_KM,rings);
     const osmSegments=computeOsmWaterSegments(lat,lon,LAND_WATER_MAX_KM,rings);
     const fallbackNear=(resultObj.waterNearKm||[]).slice();
@@ -7793,17 +7863,25 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       }));
     }
     if(realTerrainState.key===key&&typeof update==="function") update();
-  }).catch(()=>{});
+    resultObj._osmRefineStatus="ready";
+    resultObj._osmRefineDetail=rings.length?`${rings.length}形状`:"水域なし・正常応答";
+    setExternalDataStatus("water","ready",resultObj._osmRefineDetail);
+  }).catch(()=>{
+    resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
+    setExternalDataStatus("water","error","通信エラー");
+  });
 }
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if(realTerrainState.key===key&&realTerrainState.profile) return;
-  if(realTerrainState.failedKey===key) return;
+  if(realTerrainState.key===key&&realTerrainState.profile){setExternalDataStatus("elevation","ready");setExternalDataStatus("fuji","ready","専用情報準備済み");return;}
+  if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
   if(cached){
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     document.body.classList.add("real-terrain-visible");
+    setExternalDataStatus("elevation","ready","キャッシュ");
+    setExternalDataStatus("fuji","ready","専用情報準備済み");
     refineTerrainWaterWithOsm(lat,lon,key,cached);
     return;
   }
@@ -7811,6 +7889,9 @@ function requestRealTerrainProfile(lat,lon){
   const token=++realTerrainState.requestToken;
   realTerrainState.loadingKey=key;
   realTerrainState.failedKey="";
+  setExternalDataStatus("elevation","loading");
+  setExternalDataStatus("water","loading","標高データ待ち");
+  setExternalDataStatus("fuji","loading","標高データ待ち");
   document.body.classList.remove("real-terrain-visible");
   buildRealTerrainProfile(lat,lon,token).then(result=>{
     if(token!==realTerrainState.requestToken) return;
@@ -7818,12 +7899,17 @@ function requestRealTerrainProfile(lat,lon){
     if(!result){
       realTerrainState.key=key;realTerrainState.failedKey=key;realTerrainState.profile=null;realTerrainState.observerElevation=null;
       document.body.classList.remove("real-terrain-visible");
+      setExternalDataStatus("elevation","error","通信エラー");
+      setExternalDataStatus("water","error","標高取得失敗");
+      setExternalDataStatus("fuji","error","標高取得失敗");
       return;
     }
     realTerrainProfileCache.set(key,result);
     while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     document.body.classList.add("real-terrain-visible");
+    setExternalDataStatus("elevation","ready");
+    setExternalDataStatus("fuji","ready","専用情報準備済み");
     if(typeof update==="function") update();
     refineTerrainWaterWithOsm(lat,lon,key,result);
   });
@@ -7875,11 +7961,13 @@ function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
 }
 async function fetchMountainNodes(lat,lon){
   const query=`[out:json][timeout:25];(node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name"];node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name:ja"];);out body;`;
-  const endpoints=["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"];
+  const endpoints=["https://overpass.kumi.systems/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.openstreetmap.ru/api/interpreter"];
   let lastError=null;
   for(const endpoint of endpoints){
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),9000);
     try{
-      const response=await fetch(endpoint,{method:"POST",mode:"cors",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:`data=${encodeURIComponent(query)}`});
+      const response=await fetch(endpoint,{method:"POST",mode:"cors",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:`data=${encodeURIComponent(query)}`,signal:controller.signal});
       if(!response.ok) throw new Error(`Mountain API ${response.status}`);
       const json=await response.json();
       return (json.elements||[]).map(node=>{
@@ -7894,29 +7982,33 @@ async function fetchMountainNodes(lat,lon){
         return {name,lat:node.lat,lon:node.lon,ele,distanceKm:db.distanceKm,bearing:db.bearing,prominence:Number.isFinite(prominence)?prominence:0,notable};
       }).filter(Boolean);
     }catch(error){lastError=error;}
+    finally{clearTimeout(timer);}
   }
   throw lastError||new Error("Mountain data unavailable");
 }
 function requestMountainNames(lat,lon){
-  if(!mountainNamesVisible||arActive) return;
+  if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if(mountainNameState.key===key&&mountainNameState.mountains.length) return;
-  if(mountainNameState.failedKey===key||mountainNameState.loadingKey===key) return;
+  if(mountainNameState.key===key&&!mountainNameState.loadingKey&&mountainNameState.failedKey!==key){setExternalDataStatus("mountain","ready",`${mountainNameState.mountains.length}件`);return;}
+  if(mountainNameState.failedKey===key){setExternalDataStatus("mountain","error","通信エラー");return;}
+  if(mountainNameState.loadingKey===key){setExternalDataStatus("mountain","loading");return;}
   const cached=mountainNameCache.get(key);
-  if(cached){Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:cached});return;}
+  if(cached){Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:cached});setExternalDataStatus("mountain","ready",`${cached.length}件・キャッシュ`);return;}
   const token=++mountainNameState.requestToken;
   mountainNameState.loadingKey=key;mountainNameState.failedKey="";
+  setExternalDataStatus("mountain","loading");
   fetchMountainNodes(lat,lon).then(mountains=>{
     if(token!==mountainNameState.requestToken) return;
     mountainNameState.loadingKey="";mountainNameState.key=key;
-    if(!mountains.length){mountainNameState.failedKey=key;mountainNameState.mountains=[];return;}
     mountainNameState.mountains=mountains;
     mountainNameCache.set(key,mountains);
     while(mountainNameCache.size>3) mountainNameCache.delete(mountainNameCache.keys().next().value);
+    setExternalDataStatus("mountain","ready",mountains.length?`${mountains.length}件`:"山頂なし・正常応答");
     if(typeof update==="function") update();
   }).catch(()=>{
     if(token!==mountainNameState.requestToken) return;
     mountainNameState.loadingKey="";mountainNameState.failedKey=key;mountainNameState.key=key;mountainNameState.mountains=[];
+    setExternalDataStatus("mountain","error","通信エラー");
   });
 }
 function drawMountainNameLabels(ctx,s,toXY,W,H){
@@ -7969,6 +8061,66 @@ function drawMountainNameLabels(ctx,s,toXY,W,H){
   }
   ctx.restore();
 }
+function reloadCurrentExternalSimulationData(){
+  // 赤・点滅中の項目があればその項目だけを再取得し、全て緑なら全項目を更新する。
+  const allKeys=Object.keys(EXTERNAL_DATA_STATUS_CONFIG);
+  let targets=new Set(allKeys.filter(key=>externalDataStatuses[key]!=="ready"));
+  if(!targets.size) targets=new Set(allKeys);
+
+  // 富士山情報は標高データに依存し、標高を更新する場合は水域判定も同じ地形結果から作り直す。
+  if(targets.has("fuji")) targets.add("elevation");
+  if(targets.has("elevation")){targets.add("water");targets.add("fuji");}
+
+  const lat=state?.lat??parseFloat(document.getElementById("lat")?.value);
+  const lon=state?.lon??parseFloat(document.getElementById("lon")?.value);
+  const terrainKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(4)},${lon.toFixed(4)}`:"";
+
+  if(targets.has("elevation")){
+    gsiDemTileCache.clear();realTerrainProfileCache.clear();osmWaterCache.clear();
+    realTerrainState.requestToken++;
+    Object.assign(realTerrainState,{key:"",loadingKey:"",failedKey:"",profile:null,terrainLayers:null,observerElevation:null});
+    document.body.classList.remove("real-terrain-visible");
+    setExternalDataStatus("elevation","loading");
+    setExternalDataStatus("water","loading","標高データ待ち");
+    setExternalDataStatus("fuji","loading","標高データ待ち");
+  }else if(targets.has("water")){
+    osmWaterCache.clear();
+    const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
+    if(terrainResult){
+      terrainResult._osmRefinePending=false;terrainResult._osmRefineStatus="";terrainResult._osmRefineDetail="";
+      setExternalDataStatus("water","loading");
+      refineTerrainWaterWithOsm(lat,lon,terrainKey,terrainResult);
+    }else{
+      // 通常は起きないが、地形本体が失われていれば依存する3項目をまとめて復旧する。
+      gsiDemTileCache.clear();realTerrainProfileCache.clear();
+      realTerrainState.requestToken++;
+      Object.assign(realTerrainState,{key:"",loadingKey:"",failedKey:"",profile:null,terrainLayers:null,observerElevation:null});
+      targets.add("elevation");targets.add("fuji");
+      setExternalDataStatus("elevation","loading");
+      setExternalDataStatus("water","loading","標高データ待ち");
+      setExternalDataStatus("fuji","loading","標高データ待ち");
+    }
+  }
+
+  if(targets.has("mountain")){
+    mountainNameCache.clear();mountainNameState.requestToken++;
+    Object.assign(mountainNameState,{key:"",loadingKey:"",failedKey:"",mountains:[]});
+    setExternalDataStatus("mountain","loading");
+  }
+
+  if(targets.has("milkyway")){
+    setExternalDataStatus("milkyway","loading");realMilkyWayTexture=null;
+    realMilkyWayImage.src=`https://cdn.eso.org/images/screen/eso0932a.jpg?reload=${Date.now()}`;
+  }
+
+  if(targets.has("elevation")){
+    if(typeof update==="function") update();
+  }else if(targets.has("mountain")&&Number.isFinite(lat)&&Number.isFinite(lon)){
+    requestMountainNames(lat,lon);
+  }
+}
+document.getElementById("externalDataReloadBtn")?.addEventListener("click",reloadCurrentExternalSimulationData);
+
 window.addEventListener("online",()=>{
   gsiDemTileCache.clear();
   realTerrainState.failedKey="";
