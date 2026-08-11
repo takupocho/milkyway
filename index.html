@@ -2684,9 +2684,13 @@
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
                 <button id="popupMilkyWayPositionTrailBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">天の川の位置軌跡</button>
+                <button id="popupConstellationLinesBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">星座線</button>
+                <button id="popupSunPathBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">太陽の軌跡</button>
+                <button id="popupMoonPathBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">月の軌跡</button>
                 <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
                 <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
+                <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">リフレ</button>
                 <div class="display-popup-section-title">アニメーション</div>
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
@@ -2725,7 +2729,7 @@
               </div>
               <div class="terrain-credit" aria-label="地形データの出典">地形：国土地理院 標高タイルを加工</div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
-                <button id="externalDataReloadBtn" class="external-data-reload-btn" type="button" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
+                <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
                 <div class="external-data-lamps" aria-label="左から標高、水域、山頂、天の川写真、富士山情報">
@@ -3772,7 +3776,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"),
+  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4792,6 +4796,10 @@ el.realSunMoonBtn.addEventListener("click",()=>{
 });
 /* ベストタイム中に天の川上へ並ぶ白い丸（位置軌跡）の表示ON/OFF。既存表示を維持するため初期値はON。 */
 let milkyWayPositionTrailVisible=true;
+/* 星座線・太陽軌跡・月軌跡は「表示→シミュレーション画面」から個別に切り替える。 */
+let constellationLinesVisible=true;
+let sunPathVisible=true;
+let moonPathVisible=true;
 el.realMilkyWayBtn.addEventListener("click",()=>{
   realMilkyWayEnabled=!realMilkyWayEnabled;
   el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
@@ -4843,6 +4851,8 @@ el.showHorizonLineBtn.addEventListener("click",()=>{
 });
 /* 実地形と空の境界に描く明るいグレーの稜線表示ON/OFF。地形レイヤー自体は常に維持する。 */
 let showSkylineBoundary=true;
+/* 確定した海・湖・池の水面に、山・星・天の川の半透明な反射を重ねる。初期値はOFF。 */
+let waterReflectionEnabled=false;
 function toggleSkylineBoundary(){
   showSkylineBoundary=!showSkylineBoundary;
   syncDisplayPopupControls();
@@ -4851,6 +4861,12 @@ function toggleSkylineBoundary(){
 }
 el.showSkylineBoundaryBtn.addEventListener("click",toggleSkylineBoundary);
 el.popupSkylineBtn.addEventListener("click",toggleSkylineBoundary);
+el.popupReflectionBtn.addEventListener("click",()=>{
+  waterReflectionEnabled=!waterReflectionEnabled;
+  syncDisplayPopupControls();
+  update();
+  scheduleSaveSettings();
+});
 el.skylineOpacitySlider.addEventListener("input",()=>{
   el.skylineOpacityVal.textContent=`${el.skylineOpacitySlider.value}%`;
   update();
@@ -4868,10 +4884,18 @@ function syncDisplayPopupControls(){
   el.popupRealMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
   el.popupMilkyWayPositionTrailBtn.classList.toggle("active",milkyWayPositionTrailVisible);
   el.popupMilkyWayPositionTrailBtn.setAttribute("aria-pressed",String(milkyWayPositionTrailVisible));
+  el.popupConstellationLinesBtn.classList.toggle("active",constellationLinesVisible);
+  el.popupConstellationLinesBtn.setAttribute("aria-pressed",String(constellationLinesVisible));
+  el.popupSunPathBtn.classList.toggle("active",sunPathVisible);
+  el.popupSunPathBtn.setAttribute("aria-pressed",String(sunPathVisible));
+  el.popupMoonPathBtn.classList.toggle("active",moonPathVisible);
+  el.popupMoonPathBtn.setAttribute("aria-pressed",String(moonPathVisible));
   el.popupHorizonLineBtn.classList.toggle("active",showHorizonLine);
   el.popupSouth50Btn.classList.toggle("active",showBelowHorizon && +el.belowHorizonOpacitySlider.value===50);
   el.popupSkylineBtn.classList.toggle("active",showSkylineBoundary);
   el.popupSkylineBtn.setAttribute("aria-pressed",String(showSkylineBoundary));
+  el.popupReflectionBtn.classList.toggle("active",waterReflectionEnabled);
+  el.popupReflectionBtn.setAttribute("aria-pressed",String(waterReflectionEnabled));
   el.showSkylineBoundaryBtn.classList.toggle("active",showSkylineBoundary);
   el.showSkylineBoundaryState.textContent=showSkylineBoundary?"ON":"OFF";
   el.popupLockGcBtn.classList.toggle("active",lockAzToGc);
@@ -4887,6 +4911,18 @@ el.popupMilkyWayPositionTrailBtn.addEventListener("click",()=>{
   syncDisplayPopupControls();
   update();
   scheduleSaveSettings();
+});
+el.popupConstellationLinesBtn.addEventListener("click",()=>{
+  constellationLinesVisible=!constellationLinesVisible;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupSunPathBtn.addEventListener("click",()=>{
+  sunPathVisible=!sunPathVisible;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupMoonPathBtn.addEventListener("click",()=>{
+  moonPathVisible=!moonPathVisible;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
 });
 el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click());
 el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
@@ -5954,6 +5990,9 @@ function collectPersistedSettings(){
     realMilkyWayEnabled:realMilkyWayEnabled,
     realSunMoonEnabled:realSunMoonEnabled,
     milkyWayPositionTrailVisible:milkyWayPositionTrailVisible,
+    constellationLinesVisible:constellationLinesVisible,
+    sunPathVisible:sunPathVisible,
+    moonPathVisible:moonPathVisible,
     mountainNamesVisible:mountainNamesVisible,
     constellationsVisible:constellationsVisible,
     planetsVisible:planetsVisible,
@@ -5962,6 +6001,7 @@ function collectPersistedSettings(){
     showSkyLabels:showSkyLabels,
     showHorizonLine:showHorizonLine,
     showSkylineBoundary:showSkylineBoundary,
+    waterReflectionEnabled:waterReflectionEnabled,
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
@@ -6011,6 +6051,9 @@ async function loadPersistedSettings(){
     el.realSunMoonBtn.classList.toggle("active",realSunMoonEnabled);
     el.realSunMoonState.textContent=realSunMoonEnabled ? "ON" : "OFF";
     milkyWayPositionTrailVisible=s.milkyWayPositionTrailVisible!==false;
+    constellationLinesVisible=s.constellationLinesVisible!==false;
+    sunPathVisible=s.sunPathVisible!==false;
+    moonPathVisible=s.moonPathVisible!==false;
     mountainNamesVisible=s.mountainNamesVisible!==false;
     el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
     constellationsVisible=s.constellationsVisible!==false;
@@ -6020,6 +6063,7 @@ async function loadPersistedSettings(){
     showSkyLabels=s.showSkyLabels!==false;
     showHorizonLine=!!s.showHorizonLine;
     showSkylineBoundary=s.showSkylineBoundary!==false;
+    waterReflectionEnabled=!!s.waterReflectionEnabled;
     if(s.skylineOpacity!==undefined) el.skylineOpacitySlider.value=s.skylineOpacity;
     el.skylineOpacityVal.textContent=`${el.skylineOpacitySlider.value}%`;
     showBelowHorizon=s.showBelowHorizon!==false;
@@ -7402,6 +7446,37 @@ const OSM_WATER_ENDPOINTS=[
   "https://overpass-api.de/api/interpreter"
 ];
 const osmWaterCache=new Map();
+const osmWaterCacheSources=new Map();
+const forcedWaterRefreshKeys=new Set();
+const forcedMountainRefreshKeys=new Set();
+const forcedTerrainRefreshKeys=new Set();
+
+// 水域形状・山頂一覧はページ更新後も残す。localStorageでは大きな水域ポリゴンが容量を
+// 超えやすいため、構造化データをそのまま保存できるIndexedDBを使用する。
+const EXTERNAL_GEO_CACHE_DB="milkywayExternalGeoCacheV1";
+const EXTERNAL_GEO_CACHE_STORE="entries";
+let externalGeoCacheDbPromise=null;
+function openExternalGeoCacheDb(){
+  if(externalGeoCacheDbPromise) return externalGeoCacheDbPromise;
+  externalGeoCacheDbPromise=new Promise((resolve,reject)=>{
+    const req=indexedDB.open(EXTERNAL_GEO_CACHE_DB,1);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(EXTERNAL_GEO_CACHE_STORE))db.createObjectStore(EXTERNAL_GEO_CACHE_STORE,{keyPath:"id"});};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  });
+  return externalGeoCacheDbPromise;
+}
+async function externalGeoCacheGet(id){
+  try{
+    const db=await openExternalGeoCacheDb();
+    return await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>resolve(req.result?.data??null);req.onerror=()=>reject(req.error);});
+  }catch(error){return null;}
+}
+async function externalGeoCacheSet(id,data){
+  try{
+    const db=await openExternalGeoCacheDb();
+    await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).put({id,data,savedAt:Date.now()});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+  }catch(error){}
+}
 function pointInPolygonLatLon(lat,lon,ring){
   let inside=false;
   for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -7571,9 +7646,17 @@ async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
 function fetchOsmWaterRings(lat,lon,radiusKm){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmWaterCache.has(key)) return osmWaterCache.get(key);
+  const forceRefresh=forcedWaterRefreshKeys.delete(key);
   const radiusM=Math.round(radiusKm*1000);
   const query=`[out:json][timeout:30];(way["natural"="water"](around:${radiusM},${lat},${lon});relation["natural"="water"](around:${radiusM},${lat},${lon});way["landuse"="reservoir"](around:${radiusM},${lat},${lon});relation["landuse"="reservoir"](around:${radiusM},${lat},${lon});way["waterway"="riverbank"](around:${radiusM},${lat},${lon});relation["waterway"="riverbank"](around:${radiusM},${lat},${lon});way["natural"="water"]["water"="river"](around:${radiusM},${lat},${lon});relation["natural"="water"]["water"="river"](around:${radiusM},${lat},${lon}););out geom;`;
   const promise=(async()=>{
+    if(!forceRefresh){
+      const saved=await externalGeoCacheGet(`water:${key}`);
+      if(Array.isArray(saved)){
+        osmWaterCacheSources.set(key,"persistent");
+        return saved;
+      }
+    }
     for(const endpoint of OSM_WATER_ENDPOINTS){
       try{
         const data=await fetchOsmWaterRingsOnce(endpoint,query,8000);
@@ -7606,11 +7689,14 @@ function fetchOsmWaterRings(lat,lon,radiusKm){
             });
           }
         });
+        osmWaterCacheSources.set(key,"network");
+        externalGeoCacheSet(`water:${key}`,rings);
         return rings;
       }catch(err){
         // このミラーで失敗した場合は次の候補へ。全て失敗した場合は標高ベースの判定にフォールバックする。
       }
     }
+    osmWaterCacheSources.set(key,"error");
     return null;
   })();
   osmWaterCache.set(key,promise);
@@ -7631,6 +7717,31 @@ async function buildRealTerrainProfile(lat,lon,token){
       ray.push({distanceKm,refs,lat:pLat,lon:pLon});
     }
     samples.push(ray);
+  }
+
+  // 富士山専用の高密度DEMサンプル。
+  // 通常の遠景サンプルは15kmの次が20kmのため、精進湖など約18km地点では山頂を飛び越えてしまう。
+  // 富士山上部を含む半径最大8kmだけ、各方位の交差区間を250m間隔・ズーム12で追加取得する。
+  const fujiInfo=terrainDistanceAndBearing(lat,lon,FUJI_VISUAL_PROFILE.lat,FUJI_VISUAL_PROFILE.lon);
+  const fujiDetailRays=Array.from({length:360},()=>[]);
+  const useFujiDetail=fujiInfo.distanceKm>=4&&fujiInfo.distanceKm<=92;
+  if(useFujiDetail){
+    const detailRadiusKm=Math.min(8,Math.max(2.5,fujiInfo.distanceKm*.45));
+    for(let az=0;az<360;az++){
+      const offsetDeg=((az-fujiInfo.bearing+540)%360)-180;
+      const offsetRad=offsetDeg*D2R;
+      const lateralKm=Math.abs(fujiInfo.distanceKm*Math.sin(offsetRad));
+      if(lateralKm>detailRadiusKm) continue;
+      const alongCenterKm=fujiInfo.distanceKm*Math.cos(offsetRad);
+      const halfChordKm=Math.sqrt(Math.max(0,detailRadiusKm*detailRadiusKm-lateralKm*lateralKm));
+      const startKm=Math.max(1,alongCenterKm-halfChordKm),endKm=alongCenterKm+halfChordKm;
+      for(let distanceKm=startKm;distanceKm<=endKm+.001;distanceKm+=.25){
+        const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
+        const refs=[terrainTilePoint(pLat,pLon,12),terrainTilePoint(pLat,pLon,10)];
+        refs.forEach(tile=>tilesByKey.set(tile.key,tile));
+        fujiDetailRays[az].push({distanceKm,refs});
+      }
+    }
   }
   const terrainTiles=[...tilesByKey.values()];
   await loadTilesWithLimit(terrainTiles);
@@ -7778,6 +7889,32 @@ async function buildRealTerrainProfile(lat,lon,token){
       if(apparentAlt>highest) highest=apparentAlt;
       if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]) layerHighest[layerIndex]=apparentAlt;
     }
+
+    // 富士山周辺だけ追加した高密度点も、通常地形と同じ見かけ高度・曲率式で稜線へ統合する。
+    if(useFujiDetail){
+      for(const detail of fujiDetailRays[az]){
+        const elevation=await elevationFromRefs(detail.refs);
+        if(!Number.isFinite(elevation)) continue;
+        const metres=detail.distanceKm*1000;
+        const curvatureDrop=metres*metres/(2*6371000*(7/6));
+        const apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
+        const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>detail.distanceKm>=band.min&&detail.distanceKm<band.max);
+        if(apparentAlt>highest) highest=apparentAlt;
+        if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]) layerHighest[layerIndex]=apparentAlt;
+      }
+
+      // DEMの方位線が剣ヶ峰を数百m外しても山頂が欠けないよう、山頂を挟む2本の1°列へ
+      // 既知の標高3,776mを入れる。描画時の方位補間により、正確な山頂方位へ自然に収束する。
+      const summitAz0=Math.floor(fujiInfo.bearing),summitAz1=(summitAz0+1)%360;
+      if(az===summitAz0||az===summitAz1){
+        const metres=fujiInfo.distanceKm*1000;
+        const curvatureDrop=metres*metres/(2*6371000*(7/6));
+        const summitAlt=Math.atan2(FUJI_VISUAL_PROFILE.summitM-eyeElevation-curvatureDrop,metres)*R2D;
+        const summitLayerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>fujiInfo.distanceKm>=band.min&&fujiInfo.distanceKm<band.max);
+        highest=Math.max(highest,summitAlt);
+        if(summitLayerIndex>=0) layerHighest[summitLayerIndex]=Math.max(layerHighest[summitLayerIndex],summitAlt);
+      }
+    }
     profile[az]=clamp(highest,0,45);
     terrainLayers.forEach((layer,index)=>{
       layer.profile[az]=clamp(layerHighest[index],0,45);
@@ -7864,7 +8001,10 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     }
     if(realTerrainState.key===key&&typeof update==="function") update();
     resultObj._osmRefineStatus="ready";
-    resultObj._osmRefineDetail=rings.length?`${rings.length}形状`:"水域なし・正常応答";
+    const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`;
+    const savedLabel=osmWaterCacheSources.get(waterCacheKey)==="persistent"?"・保存済みキャッシュ":"";
+    resultObj._osmRefineDetail=rings.length?`${rings.length}形状${savedLabel}`:`水域なし・正常応答${savedLabel}`;
+    externalGeoCacheSet(`terrain:${key}`,resultObj);
     setExternalDataStatus("water","ready",resultObj._osmRefineDetail);
   }).catch(()=>{
     resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
@@ -7889,11 +8029,18 @@ function requestRealTerrainProfile(lat,lon){
   const token=++realTerrainState.requestToken;
   realTerrainState.loadingKey=key;
   realTerrainState.failedKey="";
-  setExternalDataStatus("elevation","loading");
-  setExternalDataStatus("water","loading","標高データ待ち");
+  const forceRefresh=forcedTerrainRefreshKeys.delete(key);
+  setExternalDataStatus("elevation","loading",forceRefresh?"再取得中":"保存済みキャッシュ確認中");
+  setExternalDataStatus("water","loading",forceRefresh?"標高データ待ち":"保存済みキャッシュ確認中");
   setExternalDataStatus("fuji","loading","標高データ待ち");
   document.body.classList.remove("real-terrain-visible");
-  buildRealTerrainProfile(lat,lon,token).then(result=>{
+  (async()=>{
+    let result=null,fromPersistent=false;
+    if(!forceRefresh){
+      const saved=await externalGeoCacheGet(`terrain:${key}`);
+      if(saved&&Array.isArray(saved.profile)&&saved.profile.length===360){result=saved;fromPersistent=true;}
+    }
+    if(!result) result=await buildRealTerrainProfile(lat,lon,token);
     if(token!==realTerrainState.requestToken) return;
     realTerrainState.loadingKey="";
     if(!result){
@@ -7908,11 +8055,19 @@ function requestRealTerrainProfile(lat,lon){
     while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     document.body.classList.add("real-terrain-visible");
-    setExternalDataStatus("elevation","ready");
+    setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
     if(typeof update==="function") update();
-    refineTerrainWaterWithOsm(lat,lon,key,result);
-  });
+    if(fromPersistent&&result._osmRefineStatus==="ready"){
+      result._osmRefinePending=false;
+      const cachedWaterDetail=result._osmRefineDetail||"取得済み";
+      setExternalDataStatus("water","ready",cachedWaterDetail.includes("保存済みキャッシュ")?cachedWaterDetail:`${cachedWaterDetail}・保存済みキャッシュ`);
+    }else{
+      result._osmRefinePending=false;
+      refineTerrainWaterWithOsm(lat,lon,key,result);
+      if(!fromPersistent) externalGeoCacheSet(`terrain:${key}`,result);
+    }
+  })();
 }
 function realTerrainAltitudeAt(az){
   const profile=realTerrainState.profile;
@@ -7938,6 +8093,10 @@ function groundAltitudeAt(az){
 // 描かれるため、ここで求めた境目より下(地面側)に流れ星がかからないよう、
 // 流れ星の描画側でこの配列を参照してクリップする。
 let terrainSkylineYByX=null;
+// 流れ星の水面反射用。drawPhoto()が現在の水域・水平線・山リフレ形状から毎回更新し、
+// 別レイヤーのmeteorCanvasが同じ水面範囲だけをクリップして使う。
+let waterReflectionHorizonYByX=null;
+let meteorReflectionWaterPath=null;
 function buildSkylineYArray(samples,W,H){
   if(!samples||samples.length<2) return null;
   const sorted=[...samples].sort((a,b)=>a[0]-b[0]);
@@ -7960,12 +8119,15 @@ function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
   return {distanceKm,bearing:norm360(Math.atan2(y,x)*R2D)};
 }
 async function fetchMountainNodes(lat,lon){
-  const query=`[out:json][timeout:25];(node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name"];node(around:90000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["name:ja"];);out body;`;
+  // 表示に標高が必須なので、最初からeleタグを持つ山頂だけを要求する。
+  // 従来の半径90kmは都市部・山岳部で応答が大きすぎたため、肉眼で地形判別しやすい60kmへ絞る。
+  // 富士山自体は専用情報を持つため、この一覧取得範囲に依存しない。
+  const query=`[out:json][timeout:45];(node(around:60000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["ele"]["name"];node(around:60000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["ele"]["name:ja"];);out body qt;`;
   const endpoints=["https://overpass.kumi.systems/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.openstreetmap.ru/api/interpreter"];
   let lastError=null;
   for(const endpoint of endpoints){
     const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),9000);
+    const timer=setTimeout(()=>controller.abort(),20000);
     try{
       const response=await fetch(endpoint,{method:"POST",mode:"cors",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:`data=${encodeURIComponent(query)}`,signal:controller.signal});
       if(!response.ok) throw new Error(`Mountain API ${response.status}`);
@@ -7996,20 +8158,35 @@ function requestMountainNames(lat,lon){
   if(cached){Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:cached});setExternalDataStatus("mountain","ready",`${cached.length}件・キャッシュ`);return;}
   const token=++mountainNameState.requestToken;
   mountainNameState.loadingKey=key;mountainNameState.failedKey="";
-  setExternalDataStatus("mountain","loading");
-  fetchMountainNodes(lat,lon).then(mountains=>{
-    if(token!==mountainNameState.requestToken) return;
-    mountainNameState.loadingKey="";mountainNameState.key=key;
-    mountainNameState.mountains=mountains;
-    mountainNameCache.set(key,mountains);
-    while(mountainNameCache.size>3) mountainNameCache.delete(mountainNameCache.keys().next().value);
-    setExternalDataStatus("mountain","ready",mountains.length?`${mountains.length}件`:"山頂なし・正常応答");
-    if(typeof update==="function") update();
-  }).catch(()=>{
-    if(token!==mountainNameState.requestToken) return;
-    mountainNameState.loadingKey="";mountainNameState.failedKey=key;mountainNameState.key=key;mountainNameState.mountains=[];
-    setExternalDataStatus("mountain","error","通信エラー");
-  });
+  const forceRefresh=forcedMountainRefreshKeys.delete(key);
+  setExternalDataStatus("mountain","loading",forceRefresh?"再取得中":"保存済みキャッシュ確認中");
+  (async()=>{
+    try{
+      if(!forceRefresh){
+        const saved=await externalGeoCacheGet(`mountain:${key}`);
+        if(Array.isArray(saved)){
+          if(token!==mountainNameState.requestToken) return;
+          Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:saved});
+          mountainNameCache.set(key,saved);
+          setExternalDataStatus("mountain","ready",`${saved.length}件・保存済みキャッシュ`);
+          if(typeof update==="function") update();
+          return;
+        }
+      }
+      const mountains=await fetchMountainNodes(lat,lon);
+      if(token!==mountainNameState.requestToken) return;
+      Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains});
+      mountainNameCache.set(key,mountains);
+      while(mountainNameCache.size>3) mountainNameCache.delete(mountainNameCache.keys().next().value);
+      externalGeoCacheSet(`mountain:${key}`,mountains);
+      setExternalDataStatus("mountain","ready",mountains.length?`${mountains.length}件`:"山頂なし・正常応答");
+      if(typeof update==="function") update();
+    }catch(error){
+      if(token!==mountainNameState.requestToken) return;
+      Object.assign(mountainNameState,{key,loadingKey:"",failedKey:key,mountains:[]});
+      setExternalDataStatus("mountain","error","通信エラー");
+    }
+  })();
 }
 function drawMountainNameLabels(ctx,s,toXY,W,H){
   if(!mountainNamesVisible||arActive||!realTerrainState.profile||!Number.isFinite(realTerrainState.observerElevation)) return;
@@ -8074,8 +8251,11 @@ function reloadCurrentExternalSimulationData(){
   const lat=state?.lat??parseFloat(document.getElementById("lat")?.value);
   const lon=state?.lon??parseFloat(document.getElementById("lon")?.value);
   const terrainKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(4)},${lon.toFixed(4)}`:"";
+  const waterCacheKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`:"";
 
   if(targets.has("elevation")){
+    if(terrainKey) forcedTerrainRefreshKeys.add(terrainKey);
+    if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
     gsiDemTileCache.clear();realTerrainProfileCache.clear();osmWaterCache.clear();
     realTerrainState.requestToken++;
     Object.assign(realTerrainState,{key:"",loadingKey:"",failedKey:"",profile:null,terrainLayers:null,observerElevation:null});
@@ -8084,6 +8264,7 @@ function reloadCurrentExternalSimulationData(){
     setExternalDataStatus("water","loading","標高データ待ち");
     setExternalDataStatus("fuji","loading","標高データ待ち");
   }else if(targets.has("water")){
+    if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
     osmWaterCache.clear();
     const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
     if(terrainResult){
@@ -8103,6 +8284,7 @@ function reloadCurrentExternalSimulationData(){
   }
 
   if(targets.has("mountain")){
+    if(terrainKey) forcedMountainRefreshKeys.add(terrainKey);
     mountainNameCache.clear();mountainNameState.requestToken++;
     Object.assign(mountainNameState,{key:"",loadingKey:"",failedKey:"",mountains:[]});
     setExternalDataStatus("mountain","loading");
@@ -8190,6 +8372,8 @@ function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
   ctx.clearRect(0,0,W,H);
   photoClickRegions.length=0; // 名称クリック検出用の領域をこのフレーム分だけ作り直す
+  waterReflectionHorizonYByX=null;
+  meteorReflectionWaterPath=null;
   const isMobileView = (typeof mobileHeaderMQ!=="undefined") && mobileHeaderMQ.matches;
   const labelFontBump = (isMobileView ? 3 : 0) + (arActive ? 3 : 0); // スマホ・ARモードでは名称の文字を少し大きくする
   const arSizeScale = arActive ? 1.7 : 1; // ARモードでは星座線・星・水平線・グリッドなどを目立つよう太く/大きくする
@@ -8524,8 +8708,8 @@ function drawPhoto(ctx,s){
     }
     ctx.restore();
   }
-  drawCelestialPath(s.moonPath,"205,208,228");
-  drawCelestialPath(s.sunPath,"242,180,90");
+  if(moonPathVisible) drawCelestialPath(s.moonPath,"205,208,228");
+  if(sunPathVisible) drawCelestialPath(s.sunPath,"242,180,90");
 
   // 月(月相の形を反映)
   if(showBelowHorizon || s.moonAltAz.alt>-1){
@@ -8659,12 +8843,14 @@ function drawPhoto(ctx,s){
       });
       ctx.strokeStyle="rgba(160,205,255,0.6)";
       ctx.lineWidth=1.3*arSizeScale;
-      c.lines.forEach(([i,j])=>{
-        const p1=pts[i], p2=pts[j];
-        if(!p1||!p2) return;
-        if(Math.abs(p1[0]-p2[0])>W*1.5) return; // 画角の裏側への誤接続を防止
-        ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
-      });
+      if(constellationLinesVisible){
+        c.lines.forEach(([i,j])=>{
+          const p1=pts[i], p2=pts[j];
+          if(!p1||!p2) return;
+          if(Math.abs(p1[0]-p2[0])>W*1.5) return; // 画角の裏側への誤接続を防止
+          ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
+        });
+      }
       let visN=0, sumX=0, sumY=0;
       pts.forEach(p=>{
         if(!p) return;
@@ -8860,7 +9046,7 @@ function drawPhoto(ctx,s){
         const bottom=mixRGB(brighten(style.bottom),dayStyle.bottom,dayFactor);
         return {top:`rgb(${top.join(",")})`,bottom:`rgb(${bottom.join(",")})`};
       }
-      function drawSeasonalFujiSnow(){
+      function drawSeasonalFujiSnow(reflected=false){
         const snowlineM=fujiSeasonalSnowline(s.dateMo);
         if(!Number.isFinite(snowlineM)) return false;
         const fuji=terrainDistanceAndBearing(s.lat,s.lon,FUJI_VISUAL_PROFILE.lat,FUJI_VISUAL_PROFILE.lon);
@@ -8938,7 +9124,9 @@ function drawPhoto(ctx,s){
           const hiddenByForeground=finalRidgeAlt>targetRidgeAlt+.7;
           if(targetRidgeAlt<=snowlineAlt-.35||targetRidgeAlt>expectedAlt+1.05||hiddenByForeground){samples.push(null);continue;}
           const visibleTopAlt=Math.max(snowlineAlt+.02,Math.min(finalRidgeAlt,expectedAlt+.15));
-          const top=toXY(az,visibleTopAlt),bottom=toXY(az,snowlineAlt);
+          // 通常表示は正高度、水面リフレは水平線を軸に負高度へ反転する。
+          const top=toXY(az,reflected?-visibleTopAlt:visibleTopAlt);
+          const bottom=toXY(az,reflected?-snowlineAlt:snowlineAlt);
           samples.push(top&&bottom&&[...top,...bottom].every(Number.isFinite)?{top,bottom}:null);
         }
         let painted=false,start=0;
@@ -8952,14 +9140,25 @@ function drawPhoto(ctx,s){
             // 明るい屋外でも積雪が認識できるよう、夜側も青みを残した明るい雪色にする。
             const nightSnow=[92,101,122],daySnow=[228,233,238];
             const moonLift=clamp(s.moonContribution*.55,0,.45);
-            const snowRGB=mixRGB(nightSnow,daySnow,clamp(dayFactor+moonLift,0,1));
+            const sourceSnowRGB=mixRGB(nightSnow,daySnow,clamp(dayFactor+moonLift,0,1));
+            // 山体リフレの明るさは維持し、積雪だけは水面で少し光量が落ちるようにする。
+            // 夜は元の雪の82%、明るい時間帯へ近づくほど74%まで控えめにする。
+            const reflectionShade=reflected?lerp(.82,.74,dayFactor):1;
+            const snowRGB=sourceSnowRGB.map(value=>Math.round(value*reflectionShade));
             const lowerRGB=snowRGB.map(value=>Math.round(value*.78));
             const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
-            gradient.addColorStop(0,`rgba(${snowRGB.join(",")},.92)`);
-            gradient.addColorStop(.72,`rgba(${lowerRGB.join(",")},.82)`);
-            gradient.addColorStop(1,`rgba(${lowerRGB.join(",")},.28)`);
+            if(reflected){
+              // 元画像の上下を反転した階調。水平線側が雪線、深い側が山頂の明るさになる。
+              gradient.addColorStop(0,`rgba(${lowerRGB.join(",")},.82)`);
+              gradient.addColorStop(.28,`rgba(${lowerRGB.join(",")},.88)`);
+              gradient.addColorStop(1,`rgba(${snowRGB.join(",")},.92)`);
+            }else{
+              gradient.addColorStop(0,`rgba(${snowRGB.join(",")},.92)`);
+              gradient.addColorStop(.72,`rgba(${lowerRGB.join(",")},.82)`);
+              gradient.addColorStop(1,`rgba(${lowerRGB.join(",")},.28)`);
+            }
             ctx.save();
-            ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;
+            ctx.globalAlpha=reflected?1:(showBelowHorizon?belowHorizonAlpha:1);
             ctx.beginPath();ctx.moveTo(run[0].top[0],run[0].top[1]);
             for(let i=1;i<run.length;i++) ctx.lineTo(run[i].top[0],run[i].top[1]);
             for(let i=run.length-1;i>=0;i--) ctx.lineTo(run[i].bottom[0],run[i].bottom[1]);
@@ -8987,6 +9186,185 @@ function drawPhoto(ctx,s){
       function isConfirmedWaterDirection(az){
         const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360;
         return confirmedWaterAz[i0]||confirmedWaterAz[i1];
+      }
+      function drawWaterReflections(){
+        if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
+        const reflectionStep=Math.min(step,.28),samples=[];
+        for(let diff=-half-2;diff<=half+2;diff+=reflectionStep){
+          const az=norm360(s.facingAz+diff),idx=((Math.round(az)%360)+360)%360;
+          if(!isConfirmedWaterDirection(az)){samples.push(null);continue;}
+          const horizon=toXY(az,0);
+          if(!horizon||![...horizon].every(Number.isFinite)){samples.push(null);continue;}
+          // 水域として色分けされた方位は、水平線から画面下端までを反射候補にする。
+          // 以前は推定水際距離をもう一度投影していたため、海色が続いていても反射だけが途中で切れていた。
+          // 実際の手前陸地は、この反射の後に描く足元レイヤーで上から確実に隠す。
+          const safeShoreline=[horizon[0],H+2];
+          samples.push({az,horizon,shoreline:safeShoreline});
+        }
+        const runs=[];let cursor=0;
+        while(cursor<samples.length){
+          while(cursor<samples.length&&!samples[cursor]) cursor++;
+          let end=cursor;while(end<samples.length&&samples[end]) end++;
+          const run=samples.slice(cursor,end);
+          if(run.length>=3){
+            // 岸の左右端では水面の深さを0から立ち上げ、四角い反射領域が陸へ食い込まないようにする。
+            const taperCount=Math.max(2,Math.round(1.5/reflectionStep));
+            run.forEach((item,index)=>{
+              const edge=Math.min(1,index/taperCount,(run.length-1-index)/taperCount);
+              const smooth=edge*edge*(3-2*edge);
+              item.bottom=[item.shoreline[0],lerp(item.horizon[1],Math.max(item.horizon[1],item.shoreline[1]),smooth)];
+            });
+            runs.push(run);
+          }
+          cursor=Math.max(end,cursor+1);
+        }
+        if(!runs.length) return false;
+        const waterMask=new Path2D();
+        runs.forEach(run=>{
+          waterMask.moveTo(run[0].horizon[0],run[0].horizon[1]);
+          for(let i=1;i<run.length;i++) waterMask.lineTo(run[i].horizon[0],run[i].horizon[1]);
+          for(let i=run.length-1;i>=0;i--) waterMask.lineTo(run[i].bottom[0],run[i].bottom[1]);
+          waterMask.closePath();
+        });
+
+        ctx.save();ctx.clip(waterMask);
+
+        // 山の反射に使う色。山は天体より後から不透明で描き、背後の星を透過させない。
+        const mountainStyle=bandStyles.immediate,dayMountainStyle=dayBandStyles.immediate;
+        const originalMountainNight=mountainStyle.top.map(value=>Math.round(value+mountainStyle.boost*atmosphere));
+        const originalMountainRGB=mixRGB(originalMountainNight,dayMountainStyle.top,dayFactor);
+        // 夜は元の山と同じ明るさ。日中へ近づくほど水面側だけ約16%暗くする。
+        const mountainReflectionShade=lerp(1,.84,dayFactor);
+        const mountainRGB=originalMountainRGB.map(value=>Math.round(value*mountainReflectionShade));
+
+        // 天の川の反射。実写モードではESO画像を同じ球面メッシュで水平線の下へ反転する。
+        // 地平線をまたぐセルは各頂点を水平線へ寄せて残し、途中で四角く切れる現象を防ぐ。
+        if(realMilkyWayEnabled&&realMilkyWayTexture){
+          const iw=realMilkyWayImage.naturalWidth,ih=realMilkyWayImage.naturalHeight;
+          const reflectedGrid=REAL_MW_GRID.map(row=>row.map(p=>{
+            const aa=raDecToAltAz(p.ra,p.dec,s.jd,s.lat,s.lon);
+            return {...p,alt:aa.alt,pt:toXY(aa.az,-Math.max(0,aa.alt))};
+          }));
+          ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=clamp(vis*.20,0,.22);
+          for(let r=0;r<reflectedGrid.length-1;r++){
+            for(let k=0;k<reflectedGrid[r].length-1;k++){
+              const p00=reflectedGrid[r][k],p10=reflectedGrid[r][k+1],p01=reflectedGrid[r+1][k],p11=reflectedGrid[r+1][k+1];
+              if(Math.max(p00.alt,p10.alt,p01.alt,p11.alt)<=0||!p00.pt||!p10.pt||!p01.pt||!p11.pt) continue;
+              const pts=[p00.pt,p10.pt,p01.pt,p11.pt];
+              if(!pts.every(p=>p.every(Number.isFinite))) continue;
+              const minX=Math.min(...pts.map(p=>p[0])),maxX=Math.max(...pts.map(p=>p[0]));
+              const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
+              if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
+              const texL0=p00.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg,texL1=p10.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg;
+              const sx0=(1.5-texL0/360)*iw,sx1=(1.5-texL1/360)*iw;
+              const texB0=p00.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg,texB1=p01.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg;
+              const sy0=(.5-texB0/180)*ih,sy1=(.5-texB1/180)*ih;
+              drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
+              drawTextureTriangle(ctx,realMilkyWayTexture,[sx1,sy0],[sx1,sy1],[sx0,sy1],p10.pt,p11.pt,p01.pt);
+            }
+          }
+          ctx.restore();
+        }else{
+          // 通常モードは短い太線の継ぎ合わせではなく、連続したパスとして描く。
+          // lineCap=butt により、旧表示で見えていた半円状の継ぎ目も生じない。
+          const drawMilkyWayRuns=(coreOnly,strokeStyle,lineWidth)=>{
+            let run=[];
+            const flush=()=>{
+              if(run.length>=2){ctx.beginPath();ctx.moveTo(run[0][0],run[0][1]);for(let i=1;i<run.length;i++)ctx.lineTo(run[i][0],run[i][1]);ctx.stroke();}
+              run=[];
+            };
+            for(let i=0;i<s.mwPoints.length;i++){
+              const point=s.mwPoints[i],prev=i?s.mwPoints[i-1]:null;
+              const valid=point.alt>0&&(!coreOnly||point.coreWeight>.28);
+              const p=valid?toXY(point.az,-point.alt):null;
+              const discontinuity=prev&&Math.abs(point.az-prev.az)>180;
+              if(!p||!p.every(Number.isFinite)||discontinuity||(run.length&&Math.abs(p[0]-run[run.length-1][0])>W*.75)){flush();continue;}
+              run.push(p);
+            }
+            flush();ctx.strokeStyle=strokeStyle;ctx.lineWidth=lineWidth;
+          };
+          ctx.save();ctx.globalCompositeOperation="screen";ctx.lineCap="butt";ctx.lineJoin="round";
+          ctx.strokeStyle=`rgba(126,132,194,${clamp(vis*.075,0,.09)})`;ctx.lineWidth=Math.max(2.2,scale*D2R*5);
+          drawMilkyWayRuns(false,ctx.strokeStyle,ctx.lineWidth);
+          ctx.strokeStyle=`rgba(216,174,126,${clamp(vis*.075,0,.09)})`;ctx.lineWidth=Math.max(1.4,scale*D2R*2.4);
+          drawMilkyWayRuns(true,ctx.strokeStyle,ctx.lineWidth);
+          ctx.restore();
+        }
+
+        // 星座の反射：表示中の星座だけを反映し、名称ラベルは水面へ描かない。
+        if(constellationsVisible){
+          const autoShowConstName=autoShowShowerConst?(getActiveMeteorShower()?.constellationName||null):null;
+          ctx.save();ctx.globalCompositeOperation="lighter";ctx.strokeStyle=`rgba(145,185,230,${clamp(vis*.20,0,.20)})`;ctx.lineWidth=.9;
+          CONSTELLATIONS.forEach(c=>{
+            if(constellationVisibility[c.name]===false&&autoShowConstName!==c.name) return;
+            const pts=c.stars.map(st=>{
+              const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
+              if(aa.alt<=0) return null;
+              const p=toXY(aa.az,-aa.alt);return p&&p.every(Number.isFinite)?p:null;
+            });
+            if(constellationLinesVisible){
+              c.lines.forEach(([i,j])=>{const p1=pts[i],p2=pts[j];if(!p1||!p2||Math.abs(p1[0]-p2[0])>W*.75)return;ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();});
+            }
+            pts.forEach(p=>{if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10)return;ctx.beginPath();ctx.arc(p[0],p[1],1.35,0,Math.PI*2);ctx.fillStyle=`rgba(215,232,255,${clamp(vis*.28,0,.28)})`;ctx.fill();});
+          });
+          ctx.restore();
+        }
+
+        // 名前付き恒星の反射：星本体だけを少し強い縦の光として描き、文字は反射させない。
+        if(namedStarsVisible){
+          ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+          NAMED_STARS.forEach(ns=>{
+            if(namedStarVisibility[ns.key]===false) return;
+            const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);if(aa.alt<=0)return;
+            const p=toXY(aa.az,-aa.alt);if(!p||p[0]<-12||p[0]>W+12||p[1]<-12||p[1]>H+12)return;
+            ctx.strokeStyle=`rgba(248,249,255,${clamp(vis*.36,0,.36)})`;ctx.lineWidth=1.15;
+            ctx.beginPath();ctx.moveTo(p[0],p[1]-2);ctx.lineTo(p[0],p[1]+6);ctx.stroke();
+            ctx.beginPath();ctx.arc(p[0],p[1],1.6,0,Math.PI*2);ctx.fillStyle=`rgba(255,255,255,${clamp(vis*.42,0,.42)})`;ctx.fill();
+          });
+          ctx.restore();
+        }
+
+        // 星の反射：星そのものより弱く、波の光に見える短い縦線として描く。
+        ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+        const normalOpacity=(+el.normalStarOpacitySlider.value||50)/100;
+        s.starsNow.forEach(star=>{
+          if(star.alt<=0) return;
+          const brightness=clamp(1-(star.mag-1)/6.5,0,1);
+          const alpha=brightness*vis*normalOpacity*.28;if(alpha<.025) return;
+          const p=toXY(star.az,-star.alt);if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) return;
+          const length=1.2+brightness*4.2;
+          ctx.strokeStyle=`rgba(238,241,255,${clamp(alpha,0,.32)})`;ctx.lineWidth=.7+brightness*.9;
+          ctx.beginPath();ctx.moveTo(p[0],p[1]-length*.25);ctx.lineTo(p[0],p[1]+length*.75);ctx.stroke();
+        });
+        ctx.restore();
+
+        // 山の反射は最後に不透明で重ねる。これにより山の背後にある天の川・恒星・星座が
+        // 山体を透けて見えることがなくなり、空と同じ前後関係になる。
+        const meteorWaterPath=new Path2D();
+        runs.forEach(run=>{
+          const reflected=run.map(item=>{
+            const wrapped=((item.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+            const ridgeAlt=Math.max(0,lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t));
+            const point=toXY(item.az,-ridgeAlt);
+            return point&&[...point].every(Number.isFinite)?point:item.horizon;
+          });
+          ctx.beginPath();ctx.moveTo(run[0].horizon[0],run[0].horizon[1]);
+          for(let i=1;i<run.length;i++) ctx.lineTo(run[i].horizon[0],run[i].horizon[1]);
+          for(let i=reflected.length-1;i>=0;i--) ctx.lineTo(reflected[i][0],reflected[i][1]);
+          ctx.closePath();ctx.fillStyle=`rgb(${mountainRGB.join(",")})`;ctx.fill();
+
+          // 流れ星は別Canvasで後から動くため、山リフレより下に残る水面だけを専用マスクにする。
+          meteorWaterPath.moveTo(reflected[0][0],reflected[0][1]);
+          for(let i=1;i<reflected.length;i++) meteorWaterPath.lineTo(reflected[i][0],reflected[i][1]);
+          for(let i=run.length-1;i>=0;i--) meteorWaterPath.lineTo(run[i].bottom[0],run[i].bottom[1]);
+          meteorWaterPath.closePath();
+        });
+        waterReflectionHorizonYByX=buildSkylineYArray(runs.flatMap(run=>run.map(item=>item.horizon)),W,H);
+        meteorReflectionWaterPath=meteorWaterPath;
+        // 富士山の積雪が通常の山体に表示される季節・距離・遮蔽条件と一致する場合だけ反射する。
+        drawSeasonalFujiSnow(true);
+        ctx.restore();
+        return true;
       }
       function fillTerrainBand(layer,colors){
         const WATER_RUN_THRESHOLD=0.5; // 距離帯ごとの水面らしさが、これ以上の方位だけを「水面」として塗る
@@ -9393,6 +9771,8 @@ function drawPhoto(ctx,s){
         if(immediate) fillTerrainBand(immediate,terrainBandColors("immediate"));
       }
       ctx.save();ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;ctx.drawImage(terrainCanvas,0,0);ctx.restore();
+      // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
+      drawWaterReflections();
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
       drawSeasonalFujiSnow();
 
@@ -10468,6 +10848,7 @@ function animateMeteors(now){
     ctx.clip();
   }
 
+  const activeMeteorFrames=[];
   meteorStates = meteorStates.filter(m=>{
     const t=(now-m.startTime)/m.duration;
     if(t>=1) return false;
@@ -10497,9 +10878,42 @@ function animateMeteors(now){
     g2.addColorStop(0,`rgba(255,255,255,${alpha})`);
     g2.addColorStop(1,"rgba(255,255,255,0)");
     ctx.beginPath(); ctx.arc(hx,hy,headR*3,0,Math.PI*2); ctx.fillStyle=g2; ctx.fill();
+    activeMeteorFrames.push({m,hx,hy,tx,ty,alpha});
     return true;
   });
   ctx.restore();
+
+  // 流れ星のリフレ：現在の水平線を軸に反転し、確認済み水域かつ山リフレより下だけへ描く。
+  // 本体より少し暗く、尾を18%短くして、水面上の光として控えめに見せる。
+  if(waterReflectionEnabled&&meteorReflectionWaterPath&&waterReflectionHorizonYByX&&activeMeteorFrames.length){
+    const horizonAt=x=>{
+      const i=clamp(Math.round(x),0,waterReflectionHorizonYByX.length-1);
+      return waterReflectionHorizonYByX[i];
+    };
+    ctx.save();ctx.clip(meteorReflectionWaterPath);ctx.lineCap="round";
+    activeMeteorFrames.forEach(({m,hx,hy,tx,ty,alpha})=>{
+      const headHorizon=horizonAt(hx),tailHorizon=horizonAt(tx);
+      if(!Number.isFinite(headHorizon)||!Number.isFinite(tailHorizon)) return;
+      // 元の流れ星が水平線より下にある部分は反射元として採用しない。
+      if(hy>=headHorizon&&ty>=tailHorizon) return;
+      const reflectedHeadX=hx,reflectedHeadY=2*headHorizon-Math.min(hy,headHorizon);
+      const fullTailX=tx,fullTailY=2*tailHorizon-Math.min(ty,tailHorizon);
+      const reflectedTailX=reflectedHeadX+(fullTailX-reflectedHeadX)*.82;
+      const reflectedTailY=reflectedHeadY+(fullTailY-reflectedHeadY)*.82;
+      const reflectionAlpha=alpha*.62;
+      const grad=ctx.createLinearGradient(reflectedTailX,reflectedTailY,reflectedHeadX,reflectedHeadY);
+      grad.addColorStop(0,"rgba(255,255,255,0)");
+      grad.addColorStop(.7,`rgba(190,211,242,${reflectionAlpha*.65})`);
+      grad.addColorStop(1,`rgba(242,247,255,${reflectionAlpha})`);
+      ctx.strokeStyle=grad;ctx.lineWidth=(m.isLong?2.4:1.5)*.82;
+      ctx.beginPath();ctx.moveTo(reflectedTailX,reflectedTailY);ctx.lineTo(reflectedHeadX,reflectedHeadY);ctx.stroke();
+      const headR=(m.isLong?2.6:1.7)*.82;
+      const glow=ctx.createRadialGradient(reflectedHeadX,reflectedHeadY,0,reflectedHeadX,reflectedHeadY,headR*3);
+      glow.addColorStop(0,`rgba(242,247,255,${reflectionAlpha})`);glow.addColorStop(1,"rgba(255,255,255,0)");
+      ctx.beginPath();ctx.arc(reflectedHeadX,reflectedHeadY,headR*3,0,Math.PI*2);ctx.fillStyle=glow;ctx.fill();
+    });
+    ctx.restore();
+  }
 
   if(meteorStates.length>0){
     requestAnimationFrame(animateMeteors);
