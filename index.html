@@ -2557,7 +2557,7 @@
         <div class="ctrl-group-body">
           <div class="field">
             <label class="top">夜の明るさ <span class="val mono" id="nightBrightnessVal">標準</span></label>
-            <input type="range" id="nightBrightnessSlider" min="0" max="3" step="1" value="0">
+            <input type="range" id="nightBrightnessSlider" min="0" max="5" step="1" value="0">
           </div>
           <p class="map-hint" style="margin-top:4px;">明るい場所で画面を見る場合に、星空と地上景色を夜らしさを保ったまま少し明るくします。昼間の表示には影響しません。</p>
           <button id="showBelowHorizonBtn" type="button" class="toggle-btn active"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -4819,9 +4819,9 @@ el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   syncDisplayPopupControls();
   scheduleSaveSettings();
 });
-const NIGHT_BRIGHTNESS_LABELS=["標準","明るさ1","明るさ2","明るさ3"];
+const NIGHT_BRIGHTNESS_LABELS=["標準","明るさ1","明るさ2","明るさ3","明るさ4","明るさ5"];
 function syncNightBrightnessControl(){
-  const level=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,3);
+  const level=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,5);
   el.nightBrightnessSlider.value=level;
   el.nightBrightnessVal.textContent=NIGHT_BRIGHTNESS_LABELS[level];
 }
@@ -6099,7 +6099,7 @@ async function loadPersistedSettings(){
     showBelowHorizon=s.showBelowHorizon!==false;
     if(s.belowHorizonOpacity!==undefined) el.belowHorizonOpacitySlider.value=s.belowHorizonOpacity;
     el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
-    if(s.nightBrightness!==undefined) el.nightBrightnessSlider.value=clamp(+s.nightBrightness,0,3);
+    if(s.nightBrightness!==undefined) el.nightBrightnessSlider.value=clamp(+s.nightBrightness,0,5);
     syncNightBrightnessControl();
     if(s.mwTextureLOffsetDeg!==undefined){
       mwTextureLOffsetDeg=s.mwTextureLOffsetDeg;
@@ -7666,11 +7666,77 @@ async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
-    const res=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(query),signal:controller.signal});
+    const res=await fetch(url,{
+      method:"POST",
+      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+      body:"data="+encodeURIComponent(query),
+      signal:controller.signal
+    });
     if(!res.ok) throw new Error(`overpass ${res.status}`);
     return await res.json();
   }finally{
     clearTimeout(timer);
+  }
+}
+function parseOsmWaterRings(data){
+  const rings=[];
+  (data.elements||[]).forEach(elem=>{
+    if(elem.type==="way"&&Array.isArray(elem.geometry)){
+      const points=elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
+      if(points.length>=4&&sameLatLonPoint(points[0],points[points.length-1])) rings.push({outer:ringWithBbox(points),holes:[]});
+    }else if(elem.type==="relation"&&Array.isArray(elem.members)){
+      const outerSegments=[],innerSegments=[];
+      elem.members.forEach(member=>{
+        if(member.type==="way"&&Array.isArray(member.geometry)){
+          const points=member.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
+          if(points.length>=2){
+            if(member.role==="inner") innerSegments.push(points);
+            else outerSegments.push(points);
+          }
+        }
+      });
+      const outers=stitchWaySegments(outerSegments).map(ringWithBbox);
+      const holes=stitchWaySegments(innerSegments).map(ringWithBbox);
+      outers.forEach(outer=>{
+        const ownHoles=holes.filter(hole=>{
+          const p=hole.points[0];
+          return p&&p[0]>=outer.minLat&&p[0]<=outer.maxLat&&p[1]>=outer.minLon&&p[1]<=outer.maxLon&&pointInPolygonLatLon(p[0],p[1],outer.points);
+        });
+        rings.push({outer,holes:ownHoles});
+      });
+    }
+  });
+  return rings;
+}
+function delayPromise(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+// 取得先を一斉に叩かず、2.5秒ずつ時間差で開始する。最初に成功した応答を採用し、
+// 全て失敗した場合だけrejectする。混雑した1サーバーを長時間待ち続けないためのヘッジ取得。
+function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=2500){
+  return new Promise((resolve,reject)=>{
+    let failed=0,settled=false,lastError=null;
+    endpoints.forEach((endpoint,index)=>{
+      (async()=>{
+        if(index) await delayPromise(index*staggerMs);
+        if(settled) return;
+        try{
+          const data=await fetchOsmWaterRingsOnce(endpoint,query,18000);
+          if(!settled){settled=true;resolve(data);}
+        }catch(error){
+          lastError=error;failed++;
+          if(failed===endpoints.length&&!settled) reject(lastError||new Error("water fetch failed"));
+        }
+      })();
+    });
+  });
+}
+async function fetchOsmWaterRingsNetwork(query){
+  try{
+    return parseOsmWaterRings(await firstSuccessfulWaterRequest(query));
+  }catch(firstError){
+    // 一時的な429・タイムアウトを想定し、少し休んで取得先の順番を変えてもう一巡する。
+    await delayPromise(2200);
+    const retryEndpoints=[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]];
+    return parseOsmWaterRings(await firstSuccessfulWaterRequest(query,retryEndpoints,3200));
   }
 }
 function fetchOsmWaterRings(lat,lon,radiusKm){
@@ -7678,58 +7744,46 @@ function fetchOsmWaterRings(lat,lon,radiusKm){
   if(osmWaterCache.has(key)) return osmWaterCache.get(key);
   const forceRefresh=forcedWaterRefreshKeys.delete(key);
   const radiusM=Math.round(radiusKm*1000);
-  const query=`[out:json][timeout:30];(way["natural"="water"](around:${radiusM},${lat},${lon});relation["natural"="water"](around:${radiusM},${lat},${lon});way["landuse"="reservoir"](around:${radiusM},${lat},${lon});relation["landuse"="reservoir"](around:${radiusM},${lat},${lon});way["waterway"="riverbank"](around:${radiusM},${lat},${lon});relation["waterway"="riverbank"](around:${radiusM},${lat},${lon});way["natural"="water"]["water"="river"](around:${radiusM},${lat},${lon});relation["natural"="water"]["water"="river"](around:${radiusM},${lat},${lon}););out geom;`;
+  // natural=waterにはwater=riverも含まれるため重複問い合わせを削除。
+  // 旧riverbankタグだけは近距離2.5kmに絞り、湖・池の取得を重くしない。
+  const riverRadiusM=Math.min(radiusM,2500);
+  const query=`[out:json][timeout:45];(way["natural"="water"](around:${radiusM},${lat},${lon});relation["natural"="water"](around:${radiusM},${lat},${lon});way["landuse"="reservoir"](around:${radiusM},${lat},${lon});relation["landuse"="reservoir"](around:${radiusM},${lat},${lon});way["waterway"="riverbank"](around:${riverRadiusM},${lat},${lon});relation["waterway"="riverbank"](around:${riverRadiusM},${lat},${lon}););out geom;`;
   const promise=(async()=>{
-    if(!forceRefresh){
-      const saved=await externalGeoCacheGet(`water:${key}`);
-      if(Array.isArray(saved)){
-        osmWaterCacheSources.set(key,"persistent");
-        return saved;
-      }
-    }
-    for(const endpoint of OSM_WATER_ENDPOINTS){
-      try{
-        const data=await fetchOsmWaterRingsOnce(endpoint,query,8000);
-        const rings=[];
-        (data.elements||[]).forEach(elem=>{
-          if(elem.type==="way"&&Array.isArray(elem.geometry)){
-            const points=elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
-            // relationに属さない単独wayも、閉じている場合だけ水域として採用する。
-            if(points.length>=4&&sameLatLonPoint(points[0],points[points.length-1])) rings.push({outer:ringWithBbox(points),holes:[]});
-          }else if(elem.type==="relation"&&Array.isArray(elem.members)){
-            const outerSegments=[],innerSegments=[];
-            elem.members.forEach(member=>{
-              if(member.type==="way"&&Array.isArray(member.geometry)){
-                const points=member.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon]);
-                if(points.length>=2){
-                  if(member.role==="inner") innerSegments.push(points);
-                  else outerSegments.push(points);
-                }
-              }
-            });
-            const outers=stitchWaySegments(outerSegments).map(ringWithBbox);
-            const holes=stitchWaySegments(innerSegments).map(ringWithBbox);
-            // innerを包含するouterだけへ割り当て、島・中州を水面から確実に切り抜く。
-            outers.forEach(outer=>{
-              const ownHoles=holes.filter(hole=>{
-                const p=hole.points[0];
-                return p&&p[0]>=outer.minLat&&p[0]<=outer.maxLat&&p[1]>=outer.minLon&&p[1]<=outer.maxLon&&pointInPolygonLatLon(p[0],p[1],outer.points);
-              });
-              rings.push({outer,holes:ownHoles});
-            });
+    // 読み直し時も成功済みキャッシュを捨てない。まず即時表示し、更新は裏側で行う。
+    const saved=await externalGeoCacheGet(`water:${key}`);
+    if(Array.isArray(saved)){
+      osmWaterCacheSources.set(key,"persistent");
+      if(forceRefresh){
+        fetchOsmWaterRingsNetwork(query).then(fresh=>{
+          if(!Array.isArray(fresh)) return;
+          externalGeoCacheSet(`water:${key}`,fresh);
+          osmWaterCacheSources.set(key,"network");
+          osmWaterCache.set(key,Promise.resolve(fresh));
+          const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+          const target=realTerrainProfileCache.get(terrainKey)||(realTerrainState.key===terrainKey?realTerrainState:null);
+          if(target){
+            target._osmRefinePending=false;target._osmRefineStatus="";target._osmRefineDetail="";
+            refineTerrainWaterWithOsm(lat,lon,terrainKey,target);
           }
-        });
-        osmWaterCacheSources.set(key,"network");
-        externalGeoCacheSet(`water:${key}`,rings);
-        return rings;
-      }catch(err){
-        // このミラーで失敗した場合は次の候補へ。全て失敗した場合は標高ベースの判定にフォールバックする。
+        }).catch(()=>{});
       }
+      return saved;
     }
-    osmWaterCacheSources.set(key,"error");
-    return null;
+    try{
+      const rings=await fetchOsmWaterRingsNetwork(query);
+      osmWaterCacheSources.set(key,"network");
+      externalGeoCacheSet(`water:${key}`,rings);
+      return rings;
+    }catch(error){
+      osmWaterCacheSources.set(key,"error");
+      return null;
+    }
   })();
   osmWaterCache.set(key,promise);
+  // 失敗PromiseをMapへ固定しない。次の自動更新・手動読み直しで必ず再試行できるようにする。
+  promise.then(result=>{
+    if(result===null&&osmWaterCache.get(key)===promise) osmWaterCache.delete(key);
+  });
   return promise;
 }
 async function buildRealTerrainProfile(lat,lon,token){
@@ -9291,13 +9345,25 @@ function drawPhoto(ctx,s){
 
         ctx.save();ctx.clip(waterMask);
 
-        // 山の反射に使う色。山は天体より後から不透明で描き、背後の星を透過させない。
-        const mountainStyle=bandStyles.immediate,dayMountainStyle=dayBandStyles.immediate;
-        const originalMountainNight=mountainStyle.top.map(value=>Math.round(value+mountainStyle.boost*atmosphere));
-        const originalMountainRGB=mixRGB(originalMountainNight,dayMountainStyle.top,dayFactor);
-        // 夜は元の山と同じ明るさ。日中へ近づくほど水面側だけ約16%暗くする。
-        const mountainReflectionShade=lerp(1,.84,dayFactor);
-        const mountainRGB=originalMountainRGB.map(value=>Math.round(value*mountainReflectionShade));
+        // 日中・夕方・夜のすべてで、青い水面へ色を足すのではなく、水平線を軸に
+        // 反転した空そのものへほぼ置き換える。時間帯による例外は作らない。
+        const dayEveningMirror=1;
+        const allHorizonY=runs.flatMap(run=>run.map(item=>item.horizon[1])).filter(Number.isFinite);
+        const mirrorHorizonY=allHorizonY.length
+          ? allHorizonY.reduce((sum,value)=>sum+value,0)/allHorizonY.length : H*.5;
+        {
+          const sky=skyPalette(s.sunAltAz.alt);
+          const skyColorAtY=y=>mixRGB(sky.z,sky.h,clamp(y/H,0,1));
+          // 水面上端は水平線付近の空、画面下へ行くほど上空の色になる上下反転グラデーション。
+          const reflectedTop=skyColorAtY(mirrorHorizonY).map(value=>Math.round(value*.96));
+          const reflectedBottom=skyColorAtY(2*mirrorHorizonY-H).map(value=>Math.round(value*.94));
+          const mirroredSky=ctx.createLinearGradient(0,mirrorHorizonY,0,H);
+          mirroredSky.addColorStop(0,`rgb(${reflectedTop.join(",")})`);
+          mirroredSky.addColorStop(1,`rgb(${reflectedBottom.join(",")})`);
+          ctx.save();ctx.globalAlpha=.96*dayEveningMirror;
+          ctx.fillStyle=mirroredSky;ctx.fillRect(0,0,W,H);ctx.restore();
+
+        }
 
         // 天の川の反射。実写モードではESO画像を同じ球面メッシュで水平線の下へ反転する。
         // 地平線をまたぐセルは各頂点を水平線へ寄せて残し、途中で四角く切れる現象を防ぐ。
@@ -9356,7 +9422,7 @@ function drawPhoto(ctx,s){
         // 星座の反射：表示中の星座だけを反映し、名称ラベルは水面へ描かない。
         const reflectedAutoShowConstName=autoShowShowerConst?(getActiveMeteorShower()?.constellationName||null):null;
         if(constellationsVisible||reflectedAutoShowConstName){
-          ctx.save();ctx.globalCompositeOperation="lighter";ctx.strokeStyle=`rgba(145,185,230,${clamp(vis*.20,0,.20)})`;ctx.lineWidth=.9;
+          ctx.save();ctx.globalCompositeOperation="lighter";ctx.strokeStyle=`rgba(166,207,255,${clamp(vis*.48,0,.48)})`;ctx.lineWidth=1.25;
           CONSTELLATIONS.forEach(c=>{
             const isAutoShown=reflectedAutoShowConstName===c.name;
             if(!constellationsVisible&&!isAutoShown) return;
@@ -9369,19 +9435,22 @@ function drawPhoto(ctx,s){
             if(constellationLinesVisible){
               c.lines.forEach(([i,j])=>{const p1=pts[i],p2=pts[j];if(!p1||!p2||Math.abs(p1[0]-p2[0])>W*.75)return;ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();});
             }
-            pts.forEach(p=>{if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10)return;ctx.beginPath();ctx.arc(p[0],p[1],1.35,0,Math.PI*2);ctx.fillStyle=`rgba(215,232,255,${clamp(vis*.28,0,.28)})`;ctx.fill();});
+            pts.forEach(p=>{
+              if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10)return;
+              drawCelestialReflection(p,.78,"222,239,255",1.05);
+            });
           });
           ctx.restore();
         }
 
         // 明るい天体用の水面反射。中心光に加え、明るさに応じて上下へ細長く伸びる
         // 光条と淡い外側のにじみを重ねる。描画全体は既に水域でクリップされている。
-        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1){
+        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1,opacityScale=1){
           if(!point||point[0]<-40||point[0]>W+40||point[1]<-40||point[1]>H+40) return;
           const x=point[0],y=point[1],power=clamp(strength,0,1);
           const length=(3+power*27)*lengthScale*(W/1200);
           const upper=length*.42,lower=length*.58;
-          const alpha=clamp(vis*(.25+power*.70),0,.92);
+          const alpha=clamp(vis*(.25+power*.70)*clamp(opacityScale,0,1),0,.92);
           // 水面の柔らかなにじみ。明るい天体だけ少し幅を持たせる。
           const soft=ctx.createLinearGradient(x,y-upper,x,y+lower);
           soft.addColorStop(0,`rgba(${color},0)`);soft.addColorStop(.46,`rgba(${color},${alpha*.25})`);
@@ -9408,7 +9477,7 @@ function drawPhoto(ctx,s){
             if(namedStarVisibility[ns.key]===false) return;
             const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);if(aa.alt<=0)return;
             const p=toXY(aa.az,-aa.alt);if(!p||p[0]<-12||p[0]>W+12||p[1]<-12||p[1]>H+12)return;
-            drawCelestialReflection(p,namedStarStrength[ns.key]||.65,"248,250,255",1);
+            drawCelestialReflection(p,namedStarStrength[ns.key]||.65,"248,250,255",2);
           });
           ctx.restore();
         }
@@ -9419,17 +9488,23 @@ function drawPhoto(ctx,s){
         s.starsNow.forEach(star=>{
           if(star.alt<=0) return;
           const brightness=clamp(1-(star.mag-1)/6.5,0,1);
-          const reflectedBrightness=Math.pow(brightness,2.15)*normalOpacity;
-          if(reflectedBrightness*vis<.035) return;
+          // 空に描く通常星と同じ限界等級・表示開始しきい値・フェードを通す。
+          // これにより、薄明時に反射だけが空の星より先に現れない。
+          const limiting=clamp(1-s.skyBrightness*1.15,0,1);
+          const skyAlpha=brightness*vis*normalOpacity;
+          const visScore=skyAlpha*limiting;
+          if(visScore<.035) return;
+          const fadeIn=clamp((visScore-.035)/.15,0,1);
+          const reflectedBrightness=Math.pow(brightness,2.15)*normalOpacity*fadeIn;
           const p=toXY(star.az,-star.alt);if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) return;
           if(reflectedBrightness<.42){
             // 暗い星は3個の個別グラデーションを作らず、見た目がほぼ同じ短い1本線で描く。
-            const length=(1.5+reflectedBrightness*11)*(W/1200);
-            ctx.strokeStyle=`rgba(238,243,255,${clamp(vis*(.10+reflectedBrightness*.48),0,.34)})`;
+            const length=(1.5+reflectedBrightness*11)*2*(W/1200);
+            ctx.strokeStyle=`rgba(238,243,255,${clamp(vis*(.10+reflectedBrightness*.48)*fadeIn,0,.34)})`;
             ctx.lineWidth=(.65+reflectedBrightness*.8)*(W/1200);ctx.lineCap="round";
             ctx.beginPath();ctx.moveTo(p[0],p[1]-length*.38);ctx.lineTo(p[0],p[1]+length*.62);ctx.stroke();
           }else{
-            drawCelestialReflection(p,reflectedBrightness,"238,243,255",.72);
+            drawCelestialReflection(p,reflectedBrightness,"238,243,255",1.44,fadeIn);
           }
         });
         ctx.restore();
@@ -9448,8 +9523,16 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
 
-        // 山の反射は最後に不透明で重ねる。これにより山の背後にある天の川・恒星・星座が
-        // 山体を透けて見えることがなくなり、空と同じ前後関係になる。
+        // 月も水面反射の対象にする。月相の明るさを強度へ反映し、細い縦光を伴わせる。
+        if(s.moonAltAz.alt>0){
+          const moonPoint=toXY(s.moonAltAz.az,-s.moonAltAz.alt);
+          const moonStrength=clamp(.38+(s.moon.illum||0)*.62,0,1);
+          ctx.save();ctx.globalCompositeOperation="lighter";
+          drawCelestialReflection(moonPoint,moonStrength,"232,235,248",1.55);
+          ctx.restore();
+        }
+
+        // 山の反射形状と、流れ星リフレに使う水面側マスクを準備する。
         const meteorWaterPath=new Path2D();
         const reflectedRidgeRuns=[];
         runs.forEach(run=>{
@@ -9460,10 +9543,6 @@ function drawPhoto(ctx,s){
             return point&&[...point].every(Number.isFinite)?point:item.horizon;
           });
           reflectedRidgeRuns.push(reflected);
-          ctx.beginPath();ctx.moveTo(run[0].horizon[0],run[0].horizon[1]);
-          for(let i=1;i<run.length;i++) ctx.lineTo(run[i].horizon[0],run[i].horizon[1]);
-          for(let i=reflected.length-1;i>=0;i--) ctx.lineTo(reflected[i][0],reflected[i][1]);
-          ctx.closePath();ctx.fillStyle=`rgb(${mountainRGB.join(",")})`;ctx.fill();
 
           // 流れ星は別Canvasで後から動くため、山リフレより下に残る水面だけを専用マスクにする。
           meteorWaterPath.moveTo(reflected[0][0],reflected[0][1]);
@@ -9471,6 +9550,16 @@ function drawPhoto(ctx,s){
           for(let i=run.length-1;i>=0;i--) meteorWaterPath.lineTo(run[i].bottom[0],run[i].bottom[1]);
           meteorWaterPath.closePath();
         });
+        // 天体反射の後に山を描くことで、山の背後にある星・星座・天の川を隠す。
+        // 元の夜山・昼山レイヤーをそのまま反転し、全時間帯で約4%だけ暗くする。
+        ctx.save();ctx.translate(0,mirrorHorizonY*2);ctx.scale(1,-1);
+        ctx.globalAlpha=terrainDisplayAlpha*.96;
+        ctx.drawImage(terrainCanvas,0,0);
+        if(dayFactor>0){
+          ctx.globalAlpha=terrainDisplayAlpha*.96*dayFactor;
+          ctx.drawImage(dayTerrainCanvas,0,0);
+        }
+        ctx.restore();
         waterReflectionHorizonYByX=buildSkylineYArray(runs.flatMap(run=>run.map(item=>item.horizon)),W,H);
         meteorReflectionWaterPath=meteorWaterPath;
         // 富士山の積雪が通常の山体に表示される季節・距離・遮蔽条件と一致する場合だけ反射する。
@@ -9626,7 +9715,21 @@ function drawPhoto(ctx,s){
       }
       const nightSeaRGB=[5,8,20];
       const daySeaRGB=[24,38,86];
-      let seaRGB=mixRGB(nightSeaRGB,daySeaRGB,terrainDayFactor);
+      // DEMの連続nodataは主に海、OSM・既知形状は湖・池・貯水池として扱う。
+      // 内水面が主体の場面では昼色を明るく、少し空色寄りにして海と区別する。
+      let seaEvidence=0,inlandEvidence=0;
+      (realTerrainState.terrainLayers||[]).forEach(layer=>{
+        for(let az=0;az<360;az++){
+          seaEvidence+=(layer.noDataWaterProfile&&layer.noDataWaterProfile[az])||0;
+          const total=(layer.waterProfile&&layer.waterProfile[az])||0;
+          const noData=(layer.noDataWaterProfile&&layer.noDataWaterProfile[az])||0;
+          const known=(layer.knownWaterProfile&&layer.knownWaterProfile[az])||0;
+          inlandEvidence+=Math.max(known,total-noData);
+        }
+      });
+      const inlandWaterScene=!realTerrainState.observerAtSea&&inlandEvidence>Math.max(2,seaEvidence*.45);
+      const dayLakeRGB=[62,96,142];
+      let seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
       const nearShoreSpreadPx=clamp(W*3/Math.max(1,s.fovH),12,W*.06); // 画角約3°で岸を斜めにつなぐ
       function smoothedScreenPoints(points){
         if(points.length<3) return points.map(point=>[point[0],point[1]]);
@@ -9718,6 +9821,14 @@ function drawPhoto(ctx,s){
         }
         function paintTriangle(a,b,c){
           if(!a||!b||!c) return;
+          const mixedWaterLand=a.water!==b.water||b.water!==c.water;
+          const demSeaBoundary=mixedWaterLand&&(a.baseNoData||b.baseNoData||c.baseNoData);
+          // v280で波打ち際が安定していた処理を、DEM nodata由来の海岸境界だけへ限定して適用する。
+          // 海と陸が混在するセルを細い三角形へ分割すると、0m/nodataが交互に現れる海岸で
+          // 方位1°・距離リング単位の四角いブロックが露出する。このセルは描かず、下層の
+          // 連続した確定海面と、最後に重ねる足元地形へ境界を任せる。
+          // OSM水域・既知湖沼の境界にはbaseNoDataが無いため、湖・池・河川はv299のまま分割する。
+          if(demSeaBoundary) return;
           // 湖面・海面は物理的に水平線より上へ出ない。DEMの数十cm〜数mの揺れで正高度に
           // なった水面頂点を-0.025°へ抑え、青い三角形のジャギーを山側へ突き出させない。
   const projectVertex=vertex=>{
@@ -10054,7 +10165,7 @@ function drawPhoto(ctx,s){
       function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere){
         tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);wmctx.clearRect(0,0,W,H);
         terrainDayFactor=targetDayFactor;terrainAtmosphere=targetAtmosphere;
-        seaRGB=mixRGB(nightSeaRGB,daySeaRGB,terrainDayFactor);
+        seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
         drawConfirmedWaterSurface();
         layers.forEach(layer=>{if(layer.key!=="immediate") fillTerrainBand(layer,terrainBandColors(layer.key));});
         const variantMeshDrawn=hasDepthMesh&&drawNearSurfaceMesh(realTerrainState.nearSurfaceGrid);
@@ -10075,7 +10186,7 @@ function drawPhoto(ctx,s){
       }
       // 後続の境界抽出は夜・昼で同じアルファ形状を使うため、夜レイヤーを参照する。
       tctx=terrainCanvas.getContext("2d");terrainDayFactor=dayFactor;terrainAtmosphere=atmosphere;
-      seaRGB=mixRGB(nightSeaRGB,daySeaRGB,terrainDayFactor);
+      seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
       const terrainDisplayAlpha=showBelowHorizon?belowHorizonAlpha:1;
       ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0);
       if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0);}
@@ -10343,9 +10454,9 @@ function drawPhoto(ctx,s){
   // 明るい場所で画面を見るための夜間表示補正。昼間は変えず、星空と地上を一緒に穏やかに持ち上げる。
   // screen合成により黒つぶれを和らげつつ、最大レベルでも夜のコントラストと青みを残す。
   if(!arActive){
-    const nightBrightnessLevel=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,3);
+    const nightBrightnessLevel=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,5);
     const nightFactor=clamp(1-s.twilight,0,1);
-    const nightBrightnessAlpha=[0,0.05,0.10,0.15][nightBrightnessLevel]*nightFactor;
+    const nightBrightnessAlpha=[0,0.05,0.10,0.15,0.20,0.25][nightBrightnessLevel]*nightFactor;
     if(nightBrightnessAlpha>0){
       ctx.save();
       ctx.globalCompositeOperation="screen";
