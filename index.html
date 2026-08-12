@@ -1261,6 +1261,12 @@
   .plan-map-popup strong{display:block;margin-bottom:3px;font-size:12px;}
   .plan-map-popup span{display:block;margin-bottom:7px;color:#526078;}
   .plan-map-popup button{width:100%;min-height:31px;padding:5px 8px;border:1px solid #315f87;border-radius:7px;background:#eaf5ff;color:#173d5f;font:700 10px/1.2 'Inter',sans-serif;}
+  .kmz-building-panel{border:1px solid rgba(126,154,208,.38);border-radius:10px;padding:10px;background:rgba(17,24,48,.38);}
+  .kmz-building-file{display:none;}
+  .kmz-building-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px;}
+  .kmz-building-status{min-height:34px;margin:8px 0 0;padding:7px 8px;border-radius:7px;background:rgba(5,10,24,.42);color:var(--dim-2);font-size:10px;line-height:1.45;word-break:break-word;}
+  .kmz-building-status.ready{color:#aee8c4;border:1px solid rgba(90,210,140,.28);}
+  .kmz-building-status.error{color:#ffb2ac;border:1px solid rgba(255,100,90,.28);}
   .plan-load-list{display:flex;flex-direction:column;gap:9px;}
   .plan-accordion{margin:0;border:1px solid rgba(127,200,255,.28);border-radius:11px;background:rgba(255,255,255,.025);overflow:hidden;}
   .plan-accordion>summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;user-select:none;}
@@ -2507,6 +2513,44 @@
             <div class="sub-collapse-body" id="starGroupListBody">
               <div class="item-toggle-list" id="starGroupItemList"></div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">KMZ建物<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <div class="kmz-building-panel">
+            <input id="kmzBuildingInput" class="kmz-building-file" type="file" accept=".kmz,application/vnd.google-earth.kmz">
+            <button id="kmzBuildingSelectBtn" type="button" class="toggle-btn"><span>🏰 KMZファイルを読み込む</span><span>選択</span></button>
+            <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込み、建物のシルエットとして配置します。</div>
+            <button id="kmzBuildingVisibleBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>建物を表示する</span><span id="kmzBuildingVisibleState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+            <div class="field" style="margin-top:8px;">
+              <label class="top">Googleマップから経度・緯度を貼り付け</label>
+              <input id="kmzBuildingCoordinatePaste" type="text" inputmode="decimal" placeholder="例：34.849123, 134.693456">
+            </div>
+            <button id="kmzBuildingCoordinateApplyBtn" type="button" class="ghost" style="width:100%;margin-bottom:8px;">貼り付けた座標を反映</button>
+            <div class="row2" style="margin-top:8px;">
+              <div class="field"><label class="top">建物の緯度</label><input id="kmzBuildingLat" type="number" step="0.000001" value="35.000000"></div>
+              <div class="field"><label class="top">建物の経度</label><input id="kmzBuildingLon" type="number" step="0.000001" value="135.000000"></div>
+            </div>
+            <div class="row2">
+              <div class="field"><label class="top">基部の標高（m）</label><input id="kmzBuildingAltitude" type="number" step="0.1" value="0"></div>
+              <div class="field"><label class="top">回転（°）</label><input id="kmzBuildingHeading" type="number" min="-360" max="360" step="1" value="0"></div>
+            </div>
+            <div class="field">
+              <label class="top">大きさ <span class="val mono" id="kmzBuildingScaleVal">1.00倍</span></label>
+              <input id="kmzBuildingScale" type="range" min="0.1" max="20" step="0.1" value="1">
+            </div>
+            <div class="field">
+              <label class="top">シルエットの濃さ <span class="val mono" id="kmzBuildingOpacityVal">100%</span></label>
+              <input id="kmzBuildingOpacity" type="range" min="10" max="100" step="5" value="100">
+            </div>
+            <div class="kmz-building-actions">
+              <button id="kmzBuildingUseKmlBtn" type="button" class="ghost">KMZの座標を使用</button>
+              <button id="kmzBuildingDeleteBtn" type="button" class="ghost">建物を削除</button>
+            </div>
+            <p class="map-hint" style="margin-top:8px;">緯度・経度は建物中心、標高は建物の足元です。回転と大きさは読み込み後も調整できます。</p>
           </div>
         </div>
       </section>
@@ -3770,6 +3814,12 @@ const el={
   showSkylineBoundaryBtn:$("showSkylineBoundaryBtn"), showSkylineBoundaryState:$("showSkylineBoundaryState"), skylineOpacitySlider:$("skylineOpacitySlider"), skylineOpacityVal:$("skylineOpacityVal"),
   showWaterLandBoundaryBtn:$("showWaterLandBoundaryBtn"), showWaterLandBoundaryState:$("showWaterLandBoundaryState"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
+  kmzBuildingInput:$("kmzBuildingInput"), kmzBuildingSelectBtn:$("kmzBuildingSelectBtn"), kmzBuildingStatus:$("kmzBuildingStatus"),
+  kmzBuildingVisibleBtn:$("kmzBuildingVisibleBtn"), kmzBuildingVisibleState:$("kmzBuildingVisibleState"),
+  kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
+  kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
+  kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
+  kmzBuildingUseKmlBtn:$("kmzBuildingUseKmlBtn"), kmzBuildingDeleteBtn:$("kmzBuildingDeleteBtn"),
   dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"), bestTimeBar:$("bestTimeBar"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
@@ -3804,6 +3854,82 @@ function populateSelect(selectEl, items, labelFn){
 populateSelect(el.citySelect, CITIES, c=>c.name);
 populateSelect(el.sensor, SENSORS, s=>s.name);
 populateSelect(el.lp, LP_LEVELS, l=>l.name);
+
+// KMZ操作画面の初期化より前に状態を用意する。宣言前アクセスによる起動停止を防ぐ。
+let kmzBuildingModel=null;
+let kmzBuildingVisible=true;
+let kmzBuildingKmlLocation=null;
+let kmzBuildingSourceDataUrl="";
+let kmzBuildingRestoreToken=0;
+
+/* KMZ建物の読み込み・配置操作 */
+function setKmzBuildingStatus(message,type=""){
+  el.kmzBuildingStatus.textContent=message;el.kmzBuildingStatus.classList.toggle("ready",type==="ready");el.kmzBuildingStatus.classList.toggle("error",type==="error");
+}
+function refreshKmzBuildingControls(redraw=true){
+  el.kmzBuildingVisibleBtn.classList.toggle("active",kmzBuildingVisible);el.kmzBuildingVisibleState.textContent=kmzBuildingVisible?"ON":"OFF";
+  el.kmzBuildingScaleVal.textContent=`${(+el.kmzBuildingScale.value||1).toFixed(2)}倍`;el.kmzBuildingOpacityVal.textContent=`${Math.round(+el.kmzBuildingOpacity.value||100)}%`;
+  if(redraw&&typeof update==="function")update();
+}
+el.kmzBuildingSelectBtn.addEventListener("click",()=>{el.kmzBuildingInput.value="";el.kmzBuildingInput.click();});
+async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,sourceDataUrl=""}={}){
+  const entries=await readKmzEntries(arrayBuffer),decoder=new TextDecoder("utf-8");
+    const kmlName=[...entries.keys()].find(name=>name.toLowerCase()==="doc.kml")||[...entries.keys()].find(name=>name.toLowerCase().endsWith(".kml"));
+    let daeName=null,kmlText="";
+    if(kmlName){
+      kmlText=decoder.decode(entries.get(kmlName));kmzBuildingKmlLocation=parseKmlModelLocation(kmlText);
+      const kmlXml=new DOMParser().parseFromString(kmlText,"application/xml"),hrefNodes=xmlChildrenByLocalName(kmlXml,"href");
+      const href=(hrefNodes.find(node=>/\.dae\s*$/i.test(node.textContent||""))?.textContent||"").trim().replace(/^\.\//,"");
+      if(href){const base=kmlName.includes("/")?kmlName.slice(0,kmlName.lastIndexOf("/")+1):"";daeName=entries.has(href)?href:(entries.has(base+href)?base+href:null);}
+    }
+    if(!daeName)daeName=[...entries.keys()].find(name=>name.toLowerCase().endsWith(".dae"));
+    if(!daeName)throw new Error("KMZ内に.dae形式の3Dモデルが見つかりません。");
+    kmzBuildingModel=parseColladaBuilding(decoder.decode(entries.get(daeName)));kmzBuildingModel.fileName=fileName;kmzBuildingModel.daeName=daeName;
+    if(sourceDataUrl)kmzBuildingSourceDataUrl=sourceDataUrl;
+    if(applyKmlLocation&&kmzBuildingKmlLocation){
+      el.kmzBuildingLat.value=kmzBuildingKmlLocation.lat.toFixed(6);el.kmzBuildingLon.value=kmzBuildingKmlLocation.lon.toFixed(6);
+      if(Number.isFinite(kmzBuildingKmlLocation.altitude))el.kmzBuildingAltitude.value=kmzBuildingKmlLocation.altitude;
+      if(Number.isFinite(kmzBuildingKmlLocation.heading))el.kmzBuildingHeading.value=kmzBuildingKmlLocation.heading;
+    }
+    kmzBuildingVisible=true;
+    const size=`${kmzBuildingModel.width.toFixed(1)}×${kmzBuildingModel.depth.toFixed(1)}×高さ${kmzBuildingModel.height.toFixed(1)}m`;
+    const locationWarning=kmzBuildingKmlLocation?`／KMZ座標 ${kmzBuildingKmlLocation.lat.toFixed(6)}, ${kmzBuildingKmlLocation.lon.toFixed(6)}`:"／座標情報なし";
+    setKmzBuildingStatus(`${fileName}：${kmzBuildingModel.triangles.length.toLocaleString()}面、${size}${locationWarning}`,"ready");refreshKmzBuildingControls();
+    return kmzBuildingModel;
+}
+el.kmzBuildingInput.addEventListener("change",async()=>{
+  const file=el.kmzBuildingInput.files&&el.kmzBuildingInput.files[0];if(!file)return;
+  setKmzBuildingStatus(`${file.name} を読み込んでいます…`);
+  try{
+    const sourceDataUrl=await blobToDataUrl(file);
+    await loadKmzBuildingBytes(await file.arrayBuffer(),file.name,{applyKmlLocation:true,sourceDataUrl});
+  }catch(error){kmzBuildingModel=null;setKmzBuildingStatus(`読み込み失敗：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();}
+});
+el.kmzBuildingVisibleBtn.addEventListener("click",()=>{kmzBuildingVisible=!kmzBuildingVisible;refreshKmzBuildingControls();});
+function applyKmzPastedCoordinate(){
+  const text=String(el.kmzBuildingCoordinatePaste.value||"").trim();
+  // Googleマップの右クリックでコピーされる「緯度, 経度」を基本とし、全角記号や余分な文字も許容する。
+  const values=(text.replace(/[，、]/g,",").match(/[-+]?\d+(?:\.\d+)?/g)||[]).map(Number);
+  if(values.length<2||!Number.isFinite(values[0])||!Number.isFinite(values[1])||Math.abs(values[0])>90||Math.abs(values[1])>180){
+    setKmzBuildingStatus("座標を読み取れませんでした。Googleマップから「緯度, 経度」をコピーして貼り付けてください。","error");return false;
+  }
+  el.kmzBuildingLat.value=values[0].toFixed(6);el.kmzBuildingLon.value=values[1].toFixed(6);
+  const modelText=kmzBuildingModel?`${kmzBuildingModel.fileName}の座標を`:"建物の座標を";
+  setKmzBuildingStatus(`${modelText}${values[0].toFixed(6)}, ${values[1].toFixed(6)} に設定しました。`,kmzBuildingModel?"ready":"");
+  refreshKmzBuildingControls();return true;
+}
+el.kmzBuildingCoordinateApplyBtn.addEventListener("click",applyKmzPastedCoordinate);
+el.kmzBuildingCoordinatePaste.addEventListener("paste",()=>setTimeout(()=>applyKmzPastedCoordinate(),0));
+el.kmzBuildingCoordinatePaste.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();applyKmzPastedCoordinate();}});
+[el.kmzBuildingLat,el.kmzBuildingLon,el.kmzBuildingAltitude,el.kmzBuildingHeading].forEach(input=>input.addEventListener("input",()=>refreshKmzBuildingControls()));
+[el.kmzBuildingScale,el.kmzBuildingOpacity].forEach(input=>input.addEventListener("input",()=>refreshKmzBuildingControls()));
+el.kmzBuildingUseKmlBtn.addEventListener("click",()=>{
+  if(!kmzBuildingKmlLocation){setKmzBuildingStatus("このKMZには使用できる設置座標がありません。","error");return;}
+  el.kmzBuildingLat.value=kmzBuildingKmlLocation.lat.toFixed(6);el.kmzBuildingLon.value=kmzBuildingKmlLocation.lon.toFixed(6);
+  el.kmzBuildingAltitude.value=Number.isFinite(kmzBuildingKmlLocation.altitude)?kmzBuildingKmlLocation.altitude:0;el.kmzBuildingHeading.value=Number.isFinite(kmzBuildingKmlLocation.heading)?kmzBuildingKmlLocation.heading:0;refreshKmzBuildingControls();
+});
+el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzBuildingRestoreToken++;kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";setKmzBuildingStatus("建物を削除しました。別のKMZを読み込めます。");refreshKmzBuildingControls();});
+refreshKmzBuildingControls(false);
 
 /* 時刻スライダーの表示モード: 30時間(0:00〜翌6:00、3時間毎の目盛り) / 15時間(16:00〜翌7:00、1時間毎の目盛り) */
 let is15hMode=false;
@@ -6638,6 +6764,39 @@ async function persistPlanPhotoForLocation(location){
     location.photoExif=planSaveExistingPhotoRecord.exif||null;await saveObservingLocations();
   }
 }
+function captureKmzBuildingForPlan(){
+  if(!kmzBuildingModel||!kmzBuildingSourceDataUrl)return null;
+  const cfg=currentKmzBuildingSettings();
+  return {
+    version:1,fileName:kmzBuildingModel.fileName||"building.kmz",sourceDataUrl:kmzBuildingSourceDataUrl,
+    lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,heading:cfg.heading,scale:cfg.scale,opacity:cfg.opacity,visible:kmzBuildingVisible
+  };
+}
+async function restoreKmzBuildingFromPlan(saved){
+  const token=++kmzBuildingRestoreToken;
+  if(!saved||!String(saved.sourceDataUrl||"").startsWith("data:")){
+    kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";
+    setKmzBuildingStatus("この撮影計画にはKMZ建物が登録されていません。");refreshKmzBuildingControls();return false;
+  }
+  setKmzBuildingStatus(`${saved.fileName||"KMZ建物"} を撮影計画から復元しています…`);
+  try{
+    const response=await fetch(saved.sourceDataUrl),buffer=await response.arrayBuffer();
+    if(token!==kmzBuildingRestoreToken)return false;
+    await loadKmzBuildingBytes(buffer,saved.fileName||"building.kmz",{applyKmlLocation:false,sourceDataUrl:saved.sourceDataUrl});
+    if(token!==kmzBuildingRestoreToken)return false;
+    if(Number.isFinite(+saved.lat))el.kmzBuildingLat.value=(+saved.lat).toFixed(6);
+    if(Number.isFinite(+saved.lon))el.kmzBuildingLon.value=(+saved.lon).toFixed(6);
+    if(Number.isFinite(+saved.altitude))el.kmzBuildingAltitude.value=+saved.altitude;
+    if(Number.isFinite(+saved.heading))el.kmzBuildingHeading.value=+saved.heading;
+    if(Number.isFinite(+saved.scale))el.kmzBuildingScale.value=clamp(+saved.scale,+el.kmzBuildingScale.min,+el.kmzBuildingScale.max);
+    if(Number.isFinite(+saved.opacity))el.kmzBuildingOpacity.value=clamp(Math.round(+saved.opacity*100),+el.kmzBuildingOpacity.min,+el.kmzBuildingOpacity.max);
+    kmzBuildingVisible=saved.visible!==false;
+    setKmzBuildingStatus(`${saved.fileName||"KMZ建物"} を撮影計画から復元しました。`,"ready");refreshKmzBuildingControls();return true;
+  }catch(error){
+    if(token!==kmzBuildingRestoreToken)return false;
+    kmzBuildingModel=null;kmzBuildingSourceDataUrl="";setKmzBuildingStatus(`KMZ建物を復元できませんでした：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();return false;
+  }
+}
 async function registerCurrentObservingPlan(customTitle=""){
   const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)){alert("観測地点の緯度・経度を設定してください。");return null;}
@@ -6658,6 +6817,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     date:el.dateInput.value,timeMinutes:+el.timeSlider.value,is15hMode:is15hMode,
     focalLength:+el.focalLength.value,lensMode:mobileLensMode,
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
+    kmzBuilding:captureKmzBuildingForPlan(),
     updatedAt:Date.now()
   };
   let savedLocation=location;
@@ -6667,7 +6827,7 @@ async function registerCurrentObservingPlan(customTitle=""){
   renderSavedPlansList(el.planLoadSearch.value);
   return {location:savedLocation,updated:!!duplicate};
 }
-function applySavedObservingPlan(location){
+async function applySavedObservingPlan(location){
   if(!location) return false;
   activeLoadedPlanId=location.id;
   syncQuickPhotoButton(location);
@@ -6687,6 +6847,7 @@ function applySavedObservingPlan(location){
   if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
   if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
   if(location.orientation==="portrait"||location.orientation==="landscape") setOrientation(location.orientation); else update();
+  await restoreKmzBuildingFromPlan(location.kmzBuilding||null);
   scheduleSaveSettings();
   return true;
 }
@@ -8416,6 +8577,100 @@ let terrainSkylineYByX=null;
 // 別レイヤーのmeteorCanvasが同じ水面範囲だけをクリップして使う。
 let waterReflectionHorizonYByX=null;
 let meteorReflectionWaterPath=null;
+
+/* ===== KMZ / COLLADA 建物レイヤー =====
+   KMZは端末内で展開し、DAEの三角形メッシュを天球座標へ投影する。
+   既存のDEM・水域・富士山とはデータもCanvasも共有しない。 */
+function kmzReadU16(view,offset){return view.getUint16(offset,true);}
+function kmzReadU32(view,offset){return view.getUint32(offset,true);}
+async function kmzInflateRaw(bytes){
+  if(typeof DecompressionStream!=="function") throw new Error("このブラウザはKMZの展開に対応していません。Chrome／Edge／Safariの最新版でお試しください。");
+  const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function readKmzEntries(arrayBuffer){
+  const bytes=new Uint8Array(arrayBuffer),view=new DataView(arrayBuffer);let eocd=-1;
+  for(let i=Math.max(0,bytes.length-65557);i<=bytes.length-22;i++) if(kmzReadU32(view,i)===0x06054b50) eocd=i;
+  if(eocd<0) throw new Error("KMZのZIP情報を確認できませんでした。");
+  const count=kmzReadU16(view,eocd+10),centralOffset=kmzReadU32(view,eocd+16),decoder=new TextDecoder("utf-8");
+  const entries=new Map();let cursor=centralOffset;
+  for(let n=0;n<count;n++){
+    if(kmzReadU32(view,cursor)!==0x02014b50) throw new Error("KMZのファイル一覧が壊れています。");
+    const method=kmzReadU16(view,cursor+10),compressedSize=kmzReadU32(view,cursor+20),nameLength=kmzReadU16(view,cursor+28);
+    const extraLength=kmzReadU16(view,cursor+30),commentLength=kmzReadU16(view,cursor+32),localOffset=kmzReadU32(view,cursor+42);
+    const name=decoder.decode(bytes.slice(cursor+46,cursor+46+nameLength));
+    if(kmzReadU32(view,localOffset)!==0x04034b50) throw new Error("KMZ内ファイルの位置情報が壊れています。");
+    const localNameLength=kmzReadU16(view,localOffset+26),localExtraLength=kmzReadU16(view,localOffset+28);
+    const start=localOffset+30+localNameLength+localExtraLength,compressed=bytes.slice(start,start+compressedSize);
+    let data;if(method===0)data=compressed;else if(method===8)data=await kmzInflateRaw(compressed);else throw new Error(`未対応のKMZ圧縮方式です（${method}）。`);
+    entries.set(name.replace(/\\/g,"/"),data);cursor+=46+nameLength+extraLength+commentLength;
+  }
+  return entries;
+}
+function xmlChildrenByLocalName(node,name){return [...node.getElementsByTagNameNS("*",name)];}
+function xmlFirstByLocalName(node,name){return xmlChildrenByLocalName(node,name)[0]||null;}
+function xmlNumbers(text){return String(text||"").trim().split(/\s+/).filter(Boolean).map(Number);}
+function parseKmlModelLocation(kmlText){
+  const xml=new DOMParser().parseFromString(kmlText,"application/xml"),model=xmlFirstByLocalName(xml,"Model");if(!model)return null;
+  const number=name=>{const node=xmlFirstByLocalName(model,name);return node?Number(node.textContent):NaN;};
+  const location={lat:number("latitude"),lon:number("longitude"),altitude:number("altitude"),heading:number("heading")};
+  return Number.isFinite(location.lat)&&Number.isFinite(location.lon)?location:null;
+}
+function parseColladaBuilding(daeText){
+  const xml=new DOMParser().parseFromString(daeText,"application/xml");
+  if(xml.getElementsByTagName("parsererror").length) throw new Error("DAEを解析できませんでした。");
+  const asset=xmlFirstByLocalName(xml,"asset"),unitNode=asset&&xmlFirstByLocalName(asset,"unit"),unitMeter=unitNode&&Number(unitNode.getAttribute("meter"));
+  const unit=Number.isFinite(unitMeter)&&unitMeter>0?unitMeter:1,upAxis=((asset&&xmlFirstByLocalName(asset,"up_axis"))?.textContent||"Y_UP").trim().toUpperCase();
+  const triangles=[];
+  for(const geometry of xmlChildrenByLocalName(xml,"geometry")){
+    const mesh=xmlFirstByLocalName(geometry,"mesh");if(!mesh)continue;const sources=new Map(),verticesMap=new Map();
+    for(const source of xmlChildrenByLocalName(mesh,"source")){const array=xmlFirstByLocalName(source,"float_array");if(array)sources.set(source.getAttribute("id"),xmlNumbers(array.textContent));}
+    for(const vertices of xmlChildrenByLocalName(mesh,"vertices")){
+      const position=xmlChildrenByLocalName(vertices,"input").find(input=>(input.getAttribute("semantic")||"").toUpperCase()==="POSITION");
+      if(position)verticesMap.set(vertices.getAttribute("id"),(position.getAttribute("source")||"").replace(/^#/,""));
+    }
+    for(const triNode of xmlChildrenByLocalName(mesh,"triangles")){
+      const inputs=xmlChildrenByLocalName(triNode,"input"),vertexInput=inputs.find(input=>(input.getAttribute("semantic")||"").toUpperCase()==="VERTEX");if(!vertexInput)continue;
+      const stride=Math.max(1,...inputs.map(input=>(Number(input.getAttribute("offset"))||0)+1)),vertexOffset=Number(vertexInput.getAttribute("offset"))||0;
+      const vertexSource=(vertexInput.getAttribute("source")||"").replace(/^#/,""),positions=sources.get(verticesMap.get(vertexSource));if(!positions)continue;
+      const indices=xmlNumbers((xmlFirstByLocalName(triNode,"p")||{}).textContent);
+      const vertexAt=index=>{const x=(positions[index*3]||0)*unit,y=(positions[index*3+1]||0)*unit,z=(positions[index*3+2]||0)*unit;if(upAxis==="Z_UP")return[x,y,z];if(upAxis==="X_UP")return[y,z,x];return[x,z,y];};
+      for(let i=0;i+stride*3<=indices.length;i+=stride*3){const tri=[vertexAt(indices[i+vertexOffset]),vertexAt(indices[i+stride+vertexOffset]),vertexAt(indices[i+stride*2+vertexOffset])];if(tri.flat().every(Number.isFinite))triangles.push(tri);}
+    }
+  }
+  if(!triangles.length)throw new Error("DAE内に表示可能な三角形メッシュがありません。");
+  const all=triangles.flat(),minX=Math.min(...all.map(v=>v[0])),maxX=Math.max(...all.map(v=>v[0])),minY=Math.min(...all.map(v=>v[1])),maxY=Math.max(...all.map(v=>v[1])),minZ=Math.min(...all.map(v=>v[2])),maxZ=Math.max(...all.map(v=>v[2]));
+  const cx=(minX+maxX)/2,cy=(minY+maxY)/2;triangles.forEach(tri=>tri.forEach(v=>{v[0]-=cx;v[1]-=cy;v[2]-=minZ;}));
+  return{triangles,width:maxX-minX,depth:maxY-minY,height:maxZ-minZ,vertexCount:all.length};
+}
+function currentKmzBuildingSettings(){return{lat:+el.kmzBuildingLat.value,lon:+el.kmzBuildingLon.value,altitude:+el.kmzBuildingAltitude.value||0,heading:+el.kmzBuildingHeading.value||0,scale:+el.kmzBuildingScale.value||1,opacity:(+el.kmzBuildingOpacity.value||100)/100};}
+function kmzDestinationPoint(lat,lon,bearing,distanceKm){
+  const d=distanceKm/6371,b=bearing*D2R,p=lat*D2R,l=lon*D2R;
+  const p2=Math.asin(Math.sin(p)*Math.cos(d)+Math.cos(p)*Math.sin(d)*Math.cos(b));
+  const l2=l+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p),Math.cos(d)-Math.sin(p)*Math.sin(p2));
+  return{lat:p2*R2D,lon:((l2*R2D+540)%360)-180};
+}
+function drawKmzBuildingLayer(targetCtx,s,toXY,W,H){
+  if(!kmzBuildingVisible||!kmzBuildingModel||arActive)return;const cfg=currentKmzBuildingSettings();
+  if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
+  if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
+  const eye=(realTerrainState.observerElevation||0)+1.6,earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
+  for(const triangle of kmzBuildingModel.triangles){
+    const points=[];let depth=0,valid=true;
+    for(const vertex of triangle){
+      const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
+      const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
+      const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
+      const altitude=Math.atan2(cfg.altitude+vertex[2]*cfg.scale-eye-curvature,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
+      if(!point||!point.every(Number.isFinite)){valid=false;break;}points.push(point);depth+=distanceM;
+    }
+    if(valid)projected.push({points,depth:depth/3});
+  }
+  projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52],rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)));
+  targetCtx.save();targetCtx.globalAlpha=cfg.opacity;targetCtx.fillStyle=`rgb(${rgb.join(",")})`;targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
+  for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
+  targetCtx.restore();
+}
 function buildSkylineYArray(samples,W,H){
   if(!samples||samples.length<2) return null;
   const sorted=[...samples].sort((a,b)=>a[0]-b[0]);
@@ -9403,6 +9658,10 @@ function drawPhoto(ctx,s){
   // 全ての天空オブジェクトを描き終えてから大気ベールを通す。
   // これにより水平線近くの天の川や恒星も、色付きながら自然に見えにくくなる。
   drawForegroundAtmosphericVeil(ctx,false);
+
+  // KMZ建物を地形より先に描く。続いて描かれるDEM地形が建物の下部を自然に隠し、
+  // 山頂・稜線より上へ出た部分だけが天の川や空の手前に残る。
+  drawKmzBuildingLayer(ctx,s,toXY,W,H);
 
   // 地平線シルエット (方位に応じてスクロールする360度パノラマ)
   // ARモード中は、実際のカメラ映像に映る地面がそのまま見えるように、この暗いシルエットは描画しない
