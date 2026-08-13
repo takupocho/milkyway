@@ -1241,6 +1241,19 @@
   .plan-modal-actions{display:flex;justify-content:flex-end;gap:7px;}
   .plan-modal-actions button{min-height:34px;padding:7px 13px;}
   .plan-modal-actions .primary{border-color:var(--core-amber);color:var(--core-amber);}
+  .terrain-topview-overlay{display:none;position:fixed;inset:0;z-index:10060;align-items:center;justify-content:center;padding:14px;background:rgba(2,5,14,.88);box-sizing:border-box;}
+  .terrain-topview-overlay.show{display:flex;}
+  .terrain-topview-panel{width:min(920px,96vw);max-height:94vh;overflow:auto;padding:15px;background:#10152b;border:1px solid #445073;border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.55);box-sizing:border-box;}
+  .terrain-topview-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;}
+  .terrain-topview-header h3{margin:0;color:#e2efff;font-size:16px;}
+  .terrain-topview-close{width:36px;height:36px;flex:none;padding:0;border-radius:50%;font-size:20px;}
+  .terrain-topview-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px;color:#c8d4e8;font-size:12px;}
+  .terrain-topview-toolbar select{width:auto;min-width:130px;}
+  .terrain-topview-canvas-wrap{position:relative;width:min(820px,90vw);aspect-ratio:1;margin:auto;background:#080d1d;border:1px solid #34405f;border-radius:8px;overflow:hidden;}
+  #terrainTopViewCanvas{display:block;width:100%;height:100%;}
+  .terrain-topview-legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:9px;color:#bfc9da;font-size:11px;}
+  .terrain-topview-legend span::before{content:"";display:inline-block;width:11px;height:11px;margin-right:5px;border-radius:2px;vertical-align:-1px;background:var(--legend-color);}
+  .terrain-topview-status{margin:8px 0 0;color:#aebbd0;font:500 11px/1.55 'Inter',sans-serif;}
   .plan-search{width:100%!important;box-sizing:border-box;margin-bottom:11px;}
   .plan-data-tools{display:flex;gap:7px;margin:-3px 0 11px;}
   .plan-data-tools button{flex:1;min-height:34px;padding:6px 10px;font-size:10px;}
@@ -2608,8 +2621,17 @@
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
           <button id="realSunMoonBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>☀️🌙 太陽・月をリアル表示する</span><span id="realSunMoonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">太陽・月を、実際の視角の大きさとレンズの投影に基づいて描画します。広角レンズで画面の端に来ると、実際のカメラと同じように楕円状に歪んで見えるようになります。OFFの場合は従来通りのシンプルな円で表示します。</p>
+          <button id="vignetteBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>◉ 周辺減光</span><span id="vignetteState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+          <p class="map-hint" style="margin-top:8px;">画面の周辺を少し暗くして、写真らしいレンズの周辺減光を表現します。OFFにすると画面全体を均一な明るさで表示します。</p>
           <button id="realMilkyWayBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌌 天の川をリアル表示する</span><span id="realMilkyWayState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">ESOの全天実写パノラマを日時・方位・画角に合わせて投影し、実際の暗黒帯や銀河中心の形を再現します。画像: ESO/S. Brunier (CC BY 4.0)</p>
+          <div class="field" style="margin-top:8px;">
+            <label class="top">リアル天の川の明るさ <span class="val mono" id="realMilkyWayBrightnessVal">3（明るい）</span></label>
+            <input type="range" id="realMilkyWayBrightnessSlider" min="1" max="3" step="1" value="3">
+          </div>
+          <p class="map-hint" style="margin-top:4px;">リアル表示した空の天の川だけを3段階で調整します。水面に映る天の川の明るさには影響しません。</p>
+          <button id="terrainTopViewBtn" type="button" style="margin-top:8px;">🧭 近距離地形を上から確認（診断）</button>
+          <p class="map-hint" style="margin-top:4px;">現在取得済みのDEM地形メッシュを、観測地点の真上から表示します。陸・水域・DEM欠損・撮影方向を確認するための一時的な診断機能です。</p>
           <div class="field" style="margin-top:8px;">
             <label class="top">天の川模様の位置調整・左右(度) <span class="val mono" id="mwTextureOffsetVal">0°</span></label>
             <input type="range" id="mwTextureOffsetSlider" min="-90" max="90" step="1" value="0">
@@ -2728,6 +2750,7 @@
                 <button id="popupMountainNamesBtn" type="button" class="constellation-toggle-btn active">山名表示</button>
                 <div class="display-popup-section-title">シミュレーション画面</div>
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
+                <button id="popupVignetteBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">周辺減光</button>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
                 <button id="popupMilkyWayPositionTrailBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">天の川の位置軌跡</button>
                 <button id="popupConstellationLinesBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">星座線</button>
@@ -2870,6 +2893,15 @@
                     <div id="planPhotoStatus" class="plan-photo-status" aria-live="polite"></div>
                   </div>
                   <div class="plan-modal-actions"><button id="planSaveCancelBtn" type="button">キャンセル</button><button id="planSaveRunBtn" type="button" class="primary">この内容を保存</button></div>
+                </section>
+              </div>
+              <div id="terrainTopViewOverlay" class="terrain-topview-overlay" aria-hidden="true">
+                <section class="terrain-topview-panel" role="dialog" aria-modal="true" aria-labelledby="terrainTopViewTitle">
+                  <div class="terrain-topview-header"><h3 id="terrainTopViewTitle">近距離地形・上空診断マップ</h3><button id="terrainTopViewCloseBtn" class="terrain-topview-close" type="button" aria-label="閉じる">×</button></div>
+                  <div class="terrain-topview-toolbar"><span>表示範囲：撮影位置から半径50m</span><span>北が上・中央が観測地点</span></div>
+                  <div class="terrain-topview-canvas-wrap"><canvas id="terrainTopViewCanvas" width="900" height="900"></canvas></div>
+                  <div class="terrain-topview-legend"><span style="--legend-color:#536d3d">陸地</span><span style="--legend-color:#245fa1">水域</span><span style="--legend-color:#b94854">DEM欠損</span><span style="--legend-color:#e7b74d">水陸混在</span><span style="--legend-color:#ffffff">観測地点</span><span style="--legend-color:#ff5b9b">撮影画角</span></div>
+                  <p id="terrainTopViewStatus" class="terrain-topview-status"></p>
                 </section>
               </div>
               <div id="planLoadOverlay" class="plan-modal-overlay" aria-hidden="true">
@@ -3122,6 +3154,16 @@ function moonBrightLimbPositionAngle(sunRaDeg,sunDecDeg,moonRaDeg,moonDecDeg){
   const y=Math.cos(sunDec)*Math.sin(dRa);
   const x=Math.sin(sunDec)*Math.cos(moonDec)-Math.cos(sunDec)*Math.sin(moonDec)*Math.cos(dRa);
   return norm360(Math.atan2(y,x)*R2D);
+}
+// 月中心から、輝面中心（太陽方向）へごく小さく進んだ赤経・赤緯を求める。
+// 平面上で方位・高度を線形補間せず、天球上の位置角に沿って移動するため、
+// 月と太陽が離れている場合や天頂・方位0度付近でも方向が破綻しない。
+function moonBrightLimbDirectionRaDec(sunRaDeg,sunDecDeg,moonRaDeg,moonDecDeg,offsetDeg=.12){
+  const pa=moonBrightLimbPositionAngle(sunRaDeg,sunDecDeg,moonRaDeg,moonDecDeg)*D2R;
+  const dec1=moonDecDeg*D2R,rho=offsetDeg*D2R;
+  const dec2=Math.asin(Math.sin(dec1)*Math.cos(rho)+Math.cos(dec1)*Math.sin(rho)*Math.cos(pa));
+  const dRa=Math.atan2(Math.sin(pa)*Math.sin(rho)*Math.cos(dec1),Math.cos(rho)-Math.sin(dec1)*Math.sin(dec2));
+  return {ra:norm360(moonRaDeg+dRa*R2D),dec:dec2*R2D};
 }
 function parallacticAngleDeg(latDeg,decDeg,hourAngleDeg){
   const lat=latDeg*D2R, dec=decDeg*D2R, ha=hourAngleDeg*D2R;
@@ -3805,7 +3847,10 @@ const el={
   starOpacitySlider:$("starOpacitySlider"), starOpacityVal:$("starOpacityVal"),
   showBelowHorizonBtn:$("showBelowHorizonBtn"), showBelowHorizonState:$("showBelowHorizonState"),
   realSunMoonBtn:$("realSunMoonBtn"), realSunMoonState:$("realSunMoonState"),
+  vignetteBtn:$("vignetteBtn"), vignetteState:$("vignetteState"),
   realMilkyWayBtn:$("realMilkyWayBtn"), realMilkyWayState:$("realMilkyWayState"),
+  realMilkyWayBrightnessSlider:$("realMilkyWayBrightnessSlider"), realMilkyWayBrightnessVal:$("realMilkyWayBrightnessVal"),
+  terrainTopViewBtn:$("terrainTopViewBtn"), terrainTopViewOverlay:$("terrainTopViewOverlay"), terrainTopViewCloseBtn:$("terrainTopViewCloseBtn"), terrainTopViewRange:$("terrainTopViewRange"), terrainTopViewCanvas:$("terrainTopViewCanvas"), terrainTopViewStatus:$("terrainTopViewStatus"),
   nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
   mwTextureOffsetSlider:$("mwTextureOffsetSlider"), mwTextureOffsetVal:$("mwTextureOffsetVal"),
@@ -3830,7 +3875,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4915,12 +4960,31 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
 });
 /* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
 let realMilkyWayEnabled=false;
+// 空に表示するリアル天の川だけの3段階明るさ。水面リフレには適用しない。
+let realMilkyWayBrightnessLevel=3;
+const REAL_MW_BRIGHTNESS_LABELS={1:"1（控えめ）",2:"2（標準）",3:"3（明るい）"};
+const REAL_MW_BRIGHTNESS_MULTIPLIERS={1:.42,2:.70,3:1};
+function syncRealMilkyWayBrightnessControl(){
+  realMilkyWayBrightnessLevel=clamp(Math.round(+el.realMilkyWayBrightnessSlider.value||3),1,3);
+  el.realMilkyWayBrightnessSlider.value=realMilkyWayBrightnessLevel;
+  el.realMilkyWayBrightnessVal.textContent=REAL_MW_BRIGHTNESS_LABELS[realMilkyWayBrightnessLevel];
+}
 /* 太陽・月を実際の視角の大きさ・レンズ投影(方位角・仰角による歪み)で表示するかのON/OFF。デフォルトOFF。 */
 let realSunMoonEnabled=false;
 el.realSunMoonBtn.addEventListener("click",()=>{
   realSunMoonEnabled=!realSunMoonEnabled;
   el.realSunMoonBtn.classList.toggle("active",realSunMoonEnabled);
   el.realSunMoonState.textContent=realSunMoonEnabled ? "ON" : "OFF";
+  update();
+  syncDisplayPopupControls();
+  scheduleSaveSettings();
+});
+/* 写真らしい周辺減光のON/OFF。従来の見た目を維持するため初期値はON。 */
+let vignetteEnabled=true;
+el.vignetteBtn.addEventListener("click",()=>{
+  vignetteEnabled=!vignetteEnabled;
+  el.vignetteBtn.classList.toggle("active",vignetteEnabled);
+  el.vignetteState.textContent=vignetteEnabled?"ON":"OFF";
   update();
   syncDisplayPopupControls();
   scheduleSaveSettings();
@@ -4940,6 +5004,20 @@ el.realMilkyWayBtn.addEventListener("click",()=>{
   syncDisplayPopupControls();
   scheduleSaveSettings();
 });
+el.realMilkyWayBrightnessSlider.addEventListener("input",()=>{
+  syncRealMilkyWayBrightnessControl();
+  update();
+  scheduleSaveSettings();
+});
+syncRealMilkyWayBrightnessControl();
+function setTerrainTopViewOpen(open){
+  el.terrainTopViewOverlay.classList.toggle("show",!!open);
+  el.terrainTopViewOverlay.setAttribute("aria-hidden",open?"false":"true");
+  if(open) drawTerrainTopView();
+}
+el.terrainTopViewBtn.addEventListener("click",()=>setTerrainTopViewOpen(true));
+el.terrainTopViewCloseBtn.addEventListener("click",()=>setTerrainTopViewOpen(false));
+el.terrainTopViewOverlay.addEventListener("click",event=>{if(event.target===el.terrainTopViewOverlay)setTerrainTopViewOpen(false);});
 el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
   update();
@@ -5022,6 +5100,8 @@ el.normalStarOpacitySlider.addEventListener("input",()=>{
 function syncDisplayPopupControls(){
   if(!el.popupRealMilkyWayBtn) return;
   el.popupRealSunMoonBtn.classList.toggle("active",realSunMoonEnabled);
+  el.popupVignetteBtn.classList.toggle("active",vignetteEnabled);
+  el.popupVignetteBtn.setAttribute("aria-pressed",String(vignetteEnabled));
   el.popupRealMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
   el.popupMilkyWayPositionTrailBtn.classList.toggle("active",milkyWayPositionTrailVisible);
   el.popupMilkyWayPositionTrailBtn.setAttribute("aria-pressed",String(milkyWayPositionTrailVisible));
@@ -5050,6 +5130,7 @@ function syncDisplayPopupControls(){
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
 el.popupRealSunMoonBtn.addEventListener("click",()=>el.realSunMoonBtn.click());
+el.popupVignetteBtn.addEventListener("click",()=>el.vignetteBtn.click());
 el.popupRealMilkyWayBtn.addEventListener("click",()=>el.realMilkyWayBtn.click());
 el.popupMilkyWayPositionTrailBtn.addEventListener("click",()=>{
   milkyWayPositionTrailVisible=!milkyWayPositionTrailVisible;
@@ -6139,7 +6220,9 @@ function collectPersistedSettings(){
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
     realMilkyWayEnabled:realMilkyWayEnabled,
+    realMilkyWayBrightnessLevel:realMilkyWayBrightnessLevel,
     realSunMoonEnabled:realSunMoonEnabled,
+    vignetteEnabled:vignetteEnabled,
     milkyWayPositionTrailVisible:milkyWayPositionTrailVisible,
     constellationLinesVisible:constellationLinesVisible,
     sunPathVisible:sunPathVisible,
@@ -6200,9 +6283,15 @@ async function loadPersistedSettings(){
     el.realMilkyWayBtn.classList.toggle("active",realMilkyWayEnabled);
     el.realMilkyWayState.textContent=realMilkyWayEnabled ? "ON" : "OFF";
     document.body.classList.toggle("real-mw-credit-visible",realMilkyWayEnabled);
+    realMilkyWayBrightnessLevel=clamp(Math.round(+(s.realMilkyWayBrightnessLevel??3)),1,3);
+    el.realMilkyWayBrightnessSlider.value=realMilkyWayBrightnessLevel;
+    syncRealMilkyWayBrightnessControl();
     realSunMoonEnabled=!!s.realSunMoonEnabled;
     el.realSunMoonBtn.classList.toggle("active",realSunMoonEnabled);
     el.realSunMoonState.textContent=realSunMoonEnabled ? "ON" : "OFF";
+    vignetteEnabled=s.vignetteEnabled!==false;
+    el.vignetteBtn.classList.toggle("active",vignetteEnabled);
+    el.vignetteState.textContent=vignetteEnabled?"ON":"OFF";
     milkyWayPositionTrailVisible=s.milkyWayPositionTrailVisible!==false;
     constellationLinesVisible=s.constellationLinesVisible!==false;
     sunPathVisible=s.sunPathVisible!==false;
@@ -7563,6 +7652,59 @@ function terrainDestination(lat,lon,bearingDeg,distanceKm){
   const l2=l1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));
   return [p2*R2D,((l2*R2D+540)%360)-180];
 }
+// 取得済み近距離メッシュを北上固定の平面図として描く診断表示。
+// シミュレーション用データを読むだけで、地形・水域判定には一切書き戻さない。
+function drawTerrainTopView(){
+  const canvas=el.terrainTopViewCanvas,ctx=canvas&&canvas.getContext("2d");
+  if(!ctx) return;
+  const W=canvas.width,H=canvas.height,cx=W/2,cy=H/2;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle="#080d1d";ctx.fillRect(0,0,W,H);
+  const rangeKm=.05;
+  const radius=Math.min(W,H)*.455,scale=radius/rangeKm;
+  const grid=realTerrainState.nearSurfaceGrid;
+  const toMap=(az,distanceKm)=>[cx+Math.sin(az*D2R)*distanceKm*scale,cy-Math.cos(az*D2R)*distanceKm*scale];
+  // 距離リングと方位線。
+  ctx.save();ctx.strokeStyle="rgba(145,164,196,.18)";ctx.lineWidth=1;
+  const rings=[.01,.02,.03,.04,.05];
+  rings.forEach(distance=>{ctx.beginPath();ctx.arc(cx,cy,distance*scale,0,Math.PI*2);ctx.stroke();});
+  for(let az=0;az<360;az+=30){const p=toMap(az,rangeKm);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p[0],p[1]);ctx.stroke();}
+  ctx.restore();
+  if(!grid||!grid.length||!grid.some(row=>row&&row.length)){
+    ctx.fillStyle="#dce6f5";ctx.font="600 18px Inter,sans-serif";ctx.textAlign="center";ctx.fillText("近距離地形データを取得中です",cx,cy);
+    el.terrainTopViewStatus.textContent="地形データの読み込み完了後に、もう一度開いてください。";return;
+  }
+  let landCells=0,waterCells=0,mixedCells=0,noDataCells=0;
+  const ringCount=Math.max(...grid.map(row=>row?row.length:0));
+  // 遠いセルから描き、観測地点に近いセルを上へ重ねる。
+  for(let d=ringCount-2;d>=0;d--){
+    for(let az=0;az<360;az++){
+      const next=(az+1)%360;
+      const p00=grid[az]?.[d],p01=grid[az]?.[d+1],p10=grid[next]?.[d],p11=grid[next]?.[d+1];
+      if(!p00||!p01||!p10||!p11||p00.distanceKm>rangeKm) continue;
+      const vertices=[p00,p10,p11,p01],waterCount=vertices.filter(point=>point.water).length;
+      const noDataCount=vertices.filter(point=>point.baseNoData).length;
+      let color;
+      if(waterCount>0&&waterCount<4){color="#e7b74d";mixedCells++;}
+      else if(noDataCount===4){color="#b94854";noDataCells++;}
+      else if(waterCount===4){color="#245fa1";waterCells++;}
+      else{color="#536d3d";landCells++;}
+      const pts=[toMap(az,p00.distanceKm),toMap(next,p10.distanceKm),toMap(next,Math.min(p11.distanceKm,rangeKm)),toMap(az,Math.min(p01.distanceKm,rangeKm))];
+      ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)ctx.lineTo(pts[i][0],pts[i][1]);ctx.closePath();
+      ctx.fillStyle=color;ctx.fill();ctx.strokeStyle="rgba(8,13,29,.28)";ctx.lineWidth=.45;ctx.stroke();
+    }
+  }
+  // 現在の撮影方向と水平画角。
+  const facing=state?state.facingAz:+el.facingAz.value;
+  const fov=state?state.fovH:60,halfFov=Math.min(89,fov/2);
+  const left=toMap(norm360(facing-halfFov),rangeKm),right=toMap(norm360(facing+halfFov),rangeKm),center=toMap(facing,rangeKm);
+  ctx.save();ctx.fillStyle="rgba(255,75,148,.10)";ctx.strokeStyle="#ff5b9b";ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(left[0],left[1]);ctx.arc(cx,cy,radius,(facing-halfFov-90)*D2R,(facing+halfFov-90)*D2R);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(center[0],center[1]);ctx.stroke();ctx.restore();
+  ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#11182b";ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle="#dce7fa";ctx.font="700 14px Inter,sans-serif";ctx.textAlign="center";ctx.fillText("北",cx,20);
+  ctx.textAlign="left";ctx.fillText("西",12,cy+5);ctx.textAlign="right";ctx.fillText("東",W-12,cy+5);ctx.textAlign="center";ctx.fillText("南",cx,H-10);
+  el.terrainTopViewStatus.textContent=`表示半径 ${Math.round(rangeKm*1000)}m｜陸 ${landCells}セル｜水域 ${waterCells}セル｜水陸混在 ${mixedCells}セル｜DEM欠損 ${noDataCells}セル｜撮影方位 ${Math.round(facing)}°・水平画角 ${Math.round(fov)}°`;
+}
 function terrainTilePoint(lat,lon,z){
   const n=2**z,clampedLat=clamp(lat,-85.05112878,85.05112878);
   const xf=(lon+180)/360*n;
@@ -7735,6 +7877,22 @@ function pointInWaterRings(lat,lon,polygons){
     if(!inHole) return true;
   }
   return false;
+}
+// 観測地点の一点だけでは、GPS誤差や海岸線の丸めで水陸が反転しやすい。
+// 中心と周囲2/4/7/12mを調べ、中心判定と近傍多数決を別々に保持する。
+function classifyObserverWaterNeighborhood(lat,lon,classifier){
+  if(typeof classifier!=="function") return {available:false,center:false,ratio:0,water:false};
+  let total=0,waterCount=0;
+  const center=!!classifier(lat,lon);total++;if(center)waterCount++;
+  const radiiM=[2,4,7,12],azimuths=[0,45,90,135,180,225,270,315];
+  radiiM.forEach(radiusM=>azimuths.forEach(az=>{
+    const point=terrainDestination(lat,lon,az,radiusM/1000);
+    total++;if(classifier(point[0],point[1]))waterCount++;
+  }));
+  const ratio=total?waterCount/total:0;
+  // 中心点が明確に水なら即時採用。中心が境界の陸側でも、周囲の2/3以上が
+  // 水ならGPS・形状誤差とみなし水上扱いにする。半々の波打ち際は陸を維持する。
+  return {available:true,center,ratio,water:center||ratio>=.67};
 }
 // 湖岸から少し離れた撮影地点や、画面内の池・貯水池も拾えるよう半径5kmを取得する。
 // 結果は位置を丸めたキーでキャッシュするため、同じ地域での再照会は発生しない。
@@ -8326,7 +8484,7 @@ async function buildRealTerrainProfile(lat,lon,token){
       if(layer.profile[az]>WATER_MAX_VISIBLE_ALT_DEG) layer.waterProfile[az]=0;
     }
   });
-  return {profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid};
+  return {profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,observerWaterNearby:observerAtSea,waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid};
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
 // Overpass APIの応答には数秒〜十数秒かかることがあるため、地形本体の描画は待たずに行い、
@@ -8346,6 +8504,9 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       setExternalDataStatus("water","error","通信エラー");
       return;
     } // nullは通信失敗。空配列は「水域なし」という有効な取得結果として処理する。
+    const osmObserverWater=classifyObserverWaterNeighborhood(lat,lon,(pLat,pLon)=>pointInWaterRings(pLat,pLon,rings));
+    resultObj.observerWaterNearby=!!resultObj.observerAtSea||osmObserverWater.water;
+    resultObj.observerWaterEvidence={osm:osmObserverWater,coastline:null};
     const osmBandProfiles=computeOsmWaterFractionByBand(lat,lon,LAND_WATER_MAX_KM,rings);
     const osmSegments=computeOsmWaterSegments(lat,lon,LAND_WATER_MAX_KM,rings);
     const fallbackNear=(resultObj.waterNearKm||[]).slice();
@@ -8394,6 +8555,9 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       const classifierInfo=createCoastlineSeaClassifier(lat,lon,coastlineWays);
       if(classifierInfo.valid){
         coastlineClassifier=classifierInfo.classify;
+        const coastlineObserverWater=classifyObserverWaterNeighborhood(lat,lon,coastlineClassifier);
+        resultObj.observerWaterEvidence.coastline=coastlineObserverWater;
+        resultObj.observerWaterNearby=!!resultObj.observerAtSea||osmObserverWater.water||coastlineObserverWater.water;
         coastlineSegments=computeCoastlineSeaSegments(lat,lon,coastlineClassifier);
         // 最大5kmまでに連続した海側区間がある方位を、背景水面専用の情報として保持する。
         // terrainLayers.waterProfileへは入れないため、海岸沿いの山・岬・山裾の形を変更しない。
@@ -8924,7 +9088,9 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
       // 天の川以外の透明化と端のフェードは画像の各画素に焼き込み済み。
       // 水平線の上下でもメッシュ単位の透明度変更は行わない。南半球の透明度は、この後に描く
       // 地景レイヤーの連続したマスクへ一元化し、水平線付近の三角形・段差を防ぐ。
-      ctx.globalAlpha=clamp(vis*1.08,0,1);
+      // 3段階調整は空の実写天の川だけへ適用する。反射側の描画処理は独立しているため変化しない。
+      const realMwBrightness=REAL_MW_BRIGHTNESS_MULTIPLIERS[realMilkyWayBrightnessLevel]||1;
+      ctx.globalAlpha=clamp(vis*1.08*realMwBrightness,0,1);
       // mwTextureLOffsetDeg / mwTextureBOffsetDeg: 実写パノラマ画像の「どのピクセルが
       // 銀河経度・緯度のどこか」という対応付けをスライダーでさらに微調整するためのオフセット。
       // 基準となるキャリブレーション値(左右-3°・上下+2°)は下のMW_TEXTURE_BASE_L/Bとして
@@ -9407,18 +9573,22 @@ function drawPhoto(ctx,s){
       g.addColorStop(1,`rgba(${moonAtmosphereColor},0)`);
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
 
-      // 輝面(明るく光っている側)は、定義上「太陽がある方向」を向く。これを複雑な球面三角法の
-      // 組み合わせ(位置角・視差角)で求めるとどこかの符号を間違えるリスクが高いため、
-      // より確実な方法として、月から見て太陽がある方向を実際の投影(toXY)で直接求める。
-      // 太陽までの角度のごく一部(3%)だけ進んだ点を使うことで、月のすぐ近くの
-      // 局所的な向き(レンズ歪みの影響も含めて、その場所で実際に見える通りの向き)を得る。
-      let dAzToSun=norm360(s.sunAltAz.az-s.moonAltAz.az); if(dAzToSun>180) dAzToSun-=360;
-      const sunDirAz=norm360(s.moonAltAz.az+dAzToSun*0.03);
-      const sunDirAlt=s.moonAltAz.alt+(s.sunAltAz.alt-s.moonAltAz.alt)*0.03;
-      const pSunDir=toXY(sunDirAz,sunDirAlt);
-      // drawMoonPhaseShape()は回転0の状態で右側(角度0)が輝面になるため、
-      // 太陽方向の角度をそのままctx.rotate()に渡せば、輝面が太陽の方向を向く。
-      const moonRotationRad=pSunDir ? Math.atan2(pSunDir[1]-y,pSunDir[0]-x) : 0;
+      // 天球上の正確な輝面位置角から月のすぐ横の基準点を作り、同じレンズ投影へ通す。
+      // 投影後のベクトルを、下で使用する月の楕円変形行列のローカル座標へ逆変換してから
+      // 回転角を決める。これにより通常・広角・魚眼のすべてで輝面が太陽側を向く。
+      const limbRaDec=moonBrightLimbDirectionRaDec(s.sun.ra,s.sun.dec,s.moon.ra,s.moon.dec);
+      const limbAltAz=raDecToAltAz(limbRaDec.ra,limbRaDec.dec,s.jd,s.lat,s.lon);
+      const pLimb=toXY(limbAltAz.az,limbAltAz.alt);
+      let moonRotationRad=0;
+      if(pLimb){
+        const screenDx=pLimb[0]-x,screenDy=pLimb[1]-y;
+        const determinant=vAzX*vAltY-vAltX*vAzY;
+        if(Math.abs(determinant)>1e-8){
+          const localX=(vAltY*screenDx-vAltX*screenDy)/determinant;
+          const localY=(-vAzY*screenDx+vAzX*screenDy)/determinant;
+          moonRotationRad=Math.atan2(localY,localX)+moonPhaseLightSideOffsetRad(s.moon.elong);
+        }
+      }
 
       ctx.save();
       ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
@@ -9429,7 +9599,9 @@ function drawPhoto(ctx,s){
       ctx.save();
       ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
       ctx.beginPath(); ctx.arc(0,0,angR,0,Math.PI*2);
-      ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1/Math.max(0.001,pxPerDeg);
+      // 細い月でも外周全体が白く光って満月状に見えないよう、輪郭はごく控えめにする。
+      ctx.strokeStyle=`rgba(${moonAtmosphereColor},${.04+.05*s.moon.illum})`;
+      ctx.lineWidth=.7/Math.max(0.001,pxPerDeg);
       ctx.stroke();
       ctx.restore();
 
@@ -10037,12 +10209,13 @@ function drawPhoto(ctx,s){
 
         // 明るい天体用の水面反射。中心光に加え、明るさに応じて上下へ細長く伸びる
         // 光条と淡い外側のにじみを重ねる。描画全体は既に水域でクリップされている。
-        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1,opacityScale=1){
+        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1,opacityScale=1,visibilityOverride=null){
           if(!point||point[0]<-40||point[0]>W+40||point[1]<-40||point[1]>H+40) return;
           const x=point[0],y=point[1],power=clamp(strength,0,1);
           const length=(3+power*27)*lengthScale*(W/1200);
           const upper=length*.42,lower=length*.58;
-          const alpha=clamp(vis*(.25+power*.70)*clamp(opacityScale,0,1),0,.92);
+          const reflectionVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
+          const alpha=clamp(reflectionVisibility*(.25+power*.70)*clamp(opacityScale,0,1),0,.92);
           // 水面の柔らかなにじみ。明るい天体だけ少し幅を持たせる。
           const soft=ctx.createLinearGradient(x,y-upper,x,y+lower);
           soft.addColorStop(0,`rgba(${color},0)`);soft.addColorStop(.46,`rgba(${color},${alpha*.25})`);
@@ -10061,11 +10234,58 @@ function drawPhoto(ctx,s){
           ctx.beginPath();ctx.arc(x,y,glowRadius,0,Math.PI*2);ctx.fillStyle=glow;ctx.fill();
         }
 
-        // 月と金星専用の水面光路（ムーンロード／ビーナスロード）。
+        // 太陽・月・金星の鏡像。昼間も星空可視率とは独立して描き、
+        // 水面マスクと後段の山リフレによる遮蔽は従来どおり維持する。
+        function drawMirroredCelestialDisc(aa,kind,color,visibility=1){
+          if(!aa||aa.alt<=0||!isConfirmedWaterDirection(aa.az)) return;
+          const point=toXY(aa.az,-aa.alt);
+          if(!point||!point.every(Number.isFinite)||point[0]<-60||point[0]>W+60||point[1]<-60||point[1]>H+60) return;
+          const angularRadius=kind==="sun"?(s.sun.angularRadiusDeg||.267):(s.moon.angularRadiusDeg||.272);
+          const radius=realSunMoonEnabled
+            ?Math.max(1.2,scale*D2R*angularRadius)
+            :(kind==="sun"?20:18)*(W/1200);
+          // 月は水平線付近ほど赤橙色になる既存の大気色に加え、少し減光する。
+          // 太陽は従来の明るさを維持する。
+          const horizonExtinction=kind==="moon"?lerp(.66,1,clamp((aa.alt+1)/12,0,1)):1;
+          const alpha=clamp(visibility,0,1)*(kind==="sun"?.96:.88)*horizonExtinction;
+          ctx.save();ctx.translate(point[0],point[1]);
+          if(kind==="moon"){
+            // 空の月本体と同じ天球上の輝面基準点を反転し、鏡像の角度も一致させる。
+            const limbRaDec=moonBrightLimbDirectionRaDec(s.sun.ra,s.sun.dec,s.moon.ra,s.moon.dec);
+            const limbAltAz=raDecToAltAz(limbRaDec.ra,limbRaDec.dec,s.jd,s.lat,s.lon);
+            const reflectedLimb=toXY(limbAltAz.az,-limbAltAz.alt);
+            const reflectedRotation=(reflectedLimb
+              ?Math.atan2(reflectedLimb[1]-point[1],reflectedLimb[0]-point[0]):0)
+              +moonPhaseLightSideOffsetRad(s.moon.elong);
+            ctx.rotate(reflectedRotation);
+            ctx.globalAlpha=alpha;
+            // 暗い側を透明にして、空の月と同じ「輝いている月相部分」だけを反射する。
+            // 円形ハローも月には描かず、三日月が満月の円盤に見える現象を防ぐ。
+            ctx.shadowColor=`rgba(${color},${alpha*.48})`;
+            ctx.shadowBlur=Math.max(1.5,radius*.42);
+            drawMoonPhaseShape(ctx,0,0,radius,s.moon.elong,`rgb(${color})`,"rgba(0,0,0,0)");
+          }else{
+            const haloRadius=radius*2.8;
+            const halo=ctx.createRadialGradient(0,0,radius*.35,0,0,haloRadius);
+            halo.addColorStop(0,`rgba(${color},${alpha*.60})`);
+            halo.addColorStop(.38,`rgba(${color},${alpha*.24})`);
+            halo.addColorStop(1,`rgba(${color},0)`);
+            ctx.fillStyle=halo;ctx.beginPath();ctx.arc(0,0,haloRadius,0,Math.PI*2);ctx.fill();
+            const disc=ctx.createRadialGradient(-radius*.22,-radius*.24,0,0,0,radius);
+            disc.addColorStop(0,"rgba(255,255,244,.98)");
+            disc.addColorStop(.52,`rgba(${color},${alpha})`);
+            disc.addColorStop(1,`rgba(${color},${alpha*.82})`);
+            ctx.fillStyle=disc;ctx.beginPath();ctx.arc(0,0,radius,0,Math.PI*2);ctx.fill();
+          }
+          ctx.restore();
+        }
+
+        // 月・金星・太陽専用の水面光路（ムーンロード／ビーナスロード／サンロード）。
         // 低高度ほど手前へ長く、高度が上がるほど短くなる。細かな横光を重ねて波面らしく見せる。
         // この反射Canvasには最後に水域マスクが掛かるため、岸や陸地へ光が漏れない。
-        function drawCelestialLightRoad(aa,strength,color="255,232,180",kind="moon"){
-          if(!aa||aa.alt<=0||aa.alt>=24||!isConfirmedWaterDirection(aa.az)) return;
+        function drawCelestialLightRoad(aa,strength,color="255,232,180",kind="moon",visibilityOverride=null){
+          const isSun=kind==="sun",altitudeLimit=isSun?20:24;
+          if(!aa||aa.alt<=0||aa.alt>=altitudeLimit||!isConfirmedWaterDirection(aa.az)) return;
           const wrapped=((aa.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
           const ridgeAlt=realTerrainState.profile?lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t):0;
           // 山・岬に隠れている天体から光路だけが現れないようにする。
@@ -10075,17 +10295,18 @@ function drawPhoto(ctx,s){
           if(!reflectedPoint||!horizonPoint||![...reflectedPoint,...horizonPoint].every(Number.isFinite)) return;
           const x=reflectedPoint[0];
           if(x<-80||x>W+80) return;
-          const lowFactor=Math.pow(clamp(1-aa.alt/24,0,1),1.18);
+          const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),isSun?1.08:1.18);
           const phasePower=clamp(strength,0,1);
-          const maxRoad=H*(kind==="moon"?.57:.43);
+          const maxRoad=H*(isSun?.72:(kind==="moon"?.57:.43));
           const roadLength=Math.max(8*(W/1200),maxRoad*lowFactor*(.48+phasePower*.52));
           const startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-2*(W/1200));
           const endY=Math.min(H+12,startY+roadLength);
           if(endY-startY<5) return;
-          const roadAlpha=clamp(vis*lowFactor*(kind==="moon"?.54:.39)*(.48+phasePower*.52),0,.66);
-          const baseWidth=(kind==="moon"?6.8:4.2)*(W/1200);
-          const roadWidth=(kind==="moon"?50:31)*(W/1200)*(.55+lowFactor*.45);
-          const bands=Math.max(18,Math.round((endY-startY)/(kind==="moon"?4.4:5.6)));
+          const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
+          const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.74:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.90:.66);
+          const baseWidth=(isSun?9.5:(kind==="moon"?6.8:4.2))*(W/1200);
+          const roadWidth=(isSun?72:(kind==="moon"?50:31))*(W/1200)*(.55+lowFactor*.45);
+          const bands=Math.max(18,Math.round((endY-startY)/(isSun?3.8:(kind==="moon"?4.4:5.6))));
           ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
           // 横光の背後へ柔らかな金色の光量を置き、写真の長時間露光に近い明るい芯を作る。
           const roadGlow=ctx.createLinearGradient(x,startY,x,endY);
@@ -10093,8 +10314,8 @@ function drawPhoto(ctx,s){
           roadGlow.addColorStop(.26,`rgba(${color},${roadAlpha*.30})`);
           roadGlow.addColorStop(.72,`rgba(${color},${roadAlpha*.13})`);
           roadGlow.addColorStop(1,`rgba(${color},0)`);
-          ctx.save();ctx.filter=`blur(${Math.max(2,(kind==="moon"?5:3.5)*(W/1200))}px)`;
-          ctx.strokeStyle=roadGlow;ctx.lineWidth=(kind==="moon"?15:9)*(W/1200);
+          ctx.save();ctx.filter=`blur(${Math.max(2,(isSun?7:(kind==="moon"?5:3.5))*(W/1200))}px)`;
+          ctx.strokeStyle=roadGlow;ctx.lineWidth=(isSun?21:(kind==="moon"?15:9))*(W/1200);
           ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
           for(let band=0;band<bands;band++){
             // 固定式の揺らぎを使い、時刻変更や再描画で光条がちらつかないようにする。
@@ -10107,7 +10328,7 @@ function drawPhoto(ctx,s){
             const xJitter=(jitter-.5)*halfWidth*.48;
             const alpha=roadAlpha*(.32+.68*jitter)*(.42+.58*envelope)*(1-q*.22);
             ctx.strokeStyle=`rgba(${color},${alpha})`;
-            ctx.lineWidth=Math.max(.7,(kind==="moon"?1.75:1.15)*(W/1200)*(.72+jitter*.72));
+            ctx.lineWidth=Math.max(.7,(isSun?2.15:(kind==="moon"?1.75:1.15))*(W/1200)*(.72+jitter*.72));
             ctx.beginPath();ctx.moveTo(x+xJitter-halfWidth,y);ctx.lineTo(x+xJitter+halfWidth,y);ctx.stroke();
           }
           // 中央に非常に淡い縦の光を加え、横光の集合を一本の光路としてまとめる。
@@ -10116,7 +10337,7 @@ function drawPhoto(ctx,s){
           glow.addColorStop(.42,`rgba(${color},${roadAlpha*.34})`);
           glow.addColorStop(.72,`rgba(${color},${roadAlpha*.14})`);
           glow.addColorStop(1,`rgba(${color},0)`);
-          ctx.strokeStyle=glow;ctx.lineWidth=(kind==="moon"?4.8:2.8)*(W/1200);
+          ctx.strokeStyle=glow;ctx.lineWidth=(isSun?6.8:(kind==="moon"?4.8:2.8))*(W/1200);
           ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
         }
 
@@ -10175,14 +10396,31 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
 
-        // 月も水面反射の対象にする。月相の明るさを強度へ反映し、細い縦光を伴わせる。
+        // 太陽は昼間も鏡像を保ち、低高度時だけ長いサンロードを水面へ伸ばす。
+        // 高度20度へ近づくにつれて光路は連続的に短く・弱くなる。
+        if(s.sunAltAz.alt>0){
+          const sunPoint=toXY(s.sunAltAz.az,-s.sunAltAz.alt);
+          const reflectedSunRGB=atmosphericCelestialRGB(s.sunAltAz.alt,"sun").join(",");
+          const daylightSunVisibility=clamp(.86+dayFactor*.12,0,1);
+          ctx.save();ctx.globalCompositeOperation="lighter";
+          drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility);
+          drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
+          drawCelestialLightRoad(s.sunAltAz,1,reflectedSunRGB,"sun",daylightSunVisibility);
+          ctx.restore();
+        }
+
+        // 月も水面反射の対象にする。昼間でも鏡像が消えないよう、星空可視率から分離する。
+        // 夜間のムーンロードと月相による明るさは従来どおり維持する。
         if(s.moonAltAz.alt>0){
           const moonPoint=toXY(s.moonAltAz.az,-s.moonAltAz.alt);
           const moonStrength=clamp(.38+(s.moon.illum||0)*.62,0,1);
           const reflectedMoonRGB=atmosphericCelestialRGB(s.moonAltAz.alt,"moon").join(",");
+          const daylightMoonVisibility=Math.max(vis,dayFactor*.74);
+          const moonRoadVisibility=Math.max(vis,dayFactor*.46);
           ctx.save();ctx.globalCompositeOperation="lighter";
-          drawCelestialReflection(moonPoint,moonStrength,reflectedMoonRGB,1.55);
-          drawCelestialLightRoad(s.moonAltAz,moonStrength,reflectedMoonRGB,"moon");
+          drawMirroredCelestialDisc(s.moonAltAz,"moon",reflectedMoonRGB,daylightMoonVisibility);
+          // 汎用の丸い中心光は重ねない。月相の鏡像と水面光路だけで構成する。
+          drawCelestialLightRoad(s.moonAltAz,moonStrength,reflectedMoonRGB,"moon",moonRoadVisibility);
           ctx.restore();
         }
 
@@ -10518,6 +10756,85 @@ function drawPhoto(ctx,s){
         if(maskCanvas.width!==W||maskCanvas.height!==H){maskCanvas.width=W;maskCanvas.height=H;}
         const mctx=maskCanvas.getContext("2d");mctx.clearRect(0,0,W,H);
         const ringCount=grid[0].length;
+        // 観測地点を中心とする100m四方の固定ビットマップ地表テクスチャ。
+        // 時刻やカメラ方向が変わっても模様が動かないよう、ローカルXY座標へ固定する。
+        const groundTexture=drawNearSurfaceMesh._groundTexture||(drawNearSurfaceMesh._groundTexture=document.createElement("canvas"));
+        if(groundTexture.width!==256||groundTexture.height!==256){
+          groundTexture.width=groundTexture.height=256;
+          const gx=groundTexture.getContext("2d"),image=gx.createImageData(256,256),data=image.data;
+          for(let py=0;py<256;py++)for(let px=0;px<256;px++){
+            // 複数周期の決定論的ノイズで、単色ポリゴンではない土・草の細かな濃淡を作る。
+            const n1=Math.sin(px*.173+py*.097)*.5+.5;
+            const n2=Math.sin(px*.047-py*.139+1.7)*.5+.5;
+            const n3=Math.sin((px+py)*.311+2.4)*.5+.5;
+            const noise=n1*.48+n2*.34+n3*.18,index=(py*256+px)*4;
+            data[index]=Math.round(48+noise*36);
+            data[index+1]=Math.round(62+noise*43);
+            data[index+2]=Math.round(35+noise*25);
+            data[index+3]=255;
+          }
+          gx.putImageData(image,0,0);
+          // 大きめの斑を薄く重ね、近距離でも規則的なノイズに見えにくくする。
+          gx.globalAlpha=.12;
+          for(let i=0;i<80;i++){
+            const x=(Math.sin(i*91.17)*.5+.5)*256,y=(Math.sin(i*47.73+2)*.5+.5)*256;
+            const r=5+(Math.sin(i*13.41)*.5+.5)*18;
+            gx.fillStyle=i%3?"#77905a":"#3b4c2d";gx.beginPath();gx.arc(x,y,r,0,Math.PI*2);gx.fill();
+          }
+          gx.globalAlpha=1;
+        }
+        const groundTexturePoint=vertex=>{
+          const metres=vertex.distanceKm*1000,rad=vertex.az*D2R;
+          const east=Number.isFinite(vertex.eastM)?vertex.eastM:Math.sin(rad)*metres;
+          const north=Number.isFinite(vertex.northM)?vertex.northM:Math.cos(rad)*metres;
+          return [clamp((east+50)/100*256,0,256),clamp((50-north)/100*256,0,256)];
+        };
+        // 放射状の取得データを任意のXY位置へ再サンプリングする。
+        // 方位方向は隣接レイ、距離方向は隣接リングを使う双線形補間。
+        function samplePolarTerrainAtXY(eastM,northM){
+          const metres=Math.hypot(eastM,northM);
+          if(metres>50) return null;
+          const effectiveMetres=Math.max(.12,metres);
+          const distanceKm=effectiveMetres/1000,az=metres<1e-6?norm360(s.facingAz):norm360(Math.atan2(eastM,northM)*R2D);
+          const a0=Math.floor(az),a1=(a0+1)%360,fa=az-a0;
+          const row0=grid[a0],row1=grid[a1];if(!row0||!row1)return null;
+          // 元DEMの最短サンプルは5m地点。陸上観測時の0〜5mは、視点高1.6mから
+          // 見下ろす地面の角度を基準にし、5m地点のDEM高度へ滑らかに接続する。
+          // DEM nodataだけでなく、OSM水域・海岸線の近傍多数決で水上と確定した場合も、
+          // 存在しない陸地を足元へ生成しない。
+          if(metres<5){
+            if(realTerrainState.observerWaterNearby) return null;
+            const first0=row0.find(Boolean),first1=row1.find(Boolean);
+            if(!first0||!first1) return null;
+            const firstAlt=lerp(first0.alt,first1.alt,fa);
+            const flatGroundAlt=-Math.atan2(1.6,effectiveMetres)*R2D;
+            const blend=clamp(metres/5,0,1);
+            const smoothBlend=blend*blend*(3-2*blend);
+            const alt=lerp(flatGroundAlt,firstAlt,smoothBlend);
+            const baseElevation=Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:null;
+            return {
+              az,distanceKm,alt,waterWeight:0,water:false,baseNoData:false,baseKnown:false,
+              baseElevation,eastM,northM,observerFooting:true
+            };
+          }
+          let hi=row0.findIndex(point=>point&&point.distanceKm>=distanceKm);
+          if(hi<0) return null;
+          const lo=Math.max(0,hi-1),p00=row0[lo],p01=row0[hi],p10=row1[lo],p11=row1[hi];
+          if(!p00||!p01||!p10||!p11) return null;
+          const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((distanceKm-p00.distanceKm)/span,0,1);
+          const bilerp=(v00,v10,v01,v11)=>lerp(lerp(v00,v10,fa),lerp(v01,v11,fa),fd);
+          const waterWeight=bilerp(p00.water?1:0,p10.water?1:0,p01.water?1:0,p11.water?1:0);
+          const baseElevationValues=[p00,p10,p01,p11].map(point=>point.baseElevation);
+          let baseElevation=null;
+          if(baseElevationValues.every(Number.isFinite)) baseElevation=bilerp(...baseElevationValues);
+          return {
+            az,distanceKm,alt:bilerp(p00.alt,p10.alt,p01.alt,p11.alt),
+            waterWeight,water:waterWeight>=.5,
+            baseNoData:p00.baseNoData&&p10.baseNoData&&p01.baseNoData&&p11.baseNoData,
+            baseKnown:p00.baseKnown&&p10.baseKnown&&p01.baseKnown&&p11.baseKnown,
+            baseElevation,eastM,northM
+          };
+        }
         function lowLandInsideCoastlineSea(point,az){
           if(!point||point.water||!point.coastlineSeaCandidate||point.distanceKm<.05||point.alt>.35) return false;
           if(Number.isFinite(point.baseElevation)&&point.baseElevation>8) return false;
@@ -10544,8 +10861,65 @@ function drawPhoto(ctx,s){
           }
           return `rgb(${rgb.join(",")})`;
         }
+        // 視点直下の地面三角形をカメラ前面でクリップして描く。
+        // 空用toXY()は背面頂点をnullにするため、三角形をそのまま渡すと見える部分まで
+        // 全廃棄される。世界方向ベクトル上でZc=0.02面と交差させ、前方部分だけを残す。
+        function paintClippedObserverFooting(sourceVertices){
+          const cameraForward=toVec(s.facingAz,s.facingAlt);
+          const nearZ=.0205;
+          let polygon=sourceVertices.map(vertex=>{
+            const world=toVec(vertex.az,vertex.alt);
+            return {world,z:dot(world,cameraForward),uv:groundTexturePoint(vertex),source:vertex};
+          });
+          const clipped=[];
+          for(let index=0;index<polygon.length;index++){
+            const current=polygon[index],previous=polygon[(index+polygon.length-1)%polygon.length];
+            const currentInside=current.z>=nearZ,previousInside=previous.z>=nearZ;
+            if(currentInside!==previousInside){
+              const ratio=clamp((nearZ-previous.z)/((current.z-previous.z)||1),0,1);
+              const world=[0,1,2].map(axis=>lerp(previous.world[axis],current.world[axis],ratio));
+              clipped.push({world,z:nearZ,uv:[lerp(previous.uv[0],current.uv[0],ratio),lerp(previous.uv[1],current.uv[1],ratio)]});
+            }
+            if(currentInside) clipped.push(current);
+          }
+          polygon=clipped;if(polygon.length<3)return false;
+          const projected=polygon.map(vertex=>{
+            const length=Math.hypot(...vertex.world)||1;
+            const world=vertex.world.map(value=>value/length);
+            const az=norm360(atan2d(world[0],world[1]));
+            const alt=asin(world[2]);
+            const point=toXY(az,alt);
+            return point&&point.every(Number.isFinite)?{point,uv:vertex.uv}:null;
+          });
+          if(projected.some(vertex=>!vertex))return false;
+          const averageDistance=sourceVertices.reduce((sum,vertex)=>sum+vertex.distanceKm,0)/3;
+          const averageAlt=sourceVertices.reduce((sum,vertex)=>sum+vertex.alt,0)/3;
+          const fillColor=surfaceColor(false,averageDistance,averageAlt);
+          // クリップ後の3〜4角形を扇状に三角形化し、色・テクスチャ・陸マスクを一致させる。
+          for(let index=1;index<projected.length-1;index++){
+            const triangle=[projected[0],projected[index],projected[index+1]];
+            const destination=triangle.map(vertex=>vertex.point),texture=triangle.map(vertex=>vertex.uv);
+            const trace=context=>{context.beginPath();context.moveTo(...destination[0]);context.lineTo(...destination[1]);context.lineTo(...destination[2]);context.closePath();};
+            trace(tctx);tctx.fillStyle=fillColor;tctx.fill();
+            tctx.save();tctx.globalAlpha=.58+.20*terrainDayFactor;
+            drawTextureTriangle(tctx,groundTexture,texture[0],texture[1],texture[2],destination[0],destination[1],destination[2]);tctx.restore();
+            trace(mctx);mctx.fillStyle="#fff";mctx.fill();
+            wmctx.save();wmctx.globalCompositeOperation="destination-out";trace(wmctx);wmctx.fillStyle="#fff";wmctx.fill();wmctx.restore();
+          }
+          return true;
+        }
         function paintTriangle(a,b,c){
           if(!a||!b||!c) return;
+          const observerFootingTriangle=!realTerrainState.observerWaterNearby&&!!(a.observerFooting||b.observerFooting||c.observerFooting);
+          // 視点直下のセルは、周囲の水域補間値やnodataを引き継がず必ず陸として閉じる。
+          // コピーを作ることで元の地形データ・水域キャッシュは変更しない。
+          if(observerFootingTriangle){
+            a={...a,water:false,waterWeight:0,baseNoData:false};
+            b={...b,water:false,waterWeight:0,baseNoData:false};
+            c={...c,water:false,waterWeight:0,baseNoData:false};
+            // 通常投影へ渡す前にカメラ面で切る。成功時は、この専用描画で完結する。
+            if(paintClippedObserverFooting([a,b,c])){paintedTriangles++;return;}
+          }
           const mixedWaterLand=a.water!==b.water||b.water!==c.water;
           const demSeaBoundary=mixedWaterLand&&(a.baseNoData||b.baseNoData||c.baseNoData);
           // v280で波打ち際が安定していた処理を、DEM nodata由来の海岸境界だけへ限定して適用する。
@@ -10553,11 +10927,13 @@ function drawPhoto(ctx,s){
           // 方位1°・距離リング単位の四角いブロックが露出する。このセルは描かず、下層の
           // 連続した確定海面と、最後に重ねる足元地形へ境界を任せる。
           // OSM水域・既知湖沼の境界にはbaseNoDataが無いため、湖・池・河川はv299のまま分割する。
-          if(demSeaBoundary) return;
+          if(demSeaBoundary&&!observerFootingTriangle) return;
+          const triangleDistanceKm=(a.distanceKm+b.distanceKm+c.distanceKm)/3;
           // 湖面・海面は物理的に水平線より上へ出ない。DEMの数十cm〜数mの揺れで正高度に
           // なった水面頂点を-0.025°へ抑え、青い三角形のジャギーを山側へ突き出させない。
   const projectVertex=vertex=>{
-    const alt=vertex.water?Math.min(vertex.alt,-.025):vertex.alt;
+    const vertexWater=observerFootingTriangle?false:vertex.water;
+    const alt=vertexWater?Math.min(vertex.alt,-.025):vertex.alt;
     const point=toXY(vertex.az,alt);
     const horizon=toXY(vertex.az,0);
     if(!point||!horizon||![...point,...horizon].every(Number.isFinite)) return null;
@@ -10574,30 +10950,38 @@ function drawPhoto(ctx,s){
           const ca=Math.hypot(pa[0]-pc[0],pa[1]-pc[1]);
           const maxEdge=Math.hypot(W,H)*.32;
           // 欠損や投影の裏返りで生じる巨大な三角形・針状ポリゴンを除外する。
-          if(area<.01||area>W*H*.10||Math.max(ab,bc,ca)>maxEdge) return;
-          const distanceKm=(a.distanceKm+b.distanceKm+c.distanceKm)/3;
+          // 視点から5m以内の地面は画面外まで投影されるのが正常であり、面積・辺長で
+          // 除外すると放射状の大きな三角形穴になる。近接地面はCanvasのクリップへ任せ、
+          // 退化三角形だけを除外する。従来の破綻防止上限はそれ以外にのみ適用する。
+          if(area<.01) return;
+          if(!observerFootingTriangle&&(area>W*H*.10||Math.max(ab,bc,ca)>maxEdge)) return;
+          const distanceKm=triangleDistanceKm;
           const alt=(a.alt+b.alt+c.alt)/3;
           // 水/陸が混在する三角形は、水属性0.5の中間点で2つの多角形へ分割する。
           // セル全体を省略しないため、階段状の穴や垂直な境界が連続した斜線になる。
           function clipSurface(vertices,keepWater){
+            // 直近の水際は粗い距離リングの中間(.5)で切ると、陸側が細長く水面へ
+            // 突き出して見える。120m以内だけ境界を陸側へ寄せ、水面を手前まで延ばす。
+            // 水側・陸側で同じ値を使うため、隙間や重なりは発生しない。
+            const boundaryThreshold=.5;
             const output=[];
             for(let i=0;i<vertices.length;i++){
               const current=vertices[i],previous=vertices[(i+vertices.length-1)%vertices.length];
-              const currentInside=keepWater?current.w>=.5:current.w<=.5;
-      const previousInside=keepWater?previous.w>=.5:previous.w<=.5;
+              const currentInside=keepWater?current.w>=boundaryThreshold:current.w<=boundaryThreshold;
+      const previousInside=keepWater?previous.w>=boundaryThreshold:previous.w<=boundaryThreshold;
       if(currentInside!==previousInside){
-        const ratio=(.5-previous.w)/((current.w-previous.w)||1);
+        const ratio=(boundaryThreshold-previous.w)/((current.w-previous.w)||1);
         const hy=lerp(previous.hy,current.hy,ratio);
         const rawY=lerp(previous.y,current.y,ratio);
         // 遠方の水陸境界は、DEM補間によって水平線より上へ持ち上がることがある。
         // 水側・陸側で同じ境界座標を使い、隙間を作らず水平線直下へ収める。
-        output.push({x:lerp(previous.x,current.x,ratio),y:Math.max(rawY,hy+.6),hy,w:.5});
+        output.push({x:lerp(previous.x,current.x,ratio),y:Math.max(rawY,hy+.6),hy,w:boundaryThreshold});
       }
               if(currentInside) output.push(current);
             }
             return output;
   }
-  function paintSurfacePolygon(poly,water){
+  function paintSurfacePolygon(poly,water,sourceVertices=null){
     if(poly.length<3) return;
     // 水面の全頂点を方位別の水平線より下へ制限する。近距離の岸形状はそのまま、
     // 遠距離で山側へ突き出す1px前後の青い鋸歯だけを抑える。
@@ -10605,12 +10989,29 @@ function drawPhoto(ctx,s){
     const color=surfaceColor(water,distanceKm,alt);
     const trace=context=>{context.beginPath();context.moveTo(drawPoly[0].x,drawPoly[0].y);for(let i=1;i<drawPoly.length;i++)context.lineTo(drawPoly[i].x,drawPoly[i].y);context.closePath();};
             trace(tctx);tctx.fillStyle=color;tctx.fill();tctx.strokeStyle=color;tctx.lineWidth=.65;tctx.stroke();
+            // 半径50m以内の陸三角形だけ、上空ビットマップを同じ3頂点へアフィン投影する。
+            // DEMから求めた画面座標へ貼るため、平地だけでなく斜面・凹凸にも追従する。
+            if(!water&&sourceVertices&&sourceVertices.length===3&&sourceVertices.every(vertex=>vertex.distanceKm<=.05)){
+              const texturePoints=sourceVertices.map(groundTexturePoint);
+              const destinationPoints=drawPoly.map(point=>[point.x,point.y]);
+              if(destinationPoints.length===3){
+                const averageDistance=sourceVertices.reduce((sum,vertex)=>sum+vertex.distanceKm,0)/3;
+                // 40〜50mで透明度を落とし、既存の地形色へ円形境界を見せずに融合する。
+                const textureAlpha=averageDistance<=.04?1:clamp((.05-averageDistance)/.01,0,1);
+                tctx.save();tctx.globalAlpha=(.58+.20*terrainDayFactor)*textureAlpha;
+                drawTextureTriangle(tctx,groundTexture,texturePoints[0],texturePoints[1],texturePoints[2],destinationPoints[0],destinationPoints[1],destinationPoints[2]);
+                tctx.restore();
+              }
+            }
             wmctx.save();wmctx.globalCompositeOperation=water?"source-over":"destination-out";
             trace(wmctx);wmctx.fillStyle="#fff";wmctx.fill();wmctx.strokeStyle="#fff";wmctx.lineWidth=1;wmctx.stroke();wmctx.restore();
             if(!water){trace(mctx);mctx.fillStyle="#fff";mctx.fill();mctx.strokeStyle="#fff";mctx.lineWidth=1;mctx.stroke();}
           }
           const vertices=[va,vb,vc];
-          if(a.water===b.water&&b.water===c.water) paintSurfacePolygon(vertices,a.water);
+          if(observerFootingTriangle){
+            // 足元は水陸クリップを通さず、地面色・マスク・テクスチャを同じ全面へ必ず描く。
+            paintSurfacePolygon(vertices,false,[a,b,c]);
+          }else if(a.water===b.water&&b.water===c.water) paintSurfacePolygon(vertices,a.water,[a,b,c]);
           else{
             paintSurfacePolygon(clipSurface(vertices,true),true);
             paintSurfacePolygon(clipSurface(vertices,false),false);
@@ -10636,10 +11037,65 @@ function drawPhoto(ctx,s){
             const v01={...p01,az:a0,water:w01,waterWeight:boundaryWeight(p01,a0,d+1,w01)};
             const v10={...p10,az:a1,water:w10,waterWeight:boundaryWeight(p10,a1,d,w10)};
             const v11={...p11,az:a1,water:w11,waterWeight:boundaryWeight(p11,a1,d+1,w11)};
-            paintTriangle(v00,v10,v11);
-            paintTriangle(v00,v11,v01);
+            // 近距離ほど方位1度のセルが画面上で大きく広がるため、150m以内は
+            // 0.25度相当、300m以内は0.5度相当の仮想頂点へ細分化する。
+            // 標高と水域重みを同時に補間するので、後付けの足元面を使わず、
+            // 元のDEMメッシュ自体が滑らかな水際・平地形状を持つ。
+            const cellDistanceKm=(p00.distanceKm+p01.distanceKm+p10.distanceKm+p11.distanceKm)/4;
+            // 半径50m以内は後段の正方形XY格子へ完全に置き換える。
+            if(cellDistanceKm<=.05) continue;
+            const subdivisions=cellDistanceKm<=.15?4:(cellDistanceKm<=.30?2:1);
+            const interpolateVertex=(left,right,f)=>{
+              const waterWeight=lerp(left.waterWeight,right.waterWeight,f);
+              const baseElevation=Number.isFinite(left.baseElevation)&&Number.isFinite(right.baseElevation)
+                ?lerp(left.baseElevation,right.baseElevation,f)
+                :(Number.isFinite(left.baseElevation)?left.baseElevation:right.baseElevation);
+              return {
+                ...left,
+                az:norm360(rawAz+f),
+                distanceKm:lerp(left.distanceKm,right.distanceKm,f),
+                alt:lerp(left.alt,right.alt,f),
+                baseElevation,
+                baseNoData:left.baseNoData&&right.baseNoData,
+                baseKnown:left.baseKnown&&right.baseKnown,
+                waterWeight,
+                water:waterWeight>=.5
+              };
+            };
+            for(let sub=0;sub<subdivisions;sub++){
+              const f0=sub/subdivisions,f1=(sub+1)/subdivisions;
+              const near0=interpolateVertex(v00,v10,f0),near1=interpolateVertex(v00,v10,f1);
+              const far0=interpolateVertex(v01,v11,f0),far1=interpolateVertex(v01,v11,f1);
+              paintTriangle(near0,near1,far1);
+              paintTriangle(near0,far1,far0);
+            }
           }
         }
+        // 半径50mを2m間隔の正方形XY格子として再構築する。
+        // カメラ方向とは無関係な固定地面なので、向きを変えても水際やセル形状は回転・変形しない。
+        const xyStepM=2,xyMin=-50,xyMax=50;
+        const xyRows=[];
+        for(let northM=xyMin;northM<=xyMax;northM+=xyStepM){
+          const row=[];
+          for(let eastM=xyMin;eastM<=xyMax;eastM+=xyStepM){
+            row.push(samplePolarTerrainAtXY(eastM,northM));
+          }
+          xyRows.push(row);
+        }
+        // 遠いセルから近いセルへ描き、視点近くの地面が奥の地面を自然に隠す。
+        const xyCells=[];
+        for(let y=0;y<xyRows.length-1;y++)for(let x=0;x<xyRows[y].length-1;x++){
+          const a=xyRows[y][x],b=xyRows[y][x+1],c=xyRows[y+1][x+1],d=xyRows[y+1][x];
+          if(!a||!b||!c||!d) continue;
+          const centerDistance=(a.distanceKm+b.distanceKm+c.distanceKm+d.distanceKm)/4;
+          if(centerDistance>.05) continue;
+          xyCells.push({a,b,c,d,centerDistance});
+        }
+        xyCells.sort((left,right)=>right.centerDistance-left.centerDistance);
+        xyCells.forEach(cell=>{
+          paintTriangle(cell.a,cell.b,cell.c);
+          paintTriangle(cell.a,cell.c,cell.d);
+        });
         return paintedTriangles>=20;
       }
       // 最短距離の陸地だけを独立した前景レイヤーとして描く。
@@ -10700,6 +11156,112 @@ function drawPhoto(ctx,s){
           start=Math.max(end,start+1);
         }
         return painted;
+      }
+      // 直近の混在三角形を省略した後、実際の水際距離から連続した岸の前景を作る。
+      // 方位ごとの最短DEM点を画面下へ延ばす旧補完とは異なり、水際そのものだけを
+      // 3点移動平均で滑らかにつなぐため、左右の細長い突起や柱を作らない。
+      function drawSmoothNearshoreForeground(){
+        const nearProfile=realTerrainState.waterNearKm;
+        if(!nearProfile) return false;
+        const eyeHeightM=1.6,shoreStep=Math.min(step,.35),samples=[];
+        for(let diff=-half-3;diff<=half+3;diff+=shoreStep){
+          const az=norm360(s.facingAz+diff);
+          const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+          const d0=nearProfile[i0],d1=nearProfile[i1];
+          let shorelineKm=null;
+          if(Number.isFinite(d0)&&Number.isFinite(d1)) shorelineKm=lerp(d0,d1,t);
+          else if(Number.isFinite(d0)) shorelineKm=d0;
+          else if(Number.isFinite(d1)) shorelineKm=d1;
+          // 直近の水際だけを対象にし、遠方の湖岸・対岸・島の形は変更しない。
+          if(!Number.isFinite(shorelineKm)||shorelineKm>.12){samples.push(null);continue;}
+          const altitude=clamp(-Math.atan2(eyeHeightM,Math.max(1,shorelineKm*1000))*R2D,-55,-.2);
+          const point=toXY(az,altitude);
+          samples.push(point&&point.every(Number.isFinite)?point:null);
+        }
+        let painted=false,start=0;
+        while(start<samples.length){
+          while(start<samples.length&&!samples[start]) start++;
+          let end=start;while(end<samples.length&&samples[end]) end++;
+          const run=samples.slice(start,end);
+          if(run.length>=3){
+            const shore=smoothedScreenPoints(smoothedScreenPoints(run));
+            const colors=terrainBandColors("immediate");
+            const topY=clamp(Math.min(...shore.map(point=>point[1])),0,H-1);
+            const gradient=ctx.createLinearGradient(0,topY,0,H);
+            gradient.addColorStop(0,colors.top);gradient.addColorStop(1,colors.bottom);
+            // 水際より手前（画面下側）だけを一枚の連続面として描く。
+            const path=new Path2D();path.moveTo(shore[0][0],H);
+            path.lineTo(shore[0][0],shore[0][1]);
+            traceSmoothOpenPath(path,shore,false);
+            path.lineTo(shore[shore.length-1][0],H);path.closePath();
+            ctx.fillStyle=gradient;ctx.fill(path);painted=true;
+          }
+          start=Math.max(end,start+1);
+        }
+        return painted;
+      }
+      // 正面方向が最短リングから水面になって水際座標を持たない場合でも、左右に見えている
+      // 既存の岸を画面下で連続させる。陸上の観測地点かつ近距離水域が十分ある場合だけ使い、
+      // 海上・遠方水域・水のない場所には足元を生成しない。
+      function drawFullWidthNearshoreForeground(){
+        if(realTerrainState.observerWaterNearby||!realTerrainState.waterNearKm) return false;
+        const sampleStep=Math.min(step,.4),raw=[],nearDistances=[];
+        for(let diff=-half-2;diff<=half+2;diff+=sampleStep){
+          const az=norm360(s.facingAz+diff),wrapped=((az%360)+360)%360;
+          const i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+          const d0=realTerrainState.waterNearKm[i0],d1=realTerrainState.waterNearKm[i1];
+          let distance=null;
+          if(Number.isFinite(d0)&&Number.isFinite(d1)) distance=lerp(d0,d1,t);
+          else if(Number.isFinite(d0)) distance=d0;
+          else if(Number.isFinite(d1)) distance=d1;
+          if(Number.isFinite(distance)&&distance<=.15) nearDistances.push(distance);
+          raw.push({az,distance:Number.isFinite(distance)&&distance<=.15?distance:null});
+        }
+        // 画面内の少なくとも約1/3が近距離水域の場合だけ、水際にいる場面とみなす。
+        if(nearDistances.length<raw.length*.30) return false;
+        const sorted=nearDistances.slice().sort((a,b)=>a-b);
+        const median=sorted[Math.floor(sorted.length/2)]||.03;
+        const eyeHeightM=1.6,points=[];
+        for(let index=0;index<raw.length;index++){
+          const item=raw[index];
+          // 正面など水際距離が欠ける方位は、左右から得た代表距離で補間する。
+          const sourceDistance=Number.isFinite(item.distance)?item.distance:median;
+          // 水際をカメラ側へ約45%寄せ、黄色枠の既存境界を画面下側へ前進させる。
+          const forwardDistance=Math.max(.004,sourceDistance*.55);
+          const altitude=clamp(-Math.atan2(eyeHeightM,forwardDistance*1000)*R2D,-55,-.25);
+          const projected=toXY(item.az,altitude);
+          if(!projected||!projected.every(Number.isFinite)) continue;
+          points.push([projected[0],clamp(projected[1],H*.56,H*.88)]);
+        }
+        if(points.length<3) return false;
+        // 粗い方位列を複数回ならした後、左右端を固定した浅い受け皿型へ整える。
+        // 距離投影をそのまま使うと中央が上へ盛り上がる弧になるが、足元の水際は
+        // 中央ほど画面下へ沈み、左右の地面へ向かって持ち上がる曲線の方が自然に見える。
+        let shore=points;
+        for(let pass=0;pass<4;pass++) shore=smoothedScreenPoints(shore);
+        if(shore.length>=3){
+          const first=shore[0],last=shore[shore.length-1];
+          shore=shore.map((point,index)=>{
+            const q=index/(shore.length-1);
+            const edgeLineY=lerp(first[1],last[1],q);
+            // sin²カーブは端で傾きが0に近く、左右の既存地面へ折れずにつながる。
+            const bowlWeight=Math.sin(Math.PI*q)**2;
+            const centerTargetY=Math.max(edgeLineY,H*.88);
+            // 元データの細かな傾きは15%だけ残し、人工的な完全対称形を避ける。
+            const bowlY=lerp(edgeLineY,centerTargetY,bowlWeight);
+            return [point[0],clamp(lerp(bowlY,point[1],.15),H*.56,H*.90)];
+          });
+          // 曲率変化をもう一度だけ均し、中央や接続部に小さな折れが出ないようにする。
+          shore=smoothedScreenPoints(shore);
+        }
+        const colors=terrainBandColors("immediate"),topY=Math.min(...shore.map(point=>point[1]));
+        const gradient=ctx.createLinearGradient(0,topY,0,H);
+        gradient.addColorStop(0,colors.top);gradient.addColorStop(1,colors.bottom);
+        const path=new Path2D();path.moveTo(0,H);path.lineTo(0,shore[0][1]);path.lineTo(shore[0][0],shore[0][1]);
+        traceSmoothOpenPath(path,shore,false);
+        path.lineTo(W,shore[shore.length-1][1]);path.lineTo(W,H);path.closePath();
+        ctx.fillStyle=gradient;ctx.fill(path);
+        return true;
       }
       // 遠景レイヤーと近距離メッシュでは水色の算出方法が異なるため、そのままでは
       // 距離帯の境界が二色の帯に見える。全地形の水域判定が終わった段階で、共通の
@@ -11015,14 +11577,16 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
       }
-      // 深度メッシュが使える場合は、最短距離の陸地を必ず最後に重ねる。
-      // これより前に描いた海・湖・山の形は維持し、足元の欠損だけを覆う。
-      if(meshDrawn){
-        ctx.save();
-        ctx.globalAlpha=showBelowHorizon?belowHorizonAlpha:1;
-        drawForegroundFooting(realTerrainState.nearSurfaceGrid);
-        ctx.restore();
-      }
+      // 深度メッシュが成立している場合は、近距離メッシュ自身が持つ複数距離点の
+      // 地表形状をそのまま最終形とする。旧drawForegroundFooting()は方位ごとの最短1点を
+      // 画面下まで延長していたため、水際で左右に巨大な台形・柱状の陸を作り、
+      // その下にある本来の足元メッシュを覆っていた。
+      // メッシュ不成立時のフォールバックは直前のif(!meshDrawn)側に残しているため、
+      // 標高データ不足時の地面表示は従来どおり維持される。
+      // v348で追加した別体の前景ポリゴンは貼り付け感が出るため使用しない。
+      // 水際の前進は、上の近距離メッシュ内で同一境界を陸側へ寄せる処理へ一本化する。
+      // 後付けの全面足元ポリゴンは使用しない。足元を含む地面と水際は、
+      // 上で方位細分化した近距離DEMメッシュだけで一貫して描画する。
       // 足元の陸地まで重ね終えた最後に描き、水際の輪郭を隠さない。
       if(waterLandBoundaryVisible) drawWaterLandBoundary();
     } else if(useDiagonalFisheye){
@@ -11144,11 +11708,13 @@ function drawPhoto(ctx,s){
       ctx.fillStyle=`rgba(0,0,0,${a})`; ctx.fillRect(0,0,W,H);
     }
 
-    // ビネット
-    const vg=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.85);
-    vg.addColorStop(0,"rgba(0,0,0,0)");
-    vg.addColorStop(1,"rgba(0,0,0,0.35)");
-    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    // ビネット（表示設定の「周辺減光」がONの場合のみ）
+    if(vignetteEnabled){
+      const vg=ctx.createRadialGradient(W/2,H/2,H*0.25,W/2,H/2,H*0.85);
+      vg.addColorStop(0,"rgba(0,0,0,0)");
+      vg.addColorStop(1,"rgba(0,0,0,0.35)");
+      ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    }
   }
 
   // ARモード中は、実際の水平線(高度0度)の位置を白い実線で分かりやすく表示する
@@ -11276,6 +11842,12 @@ function drawMoonPhaseShape(ctx,cx,cy,r,elongDeg,litColor,darkColor){
   ctx.closePath();
   ctx.fillStyle=litColor;
   ctx.fill();
+}
+// drawMoonPhaseShape() の基準輝面は、満ちていく月ではローカル右側、
+// 欠けていく月ではローカル左側にある。太陽方向へ向ける際の回転補正。
+function moonPhaseLightSideOffsetRad(elongDeg){
+  const D=((elongDeg%360)+360)%360;
+  return D<180?0:Math.PI;
 }
 function drawCompassStrip(ctx,s){
   // 実際の表示サイズ(幅・高さとも)にキャンバスの内部解像度を同期させる(ズレていると文字が縦長/横長に歪むため)
