@@ -10520,9 +10520,46 @@ function drawPhoto(ctx,s){
           const allHorizonY=runs.flatMap(run=>run.map(item=>item.horizon[1])).filter(Number.isFinite);
           const mirrorHorizonY=allHorizonY.length
             ?allHorizonY.reduce((sum,value)=>sum+value,0)/allHorizonY.length:H*.5;
-          reflectionGeometry=drawPhoto._waterReflectionGeometryCache={key:reflectionGeometryKey,runs,waterMask,mirrorHorizonY};
+          const meteorWaterPath=new Path2D();
+          const reflectedRidgeRuns=[];
+          runs.forEach(run=>{
+            const reflected=run.map(item=>{
+              const wrapped=((item.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+              const ridgeAlt=Math.max(0,lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t));
+              const sourcePoint=toXY(item.az,ridgeAlt);
+              const point=sourcePoint&&[...sourcePoint].every(Number.isFinite)
+                ?[sourcePoint[0],mirrorHorizonY*2-sourcePoint[1]]:null;
+              return point&&[...point].every(Number.isFinite)?point:item.horizon;
+            });
+            let reflectedOutline=[];
+            run.forEach((item,index)=>{
+              const wrapped=((item.az%360)+360)%360;
+              const i0=Math.floor(wrapped),i1=(i0+1)%360;
+              const openSea=!!(realTerrainState.coastlineOpenSeaAz&&
+                (realTerrainState.coastlineOpenSeaAz[i0]||realTerrainState.coastlineOpenSeaAz[i1]));
+              if(openSea){
+                if(reflectedOutline.length>=2) reflectedRidgeRuns.push(reflectedOutline);
+                reflectedOutline=[];
+              }else reflectedOutline.push(reflected[index]);
+            });
+            if(reflectedOutline.length>=2) reflectedRidgeRuns.push(reflectedOutline);
+            meteorWaterPath.moveTo(reflected[0][0],reflected[0][1]);
+            for(let i=1;i<reflected.length;i++) meteorWaterPath.lineTo(reflected[i][0],reflected[i][1]);
+            for(let i=run.length-1;i>=0;i--) meteorWaterPath.lineTo(run[i].bottom[0],run[i].bottom[1]);
+            meteorWaterPath.closePath();
+          });
+          const reflectionHorizonYByX=buildSkylineYArray(
+            runs.flatMap(run=>run.map(item=>item.horizon)),W,H
+          );
+          reflectionGeometry=drawPhoto._waterReflectionGeometryCache={
+            key:reflectionGeometryKey,runs,waterMask,mirrorHorizonY,
+            meteorWaterPath,reflectedRidgeRuns,reflectionHorizonYByX
+          };
         }
-        const {runs,waterMask,mirrorHorizonY}=reflectionGeometry;
+        const {
+          runs,waterMask,mirrorHorizonY,meteorWaterPath,
+          reflectedRidgeRuns,reflectionHorizonYByX
+        }=reflectionGeometry;
         if(!runs.length) return false;
 
         ctx.save();ctx.clip(waterMask);
@@ -10839,41 +10876,7 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
 
-        // 山の反射形状と、流れ星リフレに使う水面側マスクを準備する。
-        const meteorWaterPath=new Path2D();
-        const reflectedRidgeRuns=[];
-        runs.forEach(run=>{
-          const reflected=run.map(item=>{
-            const wrapped=((item.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-            const ridgeAlt=Math.max(0,lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t));
-            // 山本体と同じCanvas反転式を使う。高度をマイナスにして再投影すると、
-            // 画面左右や仰角によって本体の反転位置と数pxずれるため使用しない。
-            const sourcePoint=toXY(item.az,ridgeAlt);
-            const point=sourcePoint&&[...sourcePoint].every(Number.isFinite)
-              ?[sourcePoint[0],mirrorHorizonY*2-sourcePoint[1]]:null;
-            return point&&[...point].every(Number.isFinite)?point:item.horizon;
-          });
-          // 通常画面の稜線と同じく、海側確定方位では反射側の稜線も描かない。
-          // 山体・流れ星用の反射形状は変更せず、輪郭線だけを海上区間で分割する。
-          let reflectedOutline=[];
-          run.forEach((item,index)=>{
-            const wrapped=((item.az%360)+360)%360;
-            const i0=Math.floor(wrapped),i1=(i0+1)%360;
-            const openSea=!!(realTerrainState.coastlineOpenSeaAz&&
-              (realTerrainState.coastlineOpenSeaAz[i0]||realTerrainState.coastlineOpenSeaAz[i1]));
-            if(openSea){
-              if(reflectedOutline.length>=2) reflectedRidgeRuns.push(reflectedOutline);
-              reflectedOutline=[];
-            }else reflectedOutline.push(reflected[index]);
-          });
-          if(reflectedOutline.length>=2) reflectedRidgeRuns.push(reflectedOutline);
-
-          // 流れ星は別Canvasで後から動くため、山リフレより下に残る水面だけを専用マスクにする。
-          meteorWaterPath.moveTo(reflected[0][0],reflected[0][1]);
-          for(let i=1;i<reflected.length;i++) meteorWaterPath.lineTo(reflected[i][0],reflected[i][1]);
-          for(let i=run.length-1;i>=0;i--) meteorWaterPath.lineTo(run[i].bottom[0],run[i].bottom[1]);
-          meteorWaterPath.closePath();
-        });
+        // 山稜線・流れ星用Path2D・反射水平線は、同じ水面形状キャッシュから再利用する。
         // 大気フィルターは空由来の反射だけへ適用する。
         // この後に山・富士山の雪・山の稜線を描くため、それらの色と暗さには影響しない。
         drawForegroundAtmosphericVeil(ctx,true);
@@ -10881,24 +10884,31 @@ function drawPhoto(ctx,s){
         // 山だけを専用Canvasへ分離し、夜間は黒を重ねて理想例の暗い山影へ寄せる。
         // 水面・天の川・恒星などはこのCanvasに含めないため、現在の明るさを維持する。
         const mountainReflectionCanvas=drawPhoto._mountainReflectionCanvas||(drawPhoto._mountainReflectionCanvas=document.createElement("canvas"));
-        if(mountainReflectionCanvas.width!==W||mountainReflectionCanvas.height!==H){mountainReflectionCanvas.width=W;mountainReflectionCanvas.height=H;}
-        const mountainCtx=mountainReflectionCanvas.getContext("2d");mountainCtx.clearRect(0,0,W,H);
-        mountainCtx.save();mountainCtx.translate(0,mirrorHorizonY*2);mountainCtx.scale(1,-1);
-        mountainCtx.globalAlpha=terrainDisplayAlpha*.96;
-        mountainCtx.drawImage(terrainCanvas,0,0);
-        if(dayFactor>0){
-          mountainCtx.globalAlpha=terrainDisplayAlpha*.96*dayFactor;
-          mountainCtx.drawImage(dayTerrainCanvas,0,0);
+        let mountainReflectionResized=false;
+        if(mountainReflectionCanvas.width!==W||mountainReflectionCanvas.height!==H){
+          mountainReflectionCanvas.width=W;mountainReflectionCanvas.height=H;mountainReflectionResized=true;
         }
-        mountainCtx.restore();
-        // 完全な夜で約78%暗くし、薄明〜昼へ向かうほど補正を連続的に弱める。
-        const nightMountainDarken=.78*(1-dayFactor);
-        if(nightMountainDarken>0){
-          mountainCtx.save();mountainCtx.globalCompositeOperation="source-atop";
-          mountainCtx.fillStyle=`rgba(0,3,8,${nightMountainDarken})`;mountainCtx.fillRect(0,0,W,H);mountainCtx.restore();
+        const mountainReflectionRenderKey=`${reflectionGeometryKey}|${terrainDisplayAlpha}|${dayFactor}`;
+        if(mountainReflectionResized||drawPhoto._mountainReflectionRenderKey!==mountainReflectionRenderKey){
+          const mountainCtx=mountainReflectionCanvas.getContext("2d");mountainCtx.clearRect(0,0,W,H);
+          mountainCtx.save();mountainCtx.translate(0,mirrorHorizonY*2);mountainCtx.scale(1,-1);
+          mountainCtx.globalAlpha=terrainDisplayAlpha*.96;
+          mountainCtx.drawImage(terrainCanvas,0,0);
+          if(dayFactor>0){
+            mountainCtx.globalAlpha=terrainDisplayAlpha*.96*dayFactor;
+            mountainCtx.drawImage(dayTerrainCanvas,0,0);
+          }
+          mountainCtx.restore();
+          // 完全な夜で約78%暗くし、薄明〜昼へ向かうほど補正を連続的に弱める。
+          const nightMountainDarken=.78*(1-dayFactor);
+          if(nightMountainDarken>0){
+            mountainCtx.save();mountainCtx.globalCompositeOperation="source-atop";
+            mountainCtx.fillStyle=`rgba(0,3,8,${nightMountainDarken})`;mountainCtx.fillRect(0,0,W,H);mountainCtx.restore();
+          }
+          drawPhoto._mountainReflectionRenderKey=mountainReflectionRenderKey;
         }
         ctx.drawImage(mountainReflectionCanvas,0,0);
-        waterReflectionHorizonYByX=buildSkylineYArray(runs.flatMap(run=>run.map(item=>item.horizon)),W,H);
+        waterReflectionHorizonYByX=reflectionHorizonYByX;
         meteorReflectionWaterPath=meteorWaterPath;
         // 富士山の積雪が通常の山体に表示される季節・距離・遮蔽条件と一致する場合だけ反射する。
         drawSeasonalFujiSnow(true,ctx,mirrorHorizonY);
