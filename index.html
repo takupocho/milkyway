@@ -10449,8 +10449,12 @@ function drawPhoto(ctx,s){
       }
       // 水際距離・距離帯・近距離メッシュのいずれかで確認できた水域方位。
       // 遠方地形を水平線で切る判定と、海色の下地描画で同じ結果を共有する。
-      const confirmedWaterAz=new Array(360).fill(false);
-      {
+      let confirmedWaterAz;
+      const confirmedWaterCache=drawPhoto._confirmedWaterAzCache;
+      if(confirmedWaterCache&&confirmedWaterCache.key===terrainGeometryKey){
+        confirmedWaterAz=confirmedWaterCache.values;
+      }else{
+        confirmedWaterAz=new Array(360).fill(false);
         const nearProfile=realTerrainState.waterNearKm;
         const coastlineOpenSea=realTerrainState.coastlineOpenSeaAz||[];
         const waterLayers=realTerrainState.terrainLayers||[];
@@ -10463,6 +10467,7 @@ function drawPhoto(ctx,s){
           // 後から通常の地形を重ねるため、山や岬は水面に置換されない。
           confirmedWaterAz[az]=hasShoreline||hasWaterBand||hasWaterMesh||!!coastlineOpenSea[az];
         }
+        drawPhoto._confirmedWaterAzCache={key:terrainGeometryKey,values:confirmedWaterAz};
       }
       function isConfirmedWaterDirection(az){
         const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360;
@@ -10470,57 +10475,61 @@ function drawPhoto(ctx,s){
       }
       function drawWaterReflections(){
         const mainCtx=ctx;
-        const reflectionCanvas=drawWaterReflections._canvas||(drawWaterReflections._canvas=document.createElement("canvas"));
+        const reflectionCanvas=drawPhoto._waterReflectionCanvas||(drawPhoto._waterReflectionCanvas=document.createElement("canvas"));
         if(reflectionCanvas.width!==W||reflectionCanvas.height!==H){reflectionCanvas.width=W;reflectionCanvas.height=H;}
         const reflectionContext=reflectionCanvas.getContext("2d");reflectionContext.clearRect(0,0,W,H);
         return ((ctx)=>{
         if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
-        const reflectionStep=Math.min(step,.28),samples=[];
-        for(let diff=-half-2;diff<=half+2;diff+=reflectionStep){
-          const az=norm360(s.facingAz+diff),idx=((Math.round(az)%360)+360)%360;
-          if(!isConfirmedWaterDirection(az)){samples.push(null);continue;}
-          const horizon=toXY(az,0);
-          if(!horizon||![...horizon].every(Number.isFinite)){samples.push(null);continue;}
-          // 水域として色分けされた方位は、水平線から画面下端までを反射候補にする。
-          // 以前は推定水際距離をもう一度投影していたため、海色が続いていても反射だけが途中で切れていた。
-          // 実際の手前陸地は、この反射の後に描く足元レイヤーで上から確実に隠す。
-          const safeShoreline=[horizon[0],H+2];
-          samples.push({az,horizon,shoreline:safeShoreline});
-        }
-        const runs=[];let cursor=0;
-        while(cursor<samples.length){
-          while(cursor<samples.length&&!samples[cursor]) cursor++;
-          let end=cursor;while(end<samples.length&&samples[end]) end++;
-          const run=samples.slice(cursor,end);
-          if(run.length>=3){
-            // 岸の左右端では水面の深さを0から立ち上げ、四角い反射領域が陸へ食い込まないようにする。
-            const taperCount=Math.max(2,Math.round(1.5/reflectionStep));
-            run.forEach((item,index)=>{
-              const edge=Math.min(1,index/taperCount,(run.length-1-index)/taperCount);
-              const smooth=edge*edge*(3-2*edge);
-              item.bottom=[item.shoreline[0],lerp(item.horizon[1],Math.max(item.horizon[1],item.shoreline[1]),smooth)];
-            });
-            runs.push(run);
+        const reflectionStep=Math.min(step,.28);
+        const reflectionGeometryKey=`${terrainGeometryKey}|${half}|${reflectionStep}`;
+        let reflectionGeometry=drawPhoto._waterReflectionGeometryCache;
+        if(!reflectionGeometry||reflectionGeometry.key!==reflectionGeometryKey){
+          const samples=[];
+          for(let diff=-half-2;diff<=half+2;diff+=reflectionStep){
+            const az=norm360(s.facingAz+diff);
+            if(!isConfirmedWaterDirection(az)){samples.push(null);continue;}
+            const horizon=toXY(az,0);
+            if(!horizon||![...horizon].every(Number.isFinite)){samples.push(null);continue;}
+            // 水域として色分けされた方位は、水平線から画面下端までを反射候補にする。
+            const safeShoreline=[horizon[0],H+2];
+            samples.push({az,horizon,shoreline:safeShoreline});
           }
-          cursor=Math.max(end,cursor+1);
+          const runs=[];let cursor=0;
+          while(cursor<samples.length){
+            while(cursor<samples.length&&!samples[cursor]) cursor++;
+            let end=cursor;while(end<samples.length&&samples[end]) end++;
+            const run=samples.slice(cursor,end);
+            if(run.length>=3){
+              const taperCount=Math.max(2,Math.round(1.5/reflectionStep));
+              run.forEach((item,index)=>{
+                const edge=Math.min(1,index/taperCount,(run.length-1-index)/taperCount);
+                const smooth=edge*edge*(3-2*edge);
+                item.bottom=[item.shoreline[0],lerp(item.horizon[1],Math.max(item.horizon[1],item.shoreline[1]),smooth)];
+              });
+              runs.push(run);
+            }
+            cursor=Math.max(end,cursor+1);
+          }
+          const waterMask=new Path2D();
+          runs.forEach(run=>{
+            waterMask.moveTo(run[0].horizon[0],run[0].horizon[1]);
+            for(let i=1;i<run.length;i++) waterMask.lineTo(run[i].horizon[0],run[i].horizon[1]);
+            for(let i=run.length-1;i>=0;i--) waterMask.lineTo(run[i].bottom[0],run[i].bottom[1]);
+            waterMask.closePath();
+          });
+          const allHorizonY=runs.flatMap(run=>run.map(item=>item.horizon[1])).filter(Number.isFinite);
+          const mirrorHorizonY=allHorizonY.length
+            ?allHorizonY.reduce((sum,value)=>sum+value,0)/allHorizonY.length:H*.5;
+          reflectionGeometry=drawPhoto._waterReflectionGeometryCache={key:reflectionGeometryKey,runs,waterMask,mirrorHorizonY};
         }
+        const {runs,waterMask,mirrorHorizonY}=reflectionGeometry;
         if(!runs.length) return false;
-        const waterMask=new Path2D();
-        runs.forEach(run=>{
-          waterMask.moveTo(run[0].horizon[0],run[0].horizon[1]);
-          for(let i=1;i<run.length;i++) waterMask.lineTo(run[i].horizon[0],run[i].horizon[1]);
-          for(let i=run.length-1;i>=0;i--) waterMask.lineTo(run[i].bottom[0],run[i].bottom[1]);
-          waterMask.closePath();
-        });
 
         ctx.save();ctx.clip(waterMask);
 
         // 日中・夕方・夜のすべてで、青い水面へ色を足すのではなく、水平線を軸に
         // 反転した空そのものへほぼ置き換える。時間帯による例外は作らない。
         const dayEveningMirror=1;
-        const allHorizonY=runs.flatMap(run=>run.map(item=>item.horizon[1])).filter(Number.isFinite);
-        const mirrorHorizonY=allHorizonY.length
-          ? allHorizonY.reduce((sum,value)=>sum+value,0)/allHorizonY.length : H*.5;
         {
           const sky=skyPalette(s.sunAltAz.alt);
           const skyColorAtY=y=>mixRGB(sky.z,sky.h,clamp(y/H,0,1));
@@ -11893,6 +11902,7 @@ function drawPhoto(ctx,s){
         // 判定式・格子・描画順序は変えず、同じ方位・距離番号への重複問い合わせだけを省く。
         const normalTerrainEffectiveWaterCache=Array.from({length:360},()=>[]);
         const normalTerrainBoundaryWeightCache=Array.from({length:360},()=>[]);
+        const normalTerrainSourceVertexCache=Array.from({length:360},()=>[]);
         const effectiveNormalTerrainWater=(az,index)=>{
           const cached=normalTerrainEffectiveWaterCache[az][index];
           if(cached!==undefined) return cached;
@@ -11905,6 +11915,16 @@ function drawPhoto(ctx,s){
           const left=effectiveNormalTerrainWater((az+359)%360,index)?1:0;
           const right=effectiveNormalTerrainWater((az+1)%360,index)?1:0;
           return normalTerrainBoundaryWeightCache[az][index]=((selfWater?1:0)*2+left+right)/4;
+        };
+        const normalTerrainSourceVertex=(az,index)=>{
+          const cached=normalTerrainSourceVertexCache[az][index];
+          if(cached) return cached;
+          const point=grid[az]?.[index];
+          if(!point) return null;
+          const water=effectiveNormalTerrainWater(az,index);
+          return normalTerrainSourceVertexCache[az][index]={
+            ...point,az,water,waterWeight:normalTerrainBoundaryWeight(az,index,water)
+          };
         };
         const interpolateNormalTerrainVertex=(left,right,f,rawAz,cellAzimuthSpan)=>{
           const waterWeight=lerp(left.waterWeight,right.waterWeight,f);
@@ -11923,6 +11943,17 @@ function drawPhoto(ctx,s){
             water:waterWeight>=.5
           };
         };
+        // 距離方向で隣り合うセルは境界頂点を共有する。セル境界ごとの補間済み2頂点を
+        // 一度だけ作り、オブジェクト生成と同一頂点の画面投影を再利用する。
+        const normalTerrainCellEdgeCache=normalTerrainAzimuthCells.map(()=>[]);
+        const normalTerrainCellEdge=(cellIndex,index,left,right,rawAz,cellAzimuthSpan)=>{
+          const cached=normalTerrainCellEdgeCache[cellIndex][index];
+          if(cached) return cached;
+          return normalTerrainCellEdgeCache[cellIndex][index]=[
+            interpolateNormalTerrainVertex(left,right,0,rawAz,cellAzimuthSpan),
+            interpolateNormalTerrainVertex(left,right,1,rawAz,cellAzimuthSpan)
+          ];
+        };
         for(let d=ringCount-2;d>=0;d--){
           for(let azimuthCellIndex=0;azimuthCellIndex<normalTerrainAzimuthCells.length;azimuthCellIndex++){
             const azimuthCell=normalTerrainAzimuthCells[azimuthCellIndex];
@@ -11931,12 +11962,8 @@ function drawPhoto(ctx,s){
             const p00=grid[a0]&&grid[a0][d],p01=grid[a0]&&grid[a0][d+1];
             const p10=grid[a1]&&grid[a1][d],p11=grid[a1]&&grid[a1][d+1];
             if(!p00||!p01||!p10||!p11) continue;
-            const w00=effectiveNormalTerrainWater(a0,d),w01=effectiveNormalTerrainWater(a0,d+1);
-            const w10=effectiveNormalTerrainWater(a1,d),w11=effectiveNormalTerrainWater(a1,d+1);
-            const v00={...p00,az:a0,water:w00,waterWeight:normalTerrainBoundaryWeight(a0,d,w00)};
-            const v01={...p01,az:a0,water:w01,waterWeight:normalTerrainBoundaryWeight(a0,d+1,w01)};
-            const v10={...p10,az:a1,water:w10,waterWeight:normalTerrainBoundaryWeight(a1,d,w10)};
-            const v11={...p11,az:a1,water:w11,waterWeight:normalTerrainBoundaryWeight(a1,d+1,w11)};
+            const v00=normalTerrainSourceVertex(a0,d),v01=normalTerrainSourceVertex(a0,d+1);
+            const v10=normalTerrainSourceVertex(a1,d),v11=normalTerrainSourceVertex(a1,d+1);
             // 半径50m以内は別の近距離格子を使い、それより遠方の通常DEMは
             // 世界方位0度基準の選択間隔で、離れた取得レイ同士を直接つないで描画する。
             // 標高と水域重みを同時に補間するので、後付けの足元面を使わず、
@@ -11944,10 +11971,8 @@ function drawPhoto(ctx,s){
             const cellDistanceKm=(p00.distanceKm+p01.distanceKm+p10.distanceKm+p11.distanceKm)/4;
             // 半径50m以内は後段の正方形XY格子へ完全に置き換える。
             if(cellDistanceKm<=.05) continue;
-            const near0=interpolateNormalTerrainVertex(v00,v10,0,rawAz,cellAzimuthSpan);
-            const near1=interpolateNormalTerrainVertex(v00,v10,1,rawAz,cellAzimuthSpan);
-            const far0=interpolateNormalTerrainVertex(v01,v11,0,rawAz,cellAzimuthSpan);
-            const far1=interpolateNormalTerrainVertex(v01,v11,1,rawAz,cellAzimuthSpan);
+            const [near0,near1]=normalTerrainCellEdge(azimuthCellIndex,d,v00,v10,rawAz,cellAzimuthSpan);
+            const [far0,far1]=normalTerrainCellEdge(azimuthCellIndex,d+1,v01,v11,rawAz,cellAzimuthSpan);
             paintTriangle(near0,near1,far1);
             paintTriangle(near0,far1,far0);
           }
