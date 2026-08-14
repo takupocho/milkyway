@@ -2632,6 +2632,32 @@
           <p class="map-hint" style="margin-top:4px;">リアル表示した空の天の川だけを3段階で調整します。水面に映る天の川の明るさには影響しません。</p>
           <button id="terrainTopViewBtn" type="button" style="margin-top:8px;">🧭 近距離地形を上から確認（診断）</button>
           <p class="map-hint" style="margin-top:4px;">現在取得済みのDEM地形メッシュを、観測地点の真上から表示します。陸・水域・DEM欠損・撮影方向を確認するための一時的な診断機能です。</p>
+          <div style="margin-top:12px;padding:10px;border:1px solid rgba(132,154,196,.28);border-radius:10px;background:rgba(11,18,39,.32);">
+            <div style="font-weight:700;color:#dce7fa;">🗻 局所高精細地形（試作）</div>
+            <p class="map-hint" style="margin-top:6px;">指定地点の半径内だけ国土地理院の5mメッシュ標高タイル（ズーム15）を取得し、実測DEM標高で近距離メッシュを高精細化します。人工的な高さは追加しません。</p>
+            <div class="field" style="margin-top:8px;">
+              <label class="top">Googleマップの経度・緯度</label>
+              <input id="localDetailCoordinatePaste" type="text" placeholder="例: 35.123456, 134.123456">
+            </div>
+            <button id="localDetailCoordinateApplyBtn" type="button" style="margin-top:6px;">経度・緯度を反映</button>
+            <div class="row2" style="margin-top:8px;">
+              <div class="field"><label class="top">緯度</label><input id="localDetailLat" type="number" step="0.000001"></div>
+              <div class="field"><label class="top">経度</label><input id="localDetailLon" type="number" step="0.000001"></div>
+            </div>
+            <div class="row2" style="margin-top:8px;">
+              <div class="field"><label class="top">高精細化する半径（m）</label><input id="localDetailRadius" type="number" min="5" max="50" step="1" value="25"></div>
+              <div class="field"><label class="top">サンプル間隔</label><input type="text" value="1m（自動）" disabled></div>
+            </div>
+            <div class="row2" style="margin-top:8px;">
+              <button id="localDetailFetchBtn" type="button" class="primary">局所高精細地形を取得して表示</button>
+              <button id="localDetailTerrainBtn" type="button">解除して通常DEMへ戻す</button>
+            </div>
+            <div class="field" style="margin-top:10px;"><label class="top">登録名</label><input id="localDetailName" type="text" maxlength="60" placeholder="例：立巌岩"></div>
+            <div class="row2" style="margin-top:6px;"><button id="localDetailRegisterBtn" type="button">この局所地形を登録</button><button id="localDetailDeleteBtn" type="button">登録を削除</button></div>
+            <div class="field" style="margin-top:8px;"><label class="top">登録した局所高精細地形</label><select id="localDetailSavedSelect"><option value="">登録なし</option></select></div>
+            <button id="localDetailLoadBtn" type="button" style="margin-top:6px;width:100%;">選択した局所地形を呼び出す</button>
+            <div id="localDetailTerrainStatus" class="map-hint" style="margin-top:7px;">未取得：通常のDEM地形を使用</div>
+          </div>
           <div class="field" style="margin-top:8px;">
             <label class="top">天の川模様の位置調整・左右(度) <span class="val mono" id="mwTextureOffsetVal">0°</span></label>
             <input type="range" id="mwTextureOffsetSlider" min="-90" max="90" step="1" value="0">
@@ -3851,6 +3877,7 @@ const el={
   realMilkyWayBtn:$("realMilkyWayBtn"), realMilkyWayState:$("realMilkyWayState"),
   realMilkyWayBrightnessSlider:$("realMilkyWayBrightnessSlider"), realMilkyWayBrightnessVal:$("realMilkyWayBrightnessVal"),
   terrainTopViewBtn:$("terrainTopViewBtn"), terrainTopViewOverlay:$("terrainTopViewOverlay"), terrainTopViewCloseBtn:$("terrainTopViewCloseBtn"), terrainTopViewRange:$("terrainTopViewRange"), terrainTopViewCanvas:$("terrainTopViewCanvas"), terrainTopViewStatus:$("terrainTopViewStatus"),
+  localDetailTerrainBtn:$("localDetailTerrainBtn"), localDetailFetchBtn:$("localDetailFetchBtn"), localDetailCoordinatePaste:$("localDetailCoordinatePaste"), localDetailCoordinateApplyBtn:$("localDetailCoordinateApplyBtn"), localDetailLat:$("localDetailLat"), localDetailLon:$("localDetailLon"), localDetailRadius:$("localDetailRadius"), localDetailName:$("localDetailName"), localDetailRegisterBtn:$("localDetailRegisterBtn"), localDetailDeleteBtn:$("localDetailDeleteBtn"), localDetailSavedSelect:$("localDetailSavedSelect"), localDetailLoadBtn:$("localDetailLoadBtn"), localDetailTerrainStatus:$("localDetailTerrainStatus"),
   nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
   mwTextureOffsetSlider:$("mwTextureOffsetSlider"), mwTextureOffsetVal:$("mwTextureOffsetVal"),
@@ -4053,13 +4080,24 @@ el.facingAz.value=180; el.facingAlt.value=20;
 /* =========================================================
    4. イベント配線
    ========================================================= */
+// スライダーやドラッグでは同じ表示フレーム内に複数のinputイベントが届くことがある。
+// 描画要求だけを次のrequestAnimationFrameへ集約し、最終値を1回描画する。
+// 計算内容・描画順序・最終画質は従来のupdate()と同一のまま維持する。
+let scheduledUpdateRaf=0;
+function scheduleUpdate(){
+  if(scheduledUpdateRaf) return;
+  scheduledUpdateRaf=requestAnimationFrame(()=>{
+    scheduledUpdateRaf=0;
+    update();
+  });
+}
 el.citySelect.addEventListener("change",()=>{
   const c=CITIES[+el.citySelect.value];
   if(!c.custom){ el.lat.value=c.lat; el.lon.value=c.lon; el.tz.value=c.tz; }
   update();
   if(!c.custom) reverseGeocodeAndShow(c.lat, c.lon); // プリセットを選んだ地点の県+市名を自動取得して表示する
 });
-[el.lat,el.lon,el.tz].forEach(inp=>inp.addEventListener("input",()=>{ el.citySelect.value=0; update(); }));
+[el.lat,el.lon,el.tz].forEach(inp=>inp.addEventListener("input",()=>{ el.citySelect.value=0; scheduleUpdate(); }));
 
 el.geoBtn.addEventListener("click",()=>{
   if(!navigator.geolocation){ alert("この環境では位置情報を取得できません。"); return; }
@@ -4082,8 +4120,8 @@ el.geoBtn.addEventListener("click",()=>{
 el.observedPlaceName.addEventListener("click",()=>{ el.geoBtn.click(); });
 el.todayDatePlace.addEventListener("click",()=>{ el.geoBtn.click(); });
 
-el.dateInput.addEventListener("input",update);
-el.timeSlider.addEventListener("input",update);
+el.dateInput.addEventListener("input",scheduleUpdate);
+el.timeSlider.addEventListener("input",scheduleUpdate);
 el.nowBtn.addEventListener("click",()=>{
   const now=new Date();
   const y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,"0"), d=String(now.getDate()).padStart(2,"0");
@@ -4155,7 +4193,7 @@ el.bestTimeBar.addEventListener("click",(e)=>{
 });
 
 [el.focalLength,el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp,el.facingAz,el.facingAlt]
-  .forEach(inp=>inp.addEventListener("input",update));
+  .forEach(inp=>inp.addEventListener("input",scheduleUpdate));
 
 /* 「観測地点」「カメラ設定」など見出しクリックで内容を開閉できるようにする */
 document.querySelectorAll(".ctrl-group-toggle").forEach(h2=>{
@@ -4960,6 +4998,154 @@ el.showBelowHorizonBtn.addEventListener("click",()=>{
 });
 /* 実写全天パノラマによる天の川表示ON/OFF。ARは従来の軽量描画を維持する。 */
 let realMilkyWayEnabled=false;
+// 指定した狭い範囲だけ5mメッシュ標高タイル（ズーム15）を先に取得し、1m格子へ展開して保持する。
+// 描画ループ内では通信せず、準備済み配列を参照するだけなので日時変更時の負荷を増やさない。
+let localDetailTerrainEnabled=false;
+let localDetailTerrainReady=false;
+let localDetailTerrainData=null;
+let localDetailTerrainRequestToken=0;
+let localDetailPresets=[];
+function localDetailTerrainConfig(){
+  return {
+    lat:+el.localDetailLat.value,lon:+el.localDetailLon.value,
+    radiusM:clamp(+el.localDetailRadius.value||25,5,50)
+  };
+}
+function localDetailTerrainKey(cfg=localDetailTerrainConfig()){
+  return Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)?`${cfg.lat.toFixed(6)},${cfg.lon.toFixed(6)},${Math.round(cfg.radiusM)},dem5-z15`:"";
+}
+function sampleLocalDetailElevation(eastFromObserverM,northFromObserverM){
+  const data=localDetailTerrainData;if(!localDetailTerrainEnabled||!data)return null;
+  const observerLat=+el.lat.value,observerLon=+el.lon.value;
+  if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon))return null;
+  const target=terrainDistanceAndBearing(observerLat,observerLon,data.lat,data.lon),targetRad=target.bearing*D2R;
+  const dx=eastFromObserverM-Math.sin(targetRad)*target.distanceKm*1000;
+  const dy=northFromObserverM-Math.cos(targetRad)*target.distanceKm*1000;
+  const radial=Math.hypot(dx,dy);if(radial>data.radiusM)return null;
+  const gx=dx+data.radiusM,gy=dy+data.radiusM;
+  const x0=Math.floor(gx),y0=Math.floor(gy),x1=Math.min(data.size-1,x0+1),y1=Math.min(data.size-1,y0+1);
+  if(x0<0||y0<0||x0>=data.size||y0>=data.size)return null;
+  const values=[data.elevations[y0*data.size+x0],data.elevations[y0*data.size+x1],data.elevations[y1*data.size+x0],data.elevations[y1*data.size+x1]];
+  if(!values.every(Number.isFinite))return null;
+  const fx=gx-x0,fy=gy-y0,elevation=lerp(lerp(values[0],values[1],fx),lerp(values[2],values[3],fx),fy);
+  // 外周2mだけ通常DEMへ滑らかに戻し、異なる解像度どうしの円形段差を見せない。
+  const edgeBlend=clamp((data.radiusM-radial)/Math.min(2,Math.max(1,data.radiusM*.2)),0,1);
+  const smoothBlend=edgeBlend*edgeBlend*(3-2*edgeBlend);
+  return {elevation,blend:smoothBlend};
+}
+function syncLocalDetailTerrainControl(){
+  const cfg=localDetailTerrainConfig();
+  const valid=Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon);
+  if(!localDetailTerrainEnabled) el.localDetailTerrainStatus.textContent="未取得：通常のDEM地形を使用";
+  else if(!valid) el.localDetailTerrainStatus.textContent="緯度・経度を入力してください。";
+  else{
+    const observerLat=+el.lat.value,observerLon=+el.lon.value;
+    const info=Number.isFinite(observerLat)&&Number.isFinite(observerLon)?terrainDistanceAndBearing(observerLat,observerLon,cfg.lat,cfg.lon):null;
+    const distanceText=info?`観測地点から約${Math.round(info.distanceKm*1000)}m・方位${Math.round(info.bearing)}°`:`半径${cfg.radiusM}m`;
+    const count=localDetailTerrainData&&localDetailTerrainData.key===localDetailTerrainKey(cfg)?localDetailTerrainData.validCount:0;
+    const range=localDetailTerrainData&&Number.isFinite(localDetailTerrainData.minElevation)&&Number.isFinite(localDetailTerrainData.maxElevation)
+      ?`／標高 ${localDetailTerrainData.minElevation.toFixed(1)}～${localDetailTerrainData.maxElevation.toFixed(1)}m（高低差 ${(localDetailTerrainData.maxElevation-localDetailTerrainData.minElevation).toFixed(1)}m）`:"";
+    el.localDetailTerrainStatus.textContent=`表示中：${distanceText}／半径${cfg.radiusM}m／実測標高 ${count.toLocaleString()}点${range}`;
+  }
+}
+function invalidateLocalDetailTerrain(clearData=true){
+  if(clearData){localDetailTerrainEnabled=false;localDetailTerrainData=null;localDetailTerrainRequestToken++;}
+  drawPhoto._terrainRenderKey=null;
+  syncLocalDetailTerrainControl();if(localDetailTerrainReady) update();scheduleSaveSettings();
+  // 診断画面が実際に開いている場合だけ、その表示も更新する。
+  if(el.terrainTopViewOverlay&&el.terrainTopViewOverlay.classList.contains("show")) drawTerrainTopView();
+}
+function destinationFromMeters(lat,lon,eastM,northM){
+  const distanceM=Math.hypot(eastM,northM);
+  const [pLat,pLon]=terrainDestination(lat,lon,norm360(Math.atan2(eastM,northM)*R2D),distanceM/1000);
+  return {lat:pLat,lon:pLon};
+}
+async function fetchLocalDetailTerrain(){
+  const cfg=localDetailTerrainConfig(),key=localDetailTerrainKey(cfg);
+  if(!key){el.localDetailTerrainStatus.textContent="緯度・経度を入力してください。";return;}
+  const token=++localDetailTerrainRequestToken;
+  localDetailTerrainEnabled=false;localDetailTerrainData=null;
+  el.localDetailFetchBtn.disabled=true;el.localDetailTerrainStatus.textContent="5mメッシュ標高を取得中…";
+  try{
+    const radius=Math.round(cfg.radiusM),size=radius*2+1,tiles=new Map();
+    // 円を含む正方形の1m格子について、必要なタイルだけを重複なく先行取得する。
+    for(let north=-radius;north<=radius;north++)for(let east=-radius;east<=radius;east++){
+      if(east*east+north*north>radius*radius) continue;
+      const point=destinationFromMeters(cfg.lat,cfg.lon,east,north),tile=localDetailTilePoint(point.lat,point.lon);
+      tiles.set(tile.key,tile);
+    }
+    const localTiles=[...tiles.values()];let tileIndex=0;
+    async function localWorker(){while(tileIndex<localTiles.length)await loadLocalDetailDemTile(localTiles[tileIndex++]);}
+    await Promise.all(Array.from({length:Math.min(6,localTiles.length)},localWorker));
+    if(token!==localDetailTerrainRequestToken)return;
+    const elevations=new Float32Array(size*size);elevations.fill(NaN);let validCount=0,minElevation=Infinity,maxElevation=-Infinity;
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+      const east=x-radius,north=y-radius;if(east*east+north*north>radius*radius)continue;
+      const point=destinationFromMeters(cfg.lat,cfg.lon,east,north),tile=localDetailTilePoint(point.lat,point.lon);
+      const elevation=await localDetailElevationAt(tile);
+      if(Number.isFinite(elevation)){elevations[y*size+x]=elevation;validCount++;minElevation=Math.min(minElevation,elevation);maxElevation=Math.max(maxElevation,elevation);}
+    }
+    if(token!==localDetailTerrainRequestToken)return;
+    if(!validCount)throw new Error("指定範囲に有効な標高値がありません");
+    localDetailTerrainData={key,lat:cfg.lat,lon:cfg.lon,radiusM:radius,size,elevations,validCount,minElevation,maxElevation};
+    localDetailTerrainEnabled=true;invalidateLocalDetailTerrain(false);
+  }catch(error){
+    if(token===localDetailTerrainRequestToken){localDetailTerrainEnabled=false;localDetailTerrainData=null;el.localDetailTerrainStatus.textContent=`取得できませんでした：${error?.message||"通信エラー"}`;}
+  }finally{if(token===localDetailTerrainRequestToken)el.localDetailFetchBtn.disabled=false;}
+}
+function captureLocalDetailForPlan(){
+  const cfg=localDetailTerrainConfig();
+  if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return null;
+  return {version:1,name:String(el.localDetailName.value||"").trim(),lat:cfg.lat,lon:cfg.lon,radiusM:cfg.radiusM,enabled:localDetailTerrainEnabled};
+}
+function renderLocalDetailPresets(selectedId=""){
+  el.localDetailSavedSelect.innerHTML='<option value="">登録なし</option>';
+  localDetailPresets.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),"ja")).forEach(item=>{
+    const option=document.createElement("option");option.value=item.id;option.textContent=`${item.name}（半径${item.radiusM}m）`;el.localDetailSavedSelect.appendChild(option);
+  });
+  if(selectedId&&localDetailPresets.some(item=>item.id===selectedId))el.localDetailSavedSelect.value=selectedId;
+}
+async function saveLocalDetailPresets(){await persistentSet(LOCAL_DETAIL_PRESETS_KEY,JSON.stringify(localDetailPresets));}
+async function loadLocalDetailPresets(){
+  try{const stored=await persistentGet(LOCAL_DETAIL_PRESETS_KEY);localDetailPresets=stored?JSON.parse(stored):[];if(!Array.isArray(localDetailPresets))localDetailPresets=[];}catch(e){localDetailPresets=[];}
+  renderLocalDetailPresets();
+}
+async function applyLocalDetailDescriptor(saved,autoFetch=true){
+  if(!saved){invalidateLocalDetailTerrain(true);el.localDetailName.value="";return false;}
+  if(!Number.isFinite(+saved.lat)||!Number.isFinite(+saved.lon))return false;
+  invalidateLocalDetailTerrain(true);
+  el.localDetailName.value=String(saved.name||"");el.localDetailLat.value=(+saved.lat).toFixed(6);el.localDetailLon.value=(+saved.lon).toFixed(6);el.localDetailRadius.value=clamp(+saved.radiusM||25,5,50);
+  syncLocalDetailTerrainControl();scheduleSaveSettings();
+  if(autoFetch&&saved.enabled!==false)await fetchLocalDetailTerrain();
+  return true;
+}
+el.localDetailRegisterBtn.addEventListener("click",async()=>{
+  const cfg=localDetailTerrainConfig(),name=String(el.localDetailName.value||"").trim();
+  if(!name){el.localDetailTerrainStatus.textContent="登録名を入力してください。";return;}
+  if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon)){el.localDetailTerrainStatus.textContent="緯度・経度を入力してください。";return;}
+  const existing=localDetailPresets.find(item=>item.name===name),preset={id:existing?existing.id:`ldt_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,name,lat:cfg.lat,lon:cfg.lon,radiusM:cfg.radiusM,enabled:true,updatedAt:Date.now()};
+  if(existing)Object.assign(existing,preset);else localDetailPresets.push(preset);
+  await saveLocalDetailPresets();renderLocalDetailPresets(preset.id);el.localDetailTerrainStatus.textContent=`「${name}」を登録しました。`;
+});
+el.localDetailLoadBtn.addEventListener("click",async()=>{
+  const preset=localDetailPresets.find(item=>item.id===el.localDetailSavedSelect.value);if(!preset){el.localDetailTerrainStatus.textContent="呼び出す局所地形を選択してください。";return;}
+  await applyLocalDetailDescriptor(preset,true);
+});
+el.localDetailDeleteBtn.addEventListener("click",async()=>{
+  const preset=localDetailPresets.find(item=>item.id===el.localDetailSavedSelect.value);if(!preset)return;
+  if(!confirm(`「${preset.name}」を登録一覧から削除しますか？`))return;
+  localDetailPresets=localDetailPresets.filter(item=>item.id!==preset.id);await saveLocalDetailPresets();renderLocalDetailPresets();
+});
+el.localDetailFetchBtn.addEventListener("click",fetchLocalDetailTerrain);
+el.localDetailTerrainBtn.addEventListener("click",()=>invalidateLocalDetailTerrain(true));
+el.localDetailCoordinateApplyBtn.addEventListener("click",()=>{
+  const values=(el.localDetailCoordinatePaste.value.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number);
+  if(values.length<2||Math.abs(values[0])>90||Math.abs(values[1])>180){el.localDetailTerrainStatus.textContent="「緯度, 経度」の形式で入力してください。";return;}
+  el.localDetailLat.value=values[0].toFixed(6);el.localDetailLon.value=values[1].toFixed(6);
+  invalidateLocalDetailTerrain(true);
+});
+[el.localDetailLat,el.localDetailLon,el.localDetailRadius].forEach(input=>input.addEventListener("input",()=>invalidateLocalDetailTerrain(true)));
+localDetailTerrainReady=true;
 // 空に表示するリアル天の川だけの3段階明るさ。水面リフレには適用しない。
 let realMilkyWayBrightnessLevel=3;
 const REAL_MW_BRIGHTNESS_LABELS={1:"1（控えめ）",2:"2（標準）",3:"3（明るい）"};
@@ -5333,7 +5519,7 @@ function photoDragMove(pos){
   const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -30, 85);
   el.facingAz.value=Math.round(newAz);
   el.facingAlt.value=Math.round(newAlt);
-  update();
+  scheduleUpdate();
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
 function handlePhotoTap(pos){
@@ -5419,7 +5605,7 @@ el.photoCanvas.addEventListener("touchmove",(e)=>{
   const ratio=dist/photoPinchStartDist;
   const newFocal=clamp(Math.round(photoPinchStartFocal*ratio), +el.focalLength.min, +el.focalLength.max);
   el.focalLength.value=newFocal;
-  update();
+  scheduleUpdate();
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchend",(e)=>{
@@ -6157,6 +6343,7 @@ el.dateCollapseToggle.addEventListener("click",()=>{
    GitHub Pages・通常ブラウザではlocalStorageを使用し、対応環境ではwindow.storageにも同期する。 */
 const SETTINGS_KEY="milkyway-settings-v1";
 const SAVED_LOCATIONS_KEY="milkyway-saved-locations-v1";
+const LOCAL_DETAIL_PRESETS_KEY="milkyway-local-detail-presets-v1";
 const PLAN_PHOTO_DB_NAME="milkyway-plan-photos-v1";
 let planPhotoDbPromise=null;
 function openPlanPhotoDb(){
@@ -6252,6 +6439,8 @@ function collectPersistedSettings(){
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
     observedPlaceName:currentObservedPlaceName,
+    localDetailTerrainEnabled:false,
+    localDetailTerrain:localDetailTerrainConfig(),
   };
 }
 let saveSettingsTimer=null;
@@ -6292,6 +6481,14 @@ async function loadPersistedSettings(){
     vignetteEnabled=s.vignetteEnabled!==false;
     el.vignetteBtn.classList.toggle("active",vignetteEnabled);
     el.vignetteState.textContent=vignetteEnabled?"ON":"OFF";
+    if(s.localDetailTerrain&&typeof s.localDetailTerrain==="object"){
+      if(Number.isFinite(+s.localDetailTerrain.lat)) el.localDetailLat.value=+s.localDetailTerrain.lat;
+      if(Number.isFinite(+s.localDetailTerrain.lon)) el.localDetailLon.value=+s.localDetailTerrain.lon;
+      if(Number.isFinite(+s.localDetailTerrain.radiusM)) el.localDetailRadius.value=clamp(+s.localDetailTerrain.radiusM,5,50);
+    }
+    // 標高配列はページ更新後に自動通信せず、利用者が取得ボタンを押した時だけ準備する。
+    localDetailTerrainEnabled=false;localDetailTerrainData=null;
+    syncLocalDetailTerrainControl();
     milkyWayPositionTrailVisible=s.milkyWayPositionTrailVisible!==false;
     constellationLinesVisible=s.constellationLinesVisible!==false;
     sunPathVisible=s.sunPathVisible!==false;
@@ -6599,6 +6796,11 @@ async function reverseGeocodeAndShow(lat, lon){
 let savedObservingLocations=[];
 let activeLoadedPlanId="";
 let editingSavedPlanId="";
+function syncPlanEditingSaveButton(){
+  const editing=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
+  const label=editing?`「${editing.title}」の調整内容を保存`:"現在の観測値・撮影計画を保存";
+  el.quickSavePlanBtn.title=editing?label:"撮影計画を保存";el.quickSavePlanBtn.setAttribute("aria-label",label);
+}
 let pendingPlanPhoto=null;
 let pendingPlanPhotoRemoved=false;
 let planSaveExistingPhotoRecord=null;
@@ -6907,6 +7109,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     focalLength:+el.focalLength.value,lensMode:mobileLensMode,
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
     kmzBuilding:captureKmzBuildingForPlan(),
+    localDetailTerrain:captureLocalDetailForPlan(),
     updatedAt:Date.now()
   };
   let savedLocation=location;
@@ -6937,6 +7140,7 @@ async function applySavedObservingPlan(location){
   if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
   if(location.orientation==="portrait"||location.orientation==="landscape") setOrientation(location.orientation); else update();
   await restoreKmzBuildingFromPlan(location.kmzBuilding||null);
+  await applyLocalDetailDescriptor(location.localDetailTerrain||null,true);
   scheduleSaveSettings();
   return true;
 }
@@ -6978,7 +7182,7 @@ function renderCurrentPlanPreview(){
 function setPlanModalOpen(kind,open){
   const overlay=kind==="save"?el.planSaveOverlay:el.planLoadOverlay;
   overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
-  if(!open){if(kind==="save"){resetPlanPhotoEditor();editingSavedPlanId="";}return;}
+  if(!open){if(kind==="save"){resetPlanPhotoEditor();editingSavedPlanId="";syncPlanEditingSaveButton();}return;}
   if(kind==="save"){
     renderCurrentPlanPreview();el.planSaveName.value=el.savedLocationName.value||"";
     preparePlanPhotoEditor();
@@ -7009,8 +7213,15 @@ function createSavedPlanCard(location){
     values.forEach(value=>{const span=document.createElement("span");span.textContent=value;details.appendChild(span);});
     const actions=document.createElement("div");actions.className="plan-card-actions";
     const del=document.createElement("button");del.type="button";del.className="delete";del.textContent="削除";del.addEventListener("click",()=>removeSavedObservingPlan(location));
-    const edit=document.createElement("button");edit.type="button";edit.className="edit";edit.textContent="編集";edit.addEventListener("click",()=>{applySavedObservingPlan(location);setPlanModalOpen("load",false);editingSavedPlanId=location.id;setPlanModalOpen("save",true);});
-    const load=document.createElement("button");load.type="button";load.className="load";load.textContent="この計画を読み込む";load.addEventListener("click",()=>{applySavedObservingPlan(location);setPlanModalOpen("load",false);});
+    const edit=document.createElement("button");edit.type="button";edit.className="edit";edit.textContent="編集";edit.addEventListener("click",async()=>{
+      // 保存画面へ直行せず、計画を読み込んだ状態でシミュレーションへ戻す。
+      // 調整後に右上の保存ボタンを押すと、editingSavedPlanIdにより同じ計画を更新する。
+      editingSavedPlanId=location.id;
+      setPlanModalOpen("load",false);setMobileSettingsOpen(false);
+      await applySavedObservingPlan(location);
+      syncPlanEditingSaveButton();
+    });
+    const load=document.createElement("button");load.type="button";load.className="load";load.textContent="この計画を読み込む";load.addEventListener("click",()=>{editingSavedPlanId="";syncPlanEditingSaveButton();applySavedObservingPlan(location);setPlanModalOpen("load",false);});
     actions.append(del,edit,load);card.append(title,place);if(photo)card.appendChild(photo);card.append(details,actions);
     return card;
 }
@@ -7166,7 +7377,7 @@ el.registerLocationBtn.addEventListener("click",async()=>{
 });
 el.loadSavedLocationBtn.addEventListener("click",()=>{
   const location=savedObservingLocations.find(item=>item.id===el.savedLocationSelect.value);
-  if(!location){alert("呼び出す観測地を選択してください。");return;}applySavedObservingPlan(location);
+  if(!location){alert("呼び出す観測地を選択してください。");return;}editingSavedPlanId="";syncPlanEditingSaveButton();applySavedObservingPlan(location);
 });
 el.deleteSavedLocationBtn.addEventListener("click",()=>{
   const location=savedObservingLocations.find(item=>item.id===el.savedLocationSelect.value);
@@ -7174,7 +7385,14 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
 document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay);
-el.quickSavePlanBtn.addEventListener("click",()=>{editingSavedPlanId="";setPlanModalOpen("save",true);});
+el.quickSavePlanBtn.addEventListener("click",()=>{
+  // 「編集」でシミュレーションへ戻っている間は同じ計画を更新する。
+  // 通常の保存操作では従来どおり新規保存として開始する。
+  const editing=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
+  if(!editing)editingSavedPlanId="";
+  setPlanModalOpen("save",true);
+  if(editing){el.planSaveName.value=editing.title;renderCurrentPlanPreview();}
+});
 el.quickLoadPlanBtn.addEventListener("click",()=>setPlanModalOpen("load",true));
 el.quickPhotoBtn.addEventListener("click",()=>{const location=savedObservingLocations.find(item=>item.id===activeLoadedPlanId);if(locationHasPhoto(location))openPlanPhotoViewer(location);});
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
@@ -7189,7 +7407,7 @@ el.planImportInput.addEventListener("change",()=>importSavedPlansFile(el.planImp
 el.planLoadMapResetBtn.addEventListener("click",()=>{Object.assign(planMapView,PLAN_MAP_DEFAULT_VIEW);drawPlanLoadMap();});
 el.planLoadMapZoomInBtn.addEventListener("click",()=>planMapZoomAt(el.planLoadMap.width/2,el.planLoadMap.height/2,1.5));
 el.planLoadMapZoomOutBtn.addEventListener("click",()=>planMapZoomAt(el.planLoadMap.width/2,el.planLoadMap.height/2,1/1.5));
-el.planMapSelectionLoadBtn.addEventListener("click",()=>{if(planMapSelectedLocation){applySavedObservingPlan(planMapSelectedLocation);setPlanModalOpen("load",false);}});
+el.planMapSelectionLoadBtn.addEventListener("click",()=>{if(planMapSelectedLocation){editingSavedPlanId="";syncPlanEditingSaveButton();applySavedObservingPlan(planMapSelectedLocation);setPlanModalOpen("load",false);}});
 el.planLoadMap.addEventListener("mousedown",e=>{planMapDragging=true;planMapDragMoved=false;planMapDragStart=planMapCanvasPos(e);planMapDragStartView={...planMapView};});
 window.addEventListener("mousemove",e=>{if(!planMapDragging)return;const [px,py]=planMapCanvasPos(e),dx=px-planMapDragStart[0],dy=py-planMapDragStart[1];if(Math.hypot(dx,dy)>3)planMapDragMoved=true;if(planMapDragMoved){planMapView.centerLon=planMapDragStartView.centerLon-dx/(planMapView.scale*MAP_REF_COS);planMapView.centerLat=planMapDragStartView.centerLat+dy/planMapView.scale;drawPlanLoadMap();}});
 window.addEventListener("mouseup",e=>{if(!planMapDragging)return;planMapDragging=false;if(!planMapDragMoved){const [px,py]=planMapCanvasPos(e);activatePlanMapAt(px,py);}});
@@ -7701,9 +7919,22 @@ function drawTerrainTopView(){
   ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(left[0],left[1]);ctx.arc(cx,cy,radius,(facing-halfFov-90)*D2R,(facing+halfFov-90)*D2R);ctx.closePath();ctx.fill();ctx.stroke();
   ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(center[0],center[1]);ctx.stroke();ctx.restore();
   ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fill();ctx.strokeStyle="#11182b";ctx.lineWidth=2;ctx.stroke();
+  // 局所高精細地形の登録範囲。診断表示だけの重ね描きで、地形判定には書き戻さない。
+  if(localDetailTerrainEnabled){
+    const cfg=localDetailTerrainConfig(),observerLat=+el.lat.value,observerLon=+el.lon.value;
+    if(Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)&&Number.isFinite(observerLat)&&Number.isFinite(observerLon)){
+      const info=terrainDistanceAndBearing(observerLat,observerLon,cfg.lat,cfg.lon);
+      if(info.distanceKm<=rangeKm+cfg.radiusM/1000){
+        const center=toMap(info.bearing,info.distanceKm),areaRadius=cfg.radiusM/1000*scale;
+        ctx.save();ctx.fillStyle="rgba(255,179,62,.20)";ctx.strokeStyle="#ffb33e";ctx.lineWidth=2.5;ctx.setLineDash([7,4]);
+        ctx.beginPath();ctx.arc(center[0],center[1],areaRadius,0,Math.PI*2);ctx.fill();ctx.stroke();
+        ctx.setLineDash([]);ctx.fillStyle="#ffe1a3";ctx.font="700 12px Inter,sans-serif";ctx.textAlign="center";ctx.fillText("局所DEM 5m",center[0],center[1]-areaRadius-5);ctx.restore();
+      }
+    }
+  }
   ctx.fillStyle="#dce7fa";ctx.font="700 14px Inter,sans-serif";ctx.textAlign="center";ctx.fillText("北",cx,20);
   ctx.textAlign="left";ctx.fillText("西",12,cy+5);ctx.textAlign="right";ctx.fillText("東",W-12,cy+5);ctx.textAlign="center";ctx.fillText("南",cx,H-10);
-  el.terrainTopViewStatus.textContent=`表示半径 ${Math.round(rangeKm*1000)}m｜陸 ${landCells}セル｜水域 ${waterCells}セル｜水陸混在 ${mixedCells}セル｜DEM欠損 ${noDataCells}セル｜撮影方位 ${Math.round(facing)}°・水平画角 ${Math.round(fov)}°`;
+  el.terrainTopViewStatus.textContent=`表示半径 ${Math.round(rangeKm*1000)}m｜陸 ${landCells}セル｜水域 ${waterCells}セル｜水陸混在 ${mixedCells}セル｜DEM欠損 ${noDataCells}セル｜撮影方位 ${Math.round(facing)}°・水平画角 ${Math.round(fov)}°${localDetailTerrainEnabled?"｜橙破線: 局所地形":""}`;
 }
 function terrainTilePoint(lat,lon,z){
   const n=2**z,clampedLat=clamp(lat,-85.05112878,85.05112878);
@@ -7737,6 +7968,39 @@ function loadGsiDemTile(tile){
     .then(imageBlobToPixels).catch(()=>null);
   gsiDemTileCache.set(tile.key,promise);
   return promise;
+}
+// 局所高精細用は、5mメッシュの個別レイヤーを優先する。
+// 地点ごとに整備ソースが異なるため5A→5B→5C、最後に統合DEMの順で有効画素を探す。
+const localDetailDemTileCache=new Map();
+function localDetailTilePoint(lat,lon){
+  const tile=terrainTilePoint(lat,lon,15);return {...tile,key:`local-detail/${tile.key}`};
+}
+function loadLocalDetailDemTile(tile){
+  if(localDetailDemTileCache.has(tile.key))return localDetailDemTileCache.get(tile.key);
+  const layers=["dem5a_png","dem5b_png","dem5c_png","dem_png"],baseKey=tile.key.replace(/^local-detail\//,"");
+  const promise=(async()=>{
+    const sources=[];
+    for(const layer of layers){
+      try{
+        const response=await fetch(`https://cyberjapandata.gsi.go.jp/xyz/${layer}/${tile.z}/${tile.x}/${tile.y}.png`,{mode:"cors",cache:"force-cache"});
+        if(!response.ok)continue;
+        const pixels=await imageBlobToPixels(await response.blob());
+        if(pixels)sources.push(pixels);
+      }catch(error){}
+    }
+    // 個別5mタイルが未整備の場合のみ、従来タイルへフォールバックする。
+    if(!sources.length){const fallback={...tile,key:baseKey},pixels=await loadGsiDemTile(fallback);if(pixels)sources.push(pixels);}
+    return sources;
+  })();
+  localDetailDemTileCache.set(tile.key,promise);return promise;
+}
+async function localDetailElevationAt(tile){
+  const sources=await loadLocalDetailDemTile(tile);
+  for(const pixels of sources||[]){
+    const elevation=decodeGsiElevationBilinear(pixels,tile.pixelX,tile.pixelY);
+    if(Number.isFinite(elevation))return elevation;
+  }
+  return null;
 }
 function decodeGsiElevation(pixels,px,py){
   if(!pixels) return null;
@@ -7893,6 +8157,22 @@ function classifyObserverWaterNeighborhood(lat,lon,classifier){
   // 中心点が明確に水なら即時採用。中心が境界の陸側でも、周囲の2/3以上が
   // 水ならGPS・形状誤差とみなし水上扱いにする。半々の波打ち際は陸を維持する。
   return {available:true,center,ratio,water:center||ratio>=.67};
+}
+// OSMの海は湖のような閉じたポリゴンを持たない場合があるため、最終的に描画へ使う
+// 近距離メッシュ自身も確認する。各方位の最寄り5〜20mだけを1票として集計し、
+// 広く水面に囲まれた時だけ水上扱いにする（岸から水を見る半円程度では陸を維持）。
+function classifyObserverWaterFromNearGrid(grid){
+  if(!Array.isArray(grid)) return {available:false,total:0,waterCount:0,ratio:0,water:false};
+  let total=0,waterCount=0;
+  for(let az=0;az<360;az++){
+    const row=grid[az];
+    if(!Array.isArray(row)) continue;
+    const point=row.find(item=>item&&item.distanceKm>=.005&&item.distanceKm<=.020);
+    if(!point) continue;
+    total++;if(point.water||point.baseNoData||point.baseKnown||point.baseCoastlineSea) waterCount++;
+  }
+  const ratio=total?waterCount/total:0;
+  return {available:total>=24,total,waterCount,ratio,water:total>=24&&ratio>=.68};
 }
 // 湖岸から少し離れた撮影地点や、画面内の池・貯水池も拾えるよう半径5kmを取得する。
 // 結果は位置を丸めたキーでキャッシュするため、同じ地域での再照会は発生しない。
@@ -8484,7 +8764,13 @@ async function buildRealTerrainProfile(lat,lon,token){
       if(layer.profile[az]>WATER_MAX_VISIBLE_ALT_DEG) layer.waterProfile[az]=0;
     }
   });
-  return {profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,observerWaterNearby:observerAtSea,waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid};
+  const initialMeshObserverWater=classifyObserverWaterFromNearGrid(nearSurfaceGrid);
+  return {
+    profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,
+    observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
+    observerWaterEvidence:{mesh:initialMeshObserverWater},
+    waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid
+  };
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
 // Overpass APIの応答には数秒〜十数秒かかることがあるため、地形本体の描画は待たずに行い、
@@ -8636,6 +8922,10 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
         }
       }
     }catch(error){coastlineWays=null;}
+    const meshObserverWater=classifyObserverWaterFromNearGrid(resultObj.nearSurfaceGrid);
+    resultObj.observerWaterEvidence.mesh=meshObserverWater;
+    resultObj.observerWaterNearby=!!resultObj.observerAtSea||osmObserverWater.water||
+      !!(resultObj.observerWaterEvidence.coastline&&resultObj.observerWaterEvidence.coastline.water)||meshObserverWater.water;
     // 同じ地点キーのまま水域形状だけが更新されたことを描画キャッシュへ通知する。
     resultObj._renderRevision=(resultObj._renderRevision||0)+1;
     if(realTerrainState.key===key){
@@ -9885,7 +10175,8 @@ function drawPhoto(ctx,s){
       const terrainGeometryKey=[
         W,H,realTerrainState.key,realTerrainState._renderRevision||0,
         s.facingAz.toFixed(3),s.facingAlt.toFixed(3),s.fovH.toFixed(3),
-        mobileLensMode,s.focalLength,s.sensor.crop
+        mobileLensMode,s.focalLength,s.sensor.crop,
+        localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
       const terrainRenderKey=terrainGeometryKey;
       const terrainNeedsRender=terrainCanvasResized||dayTerrainCanvasResized||waterMaskResized||drawPhoto._terrainRenderKey!==terrainRenderKey;
@@ -10752,10 +11043,52 @@ function drawPhoto(ctx,s){
       function drawNearSurfaceMesh(grid){
         if(!grid||!grid.length||!grid[0]||grid[0].length<2) return false;
         let paintedTriangles=0;
+        // カメラ方位・仰角・焦点距離から独立した地表頂点は、同じDEMが有効な間再利用する。
+        // 画面への投影と水陸マスク描画は従来どおり毎回行うため、描画順序と最終形状は変えない。
+        const localWorldKey=localDetailTerrainEnabled&&localDetailTerrainData
+          ?`${localDetailTerrainData.key}|${localDetailTerrainRequestToken}`:"local-off";
+        const worldMeshKey=[
+          realTerrainState.key,realTerrainState._renderRevision||0,
+          (+el.lat.value).toFixed(6),(+el.lon.value).toFixed(6),
+          Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation.toFixed(3):"no-observer-elevation",
+          grid.length,grid[0].length,localWorldKey
+        ].join("|");
+        let worldMeshCache=drawNearSurfaceMesh._worldMeshCache;
+        if(!worldMeshCache||worldMeshCache.key!==worldMeshKey){
+          worldMeshCache={key:worldMeshKey,detachedLocalCells:null,xyCells:null};
+          drawNearSurfaceMesh._worldMeshCache=worldMeshCache;
+        }
         const maskCanvas=drawNearSurfaceMesh._maskCanvas||(drawNearSurfaceMesh._maskCanvas=document.createElement("canvas"));
         if(maskCanvas.width!==W||maskCanvas.height!==H){maskCanvas.width=W;maskCanvas.height=H;}
         const mctx=maskCanvas.getContext("2d");mctx.clearRect(0,0,W,H);
         const ringCount=grid[0].length;
+        // 自然に成立している6m以遠の近距離メッシュへ、仮想観測位置そのものを前進させる。
+        // 最短水際付近の方位群から固定方向を求めるため、カメラを回しても地面は動かない。
+        function computeNearshoreVirtualShift(){
+          const near=realTerrainState.waterNearKm;
+          if(!near||realTerrainState.observerWaterNearby) return {eastM:0,northM:0,distanceM:0};
+          const candidates=[];
+          for(let az=0;az<360;az++){
+            const distanceKm=near[az];
+            if(Number.isFinite(distanceKm)&&distanceKm>=.005&&distanceKm<=.035) candidates.push({az,distanceM:distanceKm*1000});
+          }
+          if(!candidates.length) return {eastM:0,northM:0,distanceM:0};
+          const minimumM=Math.min(...candidates.map(item=>item.distanceM));
+          let east=0,north=0;
+          candidates.forEach(item=>{
+            // 「最短+6m」で候補を突然切らず、差が大きくなるほどcosineで滑らかに0へ。
+            // 撮影位置が1m動いた時に採用方位が入れ替わっても、前進方向を連続させる。
+            const deltaM=item.distanceM-minimumM;
+            const taper=deltaM>=12?0:(.5+.5*Math.cos(Math.PI*deltaM/12));
+            const weight=taper/Math.max(1,item.distanceM-minimumM+1),rad=item.az*D2R;
+            east+=Math.sin(rad)*weight;north+=Math.cos(rad)*weight;
+          });
+          const length=Math.hypot(east,north);
+          if(length<1e-6) return {eastM:0,northM:0,distanceM:0};
+          const distanceM=clamp(minimumM-1,0,5);
+          return {eastM:east/length*distanceM,northM:north/length*distanceM,distanceM};
+        }
+        const virtualShift=computeNearshoreVirtualShift();
         // 観測地点を中心とする100m四方の固定ビットマップ地表テクスチャ。
         // 時刻やカメラ方向が変わっても模様が動かないよう、ローカルXY座標へ固定する。
         const groundTexture=drawNearSurfaceMesh._groundTexture||(drawNearSurfaceMesh._groundTexture=document.createElement("canvas"));
@@ -10791,49 +11124,128 @@ function drawPhoto(ctx,s){
         };
         // 放射状の取得データを任意のXY位置へ再サンプリングする。
         // 方位方向は隣接レイ、距離方向は隣接リングを使う双線形補間。
-        function samplePolarTerrainAtXY(eastM,northM){
-          const metres=Math.hypot(eastM,northM);
-          if(metres>50) return null;
-          const effectiveMetres=Math.max(.12,metres);
-          const distanceKm=effectiveMetres/1000,az=metres<1e-6?norm360(s.facingAz):norm360(Math.atan2(eastM,northM)*R2D);
-          const a0=Math.floor(az),a1=(a0+1)%360,fa=az-a0;
+        function samplePolarTerrainAtXY(eastM,northM,shiftFactor=1,resolveMountainProtection=true){
+          const relativeMetres=Math.hypot(eastM,northM);
+          if(relativeMetres>50) return null;
+          // eastM/northMは仮想カメラ基準。元データを読む時だけ実観測地点基準へ戻す。
+          const worldEastM=eastM+virtualShift.eastM*shiftFactor;
+          const worldNorthM=northM+virtualShift.northM*shiftFactor;
+          const worldMetres=Math.hypot(worldEastM,worldNorthM);
+          // 元DEMの最短リング(約5m)より内側は、そのリングの地表高・水陸属性を
+          // 放射方向へ連続延長する。独立した蓋ではなく、同じメッシュ面の延長として扱う。
+          const sourceMetres=Math.max(5,worldMetres);
+          const sourceScale=worldMetres>1e-6?sourceMetres/worldMetres:0;
+          const sourceEastM=worldMetres>1e-6?worldEastM*sourceScale:Math.sin(s.facingAz*D2R)*sourceMetres;
+          const sourceNorthM=worldMetres>1e-6?worldNorthM*sourceScale:Math.cos(s.facingAz*D2R)*sourceMetres;
+          const sourceDistanceKm=sourceMetres/1000;
+          const sourceAz=norm360(Math.atan2(sourceEastM,sourceNorthM)*R2D);
+          const a0=Math.floor(sourceAz),a1=(a0+1)%360,fa=sourceAz-a0;
           const row0=grid[a0],row1=grid[a1];if(!row0||!row1)return null;
-          // 元DEMの最短サンプルは5m地点。陸上観測時の0〜5mは、視点高1.6mから
-          // 見下ろす地面の角度を基準にし、5m地点のDEM高度へ滑らかに接続する。
-          // DEM nodataだけでなく、OSM水域・海岸線の近傍多数決で水上と確定した場合も、
-          // 存在しない陸地を足元へ生成しない。
-          if(metres<5){
-            if(realTerrainState.observerWaterNearby) return null;
-            const first0=row0.find(Boolean),first1=row1.find(Boolean);
-            if(!first0||!first1) return null;
-            const firstAlt=lerp(first0.alt,first1.alt,fa);
-            const flatGroundAlt=-Math.atan2(1.6,effectiveMetres)*R2D;
-            const blend=clamp(metres/5,0,1);
-            const smoothBlend=blend*blend*(3-2*blend);
-            const alt=lerp(flatGroundAlt,firstAlt,smoothBlend);
-            const baseElevation=Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:null;
-            return {
-              az,distanceKm,alt,waterWeight:0,water:false,baseNoData:false,baseKnown:false,
-              baseElevation,eastM,northM,observerFooting:true
-            };
-          }
-          let hi=row0.findIndex(point=>point&&point.distanceKm>=distanceKm);
+          let hi=row0.findIndex(point=>point&&point.distanceKm>=sourceDistanceKm);
           if(hi<0) return null;
           const lo=Math.max(0,hi-1),p00=row0[lo],p01=row0[hi],p10=row1[lo],p11=row1[hi];
           if(!p00||!p01||!p10||!p11) return null;
-          const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((distanceKm-p00.distanceKm)/span,0,1);
+          const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((sourceDistanceKm-p00.distanceKm)/span,0,1);
           const bilerp=(v00,v10,v01,v11)=>lerp(lerp(v00,v10,fa),lerp(v01,v11,fa),fd);
           const waterWeight=bilerp(p00.water?1:0,p10.water?1:0,p01.water?1:0,p11.water?1:0);
           const baseElevationValues=[p00,p10,p01,p11].map(point=>point.baseElevation);
           let baseElevation=null;
           if(baseElevationValues.every(Number.isFinite)) baseElevation=bilerp(...baseElevationValues);
+          // 仮想前進は水際・低地だけへ適用する。近距離の山まで横移動させると、隣接する
+          // 方位セルの対応関係が崩れて縦割れになる。観測地点との標高差2mまでは全適用、
+          // 8m以上はv361と同じ元座標、その間はsmoothstepで連続的に戻す。
+          if(resolveMountainProtection&&virtualShift.distanceM>0&&Number.isFinite(baseElevation)&&Number.isFinite(realTerrainState.observerElevation)){
+            const elevationDelta=Math.max(0,baseElevation-realTerrainState.observerElevation);
+            const mountainT=clamp((elevationDelta-2)/6,0,1);
+            const smoothMountainT=mountainT*mountainT*(3-2*mountainT);
+            const protectedShiftFactor=1-smoothMountainT;
+            if(Math.abs(protectedShiftFactor-shiftFactor)>.03){
+              return samplePolarTerrainAtXY(eastM,northM,protectedShiftFactor,false);
+            }
+          }
+          const sourceAlt=bilerp(p00.alt,p10.alt,p01.alt,p11.alt);
+          let heightDeltaM=Math.tan(sourceAlt*D2R)*sourceMetres;
+          // 水域属性は既存判定を優先し、陸セルだけ指定円内の5mメッシュ実測標高へ置き換える。
+          // 観測地点の標高も同じ基準なので、絶対標高を眼高からの相対高さへ変換する。
+          if(localDetailTerrainEnabled&&waterWeight<.5){
+            const local=sampleLocalDetailElevation(worldEastM,worldNorthM);
+            if(local&&Number.isFinite(realTerrainState.observerElevation)){
+              const detailedHeightM=local.elevation-(realTerrainState.observerElevation+1.6);
+              heightDeltaM=lerp(heightDeltaM,detailedHeightM,local.blend);
+              baseElevation=lerp(Number.isFinite(baseElevation)?baseElevation:local.elevation,local.elevation,local.blend);
+            }
+          }
+          const projectedMetres=Math.max(.12,relativeMetres);
+          const projectedAz=relativeMetres<1e-6?norm360(s.facingAz):norm360(Math.atan2(eastM,northM)*R2D);
           return {
-            az,distanceKm,alt:bilerp(p00.alt,p10.alt,p01.alt,p11.alt),
+            az:projectedAz,distanceKm:projectedMetres/1000,alt:Math.atan2(heightDeltaM,projectedMetres)*R2D,
             waterWeight,water:waterWeight>=.5,
             baseNoData:p00.baseNoData&&p10.baseNoData&&p01.baseNoData&&p11.baseNoData,
             baseKnown:p00.baseKnown&&p10.baseKnown&&p01.baseKnown&&p11.baseKnown,
-            baseElevation,eastM,northM
+            baseElevation,eastM:worldEastM,northM:worldNorthM,virtualNearshore:shiftFactor>0,
+            // 最短リングを内側へ延長した陸面だけ、既存のカメラ面クリッピングを使う。
+            // 水属性は補間結果のままで、別体の地面を新規生成しているわけではない。
+            observerFooting:sourceMetres<=5.0001&&waterWeight<.5
           };
+        }
+        // 観測地点から離れた登録地点を中心に、取得済み5m DEMを独立した1m格子へ展開する。
+        // 外周は既存の放射状DEMへ接続し、局所メッシュだけが別レイヤーとして浮かないようにする。
+        function sampleBaseTerrainAtWorldXY(eastM,northM){
+          const metres=Math.hypot(eastM,northM);if(metres<.1||metres>1000)return null;
+          const az=norm360(Math.atan2(eastM,northM)*R2D),a0=Math.floor(az),a1=(a0+1)%360,fa=az-a0;
+          const row0=grid[a0],row1=grid[a1];if(!row0||!row1)return null;
+          const distanceKm=metres/1000;
+          let hi=row0.findIndex(point=>point&&point.distanceKm>=distanceKm);if(hi<0)return null;
+          const lo=Math.max(0,hi-1),p00=row0[lo],p01=row0[hi],p10=row1[lo],p11=row1[hi];if(!p00||!p01||!p10||!p11)return null;
+          const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((distanceKm-p00.distanceKm)/span,0,1);
+          const bilerp=(v00,v10,v01,v11)=>lerp(lerp(v00,v10,fa),lerp(v01,v11,fa),fd);
+          const elevationValues=[p00,p10,p01,p11].map(point=>point.baseElevation);
+          const baseElevation=elevationValues.every(Number.isFinite)?bilerp(...elevationValues):null;
+          const waterWeight=bilerp(p00.water?1:0,p10.water?1:0,p01.water?1:0,p11.water?1:0);
+          const sourceAlt=bilerp(p00.alt,p10.alt,p01.alt,p11.alt);
+          return {az,distanceKm,alt:sourceAlt,waterWeight,water:waterWeight>=.5,baseElevation,eastM,northM,
+            baseNoData:p00.baseNoData&&p10.baseNoData&&p01.baseNoData&&p11.baseNoData,
+            baseKnown:p00.baseKnown&&p10.baseKnown&&p01.baseKnown&&p11.baseKnown};
+        }
+        function buildDetachedLocalDetailCells(){
+          if(worldMeshCache.detachedLocalCells) return worldMeshCache.detachedLocalCells;
+          const data=localDetailTerrainData;if(!localDetailTerrainEnabled||!data||!Number.isFinite(realTerrainState.observerElevation))return [];
+          const observerLat=+el.lat.value,observerLon=+el.lon.value;
+          const target=terrainDistanceAndBearing(observerLat,observerLon,data.lat,data.lon),targetDistanceM=target.distanceKm*1000;
+          // 観測地点中心の50m格子と重なる場合は従来経路が処理する。最大1kmまで局所描画する。
+          if(targetDistanceM<=50||targetDistanceM-data.radiusM>1000)return [];
+          const rad=target.bearing*D2R,centerEast=Math.sin(rad)*targetDistanceM,centerNorth=Math.cos(rad)*targetDistanceM;
+          const radius=data.radiusM,rows=[];
+          for(let localNorth=-radius;localNorth<=radius;localNorth++){
+            const row=[];
+            for(let localEast=-radius;localEast<=radius;localEast++){
+              const radial=Math.hypot(localEast,localNorth);
+              if(radial>radius){row.push(null);continue;}
+              const eastM=centerEast+localEast,northM=centerNorth+localNorth,base=sampleBaseTerrainAtWorldXY(eastM,northM);
+              if(!base){row.push(null);continue;}
+              const gx=localEast+radius,gy=localNorth+radius,x0=Math.floor(gx),y0=Math.floor(gy),x1=Math.min(data.size-1,x0+1),y1=Math.min(data.size-1,y0+1);
+              const values=[data.elevations[y0*data.size+x0],data.elevations[y0*data.size+x1],data.elevations[y1*data.size+x0],data.elevations[y1*data.size+x1]];
+              if(!values.every(Number.isFinite)){row.push(base);continue;}
+              const fx=gx-x0,fy=gy-y0,detailed=lerp(lerp(values[0],values[1],fx),lerp(values[2],values[3],fx),fy);
+              const edgeBlend=clamp((radius-radial)/Math.min(3,Math.max(1,radius*.2)),0,1),blend=edgeBlend*edgeBlend*(3-2*edgeBlend);
+              const metres=Math.max(.1,Math.hypot(eastM,northM)),detailedAlt=Math.atan2(detailed-(realTerrainState.observerElevation+1.6),metres)*R2D;
+              // 粗い通常メッシュが海判定でも、局所DEMが範囲最低標高より1m以上高ければ岩・陸として復元する。
+              // 海面相当の最低部は従来の水域属性を維持するため、周囲の海を陸化しない。
+              const detailedLand=detailed>data.minElevation+1;
+              const localWater=detailedLand?false:base.water,localWaterWeight=detailedLand?0:base.waterWeight;
+              row.push({...base,alt:lerp(base.alt,detailedAlt,blend),baseElevation:lerp(Number.isFinite(base.baseElevation)?base.baseElevation:detailed,detailed,blend),water:localWater,waterWeight:localWaterWeight,baseNoData:detailedLand?false:base.baseNoData,localDetail:true});
+            }
+            rows.push(row);
+          }
+          const cells=[];
+          for(let y=0;y<rows.length-1;y++)for(let x=0;x<rows[y].length-1;x++){
+            const a=rows[y][x],b=rows[y][x+1],c=rows[y+1][x+1],d=rows[y+1][x];if(!a||!b||!c||!d)continue;
+            const centerDistance=(a.distanceKm+b.distanceKm+c.distanceKm+d.distanceKm)/4;
+            cells.push({a,b,c,d,centerDistance});
+          }
+          cells.sort((left,right)=>right.centerDistance-left.centerDistance);
+          worldMeshCache.detachedLocalCells=cells;
+          return cells;
         }
         function lowLandInsideCoastlineSea(point,az){
           if(!point||point.water||!point.coastlineSeaCandidate||point.distanceKm<.05||point.alt>.35) return false;
@@ -10908,11 +11320,95 @@ function drawPhoto(ctx,s){
           }
           return true;
         }
-        function paintTriangle(a,b,c){
+        // 近距離地形をローカル3D(East,North,Up)からカメラ座標へ変換し、投影前に
+        // 前面・左右・上下でクリップする。方位角の±180°不連続をまたがないため、
+        // カメラ近傍でも小さな地表セルが巨大な長方形・扇形へ化けない。
+        function clipCartesianNearTriangle(sourceVertices){
+          const az0=s.facingAz*D2R,alt0=s.facingAlt*D2R;
+          const forward=[Math.cos(alt0)*Math.sin(az0),Math.cos(alt0)*Math.cos(az0),Math.sin(alt0)];
+          const right=[Math.cos(az0),-Math.sin(az0),0];
+          const up=cross(right,forward);
+          const tanHalfH=Math.tan(s.fovH*.5*D2R),tanHalfV=tanHalfH*H/W;
+          const cameraEyeM=1.6;
+          let polygon=sourceVertices.map(vertex=>{
+            const distanceM=vertex.distanceKm*1000,rad=vertex.az*D2R;
+            const east=Number.isFinite(vertex.eastM)?vertex.eastM:Math.sin(rad)*distanceM;
+            const north=Number.isFinite(vertex.northM)?vertex.northM:Math.cos(rad)*distanceM;
+            // altは眼高から見た仰角なので、地表の相対高さへ戻してからカメラ座標化する。
+            const terrainUp=cameraEyeM+Math.tan(vertex.alt*D2R)*Math.max(.001,distanceM);
+            const world=[east,north,terrainUp-cameraEyeM];
+            return {x:dot(world,right),y:dot(world,up),z:dot(world,forward),vertex};
+          });
+          const planes=[
+            point=>point.z-.05,
+            point=>point.x+point.z*tanHalfH,
+            point=>point.z*tanHalfH-point.x,
+            point=>point.y+point.z*tanHalfV,
+            point=>point.z*tanHalfV-point.y
+          ];
+          const mixPoint=(a,b,t)=>{
+            const av=a.vertex,bv=b.vertex;
+            const number=(key,fallback=0)=>lerp(Number.isFinite(av[key])?av[key]:fallback,Number.isFinite(bv[key])?bv[key]:fallback,t);
+            const waterWeight=number("waterWeight",av.water?1:0);
+            return {
+              x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),z:lerp(a.z,b.z,t),
+              vertex:{...av,
+                distanceKm:number("distanceKm"),eastM:number("eastM"),northM:number("northM"),
+                baseElevation:Number.isFinite(av.baseElevation)&&Number.isFinite(bv.baseElevation)?number("baseElevation"):null,
+                waterWeight,water:waterWeight>=.5,
+                baseNoData:!!(av.baseNoData&&bv.baseNoData),baseKnown:!!(av.baseKnown&&bv.baseKnown),
+                baseCoastlineSea:!!(av.baseCoastlineSea&&bv.baseCoastlineSea),cartesianClipped:true
+              }
+            };
+          };
+          for(const signedDistance of planes){
+            if(polygon.length<3) return [];
+            const output=[];
+            for(let index=0;index<polygon.length;index++){
+              const current=polygon[index],previous=polygon[(index+polygon.length-1)%polygon.length];
+              const dc=signedDistance(current),dp=signedDistance(previous);
+              const currentInside=dc>=0,previousInside=dp>=0;
+              if(currentInside!==previousInside){
+                const ratio=clamp(dp/(dp-dc),0,1);
+                output.push(mixPoint(previous,current,ratio));
+              }
+              if(currentInside) output.push(current);
+            }
+            polygon=output;
+          }
+          return polygon.map(point=>{
+            const screen=[W/2+(point.x/point.z)*rectilinearScale,H/2-(point.y/point.z)*rectilinearScale];
+            const direction=[
+              forward[0]*point.z+right[0]*point.x+up[0]*point.y,
+              forward[1]*point.z+right[1]*point.x+up[1]*point.y,
+              forward[2]*point.z+right[2]*point.x+up[2]*point.y
+            ];
+            const length=Math.hypot(...direction)||1;
+            return {...point.vertex,
+              az:norm360(Math.atan2(direction[0],direction[1])*R2D),
+              alt:Math.asin(clamp(direction[2]/length,-1,1))*R2D,
+              cartesianScreen:screen
+            };
+          });
+        }
+        function paintTriangle(a,b,c,cartesianClipped=false){
           if(!a||!b||!c) return;
-          const observerFootingTriangle=!realTerrainState.observerWaterNearby&&!!(a.observerFooting||b.observerFooting||c.observerFooting);
-          // 視点直下のセルは、周囲の水域補間値やnodataを引き継がず必ず陸として閉じる。
-          // コピーを作ることで元の地形データ・水域キャッシュは変更しない。
+          const sourceTriangle=[a,b,c];
+          const localDetailTriangle=sourceTriangle.every(vertex=>vertex.localDetail);
+          const useCartesianNear=!useDiagonalFisheye&&!cartesianClipped&&
+            sourceTriangle.every(vertex=>vertex.distanceKm<=.05);
+          if(useCartesianNear){
+            const polygon=clipCartesianNearTriangle(sourceTriangle);
+            for(let index=1;index<polygon.length-1;index++) paintTriangle(polygon[0],polygon[index],polygon[index+1],true);
+            return;
+          }
+          const continuousNearLand=!cartesianClipped&&!realTerrainState.observerWaterNearby&&
+            sourceTriangle.every(vertex=>!vertex.water&&(Number.isFinite(vertex.waterWeight)?vertex.waterWeight<.5:true))&&
+            sourceTriangle.every(vertex=>vertex.distanceKm<=.0085)&&
+            sourceTriangle.some(vertex=>vertex.virtualNearshore||vertex.observerFooting);
+          const observerFootingTriangle=continuousNearLand;
+          // 仮想カメラから8m以内の「3頂点すべてが陸」の連続面だけを前面クリップする。
+          // 1頂点だけ陸の水際混在セルは強制陸化せず、通常の水陸境界分割へ渡す。
           if(observerFootingTriangle){
             a={...a,water:false,waterWeight:0,baseNoData:false};
             b={...b,water:false,waterWeight:0,baseNoData:false};
@@ -10927,14 +11423,15 @@ function drawPhoto(ctx,s){
           // 方位1°・距離リング単位の四角いブロックが露出する。このセルは描かず、下層の
           // 連続した確定海面と、最後に重ねる足元地形へ境界を任せる。
           // OSM水域・既知湖沼の境界にはbaseNoDataが無いため、湖・池・河川はv299のまま分割する。
-          if(demSeaBoundary&&!observerFootingTriangle) return;
+          const nearDemSeaBoundary=sourceTriangle.every(vertex=>vertex.distanceKm<=.05);
+          if(demSeaBoundary&&!observerFootingTriangle&&!nearDemSeaBoundary&&!localDetailTriangle) return;
           const triangleDistanceKm=(a.distanceKm+b.distanceKm+c.distanceKm)/3;
           // 湖面・海面は物理的に水平線より上へ出ない。DEMの数十cm〜数mの揺れで正高度に
           // なった水面頂点を-0.025°へ抑え、青い三角形のジャギーを山側へ突き出させない。
   const projectVertex=vertex=>{
     const vertexWater=observerFootingTriangle?false:vertex.water;
     const alt=vertexWater?Math.min(vertex.alt,-.025):vertex.alt;
-    const point=toXY(vertex.az,alt);
+    const point=cartesianClipped&&vertex.cartesianScreen?vertex.cartesianScreen:toXY(vertex.az,alt);
     const horizon=toXY(vertex.az,0);
     if(!point||!horizon||![...point,...horizon].every(Number.isFinite)) return null;
     return {x:point[0],y:point[1],hy:horizon[1],w:Number.isFinite(vertex.waterWeight)?vertex.waterWeight:(vertex.water?1:0)};
@@ -10954,7 +11451,7 @@ function drawPhoto(ctx,s){
           // 除外すると放射状の大きな三角形穴になる。近接地面はCanvasのクリップへ任せ、
           // 退化三角形だけを除外する。従来の破綻防止上限はそれ以外にのみ適用する。
           if(area<.01) return;
-          if(!observerFootingTriangle&&(area>W*H*.10||Math.max(ab,bc,ca)>maxEdge)) return;
+          if(!observerFootingTriangle&&!cartesianClipped&&!localDetailTriangle&&(area>W*H*.10||Math.max(ab,bc,ca)>maxEdge)) return;
           const distanceKm=triangleDistanceKm;
           const alt=(a.alt+b.alt+c.alt)/3;
           // 水/陸が混在する三角形は、水属性0.5の中間点で2つの多角形へ分割する。
@@ -11071,27 +11568,36 @@ function drawPhoto(ctx,s){
             }
           }
         }
-        // 半径50mを2m間隔の正方形XY格子として再構築する。
+        // 指定地点中心の独立局所メッシュを先に距離順で描く。
+        // その後、観測地点中心50mの地面を重ねるため、手前側の遮蔽関係は維持される。
+        const detachedLocalCells=buildDetachedLocalDetailCells();
+        detachedLocalCells.forEach(cell=>{paintTriangle(cell.a,cell.b,cell.c);paintTriangle(cell.a,cell.c,cell.d);});
+        // 半径50mを1m間隔の正方形XY格子として再構築する。
+        // 20→21m、8→10mでセルが突然切り替わる段差を抑える。
         // カメラ方向とは無関係な固定地面なので、向きを変えても水際やセル形状は回転・変形しない。
-        const xyStepM=2,xyMin=-50,xyMax=50;
-        const xyRows=[];
-        for(let northM=xyMin;northM<=xyMax;northM+=xyStepM){
-          const row=[];
-          for(let eastM=xyMin;eastM<=xyMax;eastM+=xyStepM){
-            row.push(samplePolarTerrainAtXY(eastM,northM));
+        let xyCells=worldMeshCache.xyCells;
+        if(!xyCells){
+          const xyStepM=1,xyMin=-50,xyMax=50;
+          const xyRows=[];
+          for(let northM=xyMin;northM<=xyMax;northM+=xyStepM){
+            const row=[];
+            for(let eastM=xyMin;eastM<=xyMax;eastM+=xyStepM){
+              row.push(samplePolarTerrainAtXY(eastM,northM));
+            }
+            xyRows.push(row);
           }
-          xyRows.push(row);
+          // 遠いセルから近いセルへ描き、視点近くの地面が奥の地面を自然に隠す。
+          xyCells=[];
+          for(let y=0;y<xyRows.length-1;y++)for(let x=0;x<xyRows[y].length-1;x++){
+            const a=xyRows[y][x],b=xyRows[y][x+1],c=xyRows[y+1][x+1],d=xyRows[y+1][x];
+            if(!a||!b||!c||!d) continue;
+            const centerDistance=(a.distanceKm+b.distanceKm+c.distanceKm+d.distanceKm)/4;
+            if(centerDistance>.05) continue;
+            xyCells.push({a,b,c,d,centerDistance});
+          }
+          xyCells.sort((left,right)=>right.centerDistance-left.centerDistance);
+          worldMeshCache.xyCells=xyCells;
         }
-        // 遠いセルから近いセルへ描き、視点近くの地面が奥の地面を自然に隠す。
-        const xyCells=[];
-        for(let y=0;y<xyRows.length-1;y++)for(let x=0;x<xyRows[y].length-1;x++){
-          const a=xyRows[y][x],b=xyRows[y][x+1],c=xyRows[y+1][x+1],d=xyRows[y+1][x];
-          if(!a||!b||!c||!d) continue;
-          const centerDistance=(a.distanceKm+b.distanceKm+c.distanceKm+d.distanceKm)/4;
-          if(centerDistance>.05) continue;
-          xyCells.push({a,b,c,d,centerDistance});
-        }
-        xyCells.sort((left,right)=>right.centerDistance-left.centerDistance);
         xyCells.forEach(cell=>{
           paintTriangle(cell.a,cell.b,cell.c);
           paintTriangle(cell.a,cell.c,cell.d);
@@ -12431,6 +12937,8 @@ function updateArFrame(){
 }
 
 function update(){
+  // ボタン操作などから即時update()が呼ばれた場合、待機中の同内容描画を重ねない。
+  if(scheduledUpdateRaf){cancelAnimationFrame(scheduledUpdateRaf);scheduledUpdateRaf=0;}
   el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション(透明な実inputと見た目のspan)を常に最新の日付と同期させる
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
@@ -12745,6 +13253,7 @@ update();
 if(monthTableVisible) renderMonthTable();
 loadPersistedSettings();
 loadSavedLocations();
+loadLocalDetailPresets();
 
 })();
 
