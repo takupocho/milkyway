@@ -10551,14 +10551,19 @@ function drawPhoto(ctx,s){
           const reflectionHorizonYByX=buildSkylineYArray(
             runs.flatMap(run=>run.map(item=>item.horizon)),W,H
           );
+          const reflectedRidgePaths=reflectedRidgeRuns.map(points=>{
+            const path=new Path2D();path.moveTo(points[0][0],points[0][1]);
+            for(let index=1;index<points.length;index++) path.lineTo(points[index][0],points[index][1]);
+            return path;
+          });
           reflectionGeometry=drawPhoto._waterReflectionGeometryCache={
             key:reflectionGeometryKey,runs,waterMask,mirrorHorizonY,
-            meteorWaterPath,reflectedRidgeRuns,reflectionHorizonYByX
+            meteorWaterPath,reflectedRidgeRuns,reflectedRidgePaths,reflectionHorizonYByX
           };
         }
         const {
           runs,waterMask,mirrorHorizonY,meteorWaterPath,
-          reflectedRidgeRuns,reflectionHorizonYByX
+          reflectedRidgeRuns,reflectedRidgePaths,reflectionHorizonYByX
         }=reflectionGeometry;
         if(!runs.length) return false;
 
@@ -10585,9 +10590,19 @@ function drawPhoto(ctx,s){
         // 地平線をまたぐセルは各頂点を水平線へ寄せて残し、途中で四角く切れる現象を防ぐ。
         if(realMilkyWayEnabled&&realMilkyWayTexture){
           const iw=realMilkyWayImage.naturalWidth,ih=realMilkyWayImage.naturalHeight;
-          const reflectedGrid=REAL_MW_GRID.map(row=>row.map(p=>{
+          const textureCoordinateKey=`${iw}|${ih}|${mwTextureLOffsetDeg}|${mwTextureBOffsetDeg}`;
+          let textureCoordinateGrid=drawPhoto._reflectedMilkyWayTextureCoordinateGrid;
+          if(!textureCoordinateGrid||textureCoordinateGrid.key!==textureCoordinateKey){
+            textureCoordinateGrid={key:textureCoordinateKey,rows:REAL_MW_GRID.map(row=>row.map(p=>{
+              const textureL=p.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg;
+              const textureB=p.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg;
+              return {ra:p.ra,dec:p.dec,sx:(1.5-textureL/360)*iw,sy:(.5-textureB/180)*ih};
+            }))};
+            drawPhoto._reflectedMilkyWayTextureCoordinateGrid=textureCoordinateGrid;
+          }
+          const reflectedGrid=textureCoordinateGrid.rows.map(row=>row.map(p=>{
             const aa=raDecToAltAz(p.ra,p.dec,s.jd,s.lat,s.lon);
-            return {...p,alt:aa.alt,pt:toXY(aa.az,-Math.max(0,aa.alt))};
+            return {sx:p.sx,sy:p.sy,alt:aa.alt,pt:toXY(aa.az,-Math.max(0,aa.alt))};
           }));
           ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=clamp(vis*.20,0,.22);
           for(let r=0;r<reflectedGrid.length-1;r++){
@@ -10599,12 +10614,8 @@ function drawPhoto(ctx,s){
               const minX=Math.min(...pts.map(p=>p[0])),maxX=Math.max(...pts.map(p=>p[0]));
               const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
               if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
-              const texL0=p00.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg,texL1=p10.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg;
-              const sx0=(1.5-texL0/360)*iw,sx1=(1.5-texL1/360)*iw;
-              const texB0=p00.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg,texB1=p01.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg;
-              const sy0=(.5-texB0/180)*ih,sy1=(.5-texB1/180)*ih;
-              drawTextureTriangle(ctx,realMilkyWayTexture,[sx0,sy0],[sx1,sy0],[sx0,sy1],p00.pt,p10.pt,p01.pt);
-              drawTextureTriangle(ctx,realMilkyWayTexture,[sx1,sy0],[sx1,sy1],[sx0,sy1],p10.pt,p11.pt,p01.pt);
+              drawTextureTriangle(ctx,realMilkyWayTexture,[p00.sx,p00.sy],[p10.sx,p10.sy],[p01.sx,p01.sy],p00.pt,p10.pt,p01.pt);
+              drawTextureTriangle(ctx,realMilkyWayTexture,[p10.sx,p10.sy],[p11.sx,p11.sy],[p01.sx,p01.sy],p10.pt,p11.pt,p01.pt);
             }
           }
           ctx.restore();
@@ -10922,12 +10933,7 @@ function drawPhoto(ctx,s){
           ctx.save();ctx.globalCompositeOperation="source-over";
           ctx.strokeStyle=`rgba(${reflectedStrokeRGB.join(",")},${sourceAlpha*.62})`;
           ctx.lineWidth=clamp(W/900,1,1.55);ctx.lineJoin="round";ctx.lineCap="round";
-          reflectedRidgeRuns.forEach(points=>{
-            if(points.length<2) return;
-            ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);
-            for(let index=1;index<points.length;index++) ctx.lineTo(points[index][0],points[index][1]);
-            ctx.stroke();
-          });
+          reflectedRidgePaths.forEach(path=>ctx.stroke(path));
           ctx.restore();
         }
         ctx.restore();
