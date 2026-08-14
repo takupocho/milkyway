@@ -3385,7 +3385,7 @@ function project(az,alt,az0,alt0){
   return {dx:Xc/Zc, dy:Yc/Zc};
 }
 /* 対角魚眼(等立体角投影): 画面の対角線に180°が収まる魚眼レンズの見え方へ変換する。 */
-function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=15.3,sensorCrop=1){
+function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=15.3,sensorCrop=1,output=null){
   const F=toVec(az0,alt0);
   const R=[cos(az0),-sin(az0),0];
   const Up=cross(R,F);
@@ -3394,13 +3394,18 @@ function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=15.3,sensorCro
   const theta=Math.acos(Zc);
   if(theta>Math.PI/2+1e-6) return null; // 対角180°なので、正面側の半球だけを表示する
   const sinTheta=Math.sin(theta);
-  if(sinTheta<1e-8) return [W/2,H/2];
+  if(sinTheta<1e-8){
+    if(output){output[0]=W/2;output[1]=H/2;return output;}
+    return [W/2,H/2];
+  }
   // 35mmフルサイズの対角長43.2666mmをキャンバス対角へ対応させ、実焦点距離で像高を計算する。
   // APS-Cなどはcrop倍した35mm換算焦点距離として扱うため、同じレンズでもセンサーに応じて画角が変わる。
   const pixelsPerMm=Math.hypot(W,H)/43.2666;
   const effectiveFocal=focalLength*sensorCrop;
   const radius=2*effectiveFocal*pixelsPerMm*Math.sin(theta/2);
-  return [W/2+(Xc/sinTheta)*radius, H/2-(Yc/sinTheta)*radius];
+  const x=W/2+(Xc/sinTheta)*radius,y=H/2-(Yc/sinTheta)*radius;
+  if(output){output[0]=x;output[1]=y;return output;}
+  return [x,y];
 }
 /* 東西南北成分を持つベクトル(E,N,U)からAlt/Azへ逆変換 (ドラッグ操作で新しい向きを求めるのに使用) */
 function altAzFromVec(v){
@@ -9527,11 +9532,48 @@ function drawPhoto(ctx,s){
   // 等立体角投影の中心付近における1ラジアン当たりの縮尺。焦点距離とセンサーサイズに連動する。
   const fisheyeScale=s.focalLength*s.sensor.crop*Math.hypot(W,H)/43.2666;
   const scale=useDiagonalFisheye ? fisheyeScale : rectilinearScale;
-  function toXY(az,alt){
-    if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H,s.focalLength,s.sensor.crop);
+  function toXY(az,alt,output=null){
+    if(useDiagonalFisheye) return projectDiagonalFisheyeXY(az,alt,s.facingAz,s.facingAlt,W,H,s.focalLength,s.sensor.crop,output);
     const p=project(az,alt,s.facingAz,s.facingAlt);
     if(!p) return null;
-    return [W/2+p.dx*scale, H/2-p.dy*scale];
+    const x=W/2+p.dx*scale,y=H/2-p.dy*scale;
+    if(output){output[0]=x;output[1]=y;return output;}
+    return [x,y];
+  }
+  // リアル天の川反射の全頂点は同じカメラ姿勢を使うため、投影基底を一度だけ準備する。
+  // 通常のtoXY()と同じ式・前面判定を、頂点ごとの一時配列なしで既存バッファへ書き込む。
+  const reflectionProjectionForward=toVec(s.facingAz,s.facingAlt);
+  const reflectionProjectionRight=[cos(s.facingAz),-sin(s.facingAz),0];
+  const reflectionProjectionUp=cross(reflectionProjectionRight,reflectionProjectionForward);
+  const reflectionForwardX=reflectionProjectionForward[0],reflectionForwardY=reflectionProjectionForward[1],reflectionForwardZ=reflectionProjectionForward[2];
+  const reflectionRightX=reflectionProjectionRight[0],reflectionRightY=reflectionProjectionRight[1],reflectionRightZ=reflectionProjectionRight[2];
+  const reflectionUpX=reflectionProjectionUp[0],reflectionUpY=reflectionProjectionUp[1],reflectionUpZ=reflectionProjectionUp[2];
+  const reflectionCenterX=W/2,reflectionCenterY=H/2;
+  const reflectionFisheyePixelsPerMm=Math.hypot(W,H)/43.2666;
+  const reflectionFisheyeEffectiveFocal=s.focalLength*s.sensor.crop;
+  function projectReflectedMilkyWayPoint(az,alt,output){
+    const altRad=alt*D2R,azRad=az*D2R;
+    const cosAlt=Math.cos(altRad),sinAlt=Math.sin(altRad);
+    const sinAz=Math.sin(azRad),cosAz=Math.cos(azRad);
+    const px=cosAlt*sinAz,py=cosAlt*cosAz,pz=sinAlt;
+    const zc=px*reflectionForwardX+py*reflectionForwardY+pz*reflectionForwardZ;
+    const xc=px*reflectionRightX+py*reflectionRightY+pz*reflectionRightZ;
+    const yc=px*reflectionUpX+py*reflectionUpY+pz*reflectionUpZ;
+    let x,y;
+    if(useDiagonalFisheye){
+      const theta=Math.acos(clamp(zc,-1,1));
+      if(theta>Math.PI/2+1e-6) return null;
+      const sinTheta=Math.sin(theta);
+      if(sinTheta<1e-8){x=reflectionCenterX;y=reflectionCenterY;}
+      else{
+        const radius=2*reflectionFisheyeEffectiveFocal*reflectionFisheyePixelsPerMm*Math.sin(theta/2);
+        x=reflectionCenterX+(xc/sinTheta)*radius;y=reflectionCenterY-(yc/sinTheta)*radius;
+      }
+    }else{
+      if(zc<=.02) return null;
+      x=reflectionCenterX+(xc/zc)*scale;y=reflectionCenterY-(yc/zc)*scale;
+    }
+    output[0]=x;output[1]=y;return output;
   }
   // 太陽・月のレンズ投影による見かけの伸びを求める(「太陽・月をリアル表示する」ON時に使用)。
   // 直線投影(レクティリニア)は、光軸からの角度θに対して放射方向にsec²θ、接線方向にsecθで
@@ -10596,26 +10638,62 @@ function drawPhoto(ctx,s){
             textureCoordinateGrid={key:textureCoordinateKey,rows:REAL_MW_GRID.map(row=>row.map(p=>{
               const textureL=p.l+MW_TEXTURE_BASE_L+mwTextureLOffsetDeg;
               const textureB=p.b+MW_TEXTURE_BASE_B+mwTextureBOffsetDeg;
-              return {ra:p.ra,dec:p.dec,sx:(1.5-textureL/360)*iw,sy:(.5-textureB/180)*ih};
+              return {
+                ra:p.ra,sinDec:sin(p.dec),cosDec:cos(p.dec),tanDec:tan(p.dec),
+                uv:[(1.5-textureL/360)*iw,(.5-textureB/180)*ih]
+              };
             }))};
             drawPhoto._reflectedMilkyWayTextureCoordinateGrid=textureCoordinateGrid;
           }
-          const reflectedGrid=textureCoordinateGrid.rows.map(row=>row.map(p=>{
-            const aa=raDecToAltAz(p.ra,p.dec,s.jd,s.lat,s.lon);
-            return {sx:p.sx,sy:p.sy,alt:aa.alt,pt:toXY(aa.az,-Math.max(0,aa.alt))};
-          }));
+          let reflectedGridCache=drawPhoto._reflectedMilkyWayProjectedGrid;
+          if(!reflectedGridCache||reflectedGridCache.key!==textureCoordinateKey){
+            reflectedGridCache={key:textureCoordinateKey,rows:textureCoordinateGrid.rows.map(row=>
+              row.map(p=>({uv:p.uv,alt:0,screen:[0,0],pt:null}))
+            )};
+            drawPhoto._reflectedMilkyWayProjectedGrid=reflectedGridCache;
+          }
+          const reflectedGrid=reflectedGridCache.rows;
+          const reflectionLST=lstDeg(s.jd,s.lon);
+          const reflectionSinLat=sin(s.lat),reflectionCosLat=cos(s.lat);
+          for(let r=0;r<textureCoordinateGrid.rows.length;r++){
+            const sourceRow=textureCoordinateGrid.rows[r],projectedRow=reflectedGrid[r];
+            for(let k=0;k<sourceRow.length;k++){
+    const source=sourceRow[k],projected=projectedRow[k];
+    const hourAngle=norm360(reflectionLST-source.ra);
+    const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+    const hourAngleRad=signedHourAngle*D2R;
+    const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+    const altitude=asin(source.sinDec*reflectionSinLat+
+      source.cosDec*reflectionCosLat*cosHourAngle);
+    const azimuth=norm360(atan2d(sinHourAngle,
+      cosHourAngle*reflectionSinLat-source.tanDec*reflectionCosLat)+180);
+              projected.alt=altitude;
+              projected.pt=projectReflectedMilkyWayPoint(azimuth,-Math.max(0,altitude),projected.screen);
+            }
+          }
           ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=clamp(vis*.20,0,.22);
+          const reflectedCullLeft=-30,reflectedCullRight=W+30,reflectedCullTop=-30,reflectedCullBottom=H+30;
+          const reflectedMaxCellWidth=W*1.5,reflectedMaxCellHeight=H*1.5;
           for(let r=0;r<reflectedGrid.length-1;r++){
-            for(let k=0;k<reflectedGrid[r].length-1;k++){
-              const p00=reflectedGrid[r][k],p10=reflectedGrid[r][k+1],p01=reflectedGrid[r+1][k],p11=reflectedGrid[r+1][k+1];
-              if(Math.max(p00.alt,p10.alt,p01.alt,p11.alt)<=0||!p00.pt||!p10.pt||!p01.pt||!p11.pt) continue;
-              const pts=[p00.pt,p10.pt,p01.pt,p11.pt];
-              if(!pts.every(p=>p.every(Number.isFinite))) continue;
-              const minX=Math.min(...pts.map(p=>p[0])),maxX=Math.max(...pts.map(p=>p[0]));
-              const minY=Math.min(...pts.map(p=>p[1])),maxY=Math.max(...pts.map(p=>p[1]));
-              if(maxX<-30||minX>W+30||maxY<-30||minY>H+30||maxX-minX>W*1.5||maxY-minY>H*1.5) continue;
-              drawTextureTriangle(ctx,realMilkyWayTexture,[p00.sx,p00.sy],[p10.sx,p10.sy],[p01.sx,p01.sy],p00.pt,p10.pt,p01.pt);
-              drawTextureTriangle(ctx,realMilkyWayTexture,[p10.sx,p10.sy],[p11.sx,p11.sy],[p01.sx,p01.sy],p10.pt,p11.pt,p01.pt);
+            const reflectedRow=reflectedGrid[r],reflectedNextRow=reflectedGrid[r+1];
+            let reflectedLeftTop=reflectedRow[0],reflectedLeftBottom=reflectedNextRow[0];
+            for(let k=0;k<reflectedRow.length-1;k++){
+              const p00=reflectedLeftTop,p01=reflectedLeftBottom;
+              const p10=reflectedRow[k+1],p11=reflectedNextRow[k+1];
+              reflectedLeftTop=p10;reflectedLeftBottom=p11;
+              if(p00.alt<=0&&p10.alt<=0&&p01.alt<=0&&p11.alt<=0) continue;
+              const pt00=p00.pt,pt10=p10.pt,pt01=p01.pt,pt11=p11.pt;
+              if(!pt00||!pt10||!pt01||!pt11) continue;
+              const x00=pt00[0],y00=pt00[1],x10=pt10[0],y10=pt10[1];
+              const x01=pt01[0],y01=pt01[1],x11=pt11[0],y11=pt11[1];
+              if(!Number.isFinite(x00)||!Number.isFinite(y00)||!Number.isFinite(x10)||!Number.isFinite(y10)||
+                 !Number.isFinite(x01)||!Number.isFinite(y01)||!Number.isFinite(x11)||!Number.isFinite(y11)) continue;
+              const minX=Math.min(x00,x10,x01,x11),maxX=Math.max(x00,x10,x01,x11);
+              const minY=Math.min(y00,y10,y01,y11),maxY=Math.max(y00,y10,y01,y11);
+              if(maxX<reflectedCullLeft||minX>reflectedCullRight||maxY<reflectedCullTop||minY>reflectedCullBottom||
+                 maxX-minX>reflectedMaxCellWidth||maxY-minY>reflectedMaxCellHeight) continue;
+              drawTextureTriangle(ctx,realMilkyWayTexture,p00.uv,p10.uv,p01.uv,pt00,pt10,pt01);
+              drawTextureTriangle(ctx,realMilkyWayTexture,p10.uv,p11.uv,p01.uv,pt10,pt11,pt01);
             }
           }
           ctx.restore();
