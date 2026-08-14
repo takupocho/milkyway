@@ -2646,7 +2646,7 @@
             </div>
             <div class="row2" style="margin-top:8px;">
               <div class="field"><label class="top">高精細化する半径（m）</label><input id="localDetailRadius" type="number" min="5" max="50" step="1" value="25"></div>
-              <div class="field"><label class="top">サンプル間隔</label><input type="text" value="1m（自動）" disabled></div>
+              <div class="field"><label class="top">描画格子間隔</label><input id="localDetailSampleIntervalDisplay" type="text" value="5m（軽量化設定）" disabled></div>
             </div>
             <div class="row2" style="margin-top:8px;">
               <button id="localDetailFetchBtn" type="button" class="primary">局所高精細地形を取得して表示</button>
@@ -2686,6 +2686,28 @@
             <input type="range" id="normalStarOpacitySlider" min="10" max="100" step="10" value="50">
           </div>
           <p class="map-hint" style="margin-top:4px;">通常表示時(スタートレイルOFF時)の星の明るさを調整します。星座・惑星・恒星・太陽・月には影響しません。</p>
+        </div>
+      </section>
+
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">軽量化<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <div class="field">
+            <label class="top">通常DEMの50m以遠 <span class="val mono" id="normalTerrainAzimuthStepVal">10°（最軽量）</span></label>
+            <input type="range" id="normalTerrainAzimuthStepSlider" min="2" max="10" step="1" value="10">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px;color:var(--dim-2);font-size:11px;font-weight:700;">
+              <span>← 2° 高精細</span><span>10° 最軽量 →</span>
+            </div>
+          </div>
+          <p class="map-hint" style="margin-top:6px;">50mより遠い通常DEMの方位メッシュ間隔です。小さいほど山や海岸線が滑らかになり、大きいほど地形描画が軽くなります。局所高精細地形と50m以内の近距離地形には影響しません。</p>
+          <div class="field" style="margin-top:14px;">
+            <label class="top">局所高精細地形 <span class="val mono" id="localDetailMeshStepVal">5m（最軽量）</span></label>
+            <input type="range" id="localDetailMeshStepSlider" min="1" max="5" step="1" value="5">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px;color:var(--dim-2);font-size:11px;font-weight:700;">
+              <span>← 1m 高精細</span><span>5m 最軽量 →</span>
+            </div>
+          </div>
+          <p class="map-hint" style="margin-top:6px;">観測地点から50mより遠い局所高精細地形の格子間隔です。小さいほど岩や小地形の輪郭が細かくなり、大きいほど局所地形の投影とポリゴン描画が軽くなります。取得するDEM標高値は変わりません。</p>
         </div>
       </section>
 
@@ -3878,6 +3900,8 @@ const el={
   realMilkyWayBrightnessSlider:$("realMilkyWayBrightnessSlider"), realMilkyWayBrightnessVal:$("realMilkyWayBrightnessVal"),
   terrainTopViewBtn:$("terrainTopViewBtn"), terrainTopViewOverlay:$("terrainTopViewOverlay"), terrainTopViewCloseBtn:$("terrainTopViewCloseBtn"), terrainTopViewRange:$("terrainTopViewRange"), terrainTopViewCanvas:$("terrainTopViewCanvas"), terrainTopViewStatus:$("terrainTopViewStatus"),
   localDetailTerrainBtn:$("localDetailTerrainBtn"), localDetailFetchBtn:$("localDetailFetchBtn"), localDetailCoordinatePaste:$("localDetailCoordinatePaste"), localDetailCoordinateApplyBtn:$("localDetailCoordinateApplyBtn"), localDetailLat:$("localDetailLat"), localDetailLon:$("localDetailLon"), localDetailRadius:$("localDetailRadius"), localDetailName:$("localDetailName"), localDetailRegisterBtn:$("localDetailRegisterBtn"), localDetailDeleteBtn:$("localDetailDeleteBtn"), localDetailSavedSelect:$("localDetailSavedSelect"), localDetailLoadBtn:$("localDetailLoadBtn"), localDetailTerrainStatus:$("localDetailTerrainStatus"),
+  normalTerrainAzimuthStepSlider:$("normalTerrainAzimuthStepSlider"), normalTerrainAzimuthStepVal:$("normalTerrainAzimuthStepVal"),
+  localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
   nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
   mwTextureOffsetSlider:$("mwTextureOffsetSlider"), mwTextureOffsetVal:$("mwTextureOffsetVal"),
@@ -4084,11 +4108,21 @@ el.facingAz.value=180; el.facingAlt.value=20;
 // 描画要求だけを次のrequestAnimationFrameへ集約し、最終値を1回描画する。
 // 計算内容・描画順序・最終画質は従来のupdate()と同一のまま維持する。
 let scheduledUpdateRaf=0;
+let scheduledCameraViewRaf=0;
 function scheduleUpdate(){
+  if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(scheduledUpdateRaf) return;
   scheduledUpdateRaf=requestAnimationFrame(()=>{
     scheduledUpdateRaf=0;
     update();
+  });
+}
+function scheduleCameraViewUpdate(){
+  // 日時・地点などの全体更新が待機中なら、その更新へまとめる。
+  if(scheduledUpdateRaf||scheduledCameraViewRaf) return;
+  scheduledCameraViewRaf=requestAnimationFrame(()=>{
+    scheduledCameraViewRaf=0;
+    updateCameraViewOnly();
   });
 }
 el.citySelect.addEventListener("change",()=>{
@@ -4192,7 +4226,9 @@ el.bestTimeBar.addEventListener("click",(e)=>{
   jumpToBestTimeStart();
 });
 
-[el.focalLength,el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp,el.facingAz,el.facingAlt]
+[el.focalLength,el.facingAz,el.facingAlt]
+  .forEach(inp=>inp.addEventListener("input",scheduleCameraViewUpdate));
+[el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp]
   .forEach(inp=>inp.addEventListener("input",scheduleUpdate));
 
 /* 「観測地点」「カメラ設定」など見出しクリックで内容を開閉できるようにする */
@@ -5018,16 +5054,25 @@ function sampleLocalDetailElevation(eastFromObserverM,northFromObserverM){
   const data=localDetailTerrainData;if(!localDetailTerrainEnabled||!data)return null;
   const observerLat=+el.lat.value,observerLon=+el.lon.value;
   if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon))return null;
-  const target=terrainDistanceAndBearing(observerLat,observerLon,data.lat,data.lon),targetRad=target.bearing*D2R;
-  const dx=eastFromObserverM-Math.sin(targetRad)*target.distanceKm*1000;
-  const dy=northFromObserverM-Math.cos(targetRad)*target.distanceKm*1000;
+  let center=sampleLocalDetailElevation._centerCache;
+  if(!center||center.data!==data||center.observerLat!==observerLat||center.observerLon!==observerLon||
+     center.targetLat!==data.lat||center.targetLon!==data.lon){
+    const target=terrainDistanceAndBearing(observerLat,observerLon,data.lat,data.lon),targetRad=target.bearing*D2R;
+    center={data,observerLat,observerLon,targetLat:data.lat,targetLon:data.lon,
+      eastM:Math.sin(targetRad)*target.distanceKm*1000,northM:Math.cos(targetRad)*target.distanceKm*1000};
+    sampleLocalDetailElevation._centerCache=center;
+  }
+  const dx=eastFromObserverM-center.eastM;
+  const dy=northFromObserverM-center.northM;
   const radial=Math.hypot(dx,dy);if(radial>data.radiusM)return null;
   const gx=dx+data.radiusM,gy=dy+data.radiusM;
   const x0=Math.floor(gx),y0=Math.floor(gy),x1=Math.min(data.size-1,x0+1),y1=Math.min(data.size-1,y0+1);
   if(x0<0||y0<0||x0>=data.size||y0>=data.size)return null;
-  const values=[data.elevations[y0*data.size+x0],data.elevations[y0*data.size+x1],data.elevations[y1*data.size+x0],data.elevations[y1*data.size+x1]];
-  if(!values.every(Number.isFinite))return null;
-  const fx=gx-x0,fy=gy-y0,elevation=lerp(lerp(values[0],values[1],fx),lerp(values[2],values[3],fx),fy);
+  const elevation00=data.elevations[y0*data.size+x0],elevation10=data.elevations[y0*data.size+x1];
+  const elevation01=data.elevations[y1*data.size+x0],elevation11=data.elevations[y1*data.size+x1];
+  if(!Number.isFinite(elevation00)||!Number.isFinite(elevation10)||
+     !Number.isFinite(elevation01)||!Number.isFinite(elevation11))return null;
+  const fx=gx-x0,fy=gy-y0,elevation=lerp(lerp(elevation00,elevation10,fx),lerp(elevation01,elevation11,fx),fy);
   // 外周2mだけ通常DEMへ滑らかに戻し、異なる解像度どうしの円形段差を見せない。
   const edgeBlend=clamp((data.radiusM-radial)/Math.min(2,Math.max(1,data.radiusM*.2)),0,1);
   const smoothBlend=edgeBlend*edgeBlend*(3-2*edgeBlend);
@@ -5196,6 +5241,39 @@ el.realMilkyWayBrightnessSlider.addEventListener("input",()=>{
   scheduleSaveSettings();
 });
 syncRealMilkyWayBrightnessControl();
+function normalTerrainAzimuthStepValue(){
+  return clamp(Math.round(+el.normalTerrainAzimuthStepSlider.value||10),2,10);
+}
+function syncNormalTerrainAzimuthStepControl(){
+  const degrees=normalTerrainAzimuthStepValue();
+  el.normalTerrainAzimuthStepSlider.value=degrees;
+  const mode=degrees===2?"高精細":(degrees<=4?"やや高精細":(degrees<=7?"バランス":(degrees<10?"軽量":"最軽量")));
+  el.normalTerrainAzimuthStepVal.textContent=`${degrees}°（${mode}）`;
+}
+el.normalTerrainAzimuthStepSlider.addEventListener("input",()=>{
+  syncNormalTerrainAzimuthStepControl();
+  drawPhoto._terrainRenderKey=null;
+  scheduleCameraViewUpdate();
+  scheduleSaveSettings();
+});
+syncNormalTerrainAzimuthStepControl();
+function localDetailMeshStepValue(){
+  return clamp(Math.round(+el.localDetailMeshStepSlider.value||5),1,5);
+}
+function syncLocalDetailMeshStepControl(){
+  const metres=localDetailMeshStepValue();
+  el.localDetailMeshStepSlider.value=metres;
+  const mode=metres===1?"高精細":(metres===2?"やや高精細":(metres===3?"バランス":(metres===4?"軽量":"最軽量")));
+  el.localDetailMeshStepVal.textContent=`${metres}m（${mode}）`;
+  el.localDetailSampleIntervalDisplay.value=`${metres}m（軽量化設定）`;
+}
+el.localDetailMeshStepSlider.addEventListener("input",()=>{
+  syncLocalDetailMeshStepControl();
+  drawPhoto._terrainRenderKey=null;
+  scheduleCameraViewUpdate();
+  scheduleSaveSettings();
+});
+syncLocalDetailMeshStepControl();
 function setTerrainTopViewOpen(open){
   el.terrainTopViewOverlay.classList.toggle("show",!!open);
   el.terrainTopViewOverlay.setAttribute("aria-hidden",open?"false":"true");
@@ -5254,7 +5332,6 @@ function toggleSkylineBoundary(){
   showSkylineBoundary=!showSkylineBoundary;
   syncDisplayPopupControls();
   update();
-  scheduleSaveSettings();
 }
 el.showSkylineBoundaryBtn.addEventListener("click",toggleSkylineBoundary);
 el.popupSkylineBtn.addEventListener("click",toggleSkylineBoundary);
@@ -5519,7 +5596,7 @@ function photoDragMove(pos){
   const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -30, 85);
   el.facingAz.value=Math.round(newAz);
   el.facingAlt.value=Math.round(newAlt);
-  scheduleUpdate();
+  scheduleCameraViewUpdate();
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
 function handlePhotoTap(pos){
@@ -5581,7 +5658,7 @@ el.photoCanvas.addEventListener("wheel",(e)=>{
   const dir = e.deltaY<0 ? 1 : -1;
   const newFocal = clamp((+el.focalLength.value)+dir, +el.focalLength.min, +el.focalLength.max);
   el.focalLength.value = newFocal;
-  update();
+  updateCameraViewOnly();
 },{passive:false});
 
 /* ピンチイン・ピンチアウトで焦点距離を調整(2本指) */
@@ -5605,7 +5682,7 @@ el.photoCanvas.addEventListener("touchmove",(e)=>{
   const ratio=dist/photoPinchStartDist;
   const newFocal=clamp(Math.round(photoPinchStartFocal*ratio), +el.focalLength.min, +el.focalLength.max);
   el.focalLength.value=newFocal;
-  scheduleUpdate();
+  scheduleCameraViewUpdate();
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchend",(e)=>{
@@ -6439,6 +6516,8 @@ function collectPersistedSettings(){
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
     observedPlaceName:currentObservedPlaceName,
+    normalTerrainAzimuthStep:normalTerrainAzimuthStepValue(),
+    localDetailMeshStepM:localDetailMeshStepValue(),
     localDetailTerrainEnabled:false,
     localDetailTerrain:localDetailTerrainConfig(),
   };
@@ -6481,6 +6560,14 @@ async function loadPersistedSettings(){
     vignetteEnabled=s.vignetteEnabled!==false;
     el.vignetteBtn.classList.toggle("active",vignetteEnabled);
     el.vignetteState.textContent=vignetteEnabled?"ON":"OFF";
+    if(s.normalTerrainAzimuthStep!==undefined){
+      el.normalTerrainAzimuthStepSlider.value=clamp(Math.round(+s.normalTerrainAzimuthStep||10),2,10);
+    }
+    syncNormalTerrainAzimuthStepControl();
+    if(s.localDetailMeshStepM!==undefined){
+      el.localDetailMeshStepSlider.value=clamp(Math.round(+s.localDetailMeshStepM||5),1,5);
+    }
+    syncLocalDetailMeshStepControl();
     if(s.localDetailTerrain&&typeof s.localDetailTerrain==="object"){
       if(Number.isFinite(+s.localDetailTerrain.lat)) el.localDetailLat.value=+s.localDetailTerrain.lat;
       if(Number.isFinite(+s.localDetailTerrain.lon)) el.localDetailLon.value=+s.localDetailTerrain.lon;
@@ -9343,17 +9430,27 @@ window.addEventListener("online",()=>{
 });
 
 /* 画像上の三角形を画面上の三角形へアフィン変換して描く。全天画像を通常・魚眼の両投影へ追従させるための軽量メッシュ描画。 */
-function drawTextureTriangle(ctx,img,s0,s1,s2,d0,d1,d2){
-  const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]);
-  if(Math.abs(den)<1e-6) return;
-  const a=(d0[0]*(s1[1]-s2[1])+d1[0]*(s2[1]-s0[1])+d2[0]*(s0[1]-s1[1]))/den;
-  const c=(d0[0]*(s2[0]-s1[0])+d1[0]*(s0[0]-s2[0])+d2[0]*(s1[0]-s0[0]))/den;
-  const e=(d0[0]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[0]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[0]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
-  const b=(d0[1]*(s1[1]-s2[1])+d1[1]*(s2[1]-s0[1])+d2[1]*(s0[1]-s1[1]))/den;
-  const d=(d0[1]*(s2[0]-s1[0])+d1[1]*(s0[0]-s2[0])+d2[1]*(s1[0]-s0[0]))/den;
-  const f=(d0[1]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[1]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[1]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+function drawTextureTriangle(ctx,img,s0,s1,s2,d0,d1,d2,transformCache=null,alpha=null,clipPath=null){
+  let matrix=transformCache&&transformCache.textureTransform;
+  if(!matrix){
+    const den=s0[0]*(s1[1]-s2[1])+s1[0]*(s2[1]-s0[1])+s2[0]*(s0[1]-s1[1]);
+    if(Math.abs(den)<1e-6) return;
+    const a=(d0[0]*(s1[1]-s2[1])+d1[0]*(s2[1]-s0[1])+d2[0]*(s0[1]-s1[1]))/den;
+    const c=(d0[0]*(s2[0]-s1[0])+d1[0]*(s0[0]-s2[0])+d2[0]*(s1[0]-s0[0]))/den;
+    const e=(d0[0]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[0]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[0]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+    const b=(d0[1]*(s1[1]-s2[1])+d1[1]*(s2[1]-s0[1])+d2[1]*(s0[1]-s1[1]))/den;
+    const d=(d0[1]*(s2[0]-s1[0])+d1[1]*(s0[0]-s2[0])+d2[1]*(s1[0]-s0[0]))/den;
+    const f=(d0[1]*(s1[0]*s2[1]-s2[0]*s1[1])+d1[1]*(s2[0]*s0[1]-s0[0]*s2[1])+d2[1]*(s0[0]*s1[1]-s1[0]*s0[1]))/den;
+    matrix=[a,b,c,d,e,f];
+    if(transformCache) transformCache.textureTransform=matrix;
+  }
+  const [a,b,c,d,e,f]=matrix;
   ctx.save();
-  ctx.beginPath(); ctx.moveTo(d0[0],d0[1]); ctx.lineTo(d1[0],d1[1]); ctx.lineTo(d2[0],d2[1]); ctx.closePath(); ctx.clip();
+  if(alpha!==null) ctx.globalAlpha=alpha;
+  if(clipPath) ctx.clip(clipPath);
+  else{
+    ctx.beginPath();ctx.moveTo(d0[0],d0[1]);ctx.lineTo(d1[0],d1[1]);ctx.lineTo(d2[0],d2[1]);ctx.closePath();ctx.clip();
+  }
   ctx.setTransform(a,b,c,d,e,f); ctx.drawImage(img,0,0); ctx.restore();
 }
 
@@ -10166,7 +10263,18 @@ function drawPhoto(ctx,s){
       const waterSurfaceMaskCanvas=drawPhoto._waterSurfaceMaskCanvas||(drawPhoto._waterSurfaceMaskCanvas=document.createElement("canvas"));
       let waterMaskResized=false;
       if(waterSurfaceMaskCanvas.width!==W||waterSurfaceMaskCanvas.height!==H){waterSurfaceMaskCanvas.width=W;waterSurfaceMaskCanvas.height=H;waterMaskResized=true;}
-      const wmctx=waterSurfaceMaskCanvas.getContext("2d");
+      const realWaterMaskContext=waterSurfaceMaskCanvas.getContext("2d");
+      // 昼用地形では夜用で完成した同一形状の水域マスクを再利用する。
+      // 地形描画コードの呼び出し順を変えず、昼側の重複したPath操作だけを受け流す軽量コンテキスト。
+      const noOpMask=()=>{};
+      const sharedWaterMaskNoopContext={
+        save:noOpMask,restore:noOpMask,beginPath:noOpMask,closePath:noOpMask,
+        moveTo:noOpMask,lineTo:noOpMask,quadraticCurveTo:noOpMask,bezierCurveTo:noOpMask,
+        arc:noOpMask,rect:noOpMask,fill:noOpMask,stroke:noOpMask,clip:noOpMask,clearRect:noOpMask,
+        drawImage:noOpMask,setTransform:noOpMask,transform:noOpMask,translate:noOpMask,rotate:noOpMask,scale:noOpMask,
+        globalCompositeOperation:"source-over",fillStyle:"#fff",strokeStyle:"#fff",lineWidth:1
+      };
+      let wmctx=realWaterMaskContext;
       const atmosphere=clamp(s.twilight*.65+s.moonContribution*.5+s.lp.base*.2,0,1);
       let terrainDayFactor=dayFactor;
       let terrainAtmosphere=atmosphere;
@@ -10176,6 +10284,8 @@ function drawPhoto(ctx,s){
         W,H,realTerrainState.key,realTerrainState._renderRevision||0,
         s.facingAz.toFixed(3),s.facingAlt.toFixed(3),s.fovH.toFixed(3),
         mobileLensMode,s.focalLength,s.sensor.crop,
+        normalTerrainAzimuthStepValue(),
+        localDetailMeshStepValue(),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
       const terrainRenderKey=terrainGeometryKey;
@@ -10195,13 +10305,18 @@ function drawPhoto(ctx,s){
         far:{top:[146,160,166],bottom:[172,184,192]},
         distant:{top:[190,202,212],bottom:[210,220,228]}
       };
+      const terrainBandColorCache=new Map();
       function terrainBandColors(key){
+        const cacheKey=`${key}|${terrainDayFactor}|${terrainAtmosphere}`;
+        if(terrainBandColorCache.has(cacheKey)) return terrainBandColorCache.get(cacheKey);
         const style=bandStyles[key]||bandStyles.immediate;
         const dayStyle=dayBandStyles[key]||dayBandStyles.immediate;
         const brighten=rgb=>rgb.map(v=>Math.round(v+style.boost*terrainAtmosphere));
         const top=mixRGB(brighten(style.top),dayStyle.top,terrainDayFactor);
         const bottom=mixRGB(brighten(style.bottom),dayStyle.bottom,terrainDayFactor);
-        return {top:`rgb(${top.join(",")})`,bottom:`rgb(${bottom.join(",")})`};
+        const colors={top:`rgb(${top.join(",")})`,bottom:`rgb(${bottom.join(",")})`};
+        terrainBandColorCache.set(cacheKey,colors);
+        return colors;
       }
       function drawSeasonalFujiSnow(reflected=false,targetCtx=ctx,reflectionHorizonY=null){
         const snowlineM=fujiSeasonalSnowline(s.dateMo);
@@ -10810,73 +10925,127 @@ function drawPhoto(ctx,s){
       function fillTerrainBand(layer,colors){
         const WATER_RUN_THRESHOLD=0.5; // 距離帯ごとの水面らしさが、これ以上の方位だけを「水面」として塗る
         const OPEN_SEA_CAP_MIN_ALT_DEG=0.22; // 海方向では、これ未満のDEM隆起を水平線ノイズとして描かない
-        const points=[];
-        for(let diff=-half;diff<=half;diff+=step){
-          const az=norm360(s.facingAz+diff);
-          const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-          const altitude=lerp(layer.profile[i0]||0,layer.profile[i1]||0,t);
-          const p=toXY(az,altitude);
-          if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
-          const horizonP=toXY(az,0);
-          if(!horizonP||!Number.isFinite(horizonP[0])||!Number.isFinite(horizonP[1])) continue;
-          const shorelineIndex=((Math.round(az)%360)+360)%360;
-          const shorelineKm=realTerrainState.waterNearKm&&realTerrainState.waterNearKm[shorelineIndex];
-          const shorelineAlt=Number.isFinite(shorelineKm)
-            ? -Math.atan2(1.6,Math.max(1,shorelineKm*1000))*R2D
-            : -89;
-          const shorelineP=toXY(az,shorelineAlt);
-          const wp=layer.waterProfile;
-          const water=wp?lerp(wp[i0]||0,wp[i1]||0,t):0;
-          let highRidgeNeighbors=0;
-          for(let offset=-2;offset<=2;offset++){
-            if((layer.profile[(shorelineIndex+offset+360)%360]||0)>=.55) highRidgeNeighbors++;
+        const bandSlot=farTerrainBandIndex++;
+        let points=sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
+          ?sharedTerrainProjectionCache.farBands[bandSlot]:null;
+        const replayedPoints=!!points;
+        if(!points){
+          points=[];
+          for(let diff=-half;diff<=half;diff+=step){
+            const az=norm360(s.facingAz+diff);
+            const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+            const altitude=lerp(layer.profile[i0]||0,layer.profile[i1]||0,t);
+            const p=toXY(az,altitude);
+            if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
+            const horizonP=toXY(az,0);
+            if(!horizonP||!Number.isFinite(horizonP[0])||!Number.isFinite(horizonP[1])) continue;
+            const shorelineIndex=((Math.round(az)%360)+360)%360;
+            const shorelineKm=realTerrainState.waterNearKm&&realTerrainState.waterNearKm[shorelineIndex];
+            const shorelineAlt=Number.isFinite(shorelineKm)
+              ? -Math.atan2(1.6,Math.max(1,shorelineKm*1000))*R2D
+              : -89;
+            const shorelineP=toXY(az,shorelineAlt);
+            const wp=layer.waterProfile;
+            const water=wp?lerp(wp[i0]||0,wp[i1]||0,t):0;
+            let highRidgeNeighbors=0;
+            for(let offset=-2;offset<=2;offset++){
+              if((layer.profile[(shorelineIndex+offset+360)%360]||0)>=.55) highRidgeNeighbors++;
+            }
+            const protectedHighMountain=altitude>=.8&&highRidgeNeighbors>=3;
+            // 高い山体ではv317の山頂キャップを許可する。低い海上DEMでは従来どおり抑止する。
+            const openSea=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[shorelineIndex])&&!protectedHighMountain;
+            points.push({x:p[0],y:p[1],az,altitude,horizonX:horizonP[0],horizonY:horizonP[1],shorelineX:shorelineP?shorelineP[0]:horizonP[0],shorelineY:shorelineP?shorelineP[1]:H+2,water,confirmedWater:isConfirmedWaterDirection(az),openSea,mountainBridge:false});
           }
-          const protectedHighMountain=altitude>=.8&&highRidgeNeighbors>=3;
-          // 高い山体ではv317の山頂キャップを許可する。低い海上DEMでは従来どおり抑止する。
-          const openSea=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[shorelineIndex])&&!protectedHighMountain;
-          points.push({x:p[0],y:p[1],az,altitude,horizonX:horizonP[0],horizonY:horizonP[1],shorelineX:shorelineP?shorelineP[0]:horizonP[0],shorelineY:shorelineP?shorelineP[1]:H+2,water,confirmedWater:isConfirmedWaterDirection(az),openSea,mountainBridge:false});
         }
         if(points.length<2) return;
         // 海岸線データと水域ポリゴンを統合した最終water判定には、山体の内部だけを縦に切る
         // 短い水域区間が残ることがある。描画直前に限り、高い山に両側を挟まれた短区間だけを連結する。
         // 低い水平線・広い海・入り江・湖は高度または幅の条件から対象にならない。
         const isWaterLike=point=>point.water>=WATER_RUN_THRESHOLD||point.confirmedWater;
-        const maxBridgePoints=Math.max(1,Math.ceil(5/Math.max(.1,step)));
-        let bridgeIndex=1;
-        while(bridgeIndex<points.length-1){
-          if(!isWaterLike(points[bridgeIndex])){bridgeIndex++;continue;}
-          const start=bridgeIndex;
-          while(bridgeIndex<points.length&&isWaterLike(points[bridgeIndex])) bridgeIndex++;
-          const end=bridgeIndex-1;
-          if(start<=0||bridgeIndex>=points.length) continue;
-          const count=end-start+1;
-          const enclosedByLand=!isWaterLike(points[start-1])&&!isWaterLike(points[bridgeIndex]);
-          const mountainInside=count<=maxBridgePoints&&points.slice(start,end+1).every(point=>point.altitude>=.75);
-          const mountainSides=points[start-1].altitude>=.55&&points[bridgeIndex].altitude>=.55;
-          if(enclosedByLand&&mountainInside&&mountainSides){
-            for(let index=start;index<=end;index++) points[index].mountainBridge=true;
+        if(!replayedPoints){
+          const maxBridgePoints=Math.max(1,Math.ceil(5/Math.max(.1,step)));
+          let bridgeIndex=1;
+          while(bridgeIndex<points.length-1){
+            if(!isWaterLike(points[bridgeIndex])){bridgeIndex++;continue;}
+            const start=bridgeIndex;
+            while(bridgeIndex<points.length&&isWaterLike(points[bridgeIndex])) bridgeIndex++;
+            const end=bridgeIndex-1;
+            if(start<=0||bridgeIndex>=points.length) continue;
+            const count=end-start+1;
+            const enclosedByLand=!isWaterLike(points[start-1])&&!isWaterLike(points[bridgeIndex]);
+            const mountainInside=count<=maxBridgePoints&&points.slice(start,end+1).every(point=>point.altitude>=.75);
+            const mountainSides=points[start-1].altitude>=.55&&points[bridgeIndex].altitude>=.55;
+            if(enclosedByLand&&mountainInside&&mountainSides){
+              for(let index=start;index<=end;index++) points[index].mountainBridge=true;
+            }
+          }
+          if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+            sharedTerrainProjectionCache.farBands[bandSlot]=points;
           }
         }
         const terrainPointType=point=>point.mountainBridge?"land":
           (point.water>=WATER_RUN_THRESHOLD?"water":(point.confirmedWater?"water-corridor":"land"));
-        const ridgeY=clamp(Math.min(...points.map(pt=>pt.y)),0,H-1);
+        let ridgeY=sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
+          ?sharedTerrainProjectionCache.farBandRidgeY[bandSlot]:null;
+        if(!Number.isFinite(ridgeY)){
+          let minimumY=Infinity;
+          for(let pointIndex=0;pointIndex<points.length;pointIndex++){
+            if(points[pointIndex].y<minimumY) minimumY=points[pointIndex].y;
+          }
+          ridgeY=clamp(minimumY,0,H-1);
+          if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+            sharedTerrainProjectionCache.farBandRidgeY[bandSlot]=ridgeY;
+          }
+        }
         const gradient=tctx.createLinearGradient(0,ridgeY,0,H);
         gradient.addColorStop(0,colors.top);
         gradient.addColorStop(1,colors.bottom);
+        function drawTerrainRunCaps(terrainRun){
+          let capPaths=terrainRun.capPaths;
+          if(!capPaths){
+            capPaths=[];
+            const run=terrainRun.run;
+            let capStart=0;
+            while(capStart<run.length){
+              while(capStart<run.length&&(run[capStart].openSea||run[capStart].altitude<=OPEN_SEA_CAP_MIN_ALT_DEG)) capStart++;
+              let capEnd=capStart;
+              while(capEnd<run.length&&!run[capEnd].openSea&&run[capEnd].altitude>OPEN_SEA_CAP_MIN_ALT_DEG) capEnd++;
+              const cap=run.slice(capStart,capEnd);
+              if(cap.length>=2){
+                const capPath=new Path2D();capPath.moveTo(cap[0].x,cap[0].y);
+                for(let k=1;k<cap.length;k++) capPath.lineTo(cap[k].x,cap[k].y);
+                for(let k=cap.length-1;k>=0;k--) capPath.lineTo(cap[k].horizonX,cap[k].horizonY);
+                capPath.closePath();capPaths.push(capPath);
+              }
+              capStart=Math.max(capEnd,capStart+1);
+            }
+            terrainRun.capPaths=capPaths;
+          }
+          tctx.fillStyle=gradient;
+          for(let capIndex=0;capIndex<capPaths.length;capIndex++) tctx.fill(capPaths[capIndex]);
+        }
         // この距離帯の中でも、水面らしさが方位によって変わる(海の向こうに島があるなど)ことがあるため、
         // 「陸地」と「水面」が連続する区間ごとに分けて、それぞれ1つの図形として1回だけ塗る。
         // 隣の区間の始点も1点だけ重ねて含めることで、区間の境目に継ぎ目(縦筋)ができないようにする。
-        let i=0;
-        while(i<points.length){
-          const runType=terrainPointType(points[i]);
-          const isWaterRun=runType==="water";
-          let j=i;
-          while(j<points.length){
-            const pointType=terrainPointType(points[j]);
-            if(pointType!==runType) break;
-            j++;
+        let terrainRuns=sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
+          ?sharedTerrainProjectionCache.farBandRuns[bandSlot]:null;
+        if(!terrainRuns){
+          terrainRuns=[];
+          let runStart=0;
+          while(runStart<points.length){
+            const runType=terrainPointType(points[runStart]);
+            let runEnd=runStart;
+            while(runEnd<points.length&&terrainPointType(points[runEnd])===runType) runEnd++;
+            terrainRuns.push({i:runStart,j:runEnd,runType,isWaterRun:runType==="water",run:points.slice(runStart,Math.min(runEnd+1,points.length))});
+            runStart=runEnd;
           }
-          const run=points.slice(i,Math.min(j+1,points.length));
+          if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+            sharedTerrainProjectionCache.farBandRuns[bandSlot]=terrainRuns;
+          }
+        }
+        for(let terrainRunIndex=0;terrainRunIndex<terrainRuns.length;terrainRunIndex++){
+          const terrainRun=terrainRuns[terrainRunIndex];
+          const {i,j,runType,isWaterRun,run}=terrainRun;
           if(run.length>=1){
             const startX=i===0?0:run[0].x; // 画面の左端は元の実装同様x=0まで途切れなく塗る
             const endX=j>=points.length?W:run[run.length-1].x; // 右端はx=Wまで塗る
@@ -10888,73 +11057,49 @@ function drawPhoto(ctx,s){
               // run末尾には継ぎ目防止用の「次の陸地方位」が1点含まれるため、水平線側からは除外し、
               // 水際側だけの画面下ポイントとして使う。これで海岸線が斜めに閉じる。
               const waterEnd=rightCoastEdge?Math.max(0,run.length-2):run.length-1;
-              tctx.beginPath();tctx.moveTo(run[0].horizonX,run[0].horizonY);
-              for(let k=1;k<=waterEnd;k++) tctx.lineTo(run[k].horizonX,run[k].horizonY);
-              if(rightCoastEdge&&run[waterEnd+1]) tctx.lineTo(run[waterEnd+1].x,H+2);
-              for(let k=waterEnd;k>=0;k--) tctx.lineTo(run[k].shorelineX,Math.max(run[k].horizonY,run[k].shorelineY));
-              if(leftCoastEdge){
-                const dx=run.length>1?run[1].x-run[0].x:Math.max(2,W/200);
-                tctx.lineTo(run[0].x-dx,H+2);
+              let waterPath=terrainRun.waterPath;
+              if(!waterPath){
+                waterPath=new Path2D();waterPath.moveTo(run[0].horizonX,run[0].horizonY);
+                for(let k=1;k<=waterEnd;k++) waterPath.lineTo(run[k].horizonX,run[k].horizonY);
+                if(rightCoastEdge&&run[waterEnd+1]) waterPath.lineTo(run[waterEnd+1].x,H+2);
+                for(let k=waterEnd;k>=0;k--) waterPath.lineTo(run[k].shorelineX,Math.max(run[k].horizonY,run[k].shorelineY));
+                if(leftCoastEdge){
+                  const dx=run.length>1?run[1].x-run[0].x:Math.max(2,W/200);
+                  waterPath.lineTo(run[0].x-dx,H+2);
+                }
+                waterPath.closePath();terrainRun.waterPath=waterPath;
               }
-              tctx.closePath();
-              const nearSea=seaRGB.map((v,idx)=>clamp(v+(idx===2?12:6),0,255));
               const seaGradient=tctx.createLinearGradient(0,run[0].horizonY,0,H);
-              seaGradient.addColorStop(0,`rgb(${seaRGB.join(",")})`);
-              seaGradient.addColorStop(1,`rgb(${nearSea.join(",")})`);
+              seaGradient.addColorStop(0,seaRGBText);
+              seaGradient.addColorStop(1,farNearSeaRGBText);
               tctx.fillStyle=seaGradient;
-              tctx.fill();
-              wmctx.save();wmctx.globalCompositeOperation="source-over";
-              wmctx.beginPath();wmctx.moveTo(run[0].horizonX,run[0].horizonY);
-              for(let k=1;k<=waterEnd;k++) wmctx.lineTo(run[k].horizonX,run[k].horizonY);
-              if(rightCoastEdge&&run[waterEnd+1]) wmctx.lineTo(run[waterEnd+1].x,H+2);
-              for(let k=waterEnd;k>=0;k--) wmctx.lineTo(run[k].shorelineX,Math.max(run[k].horizonY,run[k].shorelineY));
-              if(leftCoastEdge){const dx=run.length>1?run[1].x-run[0].x:Math.max(2,W/200);wmctx.lineTo(run[0].x-dx,H+2);}
-              wmctx.closePath();wmctx.fillStyle="#fff";wmctx.fill();wmctx.restore();
+              tctx.fill(waterPath);
+              if(sharedTerrainProjectionPass!=="replay"){
+                wmctx.save();wmctx.globalCompositeOperation="source-over";
+                wmctx.fillStyle="#fff";wmctx.fill(waterPath);wmctx.restore();
+              }
 
               // 水域方位でも、稜線が水平線より上に出ている範囲は山色で塗り戻す。
               // 稜線→水平線の間だけを閉じたポリゴンにするため、水面の遠近表現は維持される。
-              let capStart=0;
-              while(capStart<run.length){
-                while(capStart<run.length&&(run[capStart].openSea||run[capStart].altitude<=OPEN_SEA_CAP_MIN_ALT_DEG)) capStart++;
-                let capEnd=capStart;
-                while(capEnd<run.length&&!run[capEnd].openSea&&run[capEnd].altitude>OPEN_SEA_CAP_MIN_ALT_DEG) capEnd++;
-                const cap=run.slice(capStart,capEnd);
-                if(cap.length>=2){
-                  tctx.beginPath();tctx.moveTo(cap[0].x,cap[0].y);
-                  for(let k=1;k<cap.length;k++) tctx.lineTo(cap[k].x,cap[k].y);
-                  for(let k=cap.length-1;k>=0;k--) tctx.lineTo(cap[k].horizonX,cap[k].horizonY);
-                  tctx.closePath();tctx.fillStyle=gradient;tctx.fill();
-                }
-                capStart=Math.max(capEnd,capStart+1);
-              }
+              drawTerrainRunCaps(terrainRun);
             }else if(runType==="water-corridor"){
               // 水域方向の遠方地形は、水平線より上に出ている山の頭だけを描く。
               // 従来のように稜線から画面下まで閉じないため、下層の海色を覆わない。
-              let capStart=0;
-              while(capStart<run.length){
-                while(capStart<run.length&&(run[capStart].openSea||run[capStart].altitude<=OPEN_SEA_CAP_MIN_ALT_DEG)) capStart++;
-                let capEnd=capStart;
-                while(capEnd<run.length&&!run[capEnd].openSea&&run[capEnd].altitude>OPEN_SEA_CAP_MIN_ALT_DEG) capEnd++;
-                const cap=run.slice(capStart,capEnd);
-                if(cap.length>=2){
-                  tctx.beginPath();tctx.moveTo(cap[0].x,cap[0].y);
-                  for(let k=1;k<cap.length;k++) tctx.lineTo(cap[k].x,cap[k].y);
-                  for(let k=cap.length-1;k>=0;k--) tctx.lineTo(cap[k].horizonX,cap[k].horizonY);
-                  tctx.closePath();tctx.fillStyle=gradient;tctx.fill();
-                }
-                capStart=Math.max(capEnd,capStart+1);
-              }
+              drawTerrainRunCaps(terrainRun);
             }else{
-              tctx.beginPath();tctx.moveTo(startX,H);tctx.lineTo(run[0].x,run[0].y);
-              for(let k=1;k<run.length;k++) tctx.lineTo(run[k].x,run[k].y);
-              tctx.lineTo(endX,H);tctx.closePath();tctx.fillStyle=gradient;tctx.fill();
-              wmctx.save();wmctx.globalCompositeOperation="destination-out";
-              wmctx.beginPath();wmctx.moveTo(startX,H);wmctx.lineTo(run[0].x,run[0].y);
-              for(let k=1;k<run.length;k++) wmctx.lineTo(run[k].x,run[k].y);
-              wmctx.lineTo(endX,H);wmctx.closePath();wmctx.fillStyle="#fff";wmctx.fill();wmctx.restore();
+              let landPath=terrainRun.landPath;
+              if(!landPath){
+                landPath=new Path2D();landPath.moveTo(startX,H);landPath.lineTo(run[0].x,run[0].y);
+                for(let k=1;k<run.length;k++) landPath.lineTo(run[k].x,run[k].y);
+                landPath.lineTo(endX,H);landPath.closePath();terrainRun.landPath=landPath;
+              }
+              tctx.fillStyle=gradient;tctx.fill(landPath);
+              if(sharedTerrainProjectionPass!=="replay"){
+                wmctx.save();wmctx.globalCompositeOperation="destination-out";
+                wmctx.fillStyle="#fff";wmctx.fill(landPath);wmctx.restore();
+              }
             }
           }
-          i=j;
         }
       }
       const nightSeaRGB=[5,8,20];
@@ -10974,6 +11119,9 @@ function drawPhoto(ctx,s){
       const inlandWaterScene=!realTerrainState.observerAtSea&&inlandEvidence>Math.max(2,seaEvidence*.45);
       const dayLakeRGB=[62,96,142];
       let seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
+      const seaRGBText=`rgb(${seaRGB.join(",")})`;
+      const farNearSeaRGBText=`rgb(${seaRGB.map((value,index)=>clamp(value+(index===2?12:6),0,255)).join(",")})`;
+      const confirmedNearSeaRGBText=`rgb(${seaRGB.map((value,index)=>clamp(value+(index===2?14:7),0,255)).join(",")})`;
       const nearShoreSpreadPx=clamp(W*3/Math.max(1,s.fovH),12,W*.06); // 画角約3°で岸を斜めにつなぐ
       function smoothedScreenPoints(points){
         if(points.length<3) return points.map(point=>[point[0],point[1]]);
@@ -10995,6 +11143,19 @@ function drawPhoto(ctx,s){
       // 水域と確認できた方位では、水平線以下の最下層を海色で埋める。
       // 地形レイヤーを後から重ねるため、山や足元は陸色へ戻り、透明な描画漏れだけに海色が残る。
       function drawConfirmedWaterSurface(){
+        if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache?.confirmedWaterRuns){
+          let painted=false;
+          sharedTerrainProjectionCache.confirmedWaterRuns.forEach(run=>{
+            const gradient=tctx.createLinearGradient(0,run.topY,0,H);
+            gradient.addColorStop(0,seaRGBText);
+            gradient.addColorStop(1,confirmedNearSeaRGBText);
+            tctx.fillStyle=gradient;tctx.fill(run.path);painted=true;
+          });
+          return painted;
+        }
+        if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+          sharedTerrainProjectionCache.confirmedWaterRuns=[];
+        }
         if(!confirmedWaterAz.some(Boolean)) return false;
         const waterHalf=half+3;
         const waterStep=Math.min(step,.35);
@@ -11017,10 +11178,9 @@ function drawPhoto(ctx,s){
           // 1点だけの孤立判定は描かず、連続した水域だけを面として採用する。
           if(run.length>=2){
             const topY=Math.min(...run.map(point=>point[1]));
-            const nearSea=seaRGB.map((value,index)=>clamp(value+(index===2?14:7),0,255));
             const gradient=tctx.createLinearGradient(0,topY,0,H);
-            gradient.addColorStop(0,`rgb(${seaRGB.join(",")})`);
-            gradient.addColorStop(1,`rgb(${nearSea.join(",")})`);
+            gradient.addColorStop(0,seaRGBText);
+            gradient.addColorStop(1,confirmedNearSeaRGBText);
             const topPoints=smoothedScreenPoints(run);
             const runWidth=Math.max(1,Math.abs(topPoints[topPoints.length-1][0]-topPoints[0][0]));
             const spread=Math.min(nearShoreSpreadPx,runWidth*.3);
@@ -11033,6 +11193,9 @@ function drawPhoto(ctx,s){
             waterPath.lineTo(leftBottom,H);
             if(leftCoast) waterPath.quadraticCurveTo(first[0],lerp(first[1],H,.5),first[0],first[1]);
             waterPath.closePath();
+            if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+              sharedTerrainProjectionCache.confirmedWaterRuns.push({path:waterPath,topY});
+            }
             tctx.fillStyle=gradient;tctx.fill(waterPath);painted=true;
             wmctx.fillStyle="#fff";wmctx.fill(waterPath);
           }
@@ -11040,9 +11203,49 @@ function drawPhoto(ctx,s){
         }
         return painted;
       }
+      // 夜用で求めた地形三角形・投影・クリッピング結果を、形状が同じ昼用描画へそのまま渡す。
+      // 色・テクスチャ濃度・水面色は各レイヤーで従来どおり別々に描画する。
+      let sharedTerrainProjectionPass="off",sharedTerrainProjectionCache=null,farTerrainBandIndex=0;
       function drawNearSurfaceMesh(grid){
         if(!grid||!grid.length||!grid[0]||grid[0].length<2) return false;
         let paintedTriangles=0;
+        // 専用の水域マスクcontextは近距離メッシュ全体で一度だけ状態を保存する。
+        // 各ポリゴンでは水・陸が切り替わった時だけ合成方法を更新する。
+        const waterMaskStateSaved=sharedTerrainProjectionPass!=="replay";
+        let lastWaterMaskComposite=null;
+        if(waterMaskStateSaved){
+          wmctx.save();wmctx.fillStyle="#fff";wmctx.strokeStyle="#fff";wmctx.lineWidth=1;
+        }
+        function setWaterMaskComposite(operation){
+          if(lastWaterMaskComposite!==operation){wmctx.globalCompositeOperation=operation;lastWaterMaskComposite=operation;}
+        }
+        // 同じ色が続く高密度メッシュでは、Canvas状態を変更する呼び出し自体を省く。
+        // 昼リプレイでは別Canvasへ切り替わるため、対象contextが変わった時点で必ず初期化する。
+        let terrainStyleContext=null,lastTerrainFillStyle=null,lastTerrainStrokeStyle=null,lastTerrainLineWidth=null;
+        function ensureTerrainStyleContext(){
+          if(terrainStyleContext===tctx) return;
+          terrainStyleContext=tctx;lastTerrainFillStyle=null;lastTerrainStrokeStyle=null;lastTerrainLineWidth=null;
+        }
+        function setTerrainFillStyle(style){
+          ensureTerrainStyleContext();
+          if(lastTerrainFillStyle!==style){tctx.fillStyle=style;lastTerrainFillStyle=style;}
+        }
+        function setTerrainStrokeStyle(style){
+          ensureTerrainStyleContext();
+          if(lastTerrainStrokeStyle!==style){tctx.strokeStyle=style;lastTerrainStrokeStyle=style;}
+        }
+        function setTerrainLineWidth(width){
+          ensureTerrainStyleContext();
+          if(lastTerrainLineWidth!==width){tctx.lineWidth=width;lastTerrainLineWidth=width;}
+        }
+        let cartesianProjectionIndex=0,vertexProjectionIndex=0,observerFootingProjectionIndex=0,surfacePolygonIndex=0,surfaceClipIndex=0,triangleRejectionIndex=0;
+        // 隣接三角形が共有する同一頂点は、同じ描画内で一度だけ画面座標へ投影する。
+        // WeakMapなので描画終了後に頂点を保持せず、地形キャッシュの寿命にも影響しない。
+        const projectedVertexCache=new WeakMap();
+        const groundTexturePointCache=sharedTerrainProjectionCache?.groundTexturePoints||new WeakMap();
+        // 距離リングごとに別オブジェクトでも、同じ方位・仰角なら投影結果は同一。
+        // 特に水平線座標は距離や標高に依存しないため、方位ごとに一度だけ計算する。
+        const angleProjectionCache=new Map(),horizonProjectionCache=new Map();
         // カメラ方位・仰角・焦点距離から独立した地表頂点は、同じDEMが有効な間再利用する。
         // 画面への投影と水陸マスク描画は従来どおり毎回行うため、描画順序と最終形状は変えない。
         const localWorldKey=localDetailTerrainEnabled&&localDetailTerrainData
@@ -11051,16 +11254,13 @@ function drawPhoto(ctx,s){
           realTerrainState.key,realTerrainState._renderRevision||0,
           (+el.lat.value).toFixed(6),(+el.lon.value).toFixed(6),
           Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation.toFixed(3):"no-observer-elevation",
-          grid.length,grid[0].length,localWorldKey
+          grid.length,grid[0].length,localWorldKey,localDetailMeshStepValue()
         ].join("|");
         let worldMeshCache=drawNearSurfaceMesh._worldMeshCache;
         if(!worldMeshCache||worldMeshCache.key!==worldMeshKey){
-          worldMeshCache={key:worldMeshKey,detachedLocalCells:null,xyCells:null};
+          worldMeshCache={key:worldMeshKey,detachedLocalCells:null,xyCells:null,virtualShift:null};
           drawNearSurfaceMesh._worldMeshCache=worldMeshCache;
         }
-        const maskCanvas=drawNearSurfaceMesh._maskCanvas||(drawNearSurfaceMesh._maskCanvas=document.createElement("canvas"));
-        if(maskCanvas.width!==W||maskCanvas.height!==H){maskCanvas.width=W;maskCanvas.height=H;}
-        const mctx=maskCanvas.getContext("2d");mctx.clearRect(0,0,W,H);
         const ringCount=grid[0].length;
         // 自然に成立している6m以遠の近距離メッシュへ、仮想観測位置そのものを前進させる。
         // 最短水際付近の方位群から固定方向を求めるため、カメラを回しても地面は動かない。
@@ -11088,7 +11288,7 @@ function drawPhoto(ctx,s){
           const distanceM=clamp(minimumM-1,0,5);
           return {eastM:east/length*distanceM,northM:north/length*distanceM,distanceM};
         }
-        const virtualShift=computeNearshoreVirtualShift();
+        const virtualShift=worldMeshCache.virtualShift||(worldMeshCache.virtualShift=computeNearshoreVirtualShift());
         // 観測地点を中心とする100m四方の固定ビットマップ地表テクスチャ。
         // 時刻やカメラ方向が変わっても模様が動かないよう、ローカルXY座標へ固定する。
         const groundTexture=drawNearSurfaceMesh._groundTexture||(drawNearSurfaceMesh._groundTexture=document.createElement("canvas"));
@@ -11117,11 +11317,21 @@ function drawPhoto(ctx,s){
           gx.globalAlpha=1;
         }
         const groundTexturePoint=vertex=>{
+          if(groundTexturePointCache.has(vertex)) return groundTexturePointCache.get(vertex);
           const metres=vertex.distanceKm*1000,rad=vertex.az*D2R;
           const east=Number.isFinite(vertex.eastM)?vertex.eastM:Math.sin(rad)*metres;
           const north=Number.isFinite(vertex.northM)?vertex.northM:Math.cos(rad)*metres;
-          return [clamp((east+50)/100*256,0,256),clamp((50-north)/100*256,0,256)];
+          const point=[clamp((east+50)/100*256,0,256),clamp((50-north)/100*256,0,256)];
+          groundTexturePointCache.set(vertex,point);
+          return point;
         };
+        function findTerrainDistanceIndex(row,distanceKm){
+          for(let index=0;index<row.length;index++){
+            const point=row[index];
+            if(point&&point.distanceKm>=distanceKm) return index;
+          }
+          return -1;
+        }
         // 放射状の取得データを任意のXY位置へ再サンプリングする。
         // 方位方向は隣接レイ、距離方向は隣接リングを使う双線形補間。
         function samplePolarTerrainAtXY(eastM,northM,shiftFactor=1,resolveMountainProtection=true){
@@ -11141,16 +11351,18 @@ function drawPhoto(ctx,s){
           const sourceAz=norm360(Math.atan2(sourceEastM,sourceNorthM)*R2D);
           const a0=Math.floor(sourceAz),a1=(a0+1)%360,fa=sourceAz-a0;
           const row0=grid[a0],row1=grid[a1];if(!row0||!row1)return null;
-          let hi=row0.findIndex(point=>point&&point.distanceKm>=sourceDistanceKm);
+          let hi=findTerrainDistanceIndex(row0,sourceDistanceKm);
           if(hi<0) return null;
           const lo=Math.max(0,hi-1),p00=row0[lo],p01=row0[hi],p10=row1[lo],p11=row1[hi];
           if(!p00||!p01||!p10||!p11) return null;
           const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((sourceDistanceKm-p00.distanceKm)/span,0,1);
           const bilerp=(v00,v10,v01,v11)=>lerp(lerp(v00,v10,fa),lerp(v01,v11,fa),fd);
           const waterWeight=bilerp(p00.water?1:0,p10.water?1:0,p01.water?1:0,p11.water?1:0);
-          const baseElevationValues=[p00,p10,p01,p11].map(point=>point.baseElevation);
           let baseElevation=null;
-          if(baseElevationValues.every(Number.isFinite)) baseElevation=bilerp(...baseElevationValues);
+          if(Number.isFinite(p00.baseElevation)&&Number.isFinite(p10.baseElevation)&&
+             Number.isFinite(p01.baseElevation)&&Number.isFinite(p11.baseElevation)){
+            baseElevation=bilerp(p00.baseElevation,p10.baseElevation,p01.baseElevation,p11.baseElevation);
+          }
           // 仮想前進は水際・低地だけへ適用する。近距離の山まで横移動させると、隣接する
           // 方位セルの対応関係が崩れて縦割れになる。観測地点との標高差2mまでは全適用、
           // 8m以上はv361と同じ元座標、その間はsmoothstepで連続的に戻す。
@@ -11188,19 +11400,20 @@ function drawPhoto(ctx,s){
             observerFooting:sourceMetres<=5.0001&&waterWeight<.5
           };
         }
-        // 観測地点から離れた登録地点を中心に、取得済み5m DEMを独立した1m格子へ展開する。
+        // 観測地点から離れた登録地点を中心に、取得済み5m DEMを選択された対称格子へ展開する。
         // 外周は既存の放射状DEMへ接続し、局所メッシュだけが別レイヤーとして浮かないようにする。
         function sampleBaseTerrainAtWorldXY(eastM,northM){
           const metres=Math.hypot(eastM,northM);if(metres<.1||metres>1000)return null;
           const az=norm360(Math.atan2(eastM,northM)*R2D),a0=Math.floor(az),a1=(a0+1)%360,fa=az-a0;
           const row0=grid[a0],row1=grid[a1];if(!row0||!row1)return null;
           const distanceKm=metres/1000;
-          let hi=row0.findIndex(point=>point&&point.distanceKm>=distanceKm);if(hi<0)return null;
+          let hi=findTerrainDistanceIndex(row0,distanceKm);if(hi<0)return null;
           const lo=Math.max(0,hi-1),p00=row0[lo],p01=row0[hi],p10=row1[lo],p11=row1[hi];if(!p00||!p01||!p10||!p11)return null;
           const span=Math.max(1e-6,p01.distanceKm-p00.distanceKm),fd=clamp((distanceKm-p00.distanceKm)/span,0,1);
           const bilerp=(v00,v10,v01,v11)=>lerp(lerp(v00,v10,fa),lerp(v01,v11,fa),fd);
-          const elevationValues=[p00,p10,p01,p11].map(point=>point.baseElevation);
-          const baseElevation=elevationValues.every(Number.isFinite)?bilerp(...elevationValues):null;
+          const baseElevation=Number.isFinite(p00.baseElevation)&&Number.isFinite(p10.baseElevation)&&
+            Number.isFinite(p01.baseElevation)&&Number.isFinite(p11.baseElevation)
+            ?bilerp(p00.baseElevation,p10.baseElevation,p01.baseElevation,p11.baseElevation):null;
           const waterWeight=bilerp(p00.water?1:0,p10.water?1:0,p01.water?1:0,p11.water?1:0);
           const sourceAlt=bilerp(p00.alt,p10.alt,p01.alt,p11.alt);
           return {az,distanceKm,alt:sourceAlt,waterWeight,water:waterWeight>=.5,baseElevation,eastM,northM,
@@ -11215,18 +11428,30 @@ function drawPhoto(ctx,s){
           // 観測地点中心の50m格子と重なる場合は従来経路が処理する。最大1kmまで局所描画する。
           if(targetDistanceM<=50||targetDistanceM-data.radiusM>1000)return [];
           const rad=target.bearing*D2R,centerEast=Math.sin(rad)*targetDistanceM,centerNorth=Math.cos(rad)*targetDistanceM;
-          const radius=data.radiusM,rows=[];
-          for(let localNorth=-radius;localNorth<=radius;localNorth++){
+          const radius=data.radiusM,localMeshStepM=localDetailMeshStepValue(),localCoordinates=[0],rows=[];
+          for(let offset=localMeshStepM;offset<radius;offset+=localMeshStepM){
+            localCoordinates.unshift(-offset);localCoordinates.push(offset);
+          }
+          if(radius>0&&localCoordinates[0]!==-radius){
+            localCoordinates.unshift(-radius);localCoordinates.push(radius);
+          }
+          // 小さい半径で格子間隔が半径に近い場合も、円内に最低1セルは成立させる。
+          if(!localCoordinates.some(value=>value>0&&value<=radius/Math.SQRT2)){
+            localCoordinates.push(-radius/2,radius/2);localCoordinates.sort((left,right)=>left-right);
+          }
+          for(const localNorth of localCoordinates){
             const row=[];
-            for(let localEast=-radius;localEast<=radius;localEast++){
+            for(const localEast of localCoordinates){
               const radial=Math.hypot(localEast,localNorth);
               if(radial>radius){row.push(null);continue;}
               const eastM=centerEast+localEast,northM=centerNorth+localNorth,base=sampleBaseTerrainAtWorldXY(eastM,northM);
               if(!base){row.push(null);continue;}
               const gx=localEast+radius,gy=localNorth+radius,x0=Math.floor(gx),y0=Math.floor(gy),x1=Math.min(data.size-1,x0+1),y1=Math.min(data.size-1,y0+1);
-              const values=[data.elevations[y0*data.size+x0],data.elevations[y0*data.size+x1],data.elevations[y1*data.size+x0],data.elevations[y1*data.size+x1]];
-              if(!values.every(Number.isFinite)){row.push(base);continue;}
-              const fx=gx-x0,fy=gy-y0,detailed=lerp(lerp(values[0],values[1],fx),lerp(values[2],values[3],fx),fy);
+              const elevation00=data.elevations[y0*data.size+x0],elevation10=data.elevations[y0*data.size+x1];
+              const elevation01=data.elevations[y1*data.size+x0],elevation11=data.elevations[y1*data.size+x1];
+              if(!Number.isFinite(elevation00)||!Number.isFinite(elevation10)||
+                 !Number.isFinite(elevation01)||!Number.isFinite(elevation11)){row.push(base);continue;}
+              const fx=gx-x0,fy=gy-y0,detailed=lerp(lerp(elevation00,elevation10,fx),lerp(elevation01,elevation11,fx),fy);
               const edgeBlend=clamp((radius-radial)/Math.min(3,Math.max(1,radius*.2)),0,1),blend=edgeBlend*edgeBlend*(3-2*edgeBlend);
               const metres=Math.max(.1,Math.hypot(eastM,northM)),detailedAlt=Math.atan2(detailed-(realTerrainState.observerElevation+1.6),metres)*R2D;
               // 粗い通常メッシュが海判定でも、局所DEMが範囲最低標高より1m以上高ければ岩・陸として復元する。
@@ -11262,68 +11487,127 @@ function drawPhoto(ctx,s){
         const landDayNear=[62,78,48],landDayFar=[104,118,92];
         const waterNightNear=[8,14,31],waterNightFar=[5,8,20];
         const waterDayNear=[34,55,103],waterDayFar=[24,38,86];
-        function surfaceColor(water,distanceKm,alt){
+        function surfaceColor(water,distanceKm,alt,dayFactor=terrainDayFactor){
           const depth=clamp(distanceKm,0,1);
           const night=water?mixRGB(waterNightNear,waterNightFar,depth):mixRGB(landNightNear,landNightFar,depth);
           const day=water?mixRGB(waterDayNear,waterDayFar,depth):mixRGB(landDayNear,landDayFar,depth);
-          let rgb=mixRGB(night,day,terrainDayFactor);
+          let rgb=mixRGB(night,day,dayFactor);
           if(!water){
             const relief=clamp((alt+8)/24,0,1);
             rgb=rgb.map(v=>clamp(Math.round(v*(.88+relief*.12)),0,255));
           }
           return `rgb(${rgb.join(",")})`;
         }
+        function surfaceVariantColors(water,distanceKm,alt){
+          const depth=clamp(distanceKm,0,1);
+          let night=water?mixRGB(waterNightNear,waterNightFar,depth):mixRGB(landNightNear,landNightFar,depth);
+          let day=water?mixRGB(waterDayNear,waterDayFar,depth):mixRGB(landDayNear,landDayFar,depth);
+          if(!water){
+            const reliefFactor=.88+clamp((alt+8)/24,0,1)*.12;
+            night=night.map(value=>clamp(Math.round(value*reliefFactor),0,255));
+            day=day.map(value=>clamp(Math.round(value*reliefFactor),0,255));
+          }
+          return [`rgb(${night.join(",")})`,`rgb(${day.join(",")})`];
+        }
         // 視点直下の地面三角形をカメラ前面でクリップして描く。
         // 空用toXY()は背面頂点をnullにするため、三角形をそのまま渡すと見える部分まで
         // 全廃棄される。世界方向ベクトル上でZc=0.02面と交差させ、前方部分だけを残す。
         function paintClippedObserverFooting(sourceVertices){
-          const cameraForward=toVec(s.facingAz,s.facingAlt);
-          const nearZ=.0205;
-          let polygon=sourceVertices.map(vertex=>{
-            const world=toVec(vertex.az,vertex.alt);
-            return {world,z:dot(world,cameraForward),uv:groundTexturePoint(vertex),source:vertex};
-          });
-          const clipped=[];
-          for(let index=0;index<polygon.length;index++){
-            const current=polygon[index],previous=polygon[(index+polygon.length-1)%polygon.length];
-            const currentInside=current.z>=nearZ,previousInside=previous.z>=nearZ;
-            if(currentInside!==previousInside){
-              const ratio=clamp((nearZ-previous.z)/((current.z-previous.z)||1),0,1);
-              const world=[0,1,2].map(axis=>lerp(previous.world[axis],current.world[axis],ratio));
-              clipped.push({world,z:nearZ,uv:[lerp(previous.uv[0],current.uv[0],ratio),lerp(previous.uv[1],current.uv[1],ratio)]});
+          const projectionSlot=observerFootingProjectionIndex++;
+          const storeProjection=result=>{
+            if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+              sharedTerrainProjectionCache.observerFootings[projectionSlot]=result;
             }
-            if(currentInside) clipped.push(current);
+            return result;
+          };
+          let geometry=null;
+          if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache&&
+             Object.prototype.hasOwnProperty.call(sharedTerrainProjectionCache.observerFootings,projectionSlot)){
+            geometry=sharedTerrainProjectionCache.observerFootings[projectionSlot];
+          }else{
+            const cameraForward=toVec(s.facingAz,s.facingAlt);
+            const nearZ=.0205;
+            let polygon=sourceVertices.map(vertex=>{
+              const world=toVec(vertex.az,vertex.alt);
+              return {world,z:dot(world,cameraForward),uv:groundTexturePoint(vertex),source:vertex};
+            });
+            const clipped=[];
+            for(let index=0;index<polygon.length;index++){
+              const current=polygon[index],previous=polygon[(index+polygon.length-1)%polygon.length];
+              const currentInside=current.z>=nearZ,previousInside=previous.z>=nearZ;
+              if(currentInside!==previousInside){
+                const ratio=clamp((nearZ-previous.z)/((current.z-previous.z)||1),0,1);
+                const world=[0,1,2].map(axis=>lerp(previous.world[axis],current.world[axis],ratio));
+                clipped.push({world,z:nearZ,uv:[lerp(previous.uv[0],current.uv[0],ratio),lerp(previous.uv[1],current.uv[1],ratio)]});
+              }
+              if(currentInside) clipped.push(current);
+            }
+            polygon=clipped;if(polygon.length<3){storeProjection(null);return false;}
+            const projected=polygon.map(vertex=>{
+              const length=Math.hypot(...vertex.world)||1;
+              const world=vertex.world.map(value=>value/length);
+              const az=norm360(atan2d(world[0],world[1]));
+              const alt=asin(world[2]);
+              const point=toXY(az,alt);
+              return point&&point.every(Number.isFinite)?{point,uv:vertex.uv}:null;
+            });
+            if(projected.some(vertex=>!vertex)){storeProjection(null);return false;}
+            geometry=storeProjection({
+              projected,
+              averageDistance:sourceVertices.reduce((sum,vertex)=>sum+vertex.distanceKm,0)/3,
+              averageAlt:sourceVertices.reduce((sum,vertex)=>sum+vertex.alt,0)/3
+            });
           }
-          polygon=clipped;if(polygon.length<3)return false;
-          const projected=polygon.map(vertex=>{
-            const length=Math.hypot(...vertex.world)||1;
-            const world=vertex.world.map(value=>value/length);
-            const az=norm360(atan2d(world[0],world[1]));
-            const alt=asin(world[2]);
-            const point=toXY(az,alt);
-            return point&&point.every(Number.isFinite)?{point,uv:vertex.uv}:null;
-          });
-          if(projected.some(vertex=>!vertex))return false;
-          const averageDistance=sourceVertices.reduce((sum,vertex)=>sum+vertex.distanceKm,0)/3;
-          const averageAlt=sourceVertices.reduce((sum,vertex)=>sum+vertex.alt,0)/3;
-          const fillColor=surfaceColor(false,averageDistance,averageAlt);
-          // クリップ後の3〜4角形を扇状に三角形化し、色・テクスチャ・陸マスクを一致させる。
-          for(let index=1;index<projected.length-1;index++){
-            const triangle=[projected[0],projected[index],projected[index+1]];
-            const destination=triangle.map(vertex=>vertex.point),texture=triangle.map(vertex=>vertex.uv);
-            const trace=context=>{context.beginPath();context.moveTo(...destination[0]);context.lineTo(...destination[1]);context.lineTo(...destination[2]);context.closePath();};
-            trace(tctx);tctx.fillStyle=fillColor;tctx.fill();
-            tctx.save();tctx.globalAlpha=.58+.20*terrainDayFactor;
-            drawTextureTriangle(tctx,groundTexture,texture[0],texture[1],texture[2],destination[0],destination[1],destination[2]);tctx.restore();
-            trace(mctx);mctx.fillStyle="#fff";mctx.fill();
-            wmctx.save();wmctx.globalCompositeOperation="destination-out";trace(wmctx);wmctx.fillStyle="#fff";wmctx.fill();wmctx.restore();
+          if(!geometry)return false;
+          const {projected,averageDistance,averageAlt}=geometry;
+          if(!geometry.drawTriangles){
+            geometry.drawTriangles=[];
+            for(let index=1;index<projected.length-1;index++){
+              const triangle=[projected[0],projected[index],projected[index+1]];
+              const destination=triangle.map(vertex=>vertex.point),texture=triangle.map(vertex=>vertex.uv);
+              const path=new Path2D();path.moveTo(...destination[0]);
+              path.lineTo(...destination[1]);path.lineTo(...destination[2]);path.closePath();
+              geometry.drawTriangles.push({destination,texture,path});
+            }
           }
+          const drawGeometry=()=>{
+            if(!geometry.variantColors){
+              geometry.variantColors=surfaceVariantColors(false,averageDistance,averageAlt);
+            }
+            const fillColor=terrainDayFactor===0?geometry.variantColors[0]:
+              (terrainDayFactor===1?geometry.variantColors[1]:surfaceColor(false,averageDistance,averageAlt));
+            // クリップ後の3〜4角形を扇状に三角形化し、色・テクスチャ・水域マスクを一致させる。
+            setTerrainFillStyle(fillColor);
+            for(let drawTriangleIndex=0;drawTriangleIndex<geometry.drawTriangles.length;drawTriangleIndex++){
+              const drawTriangle=geometry.drawTriangles[drawTriangleIndex];
+              const {destination,texture,path}=drawTriangle;
+              tctx.fill(path);
+              drawTextureTriangle(tctx,groundTexture,texture[0],texture[1],texture[2],destination[0],destination[1],destination[2],drawTriangle,.58+.20*terrainDayFactor,path);
+              if(sharedTerrainProjectionPass!=="replay"){
+                setWaterMaskComposite("destination-out");wmctx.fill(path);
+              }
+            }
+          };
+          if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache) sharedTerrainProjectionCache.drawCommands.push(drawGeometry);
+          drawGeometry();
           return true;
         }
         // 近距離地形をローカル3D(East,North,Up)からカメラ座標へ変換し、投影前に
         // 前面・左右・上下でクリップする。方位角の±180°不連続をまたがないため、
         // カメラ近傍でも小さな地表セルが巨大な長方形・扇形へ化けない。
         function clipCartesianNearTriangle(sourceVertices){
+          const projectionSlot=cartesianProjectionIndex++;
+          if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache){
+            if(Object.prototype.hasOwnProperty.call(sharedTerrainProjectionCache.cartesian,projectionSlot)){
+              return sharedTerrainProjectionCache.cartesian[projectionSlot];
+            }
+          }
+          const storeProjection=result=>{
+            if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+              sharedTerrainProjectionCache.cartesian[projectionSlot]=result;
+            }
+            return result;
+          };
           const az0=s.facingAz*D2R,alt0=s.facingAlt*D2R;
           const forward=[Math.cos(alt0)*Math.sin(az0),Math.cos(alt0)*Math.cos(az0),Math.sin(alt0)];
           const right=[Math.cos(az0),-Math.sin(az0),0];
@@ -11362,7 +11646,7 @@ function drawPhoto(ctx,s){
             };
           };
           for(const signedDistance of planes){
-            if(polygon.length<3) return [];
+            if(polygon.length<3) return storeProjection([]);
             const output=[];
             for(let index=0;index<polygon.length;index++){
               const current=polygon[index],previous=polygon[(index+polygon.length-1)%polygon.length];
@@ -11376,7 +11660,7 @@ function drawPhoto(ctx,s){
             }
             polygon=output;
           }
-          return polygon.map(point=>{
+          return storeProjection(polygon.map(point=>{
             const screen=[W/2+(point.x/point.z)*rectilinearScale,H/2-(point.y/point.z)*rectilinearScale];
             const direction=[
               forward[0]*point.z+right[0]*point.x+up[0]*point.y,
@@ -11389,10 +11673,15 @@ function drawPhoto(ctx,s){
               alt:Math.asin(clamp(direction[2]/length,-1,1))*R2D,
               cartesianScreen:screen
             };
-          });
+          }));
         }
         function paintTriangle(a,b,c,cartesianClipped=false){
           if(!a||!b||!c) return;
+          // 距離リング走査・水陸判定・細分化で作った元三角形は夜と昼で完全に同じ。
+          // 夜側で一度だけ保存し、昼側は同じ順序で再描画して組み立て処理を省略する。
+          if(!cartesianClipped&&sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+            sharedTerrainProjectionCache.triangles.push([a,b,c]);
+          }
           const sourceTriangle=[a,b,c];
           const localDetailTriangle=sourceTriangle.every(vertex=>vertex.localDetail);
           const useCartesianNear=!useDiagonalFisheye&&!cartesianClipped&&
@@ -11429,34 +11718,75 @@ function drawPhoto(ctx,s){
           // 湖面・海面は物理的に水平線より上へ出ない。DEMの数十cm〜数mの揺れで正高度に
           // なった水面頂点を-0.025°へ抑え、青い三角形のジャギーを山側へ突き出させない。
   const projectVertex=vertex=>{
+    const projectionSlot=vertexProjectionIndex++;
+    if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache){
+      if(Object.prototype.hasOwnProperty.call(sharedTerrainProjectionCache.vertices,projectionSlot)){
+        return sharedTerrainProjectionCache.vertices[projectionSlot];
+      }
+    }
+    if(projectedVertexCache.has(vertex)){
+      const cachedProjection=projectedVertexCache.get(vertex);
+      if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+        sharedTerrainProjectionCache.vertices[projectionSlot]=cachedProjection;
+      }
+      return cachedProjection;
+    }
     const vertexWater=observerFootingTriangle?false:vertex.water;
     const alt=vertexWater?Math.min(vertex.alt,-.025):vertex.alt;
-    const point=cartesianClipped&&vertex.cartesianScreen?vertex.cartesianScreen:toXY(vertex.az,alt);
-    const horizon=toXY(vertex.az,0);
-    if(!point||!horizon||![...point,...horizon].every(Number.isFinite)) return null;
-    return {x:point[0],y:point[1],hy:horizon[1],w:Number.isFinite(vertex.waterWeight)?vertex.waterWeight:(vertex.water?1:0)};
+    let point;
+    if(cartesianClipped&&vertex.cartesianScreen) point=vertex.cartesianScreen;
+    else{
+      const angleKey=`${vertex.az}|${alt}`;
+      if(angleProjectionCache.has(angleKey)) point=angleProjectionCache.get(angleKey);
+      else{point=toXY(vertex.az,alt);angleProjectionCache.set(angleKey,point);}
+    }
+    let horizon;
+    if(horizonProjectionCache.has(vertex.az)) horizon=horizonProjectionCache.get(vertex.az);
+    else{horizon=toXY(vertex.az,0);horizonProjectionCache.set(vertex.az,horizon);}
+    const projected=!point||!horizon||![...point,...horizon].every(Number.isFinite)?null
+      :{x:point[0],y:point[1],hy:horizon[1],w:Number.isFinite(vertex.waterWeight)?vertex.waterWeight:(vertex.water?1:0)};
+    if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+      sharedTerrainProjectionCache.vertices[projectionSlot]=projected;
+    }
+    projectedVertexCache.set(vertex,projected);
+    return projected;
           };
           const va=projectVertex(a),vb=projectVertex(b),vc=projectVertex(c);
           if(!va||!vb||!vc) return;
-          const pa=[va.x,va.y],pb=[vb.x,vb.y],pc=[vc.x,vc.y];
-          if(!pa||!pb||!pc) return;
-          if(![...pa,...pb,...pc].every(Number.isFinite)) return;
-          const area=Math.abs((pb[0]-pa[0])*(pc[1]-pa[1])-(pb[1]-pa[1])*(pc[0]-pa[0]));
-          const ab=Math.hypot(pb[0]-pa[0],pb[1]-pa[1]);
-          const bc=Math.hypot(pc[0]-pb[0],pc[1]-pb[1]);
-          const ca=Math.hypot(pa[0]-pc[0],pa[1]-pc[1]);
-          const maxEdge=Math.hypot(W,H)*.32;
+          const rejectionSlot=triangleRejectionIndex++;
+          let rejectTriangle;
+          if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache&&
+             Object.prototype.hasOwnProperty.call(sharedTerrainProjectionCache.triangleRejections,rejectionSlot)){
+            rejectTriangle=sharedTerrainProjectionCache.triangleRejections[rejectionSlot];
+          }else{
+            const pa=[va.x,va.y],pb=[vb.x,vb.y],pc=[vc.x,vc.y];
+            const finite=[...pa,...pb,...pc].every(Number.isFinite);
+            const area=finite?Math.abs((pb[0]-pa[0])*(pc[1]-pa[1])-(pb[1]-pa[1])*(pc[0]-pa[0])):0;
+            const ab=finite?Math.hypot(pb[0]-pa[0],pb[1]-pa[1]):Infinity;
+            const bc=finite?Math.hypot(pc[0]-pb[0],pc[1]-pb[1]):Infinity;
+            const ca=finite?Math.hypot(pa[0]-pc[0],pa[1]-pc[1]):Infinity;
+            const maxEdge=Math.hypot(W,H)*.32;
+            rejectTriangle=!finite||area<.01||
+              (!observerFootingTriangle&&!cartesianClipped&&!localDetailTriangle&&(area>W*H*.10||Math.max(ab,bc,ca)>maxEdge));
+            if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+              sharedTerrainProjectionCache.triangleRejections[rejectionSlot]=rejectTriangle;
+            }
+          }
           // 欠損や投影の裏返りで生じる巨大な三角形・針状ポリゴンを除外する。
           // 視点から5m以内の地面は画面外まで投影されるのが正常であり、面積・辺長で
           // 除外すると放射状の大きな三角形穴になる。近接地面はCanvasのクリップへ任せ、
           // 退化三角形だけを除外する。従来の破綻防止上限はそれ以外にのみ適用する。
-          if(area<.01) return;
-          if(!observerFootingTriangle&&!cartesianClipped&&!localDetailTriangle&&(area>W*H*.10||Math.max(ab,bc,ca)>maxEdge)) return;
+          if(rejectTriangle) return;
           const distanceKm=triangleDistanceKm;
           const alt=(a.alt+b.alt+c.alt)/3;
           // 水/陸が混在する三角形は、水属性0.5の中間点で2つの多角形へ分割する。
           // セル全体を省略しないため、階段状の穴や垂直な境界が連続した斜線になる。
           function clipSurface(vertices,keepWater){
+            const clipSlot=surfaceClipIndex++;
+            if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache&&
+               Object.prototype.hasOwnProperty.call(sharedTerrainProjectionCache.surfaceClips,clipSlot)){
+              return sharedTerrainProjectionCache.surfaceClips[clipSlot];
+            }
             // 直近の水際は粗い距離リングの中間(.5)で切ると、陸側が細長く水面へ
             // 突き出して見える。120m以内だけ境界を陸側へ寄せ、水面を手前まで延ばす。
             // 水側・陸側で同じ値を使うため、隙間や重なりは発生しない。
@@ -11476,33 +11806,60 @@ function drawPhoto(ctx,s){
       }
               if(currentInside) output.push(current);
             }
+            if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+              sharedTerrainProjectionCache.surfaceClips[clipSlot]=output;
+            }
             return output;
   }
   function paintSurfacePolygon(poly,water,sourceVertices=null){
     if(poly.length<3) return;
-    // 水面の全頂点を方位別の水平線より下へ制限する。近距離の岸形状はそのまま、
-    // 遠距離で山側へ突き出す1px前後の青い鋸歯だけを抑える。
-    const drawPoly=water?poly.map(point=>({...point,y:Math.max(point.y,point.hy+.6)})):poly;
-    const color=surfaceColor(water,distanceKm,alt);
-    const trace=context=>{context.beginPath();context.moveTo(drawPoly[0].x,drawPoly[0].y);for(let i=1;i<drawPoly.length;i++)context.lineTo(drawPoly[i].x,drawPoly[i].y);context.closePath();};
-            trace(tctx);tctx.fillStyle=color;tctx.fill();tctx.strokeStyle=color;tctx.lineWidth=.65;tctx.stroke();
+    const polygonSlot=surfacePolygonIndex++;
+    let geometry=sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
+      ?sharedTerrainProjectionCache.surfacePolygons[polygonSlot]:null;
+    if(!geometry){
+      // 水面の全頂点を方位別の水平線より下へ制限する。近距離の岸形状はそのまま、
+      // 遠距離で山側へ突き出す1px前後の青い鋸歯だけを抑える。
+      const drawPoly=water?poly.map(point=>({...point,y:Math.max(point.y,point.hy+.6)})):poly;
+      const surfacePath=new Path2D();surfacePath.moveTo(drawPoly[0].x,drawPoly[0].y);
+      for(let i=1;i<drawPoly.length;i++)surfacePath.lineTo(drawPoly[i].x,drawPoly[i].y);
+      surfacePath.closePath();
+      geometry={drawPoly,surfacePath};
+      if(sharedTerrainProjectionPass==="record"&&sharedTerrainProjectionCache){
+        sharedTerrainProjectionCache.surfacePolygons[polygonSlot]=geometry;
+      }
+    }
+    const drawGeometry=()=>{
+      const {drawPoly,surfacePath}=geometry;
+      if(!geometry.variantColors){
+        geometry.variantColors=surfaceVariantColors(water,distanceKm,alt);
+      }
+      const color=terrainDayFactor===0?geometry.variantColors[0]:
+        (terrainDayFactor===1?geometry.variantColors[1]:surfaceColor(water,distanceKm,alt));
+            setTerrainFillStyle(color);tctx.fill(surfacePath);setTerrainStrokeStyle(color);setTerrainLineWidth(.65);tctx.stroke(surfacePath);
             // 半径50m以内の陸三角形だけ、上空ビットマップを同じ3頂点へアフィン投影する。
             // DEMから求めた画面座標へ貼るため、平地だけでなく斜面・凹凸にも追従する。
             if(!water&&sourceVertices&&sourceVertices.length===3&&sourceVertices.every(vertex=>vertex.distanceKm<=.05)){
-              const texturePoints=sourceVertices.map(groundTexturePoint);
-              const destinationPoints=drawPoly.map(point=>[point.x,point.y]);
-              if(destinationPoints.length===3){
+              if(!geometry.textureMapping){
                 const averageDistance=sourceVertices.reduce((sum,vertex)=>sum+vertex.distanceKm,0)/3;
+                geometry.textureMapping={
+                  texturePoints:sourceVertices.map(groundTexturePoint),
+                  destinationPoints:drawPoly.map(point=>[point.x,point.y]),
+                  textureAlpha:averageDistance<=.04?1:clamp((.05-averageDistance)/.01,0,1)
+                };
+              }
+              const {texturePoints,destinationPoints,textureAlpha}=geometry.textureMapping;
+              if(destinationPoints.length===3){
                 // 40〜50mで透明度を落とし、既存の地形色へ円形境界を見せずに融合する。
-                const textureAlpha=averageDistance<=.04?1:clamp((.05-averageDistance)/.01,0,1);
-                tctx.save();tctx.globalAlpha=(.58+.20*terrainDayFactor)*textureAlpha;
-                drawTextureTriangle(tctx,groundTexture,texturePoints[0],texturePoints[1],texturePoints[2],destinationPoints[0],destinationPoints[1],destinationPoints[2]);
-                tctx.restore();
+                drawTextureTriangle(tctx,groundTexture,texturePoints[0],texturePoints[1],texturePoints[2],destinationPoints[0],destinationPoints[1],destinationPoints[2],geometry.textureMapping,(.58+.20*terrainDayFactor)*textureAlpha,surfacePath);
               }
             }
-            wmctx.save();wmctx.globalCompositeOperation=water?"source-over":"destination-out";
-            trace(wmctx);wmctx.fillStyle="#fff";wmctx.fill();wmctx.strokeStyle="#fff";wmctx.lineWidth=1;wmctx.stroke();wmctx.restore();
-            if(!water){trace(mctx);mctx.fillStyle="#fff";mctx.fill();mctx.strokeStyle="#fff";mctx.lineWidth=1;mctx.stroke();}
+            if(sharedTerrainProjectionPass!=="replay"){
+              setWaterMaskComposite(water?"source-over":"destination-out");
+              wmctx.fill(surfacePath);wmctx.stroke(surfacePath);
+            }
+    };
+    if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache) sharedTerrainProjectionCache.drawCommands.push(drawGeometry);
+    drawGeometry();
           }
           const vertices=[va,vb,vc];
           if(observerFootingTriangle){
@@ -11515,10 +11872,28 @@ function drawPhoto(ctx,s){
           }
           paintedTriangles++;
         }
+        if(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache?.drawCommands){
+          const drawCommands=sharedTerrainProjectionCache.drawCommands;
+          for(let commandIndex=0;commandIndex<drawCommands.length;commandIndex++) drawCommands[commandIndex]();
+          return sharedTerrainProjectionCache.meshPaintedTriangles>=20;
+        }
         // 距離の遠いリングから手前へ描く。手前の陸地面が後から重なり、奥の海を自然に隠す。
+        const normalTerrainAzimuthStep=normalTerrainAzimuthStepValue();
+        const normalTerrainAzimuthCells=[];
+        const firstAzimuthCycle=Math.floor(azStart/360)-1,lastAzimuthCycle=Math.floor(azEnd/360)+1;
+        for(let cycle=firstAzimuthCycle;cycle<=lastAzimuthCycle;cycle++){
+          const cycleStart=cycle*360;
+          for(let offset=0;offset<360;offset+=normalTerrainAzimuthStep){
+            const start=cycleStart+offset,end=cycleStart+Math.min(360,offset+normalTerrainAzimuthStep);
+            if(end<=azStart||start>=azEnd) continue;
+            normalTerrainAzimuthCells.push({start,end,a0:offset,a1:end===cycleStart+360?0:end-cycleStart});
+          }
+        }
         for(let d=ringCount-2;d>=0;d--){
-          for(let rawAz=azStart;rawAz<azEnd;rawAz++){
-            const a0=((rawAz%360)+360)%360,a1=(a0+1)%360;
+          for(let azimuthCellIndex=0;azimuthCellIndex<normalTerrainAzimuthCells.length;azimuthCellIndex++){
+            const azimuthCell=normalTerrainAzimuthCells[azimuthCellIndex];
+            const rawAz=azimuthCell.start,cellAzimuthSpan=azimuthCell.end-azimuthCell.start;
+            const a0=azimuthCell.a0,a1=azimuthCell.a1;
             const p00=grid[a0]&&grid[a0][d],p01=grid[a0]&&grid[a0][d+1];
             const p10=grid[a1]&&grid[a1][d],p11=grid[a1]&&grid[a1][d+1];
             if(!p00||!p01||!p10||!p11) continue;
@@ -11534,14 +11909,14 @@ function drawPhoto(ctx,s){
             const v01={...p01,az:a0,water:w01,waterWeight:boundaryWeight(p01,a0,d+1,w01)};
             const v10={...p10,az:a1,water:w10,waterWeight:boundaryWeight(p10,a1,d,w10)};
             const v11={...p11,az:a1,water:w11,waterWeight:boundaryWeight(p11,a1,d+1,w11)};
-            // 近距離ほど方位1度のセルが画面上で大きく広がるため、150m以内は
-            // 0.25度相当、300m以内は0.5度相当の仮想頂点へ細分化する。
+            // 半径50m以内は別の近距離格子を使い、それより遠方の通常DEMは
+            // 世界方位0度基準の選択間隔で、離れた取得レイ同士を直接つないで描画する。
             // 標高と水域重みを同時に補間するので、後付けの足元面を使わず、
             // 元のDEMメッシュ自体が滑らかな水際・平地形状を持つ。
             const cellDistanceKm=(p00.distanceKm+p01.distanceKm+p10.distanceKm+p11.distanceKm)/4;
             // 半径50m以内は後段の正方形XY格子へ完全に置き換える。
             if(cellDistanceKm<=.05) continue;
-            const subdivisions=cellDistanceKm<=.15?4:(cellDistanceKm<=.30?2:1);
+            const subdivisions=1;
             const interpolateVertex=(left,right,f)=>{
               const waterWeight=lerp(left.waterWeight,right.waterWeight,f);
               const baseElevation=Number.isFinite(left.baseElevation)&&Number.isFinite(right.baseElevation)
@@ -11549,7 +11924,7 @@ function drawPhoto(ctx,s){
                 :(Number.isFinite(left.baseElevation)?left.baseElevation:right.baseElevation);
               return {
                 ...left,
-                az:norm360(rawAz+f),
+                az:norm360(rawAz+f*cellAzimuthSpan),
                 distanceKm:lerp(left.distanceKm,right.distanceKm,f),
                 alt:lerp(left.alt,right.alt,f),
                 baseElevation,
@@ -11571,17 +11946,28 @@ function drawPhoto(ctx,s){
         // 指定地点中心の独立局所メッシュを先に距離順で描く。
         // その後、観測地点中心50mの地面を重ねるため、手前側の遮蔽関係は維持される。
         const detachedLocalCells=buildDetachedLocalDetailCells();
-        detachedLocalCells.forEach(cell=>{paintTriangle(cell.a,cell.b,cell.c);paintTriangle(cell.a,cell.c,cell.d);});
-        // 半径50mを1m間隔の正方形XY格子として再構築する。
-        // 20→21m、8→10mでセルが突然切り替わる段差を抑える。
-        // カメラ方向とは無関係な固定地面なので、向きを変えても水際やセル形状は回転・変形しない。
+        for(let cellIndex=0;cellIndex<detachedLocalCells.length;cellIndex++){
+          const cell=detachedLocalCells[cellIndex];paintTriangle(cell.a,cell.b,cell.c);paintTriangle(cell.a,cell.c,cell.d);
+        }
+        // 観測地点周辺を、中心1m・中間4m・外側8mの連続XY格子として再構築する。
+        // X/Y両軸で同じ共有境界を使うため、距離帯の切替位置にも未接続の辺やポリゴン穴を作らない。
+        // 局所高精細地形は上段の独立対称メッシュとして維持し、この軽量格子の対象外とする。
         let xyCells=worldMeshCache.xyCells;
         if(!xyCells){
-          const xyStepM=1,xyMin=-50,xyMax=50;
+          function adaptiveNearTerrainAxis(){
+            const coordinates=[];
+            // -50～-26m：8m、-24～-8m：4m、-8～8m：1m。
+            // 24～26mの2m接続帯を挟み、外側8m格子へ急に切り替わる折れを弱める。
+            [-50,-42,-34,-26,-24,-20,-16,-12].forEach(value=>coordinates.push(value));
+            for(let value=-8;value<=8;value++) coordinates.push(value);
+            [12,16,20,24,26,34,42,50].forEach(value=>coordinates.push(value));
+            return coordinates;
+          }
+          const xyCoordinates=adaptiveNearTerrainAxis();
           const xyRows=[];
-          for(let northM=xyMin;northM<=xyMax;northM+=xyStepM){
+          for(const northM of xyCoordinates){
             const row=[];
-            for(let eastM=xyMin;eastM<=xyMax;eastM+=xyStepM){
+            for(const eastM of xyCoordinates){
               row.push(samplePolarTerrainAtXY(eastM,northM));
             }
             xyRows.push(row);
@@ -11598,10 +11984,15 @@ function drawPhoto(ctx,s){
           xyCells.sort((left,right)=>right.centerDistance-left.centerDistance);
           worldMeshCache.xyCells=xyCells;
         }
-        xyCells.forEach(cell=>{
+        for(let cellIndex=0;cellIndex<xyCells.length;cellIndex++){
+          const cell=xyCells[cellIndex];
           paintTriangle(cell.a,cell.b,cell.c);
           paintTriangle(cell.a,cell.c,cell.d);
-        });
+        }
+        if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+          sharedTerrainProjectionCache.meshPaintedTriangles=paintedTriangles;
+        }
+        if(waterMaskStateSaved) wmctx.restore();
         return paintedTriangles>=20;
       }
       // 最短距離の陸地だけを独立した前景レイヤーとして描く。
@@ -11776,13 +12167,20 @@ function drawPhoto(ctx,s){
         const gradeCanvas=drawPhoto._waterGradeCanvas||(drawPhoto._waterGradeCanvas=document.createElement("canvas"));
         if(gradeCanvas.width!==W||gradeCanvas.height!==H){gradeCanvas.width=W;gradeCanvas.height=H;}
         const gctx=gradeCanvas.getContext("2d");gctx.clearRect(0,0,W,H);
-        const horizonSamples=[];
-        const horizonStep=Math.max(.35,Math.min(1,step));
-        for(let diff=-half;diff<=half;diff+=horizonStep){
-          const point=toXY(norm360(s.facingAz+diff),0);
-          if(point&&Number.isFinite(point[1])) horizonSamples.push(point[1]);
+        let topY=sharedTerrainProjectionPass==="replay"&&Number.isFinite(sharedTerrainProjectionCache?.waterGradientTopY)
+          ?sharedTerrainProjectionCache.waterGradientTopY:null;
+        if(topY===null){
+          const horizonSamples=[];
+          const horizonStep=Math.max(.35,Math.min(1,step));
+          for(let diff=-half;diff<=half;diff+=horizonStep){
+            const point=toXY(norm360(s.facingAz+diff),0);
+            if(point&&Number.isFinite(point[1])) horizonSamples.push(point[1]);
+          }
+          topY=horizonSamples.length?clamp(Math.min(...horizonSamples),0,H-1):H*.48;
+          if(sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+            sharedTerrainProjectionCache.waterGradientTopY=topY;
+          }
         }
-        const topY=horizonSamples.length?clamp(Math.min(...horizonSamples),0,H-1):H*.48;
         // 水平線側は従来の海色を保ち、手前ほど同系色の深い青へ連続的に落とす。
         // 色相を変えず明度だけを下げるので、別レイヤーのような二色境界が生じない。
         const middleRGB=seaRGB.map((value,index)=>clamp(Math.round(value*(index===2?.86:.80)),0,255));
@@ -11802,30 +12200,45 @@ function drawPhoto(ctx,s){
       // 線を引かず、海岸・湖岸・池岸だけを薄い境界線として表示できる。
       function drawWaterLandBoundary(){
         if(!waterLandBoundaryVisible) return false;
+        const boundaryAnalysisScale=2/3;
+        const edgeW=Math.max(1,Math.round(W*boundaryAnalysisScale));
+        const edgeH=Math.max(1,Math.round(H*boundaryAnalysisScale));
         const edgeCanvas=drawPhoto._waterLandEdgeCanvas||(drawPhoto._waterLandEdgeCanvas=document.createElement("canvas"));
         let edgeResized=false;
-        if(edgeCanvas.width!==W||edgeCanvas.height!==H){edgeCanvas.width=W;edgeCanvas.height=H;edgeResized=true;}
+        if(edgeCanvas.width!==edgeW||edgeCanvas.height!==edgeH){edgeCanvas.width=edgeW;edgeCanvas.height=edgeH;edgeResized=true;}
         const edgeCtx=edgeCanvas.getContext("2d");
-        const edgeCacheKey=`${terrainGeometryKey}|edge`;
+        const edgeCacheKey=`${terrainGeometryKey}|edge|${edgeW}x${edgeH}`;
         if(edgeResized||drawPhoto._waterLandEdgeKey!==edgeCacheKey){
+          const waterAnalysisCanvas=drawPhoto._waterLandAnalysisWaterCanvas||(drawPhoto._waterLandAnalysisWaterCanvas=document.createElement("canvas"));
+          const terrainAnalysisCanvas=drawPhoto._waterLandAnalysisTerrainCanvas||(drawPhoto._waterLandAnalysisTerrainCanvas=document.createElement("canvas"));
+          if(waterAnalysisCanvas.width!==edgeW||waterAnalysisCanvas.height!==edgeH){waterAnalysisCanvas.width=edgeW;waterAnalysisCanvas.height=edgeH;}
+          if(terrainAnalysisCanvas.width!==edgeW||terrainAnalysisCanvas.height!==edgeH){terrainAnalysisCanvas.width=edgeW;terrainAnalysisCanvas.height=edgeH;}
+          const waterAnalysisCtx=waterAnalysisCanvas.getContext("2d");
+          const terrainAnalysisCtx=terrainAnalysisCanvas.getContext("2d");
+          waterAnalysisCtx.clearRect(0,0,edgeW,edgeH);
+          terrainAnalysisCtx.clearRect(0,0,edgeW,edgeH);
+          waterAnalysisCtx.imageSmoothingEnabled=true;
+          terrainAnalysisCtx.imageSmoothingEnabled=true;
+          waterAnalysisCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H,0,0,edgeW,edgeH);
+          terrainAnalysisCtx.drawImage(terrainCanvas,0,0,W,H,0,0,edgeW,edgeH);
           let waterPixels,terrainPixels;
           try{
-            waterPixels=wmctx.getImageData(0,0,W,H).data;
-            terrainPixels=tctx.getImageData(0,0,W,H).data;
+            waterPixels=waterAnalysisCtx.getImageData(0,0,edgeW,edgeH).data;
+            terrainPixels=terrainAnalysisCtx.getImageData(0,0,edgeW,edgeH).data;
           }catch(error){return false;}
-          const edgeImage=edgeCtx.createImageData(W,H),edge=edgeImage.data;
+          const edgeImage=edgeCtx.createImageData(edgeW,edgeH),edge=edgeImage.data;
           let edgeCount=0;
           const isLandNeighbor=index=>waterPixels[index+3]<64&&terrainPixels[index+3]>=160;
-          for(let y=1;y<H-1;y++){
-            for(let x=1;x<W-1;x++){
-              const index=(y*W+x)*4;
+          for(let y=1;y<edgeH-1;y++){
+            for(let x=1;x<edgeW-1;x++){
+              const index=(y*edgeW+x)*4;
               if(waterPixels[index+3]<128) continue;
               if(!isLandNeighbor(index-4)&&!isLandNeighbor(index+4)&&
-                 !isLandNeighbor(index-W*4)&&!isLandNeighbor(index+W*4)) continue;
+                 !isLandNeighbor(index-edgeW*4)&&!isLandNeighbor(index+edgeW*4)) continue;
               edge[index]=255;edge[index+1]=255;edge[index+2]=255;edge[index+3]=255;edgeCount++;
             }
           }
-          edgeCtx.clearRect(0,0,W,H);
+          edgeCtx.clearRect(0,0,edgeW,edgeH);
           if(edgeCount) edgeCtx.putImageData(edgeImage,0,0);
           drawPhoto._waterLandEdgeHasPixels=edgeCount>0;
           drawPhoto._waterLandEdgeKey=edgeCacheKey;
@@ -11836,8 +12249,9 @@ function drawPhoto(ctx,s){
         // 山の稜線より控えめな青灰色。昼は周囲の地形になじむ暗い緑灰色へ変化する。
         const boundaryRGB=mixRGB([150,174,202],[42,54,45],dayFactor);
         edgeCtx.save();edgeCtx.globalCompositeOperation="source-in";
-        edgeCtx.fillStyle=`rgb(${boundaryRGB.join(",")})`;edgeCtx.fillRect(0,0,W,H);edgeCtx.restore();
-        ctx.save();ctx.globalAlpha=skylineAlpha*.48;ctx.filter="blur(.28px)";ctx.drawImage(edgeCanvas,0,0);ctx.restore();
+        edgeCtx.fillStyle=`rgb(${boundaryRGB.join(",")})`;edgeCtx.fillRect(0,0,edgeW,edgeH);edgeCtx.restore();
+        ctx.save();ctx.globalAlpha=skylineAlpha*.48;ctx.filter="blur(.28px)";ctx.imageSmoothingEnabled=true;
+        ctx.drawImage(edgeCanvas,0,0,edgeW,edgeH,0,0,W,H);ctx.restore();
         return true;
       }
       // 水平線上に山がなく、左右を地形に挟まれた連続区間へ海色の背景面を置く。
@@ -11977,9 +12391,14 @@ function drawPhoto(ctx,s){
       // 遠景を先に描き、近距離メッシュが成立しなければ従来のimmediate層へ自動的に戻す。
       // 確定水面を最下層へ敷き、その後から遠景・近景の地形を重ねて遮蔽する。
       let meshDrawn=!!drawPhoto._terrainMeshDrawn;
-      function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere){
-        tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);wmctx.clearRect(0,0,W,H);
+      function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
+        tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
+        // commands（夜）だけ実マスクと昼用描画命令を構築し、replay（昼）は完成済み結果を参照する。
+        wmctx=projectionPass==="replay"?sharedWaterMaskNoopContext:realWaterMaskContext;
+        if(projectionPass!=="replay") wmctx.clearRect(0,0,W,H);
         terrainDayFactor=targetDayFactor;terrainAtmosphere=targetAtmosphere;
+        sharedTerrainProjectionPass=projectionPass;
+        farTerrainBandIndex=0;
         seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
         drawConfirmedWaterSurface();
         layers.forEach(layer=>{if(layer.key!=="immediate") fillTerrainBand(layer,terrainBandColors(layer.key));});
@@ -11994,8 +12413,11 @@ function drawPhoto(ctx,s){
       if(terrainNeedsRender){
         // 地形形状が変わった時だけ、完全な夜と完全な昼の2枚を生成する。
         // 時刻再生中はこの高密度メッシュを作り直さず、下で2枚を合成するだけにする。
-        meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1));
-        renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1));
+        sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
+        meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
+        renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+        wmctx=realWaterMaskContext;
+        sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
         drawPhoto._terrainRenderKey=terrainRenderKey;
         drawPhoto._terrainMeshDrawn=meshDrawn;
       }
@@ -12482,8 +12904,7 @@ function finishCompassDrag(e){
   if(compassDragPendingAz!==null) previewCompassAzimuth(compassDragPendingAz);
   compassDragPendingAz=null;
   if(compassDragRaf){cancelAnimationFrame(compassDragRaf);compassDragRaf=0;}
-  update();
-  scheduleSaveSettings();
+  updateCameraViewOnly();
 }
 el.compassStrip.addEventListener("pointerup",finishCompassDrag);
 el.compassStrip.addEventListener("pointercancel",finishCompassDrag);
@@ -12492,8 +12913,7 @@ el.compassStrip.addEventListener("keydown",e=>{
   const step=e.shiftKey?5:1;
   const direction=e.key==="ArrowRight"?1:-1;
   el.facingAz.value=norm360((state?state.facingAz:+el.facingAz.value)+direction*step);
-  update();
-  scheduleSaveSettings();
+  updateCameraViewOnly();
   e.preventDefault();
 });
 
@@ -12936,9 +13356,57 @@ function updateArFrame(){
   drawCompassStrip(compassCtx,state);
 }
 
+/* 方位角・仰角・焦点距離だけが変わった場合の軽量更新。
+   日時・天体位置・ベストタイム・月/太陽タイムライン・日付表示は前回stateを再利用し、
+   カメラ画角とシミュレーション画像に必要な値だけを更新する。 */
+function updateCameraViewOnly(){
+  if(scheduledUpdateRaf) return;
+  if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
+  if(!state){update();return;}
+  const focalLength=+el.focalLength.value;
+  const facingAz=+el.facingAz.value,facingAlt=+el.facingAlt.value;
+  const sensor=state.sensor;
+  if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
+  else normalLensFocalLength=clamp(focalLength,8,50);
+
+  // computeState()と同じカメラ表示値だけを同期する。
+  el.flVal.textContent=`${focalLength} mm`;
+  const showFisheyeBadge=mobileLensMode==="fisheye"&&!arActive;
+  el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
+  el.focalBadge.innerHTML=showFisheyeBadge
+    ?`<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
+    :`${focalLength}<span class="focal-badge-unit">mm</span>`;
+  el.azVal.textContent=`${Math.round(facingAz)}°`;
+  el.altValLabel.textContent=`${facingAlt}°`;
+
+  const halfW=orientation==="portrait"?12:18,halfH=orientation==="portrait"?18:12;
+  const fisheyeProjectionActive=mobileLensMode==="fisheye"&&!arActive;
+  let fovH,fovV;
+  if(fisheyeProjectionActive){
+    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(2*sensor.crop*focalLength)))*R2D);
+    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(2*sensor.crop*focalLength)))*R2D);
+  }else{
+    fovH=2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
+    fovV=2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
+  }
+  const maxShutter500=500/(focalLength*sensor.crop);
+  state={...state,focalLength,facingAz,facingAlt,orientation,fovH,fovV,
+    maxShutter500,trailRatio:state.shutter/maxShutter500};
+
+  updateOsmFovOverlay(state);
+  drawPhoto(photoCtx,state);
+  drawCompassStrip(compassCtx,state);
+  // カメラ値に関係する小さな表示だけ更新し、日時系UIは触らない。
+  renderReadout(state);
+  renderMessages(state);
+  renderExif(state);
+  scheduleSaveSettings();
+}
+
 function update(){
   // ボタン操作などから即時update()が呼ばれた場合、待機中の同内容描画を重ねない。
   if(scheduledUpdateRaf){cancelAnimationFrame(scheduledUpdateRaf);scheduledUpdateRaf=0;}
+  if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション(透明な実inputと見た目のspan)を常に最新の日付と同期させる
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
