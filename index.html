@@ -3282,14 +3282,13 @@ function galacticToEquatorial(lDeg,bDeg){
 /* 銀河中心 (Sgr A*) */
 const GC = galacticToEquatorial(0,0);
 
-/* 銀河面 (b=0, および帯の幅を表す b=±9) の経度サンプル点 (RA/Decへ事前変換) */
-const MW_CENTER=[], MW_TOP=[], MW_BOTTOM=[];
+/* 銀河面中心線(b=0)の経度サンプル点(RA/Decへ事前変換)。帯幅は描画時に画面空間で求める。 */
+const MW_CENTER=[];
 for(let l=0;l<360;l+=2){
   const distToCore = Math.min(l, 360-l);
   const coreWeight = Math.exp(-(distToCore/38)*(distToCore/38)); // 中心ほど明るい
-  MW_CENTER.push({l, coreWeight, ...galacticToEquatorial(l,0)});
-  MW_TOP.push(galacticToEquatorial(l,9));
-  MW_BOTTOM.push(galacticToEquatorial(l,-9));
+  const centerPoint=galacticToEquatorial(l,0);
+  MW_CENTER.push({l,coreWeight,...centerPoint,sinDec:sin(centerPoint.dec),cosDec:cos(centerPoint.dec),tanDec:tan(centerPoint.dec)});
 }
 
 /* ESO/S. Brunier全天パノラマ用メッシュ。銀河座標上の固定格子を一度だけ赤道座標へ変換する。 */
@@ -3547,7 +3546,8 @@ for(let i=0;i<900;i++){
   const ra=u*360;
   const dec=asin(2*v-1); // 球面上に一様分布
   const mag=1.2 + Math.pow(rng(),2.4)*6.0; // 明るい星ほど少ない
-  STARS.push({ra,dec,mag});
+  const brightness=clamp(1-(mag-1)/6.5,0,1);
+  STARS.push({ra,dec,mag,brightness,sinDec:sin(dec),cosDec:cos(dec),tanDec:tan(dec)});
 }
 
 /* 日本地図(都道府県境界の簡易輪郭)データ。地図ピッカー(パン・ズーム対応)描画用 */
@@ -5484,14 +5484,44 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
   state.moon=moon;
   state.moonAltAz=raDecToAltAz(moon.ra,moon.dec,jdPreview,state.lat,state.lon);
   state.gcAltAz=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
-  state.mwPoints=MW_CENTER.map(p=>{
-    const aa=raDecToAltAz(p.ra,p.dec,jdPreview,state.lat,state.lon);
-    return {l:p.l,coreWeight:p.coreWeight,alt:aa.alt,az:aa.az};
-  });
-  state.starsNow=STARS.map(star=>{
-    const aa=raDecToAltAz(star.ra,star.dec,jdPreview,state.lat,state.lon);
-    return {alt:aa.alt,az:aa.az,mag:star.mag,ra:star.ra,dec:star.dec};
-  });
+  const playbackStarLST=lstDeg(jdPreview,state.lon);
+  const playbackStarSinLat=sin(state.lat),playbackStarCosLat=cos(state.lat);
+  const canReusePlaybackMilkyWay=Array.isArray(state.mwPoints)&&state.mwPoints.length===MW_CENTER.length;
+  const playbackMilkyWayPoints=canReusePlaybackMilkyWay?state.mwPoints:new Array(MW_CENTER.length);
+  for(let pointIndex=0;pointIndex<MW_CENTER.length;pointIndex++){
+    const p=MW_CENTER[pointIndex];
+    const hourAngle=norm360(playbackStarLST-p.ra);
+    const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+    const hourAngleRad=signedHourAngle*D2R;
+    const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+    const alt=asin(p.sinDec*playbackStarSinLat+p.cosDec*playbackStarCosLat*cosHourAngle);
+    const az=norm360(atan2d(sinHourAngle,cosHourAngle*playbackStarSinLat-p.tanDec*playbackStarCosLat)+180);
+    if(canReusePlaybackMilkyWay){
+      playbackMilkyWayPoints[pointIndex].alt=alt;
+      playbackMilkyWayPoints[pointIndex].az=az;
+    }else{
+      playbackMilkyWayPoints[pointIndex]={l:p.l,coreWeight:p.coreWeight,alt,az};
+    }
+  }
+  state.mwPoints=playbackMilkyWayPoints;
+  const canReusePlaybackStars=Array.isArray(state.starsNow)&&state.starsNow.length===STARS.length;
+  const playbackStarsNow=canReusePlaybackStars?state.starsNow:new Array(STARS.length);
+  for(let starIndex=0;starIndex<STARS.length;starIndex++){
+    const star=STARS[starIndex];
+    const hourAngle=norm360(playbackStarLST-star.ra);
+    const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+    const hourAngleRad=signedHourAngle*D2R;
+    const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+    const alt=asin(star.sinDec*playbackStarSinLat+star.cosDec*playbackStarCosLat*cosHourAngle);
+    const az=norm360(atan2d(sinHourAngle,cosHourAngle*playbackStarSinLat-star.tanDec*playbackStarCosLat)+180);
+    if(canReusePlaybackStars){
+      playbackStarsNow[starIndex].alt=alt;
+      playbackStarsNow[starIndex].az=az;
+    }else{
+      playbackStarsNow[starIndex]={alt,az,mag:star.mag,brightness:star.brightness,ra:star.ra,dec:star.dec,sinDec:star.sinDec,cosDec:star.cosDec,tanDec:star.tanDec};
+    }
+  }
+  state.starsNow=playbackStarsNow;
   state.twilight=state.sunAltAz.alt>=0 ? 1 : (state.sunAltAz.alt<=-18 ? 0 : (state.sunAltAz.alt+18)/18);
   state.moonContribution=state.moonAltAz.alt>0 ? moon.illum*(state.moonAltAz.alt/90)*0.7 : 0;
   state.skyBrightness=clamp(state.lp.base+state.twilight+state.moonContribution*0.55,0,1);
@@ -7660,17 +7690,30 @@ function computeState(){
   const moonAltAz = raDecToAltAz(moon.ra,moon.dec,jd,lat,lon);
   const gcAltAz = raDecToAltAz(GC.ra,GC.dec,jd,lat,lon);
 
-  const mwPoints = MW_CENTER.map((p,idx)=>{
-    const aa = raDecToAltAz(p.ra,p.dec,jd,lat,lon);
-    return {l:p.l, coreWeight:p.coreWeight, alt:aa.alt, az:aa.az};
-  });
-  const mwTop = MW_TOP.map(p=>raDecToAltAz(p.ra,p.dec,jd,lat,lon));
-  const mwBottom = MW_BOTTOM.map(p=>raDecToAltAz(p.ra,p.dec,jd,lat,lon));
-
-  const starsNow = STARS.map(s=>{
-    const aa=raDecToAltAz(s.ra,s.dec,jd,lat,lon);
-    return {alt:aa.alt, az:aa.az, mag:s.mag, ra:s.ra, dec:s.dec};
-  });
+  const stateStarLST=lstDeg(jd,lon);
+  const stateStarSinLat=sin(lat),stateStarCosLat=cos(lat);
+  const mwPoints=new Array(MW_CENTER.length);
+  for(let pointIndex=0;pointIndex<MW_CENTER.length;pointIndex++){
+    const p=MW_CENTER[pointIndex];
+    const hourAngle=norm360(stateStarLST-p.ra);
+    const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+    const hourAngleRad=signedHourAngle*D2R;
+    const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+    const alt=asin(p.sinDec*stateStarSinLat+p.cosDec*stateStarCosLat*cosHourAngle);
+    const az=norm360(atan2d(sinHourAngle,cosHourAngle*stateStarSinLat-p.tanDec*stateStarCosLat)+180);
+    mwPoints[pointIndex]={l:p.l,coreWeight:p.coreWeight,alt,az};
+  }
+  const starsNow=new Array(STARS.length);
+  for(let starIndex=0;starIndex<STARS.length;starIndex++){
+    const s=STARS[starIndex];
+    const hourAngle=norm360(stateStarLST-s.ra);
+    const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+    const hourAngleRad=signedHourAngle*D2R;
+    const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+    const alt=asin(s.sinDec*stateStarSinLat+s.cosDec*stateStarCosLat*cosHourAngle);
+    const az=norm360(atan2d(sinHourAngle,cosHourAngle*stateStarSinLat-s.tanDec*stateStarCosLat)+180);
+    starsNow[starIndex]={alt, az, mag:s.mag, brightness:s.brightness, ra:s.ra, dec:s.dec, sinDec:s.sinDec, cosDec:s.cosDec, tanDec:s.tanDec};
+  }
 
   /* カメラ設定 */
   const focalLength=+el.focalLength.value;
@@ -7758,7 +7801,7 @@ function computeState(){
   const { jdMidnight, sunRiseSet, moonRiseSet, bestWindow, moonUpIntervals, sunUpIntervals, mwGoodIntervals, sunPath, moonPath } = daily;
 
   return {
-    lat,lon,tz,jd,sun,sunAltAz,moon,moonAltAz,gcAltAz,mwPoints,mwTop,mwBottom,starsNow,
+    lat,lon,tz,jd,sun,sunAltAz,moon,moonAltAz,gcAltAz,mwPoints,starsNow,
     focalLength,aperture,iso,shutter,sensor,lp,facingAz,facingAlt,orientation,
     maxShutter500,trailRatio,totalStops,grainAmount,twilight,moonContribution,skyBrightness,
     fovH,fovV,sunRiseSet,moonRiseSet,bestWindow,dateY:y,dateMo:mo,dateDa:da,jdMidnight,
@@ -9709,59 +9752,122 @@ function drawPhoto(ctx,s){
 
   // 星
   const trailSec = s.shutter;
+  // 空側で求めたスタートレイルの反射座標を後段の水面描画でも再利用し、
+  // 同じ時刻列の天文計算を反射用にもう一度行わない。
+  const starTrailReflectionRuns=waterReflectionEnabled&&starTrailMode&&vis>0?[]:null;
+  let starTrailTaperAlphaByStep=null,starTrailTaperWidthByStep=null;
   ctx.save();
   ctx.globalCompositeOperation="lighter";
   if(starTrailMode){
+    if(vis>0){
     // スタートレイル演出: 微光星も含めて、実際の日周運動に沿った弧状の軌跡として描く
     const trailMinutesSetting=+el.starTrailLengthSlider.value||60; // スライダーの値をそのまま「分」として使う(10分刻み・最大300分=5時間)
     // 分割数をさらに細かくして、弧の滑らかさを向上させる
     const steps=Math.min(60, 24+Math.round((trailMinutesSetting/300)*36));
-    // 成長アニメーション中は滑らかに連続的に伸ばすのではなく、10分単位で段階的に伸びるようにする(実際に10分おきに1枚ずつ撮影が積み重なっていくイメージ)
+    // 成長アニメーション中も10分単位へ丸めず、2.5秒間の進捗に沿って連続的に伸ばす。
+    // 最終長は従来どおりスライダー値と完全に一致する。
     const rawTrailMin=trailMinutesSetting*starTrailGrowProgress;
-    const trailMin=starTrailGrowProgress>=1 ? trailMinutesSetting : Math.floor(rawTrailMin/10)*10;
-    s.starsNow.forEach(star=>{
-      const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
+    const trailMin=rawTrailMin;
+    const starTrailScreenRight=W+80,starTrailScreenBottom=H+80;
+    const starTrailMaxSegmentWidth=W*1.5;
+    const starTrailSinLat=sin(s.lat),starTrailCosLat=cos(s.lat);
+    let stepCache=drawPhoto._starTrailStepCache;
+    if(!stepCache||stepCache.steps!==steps){
+      const ratio=new Float64Array(steps+1);
+      for(let k=1;k<=steps;k++) ratio[k]=k/steps;
+      stepCache=drawPhoto._starTrailStepCache={steps,ratio,lst:new Float64Array(steps+1)};
+    }
+    const starTrailStepRatio=stepCache.ratio;
+    const starTrailLSTByStep=stepCache.lst;
+    let pointCache=drawPhoto._starTrailPointCache;
+    if(!pointCache||pointCache.steps!==steps){
+      const buffers=Array.from({length:steps+1},()=>[0,0]);
+      pointCache=drawPhoto._starTrailPointCache={steps,buffers,points:new Array(steps+1)};
+    }
+    const starTrailPointBuffers=pointCache.buffers;
+    const starTrailPoints=pointCache.points;
+    if(starTrailTaper){
+      let taperCache=drawPhoto._starTrailTaperCache;
+      if(!taperCache||taperCache.steps!==steps){
+        const alpha=new Float64Array(steps+1),width=new Float64Array(steps+1);
+        const taperDenominator=steps-1;
+        for(let k=1;k<=steps;k++){
+          const tHead=1-(k-1)/taperDenominator;
+          alpha[k]=.10+.90*tHead;
+          width[k]=.25+.75*tHead;
+        }
+        taperCache=drawPhoto._starTrailTaperCache={steps,alpha,width};
+      }
+      starTrailTaperAlphaByStep=taperCache.alpha;
+      starTrailTaperWidthByStep=taperCache.width;
+    }
+    for(let k=1;k<=steps;k++){
+      const dtMin=-trailMin*starTrailStepRatio[k];
+      starTrailLSTByStep[k]=lstDeg(s.jd+dtMin/1440,s.lon);
+    }
+    // 全区間とも線端は同じなので、線分ごとではなく描画全体で一度だけ設定する。
+    ctx.lineCap="butt";
+    for(let starIndex=0;starIndex<s.starsNow.length;starIndex++){
+      const star=s.starsNow[starIndex];
+      const brightness = star.brightness;
       const rawAlpha = brightness*vis*starOpacity;
-      if(rawAlpha < 0.015) return; // 極端に暗い星は負荷軽減のため省略
+      if(rawAlpha < 0.015) continue; // 極端に暗い星は負荷軽減のため省略
       // 見え始めのしきい値付近では急にポンと現れず、じわっと明るさが乗ってくるようにする
       const fadeIn = clamp((rawAlpha-0.015)/0.08, 0, 1);
       const baseAlpha = rawAlpha*fadeIn;
 
-      const nowP=toXY(star.az,star.alt);
-      if(!nowP) return;
+      const nowP=toXY(star.az,star.alt,starTrailPointBuffers[0]);
+      if(!nowP) continue;
 
-      const pts=[nowP];
+      const pts=starTrailPoints;
+      pts[0]=nowP;
+      const reflectedPts=starTrailReflectionRuns
+        ?[star.alt>0?toXY(star.az,-star.alt):null]:null;
       for(let k=1;k<=steps;k++){
-        const dtMin = -trailMin*(k/steps);
-        const jdK = s.jd + dtMin/1440;
-        const aa = raDecToAltAz(star.ra,star.dec,jdK,s.lat,s.lon);
-        pts.push((!showBelowHorizon && aa.alt<-2) ? null : toXY(aa.az,aa.alt));
+        const hourAngle=norm360(starTrailLSTByStep[k]-star.ra);
+        const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+        const hourAngleRad=signedHourAngle*D2R;
+        const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+        const sampleAlt=asin(star.sinDec*starTrailSinLat+star.cosDec*starTrailCosLat*cosHourAngle);
+        const sampleAz=norm360(atan2d(sinHourAngle,cosHourAngle*starTrailSinLat-star.tanDec*starTrailCosLat)+180);
+        pts[k]=(!showBelowHorizon&&sampleAlt<-2)?null:toXY(sampleAz,sampleAlt,starTrailPointBuffers[k]);
+        if(reflectedPts) reflectedPts.push(sampleAlt>0?toXY(sampleAz,-sampleAlt):null);
+      }
+      const width=0.6+brightness*1.7;
+      if(reflectedPts){
+        let reflectionOnScreen=false;
+        for(let pointIndex=0;pointIndex<reflectedPts.length;pointIndex++){
+          const p=reflectedPts[pointIndex];
+          if(p&&p[0]>-80&&p[0]<starTrailScreenRight&&p[1]>-80&&p[1]<starTrailScreenBottom){reflectionOnScreen=true;break;}
+        }
+        if(reflectionOnScreen) starTrailReflectionRuns.push({pts:reflectedPts,baseAlpha,width});
       }
       // 先端(現在位置)だけで判定すると、先端が画面外に出た途端に軌跡全体が消えてしまうため、
       // 軌跡上のどこか一点でも画面内(余白込み)にあれば描画する
-      const anyOnScreen = pts.some(p => p && p[0]>-80 && p[0]<W+80 && p[1]>-80 && p[1]<H+80);
-      if(!anyOnScreen) return;
+      let anyOnScreen=false;
+      for(let pointIndex=0;pointIndex<pts.length;pointIndex++){
+        const p=pts[pointIndex];
+        if(p&&p[0]>-80&&p[0]<starTrailScreenRight&&p[1]>-80&&p[1]<starTrailScreenBottom){anyOnScreen=true;break;}
+      }
+      if(!anyOnScreen) continue;
       // pts[0]=現在(頭) 〜 pts[steps]=25分前(尾)。頭から尾へ向かって描画する。
-      const width=0.6+brightness*1.7;
+      if(!starTrailTaper){
+        ctx.strokeStyle=`rgba(255,250,240,${clamp(baseAlpha,0,1)})`;
+        ctx.lineWidth=Math.max(0.4,width);
+      }
       for(let k=1;k<pts.length;k++){
         const p0=pts[k-1], p1=pts[k]; // p0:頭側(現在に近い) -> p1:尾側(過去)
         if(!p0||!p1) continue;
-        if(Math.abs(p0[0]-p1[0])>W*1.5) continue;
-        const tHead=1-(k-1)/(pts.length-2); // 1(頭・現在)→0(尾・過去)
-        let alpha, lw;
+        if(Math.abs(p0[0]-p1[0])>starTrailMaxSegmentWidth) continue;
         if(starTrailTaper){
-          alpha=baseAlpha*(0.10+0.90*tHead);
-          lw=width*(0.25+0.75*tHead);
-        } else {
-          alpha=baseAlpha;
-          lw=width;
+          const alpha=baseAlpha*starTrailTaperAlphaByStep[k];
+          const lw=width*starTrailTaperWidthByStep[k];
+          ctx.strokeStyle=`rgba(255,250,240,${clamp(alpha,0,1)})`;
+          ctx.lineWidth=Math.max(0.4,lw);
         }
-        ctx.strokeStyle=`rgba(255,250,240,${clamp(alpha,0,1)})`;
-        ctx.lineWidth=Math.max(0.4,lw);
         // lineCapは区間の"両端"に適用されてしまうため、k===1だけroundにしても
         // その区間の尾側(=最初の継ぎ目)にも丸みが乗ってしまっていた。
         // そのため全区間buttに統一し、先端の丸みはループの外で別途小さな円として描く。
-        ctx.lineCap="butt";
         ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.stroke();
       }
       // 先端(現在位置)に小さな円を描き、丸いキャップのような自然な頭の見た目にする(継ぎ目には一切重ならない)
@@ -9770,31 +9876,42 @@ function drawPhoto(ctx,s){
       ctx.arc(pts[0][0],pts[0][1],headLw/2,0,Math.PI*2);
       ctx.fillStyle=`rgba(255,250,240,${clamp(baseAlpha,0,1)})`;
       ctx.fill();
-    });
+    }
+    }
   } else {
-  s.starsNow.forEach(star=>{
-    if(!showBelowHorizon && star.alt<-2) return;
-    const p0=toXY(star.az,star.alt);
-    if(!p0) return;
-    if(p0[0]<-40||p0[0]>W+40||p0[1]<-40||p0[1]>H+40) return;
-
+  const skyStarLimiting=clamp(1-s.skyBrightness*1.15,0,1);
+  const normalStarOpacity=(+el.normalStarOpacitySlider.value||50)/100;
+  const skyStarRight=W+40,skyStarBottom=H+40;
+  const drawShortStarTrails=s.trailRatio>1.15;
+  const shortStarTrailEndJd=drawShortStarTrails?s.jd+trailSec/86400:0;
+  const shortStarTrailLST=drawShortStarTrails?lstDeg(shortStarTrailEndJd,s.lon):0;
+  const shortStarTrailSinLat=drawShortStarTrails?sin(s.lat):0;
+  const shortStarTrailCosLat=drawShortStarTrails?cos(s.lat):0;
+  if(skyStarLimiting>0) for(let starIndex=0;starIndex<s.starsNow.length;starIndex++){
+    const star=s.starsNow[starIndex];
+    if(!showBelowHorizon && star.alt<-2) continue;
     // 等級 -> 明るさ・サイズ (低スカイブライトネスの空では暗い星は消える)
-    const brightness = clamp(1-(star.mag-1)/6.5, 0, 1);
-    const limiting = clamp(1-s.skyBrightness*1.15, 0, 1);
-    const normalStarOpacity = (+el.normalStarOpacitySlider.value||50)/100;
+    const brightness = star.brightness;
     const alpha = brightness*vis*normalStarOpacity;
-    const visScore = alpha*limiting;
-    if(visScore < 0.035) return; // 極端に暗い星は負荷軽減のため描画自体を省略
+    const visScore = alpha*skyStarLimiting;
+    if(visScore < 0.035) continue; // 極端に暗い星は負荷軽減のため描画自体を省略
+    const p0=toXY(star.az,star.alt);
+    if(!p0) continue;
+    if(p0[0]<-40||p0[0]>skyStarRight||p0[1]<-40||p0[1]>skyStarBottom) continue;
     // 見え始めのしきい値付近では、急にポンと現れるのではなく、じわっと明るさが乗ってくるようにフェードインさせる
     const fadeIn = clamp((visScore-0.035)/0.15, 0, 1);
     const fadedAlpha = alpha*fadeIn;
 
     let x1=p0[0], y1=p0[1];
-    if(s.trailRatio>1.15){
+    if(drawShortStarTrails){
       // シャッター開始/終了時点の位置差分で星の流れを近似
-      const jd2 = s.jd + trailSec/86400;
-      const aa2 = raDecToAltAz(star.ra,star.dec,jd2,s.lat,s.lon);
-      const p1=toXY(aa2.az,aa2.alt);
+      const hourAngle=norm360(shortStarTrailLST-star.ra);
+      const signedHourAngle=hourAngle>180?hourAngle-360:hourAngle;
+      const hourAngleRad=signedHourAngle*D2R;
+      const sinHourAngle=Math.sin(hourAngleRad),cosHourAngle=Math.cos(hourAngleRad);
+      const trailAlt=asin(star.sinDec*shortStarTrailSinLat+star.cosDec*shortStarTrailCosLat*cosHourAngle);
+      const trailAz=norm360(atan2d(sinHourAngle,cosHourAngle*shortStarTrailSinLat-star.tanDec*shortStarTrailCosLat)+180);
+      const p1=toXY(trailAz,trailAlt);
       if(p1){ x1=p1[0]; y1=p1[1]; }
     }
 
@@ -9806,7 +9923,7 @@ function drawPhoto(ctx,s){
     } else {
       ctx.beginPath(); ctx.arc(p0[0],p0[1],size,0,Math.PI*2); ctx.fill();
     }
-  });
+  }
   }
   ctx.restore();
 
@@ -10097,34 +10214,41 @@ function drawPhoto(ctx,s){
 
   // 星座。流星群シーズンの対象星座は、星座全体・個別表示がOFFでも強制表示する。
   const autoShowConstName = autoShowShowerConst ? (getActiveMeteorShower()?.constellationName || null) : null;
+  const constellationAltAzForReflection=waterReflectionEnabled?new Map():null;
   if(constellationsVisible||autoShowConstName){
+    ctx.strokeStyle="rgba(160,205,255,0.6)";
+    ctx.lineWidth=1.3*arSizeScale;
+    const skyConstellationRight=W+40,skyConstellationBottom=H+40;
+    const skyConstellationMaxLineWidth=W*1.5;
     CONSTELLATIONS.forEach(c=>{
       const isAutoShown = autoShowConstName===c.name;
       if(!constellationsVisible&&!isAutoShown) return;
       if(constellationVisibility[c.name]===false && !isAutoShown) return;
-      const pts=c.stars.map(st=>{
+      const pts=new Array(c.stars.length);
+      for(let starIndex=0;starIndex<c.stars.length;starIndex++){
+        const st=c.stars[starIndex];
         const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
-        if(!showBelowHorizon && aa.alt<-2) return null;
-        return toXY(aa.az,aa.alt);
-      });
-      ctx.strokeStyle="rgba(160,205,255,0.6)";
-      ctx.lineWidth=1.3*arSizeScale;
+        if(constellationAltAzForReflection) constellationAltAzForReflection.set(st,aa);
+        pts[starIndex]=!showBelowHorizon&&aa.alt<-2?null:toXY(aa.az,aa.alt);
+      }
       if(constellationLinesVisible){
-        c.lines.forEach(([i,j])=>{
-          const p1=pts[i], p2=pts[j];
-          if(!p1||!p2) return;
-          if(Math.abs(p1[0]-p2[0])>W*1.5) return; // 画角の裏側への誤接続を防止
+        for(let lineIndex=0;lineIndex<c.lines.length;lineIndex++){
+          const line=c.lines[lineIndex],p1=pts[line[0]],p2=pts[line[1]];
+          if(!p1||!p2) continue;
+          if(Math.abs(p1[0]-p2[0])>skyConstellationMaxLineWidth) continue; // 画角の裏側への誤接続を防止
           ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
-        });
+        }
       }
       let visN=0, sumX=0, sumY=0;
-      pts.forEach(p=>{
-        if(!p) return;
-        if(p[0]<-40||p[0]>W+40||p[1]<-40||p[1]>H+40) return;
+      ctx.fillStyle="rgba(210,230,255,0.95)";
+      for(let pointIndex=0;pointIndex<pts.length;pointIndex++){
+        const p=pts[pointIndex];
+        if(!p) continue;
+        if(p[0]<-40||p[0]>skyConstellationRight||p[1]<-40||p[1]>skyConstellationBottom) continue;
         visN++; sumX+=p[0]; sumY+=p[1];
         ctx.beginPath(); ctx.arc(p[0],p[1],2.8*arSizeScale,0,Math.PI*2);
-        ctx.fillStyle="rgba(210,230,255,0.95)"; ctx.fill();
-      });
+        ctx.fill();
+      }
       if(visN>=2 && showSkyLabels){
         ctx.font=`${15+labelFontBump}px Inter, sans-serif`;
         ctx.fillStyle="rgba(200,222,255,0.85)";
@@ -10522,6 +10646,8 @@ function drawPhoto(ctx,s){
         const reflectionContext=reflectionCanvas.getContext("2d");reflectionContext.clearRect(0,0,W,H);
         return ((ctx)=>{
         if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
+        const reflectionCanvasScale=W/1200;
+        const celestialReflectionRight=W+40,celestialReflectionBottom=H+40;
         const reflectionStep=Math.min(step,.28);
         const reflectionGeometryKey=`${terrainGeometryKey}|${half}|${reflectionStep}`;
         let reflectionGeometry=drawPhoto._waterReflectionGeometryCache;
@@ -10674,6 +10800,7 @@ function drawPhoto(ctx,s){
           ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=clamp(vis*.20,0,.22);
           const reflectedCullLeft=-30,reflectedCullRight=W+30,reflectedCullTop=-30,reflectedCullBottom=H+30;
           const reflectedMaxCellWidth=W*1.5,reflectedMaxCellHeight=H*1.5;
+          const isFiniteReflectionCoordinate=Number.isFinite;
           for(let r=0;r<reflectedGrid.length-1;r++){
             const reflectedRow=reflectedGrid[r],reflectedNextRow=reflectedGrid[r+1];
             let reflectedLeftTop=reflectedRow[0],reflectedLeftBottom=reflectedNextRow[0];
@@ -10686,14 +10813,15 @@ function drawPhoto(ctx,s){
               if(!pt00||!pt10||!pt01||!pt11) continue;
               const x00=pt00[0],y00=pt00[1],x10=pt10[0],y10=pt10[1];
               const x01=pt01[0],y01=pt01[1],x11=pt11[0],y11=pt11[1];
-              if(!Number.isFinite(x00)||!Number.isFinite(y00)||!Number.isFinite(x10)||!Number.isFinite(y10)||
-                 !Number.isFinite(x01)||!Number.isFinite(y01)||!Number.isFinite(x11)||!Number.isFinite(y11)) continue;
+              if(!isFiniteReflectionCoordinate(x00)||!isFiniteReflectionCoordinate(y00)||!isFiniteReflectionCoordinate(x10)||!isFiniteReflectionCoordinate(y10)||
+                 !isFiniteReflectionCoordinate(x01)||!isFiniteReflectionCoordinate(y01)||!isFiniteReflectionCoordinate(x11)||!isFiniteReflectionCoordinate(y11)) continue;
               const minX=Math.min(x00,x10,x01,x11),maxX=Math.max(x00,x10,x01,x11);
               const minY=Math.min(y00,y10,y01,y11),maxY=Math.max(y00,y10,y01,y11);
               if(maxX<reflectedCullLeft||minX>reflectedCullRight||maxY<reflectedCullTop||minY>reflectedCullBottom||
                  maxX-minX>reflectedMaxCellWidth||maxY-minY>reflectedMaxCellHeight) continue;
-              drawTextureTriangle(ctx,realMilkyWayTexture,p00.uv,p10.uv,p01.uv,pt00,pt10,pt01);
-              drawTextureTriangle(ctx,realMilkyWayTexture,p10.uv,p11.uv,p01.uv,pt10,pt11,pt01);
+              const uv00=p00.uv,uv10=p10.uv,uv01=p01.uv,uv11=p11.uv;
+              drawTextureTriangle(ctx,realMilkyWayTexture,uv00,uv10,uv01,pt00,pt10,pt01);
+              drawTextureTriangle(ctx,realMilkyWayTexture,uv10,uv11,uv01,pt10,pt11,pt01);
             }
           }
           ctx.restore();
@@ -10725,35 +10853,45 @@ function drawPhoto(ctx,s){
         }
 
         // 星座の反射：表示中の星座だけを反映し、名称ラベルは水面へ描かない。
-        const reflectedAutoShowConstName=autoShowShowerConst?(getActiveMeteorShower()?.constellationName||null):null;
+        const reflectedAutoShowConstName=autoShowConstName;
         if(constellationsVisible||reflectedAutoShowConstName){
           ctx.save();ctx.globalCompositeOperation="lighter";ctx.strokeStyle=`rgba(166,207,255,${clamp(vis*.48,0,.48)})`;ctx.lineWidth=1.25;
+          const reflectedConstellationRight=W+10,reflectedConstellationBottom=H+10;
+          const reflectedConstellationMaxLineWidth=W*.75;
           CONSTELLATIONS.forEach(c=>{
             const isAutoShown=reflectedAutoShowConstName===c.name;
             if(!constellationsVisible&&!isAutoShown) return;
             if(constellationVisibility[c.name]===false&&!isAutoShown) return;
-            const pts=c.stars.map(st=>{
-              const aa=raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
-              if(aa.alt<=0) return null;
-              const p=toXY(aa.az,-aa.alt);return p&&p.every(Number.isFinite)?p:null;
-            });
-            if(constellationLinesVisible){
-              c.lines.forEach(([i,j])=>{const p1=pts[i],p2=pts[j];if(!p1||!p2||Math.abs(p1[0]-p2[0])>W*.75)return;ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();});
+            const pts=new Array(c.stars.length);
+            for(let starIndex=0;starIndex<c.stars.length;starIndex++){
+              const st=c.stars[starIndex];
+              const aa=constellationAltAzForReflection?.get(st)||raDecToAltAz(st.ra,st.dec,s.jd,s.lat,s.lon);
+              if(aa.alt<=0){pts[starIndex]=null;continue;}
+              const p=toXY(aa.az,-aa.alt);
+              pts[starIndex]=p&&Number.isFinite(p[0])&&Number.isFinite(p[1])?p:null;
             }
-            pts.forEach(p=>{
-              if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10)return;
-              drawCelestialReflection(p,.78,"222,239,255",1.05);
-            });
+            if(constellationLinesVisible){
+              for(let lineIndex=0;lineIndex<c.lines.length;lineIndex++){
+                const line=c.lines[lineIndex],p1=pts[line[0]],p2=pts[line[1]];
+                if(!p1||!p2||Math.abs(p1[0]-p2[0])>reflectedConstellationMaxLineWidth) continue;
+                ctx.beginPath();ctx.moveTo(...p1);ctx.lineTo(...p2);ctx.stroke();
+              }
+            }
+            for(let pointIndex=0;pointIndex<pts.length;pointIndex++){
+              const p=pts[pointIndex];
+              if(!p||p[0]<-10||p[0]>reflectedConstellationRight||p[1]<-10||p[1]>reflectedConstellationBottom) continue;
+              drawCelestialReflection(p,.78,"222,239,255",1.05,1,null,true);
+            }
           });
           ctx.restore();
         }
 
         // 明るい天体用の水面反射。中心光に加え、明るさに応じて上下へ細長く伸びる
         // 光条と淡い外側のにじみを重ねる。描画全体は既に水域でクリップされている。
-        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1,opacityScale=1,visibilityOverride=null){
-          if(!point||point[0]<-40||point[0]>W+40||point[1]<-40||point[1]>H+40) return;
+        function drawCelestialReflection(point,strength,color="245,248,255",lengthScale=1,opacityScale=1,visibilityOverride=null,boundsChecked=false){
+          if(!boundsChecked&&(!point||point[0]<-40||point[0]>celestialReflectionRight||point[1]<-40||point[1]>celestialReflectionBottom)) return;
           const x=point[0],y=point[1],power=clamp(strength,0,1);
-          const length=(3+power*27)*lengthScale*(W/1200);
+          const length=(3+power*27)*lengthScale*reflectionCanvasScale;
           const upper=length*.42,lower=length*.58;
           const reflectionVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
           const alpha=clamp(reflectionVisibility*(.25+power*.70)*clamp(opacityScale,0,1),0,.92);
@@ -10761,15 +10899,15 @@ function drawPhoto(ctx,s){
           const soft=ctx.createLinearGradient(x,y-upper,x,y+lower);
           soft.addColorStop(0,`rgba(${color},0)`);soft.addColorStop(.46,`rgba(${color},${alpha*.25})`);
           soft.addColorStop(.54,`rgba(${color},${alpha*.25})`);soft.addColorStop(1,`rgba(${color},0)`);
-          ctx.strokeStyle=soft;ctx.lineWidth=(2.2+power*3.6)*(W/1200);ctx.lineCap="round";
+          ctx.strokeStyle=soft;ctx.lineWidth=(2.2+power*3.6)*reflectionCanvasScale;ctx.lineCap="round";
           ctx.beginPath();ctx.moveTo(x,y-upper);ctx.lineTo(x,y+lower);ctx.stroke();
           // 芯になる細い縦線。
           const core=ctx.createLinearGradient(x,y-upper,x,y+lower);
           core.addColorStop(0,`rgba(${color},0)`);core.addColorStop(.36,`rgba(${color},${alpha*.38})`);
           core.addColorStop(.5,`rgba(${color},${alpha})`);core.addColorStop(.66,`rgba(${color},${alpha*.42})`);core.addColorStop(1,`rgba(${color},0)`);
-          ctx.strokeStyle=core;ctx.lineWidth=(.75+power*1.25)*(W/1200);
+          ctx.strokeStyle=core;ctx.lineWidth=(.75+power*1.25)*reflectionCanvasScale;
           ctx.beginPath();ctx.moveTo(x,y-upper);ctx.lineTo(x,y+lower);ctx.stroke();
-          const glowRadius=(2.2+power*4.2)*(W/1200);
+          const glowRadius=(2.2+power*4.2)*reflectionCanvasScale;
           const glow=ctx.createRadialGradient(x,y,0,x,y,glowRadius);
           glow.addColorStop(0,`rgba(${color},${alpha})`);glow.addColorStop(.28,`rgba(${color},${alpha*.58})`);glow.addColorStop(1,`rgba(${color},0)`);
           ctx.beginPath();ctx.arc(x,y,glowRadius,0,Math.PI*2);ctx.fillStyle=glow;ctx.fill();
@@ -10784,7 +10922,7 @@ function drawPhoto(ctx,s){
           const angularRadius=kind==="sun"?(s.sun.angularRadiusDeg||.267):(s.moon.angularRadiusDeg||.272);
           const radius=realSunMoonEnabled
             ?Math.max(1.2,scale*D2R*angularRadius)
-            :(kind==="sun"?20:18)*(W/1200);
+            :(kind==="sun"?20:18)*reflectionCanvasScale;
           // 月は水平線付近ほど赤橙色になる既存の大気色に加え、少し減光する。
           // 太陽は従来の明るさを維持する。
           const horizonExtinction=kind==="moon"?lerp(.66,1,clamp((aa.alt+1)/12,0,1)):1;
@@ -10839,14 +10977,14 @@ function drawPhoto(ctx,s){
           const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),isSun?1.08:1.18);
           const phasePower=clamp(strength,0,1);
           const maxRoad=H*(isSun?.72:(kind==="moon"?.57:.43));
-          const roadLength=Math.max(8*(W/1200),maxRoad*lowFactor*(.48+phasePower*.52));
-          const startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-2*(W/1200));
+          const roadLength=Math.max(8*reflectionCanvasScale,maxRoad*lowFactor*(.48+phasePower*.52));
+          const startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-2*reflectionCanvasScale);
           const endY=Math.min(H+12,startY+roadLength);
           if(endY-startY<5) return;
           const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
           const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.74:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.90:.66);
-          const baseWidth=(isSun?9.5:(kind==="moon"?6.8:4.2))*(W/1200);
-          const roadWidth=(isSun?72:(kind==="moon"?50:31))*(W/1200)*(.55+lowFactor*.45);
+          const baseWidth=(isSun?9.5:(kind==="moon"?6.8:4.2))*reflectionCanvasScale;
+          const roadWidth=(isSun?72:(kind==="moon"?50:31))*reflectionCanvasScale*(.55+lowFactor*.45);
           const bands=Math.max(18,Math.round((endY-startY)/(isSun?3.8:(kind==="moon"?4.4:5.6))));
           ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
           // 横光の背後へ柔らかな金色の光量を置き、写真の長時間露光に近い明るい芯を作る。
@@ -10855,8 +10993,8 @@ function drawPhoto(ctx,s){
           roadGlow.addColorStop(.26,`rgba(${color},${roadAlpha*.30})`);
           roadGlow.addColorStop(.72,`rgba(${color},${roadAlpha*.13})`);
           roadGlow.addColorStop(1,`rgba(${color},0)`);
-          ctx.save();ctx.filter=`blur(${Math.max(2,(isSun?7:(kind==="moon"?5:3.5))*(W/1200))}px)`;
-          ctx.strokeStyle=roadGlow;ctx.lineWidth=(isSun?21:(kind==="moon"?15:9))*(W/1200);
+          ctx.save();ctx.filter=`blur(${Math.max(2,(isSun?7:(kind==="moon"?5:3.5))*reflectionCanvasScale)}px)`;
+          ctx.strokeStyle=roadGlow;ctx.lineWidth=(isSun?21:(kind==="moon"?15:9))*reflectionCanvasScale;
           ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
           for(let band=0;band<bands;band++){
             // 固定式の揺らぎを使い、時刻変更や再描画で光条がちらつかないようにする。
@@ -10869,7 +11007,7 @@ function drawPhoto(ctx,s){
             const xJitter=(jitter-.5)*halfWidth*.48;
             const alpha=roadAlpha*(.32+.68*jitter)*(.42+.58*envelope)*(1-q*.22);
             ctx.strokeStyle=`rgba(${color},${alpha})`;
-            ctx.lineWidth=Math.max(.7,(isSun?2.15:(kind==="moon"?1.75:1.15))*(W/1200)*(.72+jitter*.72));
+            ctx.lineWidth=Math.max(.7,(isSun?2.15:(kind==="moon"?1.75:1.15))*reflectionCanvasScale*(.72+jitter*.72));
             ctx.beginPath();ctx.moveTo(x+xJitter-halfWidth,y);ctx.lineTo(x+xJitter+halfWidth,y);ctx.stroke();
           }
           // 中央に非常に淡い縦の光を加え、横光の集合を一本の光路としてまとめる。
@@ -10878,7 +11016,7 @@ function drawPhoto(ctx,s){
           glow.addColorStop(.42,`rgba(${color},${roadAlpha*.34})`);
           glow.addColorStop(.72,`rgba(${color},${roadAlpha*.14})`);
           glow.addColorStop(1,`rgba(${color},0)`);
-          ctx.strokeStyle=glow;ctx.lineWidth=(isSun?6.8:(kind==="moon"?4.8:2.8))*(W/1200);
+          ctx.strokeStyle=glow;ctx.lineWidth=(isSun?6.8:(kind==="moon"?4.8:2.8))*reflectionCanvasScale;
           ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
         }
 
@@ -10895,32 +11033,66 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
 
+        // スタートレイルの反射。空側の計算結果を再利用し、水面マスク内だけへ鏡像の弧を描く。
+        // 山の反射はこの後に重なるため、山の背後にある軌跡も既存と同じ順序で隠れる。
+        if(starTrailMode){
+          if(starTrailReflectionRuns&&starTrailReflectionRuns.length){
+            const reflectedTrailMaxSegmentWidth=W*1.5;
+            ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="butt";
+            for(let runIndex=0;runIndex<starTrailReflectionRuns.length;runIndex++){
+              const run=starTrailReflectionRuns[runIndex],pts=run.pts;
+              if(!starTrailTaper){
+                ctx.strokeStyle=`rgba(210,225,248,${clamp(run.baseAlpha*.58,0,.62)})`;
+                ctx.lineWidth=Math.max(.35,run.width*.82);
+              }
+              for(let k=1;k<pts.length;k++){
+                const p0=pts[k-1],p1=pts[k];
+                if(!p0||!p1||Math.abs(p0[0]-p1[0])>reflectedTrailMaxSegmentWidth) continue;
+                if(starTrailTaper){
+                  const alpha=clamp(run.baseAlpha*starTrailTaperAlphaByStep[k]*.58,0,.62);
+                  ctx.strokeStyle=`rgba(210,225,248,${alpha})`;
+                  ctx.lineWidth=Math.max(.35,run.width*starTrailTaperWidthByStep[k]*.82);
+                }
+                ctx.beginPath();ctx.moveTo(p0[0],p0[1]);ctx.lineTo(p1[0],p1[1]);ctx.stroke();
+              }
+              const head=pts[0];
+              if(head){
+                ctx.beginPath();ctx.arc(head[0],head[1],Math.max(.35,run.width*.82)/2,0,Math.PI*2);
+                ctx.fillStyle=`rgba(210,225,248,${clamp(run.baseAlpha*.58,0,.62)})`;ctx.fill();
+              }
+            }
+            ctx.restore();
+          }
+        }else{
         // 通常の星の反射。暗い星は点に近く、明るい星だけが縦方向へ大きく伸びる。
         ctx.save();ctx.globalCompositeOperation="lighter";
         const normalOpacity=(+el.normalStarOpacitySlider.value||50)/100;
-        s.starsNow.forEach(star=>{
-          if(star.alt<=0) return;
-          const brightness=clamp(1-(star.mag-1)/6.5,0,1);
+        const reflectedStarLimiting=clamp(1-s.skyBrightness*1.15,0,1);
+        const normalStarReflectionRight=W+10,normalStarReflectionBottom=H+10;
+        if(reflectedStarLimiting>0) for(let starIndex=0;starIndex<s.starsNow.length;starIndex++){
+          const star=s.starsNow[starIndex];
+          if(star.alt<=0) continue;
+          const brightness=star.brightness;
           // 空に描く通常星と同じ限界等級・表示開始しきい値・フェードを通す。
           // これにより、薄明時に反射だけが空の星より先に現れない。
-          const limiting=clamp(1-s.skyBrightness*1.15,0,1);
           const skyAlpha=brightness*vis*normalOpacity;
-          const visScore=skyAlpha*limiting;
-          if(visScore<.035) return;
+          const visScore=skyAlpha*reflectedStarLimiting;
+          if(visScore<.035) continue;
           const fadeIn=clamp((visScore-.035)/.15,0,1);
           const reflectedBrightness=Math.pow(brightness,2.15)*normalOpacity*fadeIn;
-          const p=toXY(star.az,-star.alt);if(!p||p[0]<-10||p[0]>W+10||p[1]<-10||p[1]>H+10) return;
+          const p=toXY(star.az,-star.alt);if(!p||p[0]<-10||p[0]>normalStarReflectionRight||p[1]<-10||p[1]>normalStarReflectionBottom) continue;
           if(reflectedBrightness<.42){
             // 暗い星は3個の個別グラデーションを作らず、見た目がほぼ同じ短い1本線で描く。
-            const length=(1.5+reflectedBrightness*11)*2*(W/1200);
+            const length=(1.5+reflectedBrightness*11)*2*reflectionCanvasScale;
             ctx.strokeStyle=`rgba(238,243,255,${clamp(vis*(.10+reflectedBrightness*.48)*fadeIn,0,.34)})`;
-            ctx.lineWidth=(.65+reflectedBrightness*.8)*(W/1200);ctx.lineCap="round";
+            ctx.lineWidth=(.65+reflectedBrightness*.8)*reflectionCanvasScale;ctx.lineCap="round";
             ctx.beginPath();ctx.moveTo(p[0],p[1]-length*.38);ctx.lineTo(p[0],p[1]+length*.62);ctx.stroke();
           }else{
             drawCelestialReflection(p,reflectedBrightness,"238,243,255",1.44,fadeIn);
           }
-        });
+        }
         ctx.restore();
+        }
 
         // 惑星の反射。金星・木星を最も強く、肉眼で暗い外惑星は控えめにする。
         if(planetsVisible){
