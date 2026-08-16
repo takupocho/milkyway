@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="540-world-coast-agree";
+const APP_VERSION="541-world-coastline";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8633,7 +8633,7 @@ const TERRAIN_DISTANCE_BANDS=[
    v2: レイマーチ用の rayGrid を追加。欠損もnullで詰めて添字=距離番号に揃えた。
    v3: rayGrid へ富士山の高密度点と既知の山頂標高を距離順に差し込むようにした。
        方位ごとに点数が変わるため、方位間の補間は距離で対応付ける。 */
-const TERRAIN_CACHE_FORMAT=3;
+const TERRAIN_CACHE_FORMAT=4; // v541: 海岸線データを保存対象へ加えた
 function terrainCacheId(key){ return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}`; }
 function terrainDestination(lat,lon,bearingDeg,distanceKm){
   const R=6371,br=bearingDeg*D2R,p1=lat*D2R,l1=lon*D2R,d=distanceKm/R;
@@ -8812,6 +8812,75 @@ function worldBuildWaterMask(lat,lon,rings){
     }
   });
   worldWaterMs=performance.now()-t0;
+}
+/* 海マスク。海岸線(natural=coastline)は閉じていない線の集まりなので、
+   ポリゴン塗りつぶしがそのまま使えない。そこで走査線ごとに
+   「行の左端が海かどうか」を既存の判定器で1回だけ求め、あとは
+   海岸線との交点で内外を反転させながら1行ぶん塗る。
+   1行1回×640行なので、格子41万マスを1つずつ判定するより桁違いに軽い。
+
+   これが要る理由: この海岸ではDEMがz10(1画素127m)しか値を持たず、
+   標高の欠損から岸を決めるとどうやっても127mの階段になる。
+   海岸線はベクタなのでメートル精度で岸が決まる。DEMは高さ専用にする。 */
+let worldSeaMask=null,worldSeaKey="",worldSeaMs=0,worldSeaSegments=0;
+function worldBuildSeaMask(lat,lon,ways){
+  const list=Array.isArray(ways)?ways:[];
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)},${list.length}`;
+  if(key===worldSeaKey) return;
+  worldSeaKey=key;
+  worldSeaMask=null;worldSeaSegments=0;
+  if(!list.length) return;
+  const t0=performance.now();
+  let classifier=null;
+  try{ classifier=createCoastlineSeaClassifier(lat,lon,list); }catch(error){ classifier=null; }
+  if(!classifier||!classifier.valid) return;
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R)),half=WORLD_WATER_SPAN_M/2;
+  const scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
+  const toGridX=pLon=>((pLon-lon)*mLon+half)*scale;
+  const toGridY=pLat=>(half-(pLat-lat)*111320)*scale;
+  // 海岸線の線分を格子座標へ落とす
+  const segs=[];
+  for(const way of list){
+    for(let i=1;i<way.length;i++){
+      const a=way[i-1],b=way[i];
+      segs.push([toGridX(a[1]),toGridY(a[0]),toGridX(b[1]),toGridY(b[0])]);
+    }
+  }
+  worldSeaSegments=segs.length;
+  if(!segs.length) return;
+  const mask=new Uint8Array(WORLD_WATER_GRID*WORLD_WATER_GRID);
+  const leftLon=lon-half/mLon;              // 行の左端(格子の外)の経度
+  for(let y=0;y<WORLD_WATER_GRID;y++){
+    const cy=y+.5;
+    const rowLat=lat+(half-cy/scale)/111320;
+    let sea=false;
+    try{ sea=!!classifier.classify(rowLat,leftLon); }catch(error){ sea=false; }
+    const xs=[];
+    for(let i=0;i<segs.length;i++){
+      const s=segs[i];
+      if((s[1]>cy)===(s[3]>cy)) continue;
+      xs.push(s[0]+(cy-s[1])/(s[3]-s[1])*(s[2]-s[0]));
+    }
+    xs.sort((m,n)=>m-n);
+    let x=0,ci=0;
+    while(x<WORLD_WATER_GRID){
+      const next=ci<xs.length?Math.min(WORLD_WATER_GRID,Math.max(0,Math.round(xs[ci]))):WORLD_WATER_GRID;
+      if(sea){ const base=y*WORLD_WATER_GRID; for(let px=x;px<next;px++) mask[base+px]=1; }
+      x=next;
+      if(ci<xs.length){ sea=!sea;ci++; } else break;
+    }
+  }
+  worldSeaMask=mask;
+  worldSeaMs=performance.now()-t0;
+}
+function worldSeaAt(lat,lon){
+  if(!worldSeaMask||!worldWaterOrigin) return null;   // 海岸線が無い＝判断できない
+  const mLon=Math.max(1,111320*Math.cos(worldWaterOrigin.lat*D2R));
+  const half=WORLD_WATER_SPAN_M/2,scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
+  const gx=((lon-worldWaterOrigin.lon)*mLon+half)*scale|0;
+  const gy=((half-(lat-worldWaterOrigin.lat)*111320)*scale)|0;
+  if(gx<0||gy<0||gx>=WORLD_WATER_GRID||gy>=WORLD_WATER_GRID) return null;
+  return worldSeaMask[gy*WORLD_WATER_GRID+gx]===1;
 }
 function worldWaterAt(lat,lon){
   if(!worldWaterMask||!worldWaterOrigin) return false;
@@ -10067,6 +10136,11 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
         }
       }
     }catch(error){coastlineWays=null;}
+    /* 海岸線は世界座標の海マスクを作るのにも使う。resultObjへの後付けは
+       realTerrainState へ自動では伝わらない（Object.assignはこの非同期処理より前に
+       済んでいる）ため、明示的に渡しておく。 */
+    resultObj._osmCoastlineWays=Array.isArray(coastlineWays)?coastlineWays:null;
+    if(realTerrainState.key===key) realTerrainState._osmCoastlineWays=resultObj._osmCoastlineWays;
     const meshObserverWater=classifyObserverWaterFromNearGrid(resultObj.nearSurfaceGrid);
     resultObj.observerWaterEvidence.mesh=meshObserverWater;
     resultObj.observerWaterNearby=!!resultObj.observerAtSea||osmObserverWater.water||
@@ -14146,6 +14220,7 @@ function drawPhoto(ctx,s){
         if(!Number.isFinite(originLat)||!Number.isFinite(originLon)) return false;
         worldEnsureTiles(originLat,originLon);
         worldBuildWaterMask(originLat,originLon,realTerrainState._osmWaterRings);
+        worldBuildSeaMask(originLat,originLon,realTerrainState._osmCoastlineWays);
         const groundHere=worldHeightForDistance(originLat,originLon,0);
         if(!Number.isFinite(groundHere)&&!Number.isFinite(realTerrainState.observerElevation)) return false;
         const baseGround=Number.isFinite(groundHere)?groundHere:realTerrainState.observerElevation;
@@ -14210,18 +14285,21 @@ function drawPhoto(ctx,s){
           /* 前後の点と突き合わせて、真ん中の点の陸/海を確定して塗る。 */
           const resolvePrev=(nextHas,nextElev)=>{
             if(!hasPrev) return false;
-            let elev,water;
-            if(prevHas){
-              // 標高があっても、前後どちらとも繋がっていない孤立点は陸として採らない。
-              const supported=(hasPrev2&&prev2Has)||nextHas;
-              if(supported){ elev=prevElev;water=false; }
-              else{ elev=0;water=true; }
-            }else{
-              // 欠損でも、前後が陸なら海際の抜けとみなして両隣から埋める。
-              const surrounded=hasPrev2&&prev2Has&&nextHas;
-              if(surrounded){ elev=(prev2Elev+nextElev)/2;water=false; }
-              else{ elev=0;water=true; }
+            /* 陸/海は海岸線のマスクで決める(メートル精度)。
+               DEMの欠損は「高さが分からない」だけとして扱い、
+               前後に標高があれば埋め、無ければ0mとする。 */
+            let elev=prevElev;
+            if(!prevHas){
+              if(hasPrev2&&prev2Has&&nextHas) elev=(prev2Elev+nextElev)/2;
+              else if(hasPrev2&&prev2Has) elev=prev2Elev;
+              else if(nextHas) elev=nextElev;
+              else elev=0;
             }
+            const seaByCoast=worldSeaAt(prevLat,prevLon);
+            let water;
+            if(seaByCoast===null) water=!prevHas;      // 海岸線が無い地域は従来どおりDEMの欠損で判断
+            else water=seaByCoast;
+            if(water) elev=0;                          // 海面は0m
             if(!water&&worldWaterAt(prevLat,prevLon)) water=true;  // 湖・池はポリゴンで確定
             return paintSample(prevD,elev,water);
           };
