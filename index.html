@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="544-world-exact";
+const APP_VERSION="545-world-overlays";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14241,6 +14241,13 @@ function drawPhoto(ctx,s){
         const eyeElev=baseGround+eyeHeightAboveGroundM();
         const rays=worldRayCount();
         const cellW=W/rays;
+        /* 道路・線路・地面グリッド・等高線は「方位×距離の可視面」を必要とする。
+           層描画が作っていたものと同じ形の配列を、レイマーチのついでに書き出す。
+           光線を進めながら running max を距離目盛りへ写すだけなので追加の探索は無い。 */
+        const overlayLayerKm=TERRAIN_DISTANCES_KM, overlayLayerCount=overlayLayerKm.length;
+        const overlayColumns=new Array(rays);
+        const overlayAlt=new Float64Array(rays*overlayLayerCount);
+        const overlayWater=new Uint8Array(rays*overlayLayerCount);
         const wantMask=sharedTerrainProjectionPass!=="replay";
         if(worldImageW!==W||worldImageH!==H||!worldImageData){
           worldImageData=tctx.createImageData(W,H);
@@ -14253,6 +14260,7 @@ function drawPhoto(ctx,s){
         if(wantMask) worldMaskPixels.fill(0);
         const tanHalfH=Math.tan(s.fovH/2*D2R), tanHalfV=tanHalfH*(H/W);
         const pitchTan=Math.tan(s.facingAlt*D2R);
+        const bottomAltDeg=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
         const facingRad=s.facingAz*D2R;
         const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R));
         const growth=1.03;
@@ -14265,6 +14273,17 @@ function drawPhoto(ctx,s){
           const cosSpread=1/Math.sqrt(1+xNorm*xNorm); // 斜め方向の見かけ高度の補正
           const x0=Math.max(0,Math.floor(ray*cellW)), x1=Math.min(W,Math.ceil((ray+1)*cellW));
           let runMax=-Math.PI/2, yPrev=H, d=WORLD_MIN_STEP_M, step=WORLD_MIN_STEP_M*.6;
+          overlayColumns[ray]={az:norm360(azRad*R2D)};
+          let overlayIndex=0;                       // どの距離目盛りまで書き終えたか
+          let overlayAltDeg=bottomAltDeg, overlayWaterFlag=0;
+          const overlayAdvance=(distanceKm,altDeg,water)=>{
+            while(overlayIndex<overlayLayerCount&&overlayLayerKm[overlayIndex]<=distanceKm){
+              overlayAlt[ray*overlayLayerCount+overlayIndex]=overlayAltDeg;
+              overlayWater[ray*overlayLayerCount+overlayIndex]=overlayWaterFlag;
+              overlayIndex++;
+            }
+            overlayAltDeg=altDeg;overlayWaterFlag=water?1:0;
+          };
           /* 陸/海は1サンプルでは決めない。
              dem_pngは海際でよく欠損し、逆に海の上でも粗い段(z10・1画素127m)が
              飛び飛びで0.6mを返すことがある(熊野で実測)。1点で決めると、その孤立点が
@@ -14315,6 +14334,8 @@ function drawPhoto(ctx,s){
             else water=seaByCoast;
             if(water) elev=0;                          // 海面は0m
             if(!water&&worldWaterAt(prevLat,prevLon)) water=true;  // 湖・池はポリゴンで確定
+            const drop=prevD*prevD/(2*6371000*(7/6));
+            overlayAdvance(prevD/1000,Math.atan2(elev-eyeElev-drop,prevD)*R2D,water);
             return paintSample(prevD,elev,water);
           };
           while(d<WORLD_MAX_DIST_M){
@@ -14344,9 +14365,11 @@ function drawPhoto(ctx,s){
             d+=step;
           }
           resolvePrev(false,0);   // 最後の1点
+          overlayAdvance(Infinity,overlayAltDeg,overlayWaterFlag);   // 残りの距離目盛りを埋める
         }
         if(!painted) return false;
         tctx.putImageData(worldImageData,0,0);
+        drawGroundOverlays(overlayColumns,overlayAlt,overlayWater,overlayLayerKm,overlayLayerCount);
         if(wantMask){
           wmctx.globalCompositeOperation="source-over";
           wmctx.clearRect(0,0,W,H);
@@ -14371,6 +14394,396 @@ function drawPhoto(ctx,s){
          各層が画面下端まで塗るため被覆の隙間も原理的に出ない。
          塗る図形は数千枚から距離の層数ぶん（数十枚）へ減る。
          ========================================================= */
+      /* 地面の補助表示は層描画・世界座標レイマーチの両方から使う。
+         必要なのは「方位の並び」と「方位×距離の可視面(高度と水フラグ)」だけなので、
+         その4つを引数で受け取る形にして、描画方式に依存しないようにしてある。 */
+      /* ---------------------------------------------------------
+         地面の補助表示（v523）
+         従来の四角メッシュはカメラ基準（自分からの距離と方位）で引いていたため、
+         歩いても格子が一緒に動いてしまい、進んだ感じも距離感も出なかった。
+         ここでは世界に固定した2種類を足す。
+
+           地面グリッド … 東西南北10m間隔。歩くと手前へ流れて後ろへ抜ける。
+                          遠くほど間隔が詰まるので奥行きも出る。
+           等高線       … 標高1mごと。地面の形そのものを描くので起伏が読める。
+                          平坦地では線が出ない（＝平坦だと分かる）。
+
+         どちらも「その方位・その距離で実際に見えている高さ」と一致する点だけを描くので、
+         手前の地形に隠れる部分には出ない。
+         --------------------------------------------------------- */
+      function drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount){
+        if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) return;
+        const rangeM=groundOverlayRangeM();
+        /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
+           線が潰れて塗り潰しにしか見えず、本数ぶん重くもなる。
+           三脚の高さのままなら従来どおり10m格子・1m等高線になる。 */
+        const spacingM=niceStepM(rangeM/12,[WORLD_GRID_SPACING_M,20,50,100]);
+        const contourStepM=niceStepM(rangeM/120,[CONTOUR_INTERVAL_M,2,5,10,20]);
+        /* 見かけ高度は必ずここで計算し直す。rayGridに入っている alt は
+           地形を作った時点の視点(1.6m)で求めた値なので、上昇するとその角度は
+           もう地面を指しておらず、線だけが宙に浮いて画面外へ逃げてしまう。
+           地形本体(azimuthVisibleBandsのapparentAltOf)と同じ式に揃える。 */
+        const eyeElevationNow=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const altFromElevation=(elevation,metres)=>{
+          const m=Math.max(.1,metres);
+          return Math.atan2(elevation-eyeElevationNow-m*m/(2*6371000*(7/6)),m)*R2D;
+        };
+        const pointAlt=point=>Number.isFinite(point.baseElevation)
+          ? altFromElevation(point.baseElevation,point.distanceKm*1000)
+          : point.alt;
+        // 可視面の高さを引くための索引。層描画で作った altGrid をそのまま使う。
+        const columnStart=columns[0].az, columnSpan=columns[columns.length-1].az-columnStart;
+        const columnIndexAt=azDeg=>{
+          if(columnSpan<=0) return -1;
+          const f=(azDeg-columnStart)/columnSpan*(columns.length-1);
+          if(!Number.isFinite(f)) return -1;
+          return clamp(Math.round(f),0,columns.length-1);
+        };
+        /* 水面には線を引かない。等高線と揃えるためでもあるが、
+           水面にはこのあと反射が重ねられるので描いても隠れて消える。 */
+        const visibleWaterAt=(azDeg,distanceKm)=>{
+          const c=columnIndexAt(azDeg);
+          if(c<0) return false;
+          let k=0;
+          while(k<layerCount-1&&layerKm[k]<distanceKm) k++;
+          return !!waterGrid[c*layerCount+k];
+        };
+        const visibleAltAt=(azDeg,distanceKm)=>{
+          const c=columnIndexAt(azDeg);
+          if(c<0) return null;
+          /* 「その点より手前」の可視面と比べる。層の目盛りは足元で5m刻みと粗く、
+             近距離ほど1層あたりの高度差が大きいので、点の距離を含む層を使うと
+             自分自身より奥の高さと比べてしまい、平らな地面まで隠れている判定になる。 */
+          let k=-1;
+          while(k+1<layerCount&&layerKm[k+1]<distanceKm) k++;
+          if(k<0) return null; // 最寄りの層より手前＝遮るものが無い
+          return altGrid[c*layerCount+k];
+        };
+        /* 遠いほど薄くする。1本のPath2Dでは濃さを1つしか指定できないので、
+           距離でバケツ分けし、バケツごとに濃さを変えて描く。
+           いちばん外側が0に近づくので、範囲の切れ目も線ではなく自然に消える。 */
+        const FADE_BUCKETS=10;
+        const bucketOf=distanceM=>clamp(Math.floor(distanceM/rangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
+        /* 手前をはっきり、外側へ向けて連続的に消す。切れ目で急に消えないよう指数はゆるめ。
+           薄くなるぶん手前が弱く見えるので、下の基準の濃さを少し上げて釣り合わせている。 */
+        const fadeOfBucket=index=>Math.pow(1-(index+.5)/FADE_BUCKETS,1.2);
+        const newPaths=()=>Array.from({length:FADE_BUCKETS},()=>new Path2D());
+        const gridPaths=worldGridVisible?newPaths():null;
+        const contourPaths=contourLinesVisible?newPaths():null;
+        /* 道路は足元の補助表示より遠くまで出す。距離の目盛りが1km以遠で急に粗くなり、
+           それ以上は地面にめり込むので、取得半径と同じ1.2kmで打ち切る。 */
+        const roadRangeM=OSM_ROAD_RADIUS_KM*1000;
+        const roadBucketOf=distanceM=>clamp(Math.floor(distanceM/roadRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
+        /* 道路は「線」ではなく実寸の幅を持った面(リボン)として貼る。
+           左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
+           路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
+           破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
+        const roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
+        const roadCentrePaths=roadPaths?newPaths():null;
+        const railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
+        const railTiePaths=railPaths?newPaths():null;
+        // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
+        const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
+
+        if(gridPaths){
+          /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
+             10mの倍数に固定するので、歩いても線は地面に残ったままになる。 */
+          const spacing=spacingM, sampleM=clamp(spacing/5,2,20);
+          /* 格子を世界に固定する。観測地点からの相対位置で刻むとカメラと一緒に動いて
+             しまうので、緯度経度から求めた絶対座標が spacing の倍数になる位置に線を置く。
+             こうすると歩いたぶんだけ格子が手前へ流れ、進んだ距離が目で分かる。 */
+          const originLat=+el.lat.value, originLon=+el.lon.value;
+          const eastOriginM=originLon*111320*Math.cos(originLat*D2R);
+          const northOriginM=originLat*111320; // stepObserver と同じ換算にして歩いても格子がずれないようにする
+          const phaseFor=originM=>{
+            const r=((-originM+rangeM)%spacing+spacing)%spacing;
+            return -rangeM+r;
+          };
+          const axisPhase=[phaseFor(eastOriginM),phaseFor(northOriginM)];
+          for(let axis=0;axis<2;axis++){
+            for(let offset=axisPhase[axis];offset<=rangeM+.001;offset+=spacing){
+              let previous=null;
+              for(let along=-rangeM;along<=rangeM+.001;along+=sampleM){
+                const eastM=axis===0?offset:along;
+                const northM=axis===0?along:offset;
+                const distanceM=Math.hypot(eastM,northM);
+                if(distanceM<1||distanceM>rangeM){previous=null;continue;}
+                const az=norm360(atan2d(eastM,northM));
+                const distanceKm=distanceM/1000;
+                if(visibleWaterAt(az,distanceKm)){previous=null;continue;}
+                const elevation=rayBaseElevationAt(az,distanceKm);
+                const alt=Number.isFinite(elevation)
+                  ? altFromElevation(elevation,distanceM)
+                  : rayAltAt(az,distanceKm);
+                if(!Number.isFinite(alt)){previous=null;continue;}
+                const surface=visibleAltAt(az,distanceKm);
+                // 手前の地形に隠れている点は描かない。
+                if(Number.isFinite(surface)&&alt<surface-.15){previous=null;continue;}
+                const p=toXY(az,alt);
+                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){previous=null;continue;}
+                if(previous&&Math.abs(p[0]-previous[0])<W*.5){
+                  const path=gridPaths[bucketOf(distanceM)];
+                  path.moveTo(previous[0],previous[1]);path.lineTo(p[0],p[1]);
+                }
+                previous=p;
+              }
+            }
+          }
+        }
+
+        if(contourPaths){
+          /* 標高が等高線の間隔の倍数をまたぐ位置を、レイ上で拾って線にする。
+             隣り合う方位の同じ標高どうしを繋ぐ。距離が大きく離れる組は繋がない
+             （谷を挟んだ別の斜面と誤って結ばないため）。 */
+          const grid=realTerrainState.rayGrid;
+          const azStart=Math.floor(columnStart),azEnd=Math.ceil(columns[columns.length-1].az);
+          let previousCrossings=null;
+          for(let azInt=azStart;azInt<=azEnd;azInt++){
+            const idx=((azInt%360)+360)%360;
+            const row=grid&&grid[idx];
+            const crossings=[];
+            if(row){
+              let runningMax=-90;
+              for(let i=0;i<row.length-1;i++){
+                const a=row[i],b=row[i+1];
+                if(!a||!b) continue;
+                if(a.distanceKm*1000>rangeM) break;
+                const altA=pointAlt(a),altB=pointAlt(b);
+                if(altA>runningMax) runningMax=altA;
+                if(!Number.isFinite(a.baseElevation)||!Number.isFinite(b.baseElevation)) continue;
+                if(a.water||b.water) continue; // 水面には引かない
+                if(altB<runningMax-.15) continue; // 隠れている区間は飛ばす
+                const levelA=Math.floor(a.baseElevation/contourStepM);
+                const levelB=Math.floor(b.baseElevation/contourStepM);
+                if(levelA===levelB) continue;
+                const step=levelB>levelA?1:-1;
+                for(let level=levelA+(step>0?1:0);step>0?level<=levelB:level>levelB;level+=step){
+                  const target=level*contourStepM;
+                  const span=b.baseElevation-a.baseElevation;
+                  const f=Math.abs(span)>1e-6?clamp((target-a.baseElevation)/span,0,1):0;
+                  const distanceKm=lerp(a.distanceKm,b.distanceKm,f);
+                  if(distanceKm*1000>rangeM) continue;
+                  const alt=altFromElevation(target,distanceKm*1000);
+                  const p=toXY(azInt,alt);
+                  if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
+                  crossings.push({level,distanceKm,p});
+                }
+              }
+            }
+            if(previousCrossings){
+              for(const current of crossings){
+                let best=null,bestGap=Infinity;
+                for(const past of previousCrossings){
+                  if(past.level!==current.level) continue;
+                  const gap=Math.abs(past.distanceKm-current.distanceKm);
+                  if(gap<bestGap){bestGap=gap;best=past;}
+                }
+                // 距離が2割以上離れる組は別の斜面とみなして繋がない。
+                if(!best||bestGap>Math.max(.003,current.distanceKm*.2)) continue;
+                if(Math.abs(best.p[0]-current.p[0])>W*.5) continue;
+                const path=contourPaths[bucketOf(current.distanceKm*1000)];
+                path.moveTo(best.p[0],best.p[1]);path.lineTo(current.p[0],current.p[1]);
+              }
+            }
+            previousCrossings=crossings;
+          }
+        }
+
+        if(roadPaths||railPaths){
+          /* OSMの節点は直線区間だと100m以上離れているので、5mごとに刻んで
+             地形の起伏に沿わせる。高さはグリッドと同じくDEMの標高から計算する。 */
+          const originLat=+el.lat.value,originLon=+el.lon.value;
+          const metrePerDegLon=111320*Math.cos(originLat*D2R);
+          const sampleM=5;
+          const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
+          const TIE_INTERVAL_M=2;                // 枕木の間隔(実寸)
+          const pixelsPerDegree=W/Math.max(1,s.fovH);
+          /* 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
+             縁は世界座標で作るので、遠近法に正しく従った幅になる。 */
+          const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
+            const distanceM=Math.hypot(eastM,northM);
+            if(distanceM<.4||distanceM>roadRangeM) return null;
+            const az=norm360(atan2d(eastM,northM));
+            const distanceKm=distanceM/1000;
+            const elevation=rayBaseElevationAt(az,distanceKm);
+            if(!Number.isFinite(elevation)) return null;
+            const alt=altFromElevation(elevation,distanceM);
+            const surface=visibleAltAt(az,distanceKm);
+            if(Number.isFinite(surface)&&alt<surface-.15) return null; // 尾根の裏は出さない
+            /* 左右の縁は「路面は水平」とみなして中心と同じ標高を使う。
+               縁ごとに標高を引くと、DEMの粒より道幅が狭い場所で路面がねじれる。 */
+            const sides=[];
+            for(const sign of [1,-1]){
+              const ex=eastM+perpEast*halfWidth*sign, ny=northM+perpNorth*halfWidth*sign;
+              const edgeDistance=Math.max(1,Math.hypot(ex,ny));
+              const edgeAz=norm360(atan2d(ex,ny));
+              const edgeAlt=altFromElevation(elevation,edgeDistance);
+              const p=toXY(edgeAz,edgeAlt);
+              if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){sides.length=0;break;}
+              sides.push(p);
+            }
+            const centre=toXY(az,alt);
+            if(!centre||!Number.isFinite(centre[0])) return null;
+            /* 足元では道幅の見かけの角度が画角より広くなり、左右の縁が投影できない。
+               そこで断面ごと捨てると、立っている道が足元だけ丸ごと消えて
+               地面の緑で塗り潰されてしまう。縁が作れないときは、中心点から
+               画面上の法線方向へ道幅ぶんずらして代用する(はみ出しはCanvasが切る)。 */
+            const halfPx=Math.atan2(halfWidth,Math.max(.4,distanceM))*R2D*pixelsPerDegree;
+            return {left:sides[0]||null,right:sides[1]||null,centre,distanceM,halfPx};
+          };
+          /* 2つの断面から四角形の4隅を得る。縁が無い断面は画面上の法線で作る。 */
+          const ribbonCorners=(previous,current)=>{
+            let nx=current.centre[0]-previous.centre[0], ny=current.centre[1]-previous.centre[1];
+            const length=Math.hypot(nx,ny);
+            // 進行方向を90度回したものが道幅の向き。長さが取れなければ水平とみなす。
+            let ux=length>.001?-ny/length:1, uy=length>.001?nx/length:0;
+            const sideOf=(section,which)=>{
+              const real=which<0?section.left:section.right;
+              if(real) return real;
+              const sign=which<0?1:-1;
+              return [section.centre[0]+ux*section.halfPx*sign,section.centre[1]+uy*section.halfPx*sign];
+            };
+            return {pl:sideOf(previous,-1),cl:sideOf(current,-1),cr:sideOf(current,1),pr:sideOf(previous,1)};
+          };
+          /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
+             違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
+             模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
+          const buildRibbon=(ways,fillPaths,markPaths,markKind)=>{
+          for(const way of ways){
+            const halfWidth=way.widthM/2;
+            const points=way.points;
+            let previous=null;      // 直前のリボン断面
+            let travelM=0;          // 道に沿って進んだ実距離(センターラインの破線用)
+            for(let i=0;i<points.length-1;i++){
+              const ax=(points[i][1]-originLon)*metrePerDegLon,ay=(points[i][0]-originLat)*111320;
+              const bx=(points[i+1][1]-originLon)*metrePerDegLon,by=(points[i+1][0]-originLat)*111320;
+              const segmentM=Math.hypot(bx-ax,by-ay);
+              if(segmentM<.01) continue;
+              // 両端とも範囲外の区間は刻む前に捨てる(市街地で節点が数千になるため)。
+              if(Math.hypot(ax,ay)>roadRangeM+50&&Math.hypot(bx,by)>roadRangeM+50){previous=null;travelM+=segmentM;continue;}
+              // 進行方向を90度回した向きが道幅の方向。
+              const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
+              const perpEast=dirNorth, perpNorth=-dirEast;
+              /* 足元は1歩ぶんの距離で見かけが大きく変わるので、近い区間だけ細かく刻む。 */
+              const nearestM=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
+              const stepM=nearestM<30?1.5:sampleM;
+              const steps=Math.max(1,Math.ceil(segmentM/stepM));
+              for(let s=(i>0?1:0);s<=steps;s++){
+                const f=s/steps;
+                const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
+                const here=travelM+segmentM*f;
+                const current=edgePair(eastM,northM,perpEast,perpNorth,halfWidth);
+                if(!current){previous=null;continue;}
+                if(previous&&Math.abs(current.centre[0]-previous.centre[0])<W*.5){
+                  // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
+                  const bucket=roadBucketOf(current.distanceM);
+                  const path=fillPaths[bucket];
+                  const corner=ribbonCorners(previous,current);
+                  path.moveTo(corner.pl[0],corner.pl[1]);
+                  path.lineTo(corner.cl[0],corner.cl[1]);
+                  path.lineTo(corner.cr[0],corner.cr[1]);
+                  path.lineTo(corner.pr[0],corner.pr[1]);
+                  path.closePath();
+                  if(markKind==="centre"){
+                    // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
+                    const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
+                    if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
+                      markPaths[bucket].moveTo(previous.centre[0],previous.centre[1]);
+                      markPaths[bucket].lineTo(current.centre[0],current.centre[1]);
+                    }
+                  }else if(markKind==="ties"){
+                    // 枕木は実距離で等間隔。奥ほど詰まるので、そのまま奥行きの手がかりになる。
+                    if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(here/TIE_INTERVAL_M)){
+                      const tie=ribbonCorners(previous,current);
+                      markPaths[bucket].moveTo(tie.cl[0],tie.cl[1]);
+                      markPaths[bucket].lineTo(tie.cr[0],tie.cr[1]);
+                    }
+                  }
+                }
+                current.travel=here;
+                previous=current;
+              }
+              travelM+=segmentM;
+            }
+          }
+          };
+          if(roadPaths) buildRibbon(osmRoadState.ways,roadPaths,roadCentrePaths,"centre");
+          if(railPaths) buildRibbon(osmRailState.ways,railPaths,railTiePaths,"ties");
+        }
+
+        tctx.save();
+        tctx.lineWidth=1;tctx.lineJoin="round";
+        const strokeFaded=(paths,rgb,baseAlpha)=>{
+          const color=rgb.join(",");
+          for(let i=0;i<FADE_BUCKETS;i++){
+            const alpha=baseAlpha*fadeOfBucket(i);
+            if(alpha<.012) continue; // ここまで薄いと画面上では見えない
+            tctx.strokeStyle=`rgba(${color},${alpha.toFixed(3)})`;
+            tctx.stroke(paths[i]);
+          }
+        };
+        if(gridPaths){
+          // 夜は地面がほぼ黒なので、同じ濃さだと線だけが浮いて星より目立ってしまう。
+          strokeFaded(gridPaths,mixRGB([92,108,132],[36,52,32],terrainDayFactor),lerp(.14,.42,terrainDayFactor));
+        }
+        if(contourPaths){
+          // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
+          strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
+        }
+        if(roadPaths){
+          // アスファルトのグレー。夜は暗い路面、昼は明るい路面として見えるようにする。
+          const roadRGB=mixRGB([104,108,116],[132,132,130],terrainDayFactor);
+          const color=roadRGB.join(",");
+          const baseAlpha=lerp(.62,.86,terrainDayFactor);
+          // センターラインは路面より明るいグレー。
+          const centreRGB=mixRGB([158,162,170],[226,226,222],terrainDayFactor);
+          const centreColor=centreRGB.join(",");
+          for(let i=0;i<FADE_BUCKETS;i++){
+            const fade=roadFadeOfBucket(i);
+            if(fade<=0) continue;
+            const alpha=baseAlpha*fade;
+            if(alpha<.012) continue;
+            tctx.fillStyle=`rgba(${color},${alpha.toFixed(3)})`;
+            tctx.fill(roadPaths[i]);
+            const centreAlpha=lerp(.45,.8,terrainDayFactor)*fade;
+            if(centreAlpha>=.02){
+              tctx.strokeStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
+              tctx.lineWidth=Math.max(.8,1.6*fade);
+              tctx.stroke(roadCentrePaths[i]);
+              tctx.lineWidth=1;
+            }
+          }
+        }
+        if(railPaths){
+          // バラスト(道床)は道路より暗く、少し茶色寄りにして道路と見分けられるようにする。
+          const railRGB=mixRGB([84,80,76],[104,96,88],terrainDayFactor);
+          const railColor=railRGB.join(",");
+          const baseAlpha=lerp(.66,.88,terrainDayFactor);
+          const tieRGB=mixRGB([150,145,136],[58,50,42],terrainDayFactor);
+          const tieColor=tieRGB.join(",");
+          const pixelsPerDegree=W/Math.max(1,s.fovH);
+          for(let i=0;i<FADE_BUCKETS;i++){
+            const fade=roadFadeOfBucket(i);
+            if(fade<=0) continue;
+            const alpha=baseAlpha*fade;
+            if(alpha<.012) continue;
+            tctx.fillStyle=`rgba(${railColor},${alpha.toFixed(3)})`;
+            tctx.fill(railPaths[i]);
+            /* 枕木は画面上の間隔が詰まりすぎると模様が潰れて汚くなるだけなので、
+               2.5px以上あく距離帯だけ描く。 */
+            const centreM=Math.max(5,roadRangeM*(i+.5)/FADE_BUCKETS);
+            const tieSpacingPx=Math.atan2(2,centreM)*R2D*pixelsPerDegree;
+            const tieAlpha=lerp(.5,.75,terrainDayFactor)*fade;
+            if(tieSpacingPx>=2.5&&tieAlpha>=.02){
+              tctx.strokeStyle=`rgba(${tieColor},${tieAlpha.toFixed(3)})`;
+              tctx.lineWidth=Math.max(.8,1.4*fade);
+              tctx.stroke(railTiePaths[i]);
+              tctx.lineWidth=1;
+            }
+          }
+        }
+        tctx.restore();
+      }
       function drawLayeredTerrain(){
         const rayGrid=realTerrainState.rayGrid;
         if(!rayGrid||!rayGrid.length) return false;
@@ -14512,394 +14925,7 @@ function drawPhoto(ctx,s){
             tctx.restore();
           }
         }
-        /* ---------------------------------------------------------
-           地面の補助表示（v523）
-           従来の四角メッシュはカメラ基準（自分からの距離と方位）で引いていたため、
-           歩いても格子が一緒に動いてしまい、進んだ感じも距離感も出なかった。
-           ここでは世界に固定した2種類を足す。
-
-             地面グリッド … 東西南北10m間隔。歩くと手前へ流れて後ろへ抜ける。
-                            遠くほど間隔が詰まるので奥行きも出る。
-             等高線       … 標高1mごと。地面の形そのものを描くので起伏が読める。
-                            平坦地では線が出ない（＝平坦だと分かる）。
-
-           どちらも「その方位・その距離で実際に見えている高さ」と一致する点だけを描くので、
-           手前の地形に隠れる部分には出ない。
-           --------------------------------------------------------- */
-        function drawGroundOverlays(){
-          if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) return;
-          const rangeM=groundOverlayRangeM();
-          /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
-             線が潰れて塗り潰しにしか見えず、本数ぶん重くもなる。
-             三脚の高さのままなら従来どおり10m格子・1m等高線になる。 */
-          const spacingM=niceStepM(rangeM/12,[WORLD_GRID_SPACING_M,20,50,100]);
-          const contourStepM=niceStepM(rangeM/120,[CONTOUR_INTERVAL_M,2,5,10,20]);
-          /* 見かけ高度は必ずここで計算し直す。rayGridに入っている alt は
-             地形を作った時点の視点(1.6m)で求めた値なので、上昇するとその角度は
-             もう地面を指しておらず、線だけが宙に浮いて画面外へ逃げてしまう。
-             地形本体(azimuthVisibleBandsのapparentAltOf)と同じ式に揃える。 */
-          const eyeElevationNow=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
-          const altFromElevation=(elevation,metres)=>{
-            const m=Math.max(.1,metres);
-            return Math.atan2(elevation-eyeElevationNow-m*m/(2*6371000*(7/6)),m)*R2D;
-          };
-          const pointAlt=point=>Number.isFinite(point.baseElevation)
-            ? altFromElevation(point.baseElevation,point.distanceKm*1000)
-            : point.alt;
-          // 可視面の高さを引くための索引。層描画で作った altGrid をそのまま使う。
-          const columnStart=columns[0].az, columnSpan=columns[columns.length-1].az-columnStart;
-          const columnIndexAt=azDeg=>{
-            if(columnSpan<=0) return -1;
-            const f=(azDeg-columnStart)/columnSpan*(columns.length-1);
-            if(!Number.isFinite(f)) return -1;
-            return clamp(Math.round(f),0,columns.length-1);
-          };
-          /* 水面には線を引かない。等高線と揃えるためでもあるが、
-             水面にはこのあと反射が重ねられるので描いても隠れて消える。 */
-          const visibleWaterAt=(azDeg,distanceKm)=>{
-            const c=columnIndexAt(azDeg);
-            if(c<0) return false;
-            let k=0;
-            while(k<layerCount-1&&layerKm[k]<distanceKm) k++;
-            return !!waterGrid[c*layerCount+k];
-          };
-          const visibleAltAt=(azDeg,distanceKm)=>{
-            const c=columnIndexAt(azDeg);
-            if(c<0) return null;
-            /* 「その点より手前」の可視面と比べる。層の目盛りは足元で5m刻みと粗く、
-               近距離ほど1層あたりの高度差が大きいので、点の距離を含む層を使うと
-               自分自身より奥の高さと比べてしまい、平らな地面まで隠れている判定になる。 */
-            let k=-1;
-            while(k+1<layerCount&&layerKm[k+1]<distanceKm) k++;
-            if(k<0) return null; // 最寄りの層より手前＝遮るものが無い
-            return altGrid[c*layerCount+k];
-          };
-          /* 遠いほど薄くする。1本のPath2Dでは濃さを1つしか指定できないので、
-             距離でバケツ分けし、バケツごとに濃さを変えて描く。
-             いちばん外側が0に近づくので、範囲の切れ目も線ではなく自然に消える。 */
-          const FADE_BUCKETS=10;
-          const bucketOf=distanceM=>clamp(Math.floor(distanceM/rangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
-          /* 手前をはっきり、外側へ向けて連続的に消す。切れ目で急に消えないよう指数はゆるめ。
-             薄くなるぶん手前が弱く見えるので、下の基準の濃さを少し上げて釣り合わせている。 */
-          const fadeOfBucket=index=>Math.pow(1-(index+.5)/FADE_BUCKETS,1.2);
-          const newPaths=()=>Array.from({length:FADE_BUCKETS},()=>new Path2D());
-          const gridPaths=worldGridVisible?newPaths():null;
-          const contourPaths=contourLinesVisible?newPaths():null;
-          /* 道路は足元の補助表示より遠くまで出す。距離の目盛りが1km以遠で急に粗くなり、
-             それ以上は地面にめり込むので、取得半径と同じ1.2kmで打ち切る。 */
-          const roadRangeM=OSM_ROAD_RADIUS_KM*1000;
-          const roadBucketOf=distanceM=>clamp(Math.floor(distanceM/roadRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
-          /* 道路は「線」ではなく実寸の幅を持った面(リボン)として貼る。
-             左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
-             路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
-             破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
-          const roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
-          const roadCentrePaths=roadPaths?newPaths():null;
-          const railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
-          const railTiePaths=railPaths?newPaths():null;
-          // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
-          const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
-
-          if(gridPaths){
-            /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
-               10mの倍数に固定するので、歩いても線は地面に残ったままになる。 */
-            const spacing=spacingM, sampleM=clamp(spacing/5,2,20);
-            /* 格子を世界に固定する。観測地点からの相対位置で刻むとカメラと一緒に動いて
-               しまうので、緯度経度から求めた絶対座標が spacing の倍数になる位置に線を置く。
-               こうすると歩いたぶんだけ格子が手前へ流れ、進んだ距離が目で分かる。 */
-            const originLat=+el.lat.value, originLon=+el.lon.value;
-            const eastOriginM=originLon*111320*Math.cos(originLat*D2R);
-            const northOriginM=originLat*111320; // stepObserver と同じ換算にして歩いても格子がずれないようにする
-            const phaseFor=originM=>{
-              const r=((-originM+rangeM)%spacing+spacing)%spacing;
-              return -rangeM+r;
-            };
-            const axisPhase=[phaseFor(eastOriginM),phaseFor(northOriginM)];
-            for(let axis=0;axis<2;axis++){
-              for(let offset=axisPhase[axis];offset<=rangeM+.001;offset+=spacing){
-                let previous=null;
-                for(let along=-rangeM;along<=rangeM+.001;along+=sampleM){
-                  const eastM=axis===0?offset:along;
-                  const northM=axis===0?along:offset;
-                  const distanceM=Math.hypot(eastM,northM);
-                  if(distanceM<1||distanceM>rangeM){previous=null;continue;}
-                  const az=norm360(atan2d(eastM,northM));
-                  const distanceKm=distanceM/1000;
-                  if(visibleWaterAt(az,distanceKm)){previous=null;continue;}
-                  const elevation=rayBaseElevationAt(az,distanceKm);
-                  const alt=Number.isFinite(elevation)
-                    ? altFromElevation(elevation,distanceM)
-                    : rayAltAt(az,distanceKm);
-                  if(!Number.isFinite(alt)){previous=null;continue;}
-                  const surface=visibleAltAt(az,distanceKm);
-                  // 手前の地形に隠れている点は描かない。
-                  if(Number.isFinite(surface)&&alt<surface-.15){previous=null;continue;}
-                  const p=toXY(az,alt);
-                  if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){previous=null;continue;}
-                  if(previous&&Math.abs(p[0]-previous[0])<W*.5){
-                    const path=gridPaths[bucketOf(distanceM)];
-                    path.moveTo(previous[0],previous[1]);path.lineTo(p[0],p[1]);
-                  }
-                  previous=p;
-                }
-              }
-            }
-          }
-
-          if(contourPaths){
-            /* 標高が等高線の間隔の倍数をまたぐ位置を、レイ上で拾って線にする。
-               隣り合う方位の同じ標高どうしを繋ぐ。距離が大きく離れる組は繋がない
-               （谷を挟んだ別の斜面と誤って結ばないため）。 */
-            const grid=realTerrainState.rayGrid;
-            const azStart=Math.floor(columnStart),azEnd=Math.ceil(columns[columns.length-1].az);
-            let previousCrossings=null;
-            for(let azInt=azStart;azInt<=azEnd;azInt++){
-              const idx=((azInt%360)+360)%360;
-              const row=grid&&grid[idx];
-              const crossings=[];
-              if(row){
-                let runningMax=-90;
-                for(let i=0;i<row.length-1;i++){
-                  const a=row[i],b=row[i+1];
-                  if(!a||!b) continue;
-                  if(a.distanceKm*1000>rangeM) break;
-                  const altA=pointAlt(a),altB=pointAlt(b);
-                  if(altA>runningMax) runningMax=altA;
-                  if(!Number.isFinite(a.baseElevation)||!Number.isFinite(b.baseElevation)) continue;
-                  if(a.water||b.water) continue; // 水面には引かない
-                  if(altB<runningMax-.15) continue; // 隠れている区間は飛ばす
-                  const levelA=Math.floor(a.baseElevation/contourStepM);
-                  const levelB=Math.floor(b.baseElevation/contourStepM);
-                  if(levelA===levelB) continue;
-                  const step=levelB>levelA?1:-1;
-                  for(let level=levelA+(step>0?1:0);step>0?level<=levelB:level>levelB;level+=step){
-                    const target=level*contourStepM;
-                    const span=b.baseElevation-a.baseElevation;
-                    const f=Math.abs(span)>1e-6?clamp((target-a.baseElevation)/span,0,1):0;
-                    const distanceKm=lerp(a.distanceKm,b.distanceKm,f);
-                    if(distanceKm*1000>rangeM) continue;
-                    const alt=altFromElevation(target,distanceKm*1000);
-                    const p=toXY(azInt,alt);
-                    if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
-                    crossings.push({level,distanceKm,p});
-                  }
-                }
-              }
-              if(previousCrossings){
-                for(const current of crossings){
-                  let best=null,bestGap=Infinity;
-                  for(const past of previousCrossings){
-                    if(past.level!==current.level) continue;
-                    const gap=Math.abs(past.distanceKm-current.distanceKm);
-                    if(gap<bestGap){bestGap=gap;best=past;}
-                  }
-                  // 距離が2割以上離れる組は別の斜面とみなして繋がない。
-                  if(!best||bestGap>Math.max(.003,current.distanceKm*.2)) continue;
-                  if(Math.abs(best.p[0]-current.p[0])>W*.5) continue;
-                  const path=contourPaths[bucketOf(current.distanceKm*1000)];
-                  path.moveTo(best.p[0],best.p[1]);path.lineTo(current.p[0],current.p[1]);
-                }
-              }
-              previousCrossings=crossings;
-            }
-          }
-
-          if(roadPaths||railPaths){
-            /* OSMの節点は直線区間だと100m以上離れているので、5mごとに刻んで
-               地形の起伏に沿わせる。高さはグリッドと同じくDEMの標高から計算する。 */
-            const originLat=+el.lat.value,originLon=+el.lon.value;
-            const metrePerDegLon=111320*Math.cos(originLat*D2R);
-            const sampleM=5;
-            const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
-            const TIE_INTERVAL_M=2;                // 枕木の間隔(実寸)
-            const pixelsPerDegree=W/Math.max(1,s.fovH);
-            /* 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
-               縁は世界座標で作るので、遠近法に正しく従った幅になる。 */
-            const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
-              const distanceM=Math.hypot(eastM,northM);
-              if(distanceM<.4||distanceM>roadRangeM) return null;
-              const az=norm360(atan2d(eastM,northM));
-              const distanceKm=distanceM/1000;
-              const elevation=rayBaseElevationAt(az,distanceKm);
-              if(!Number.isFinite(elevation)) return null;
-              const alt=altFromElevation(elevation,distanceM);
-              const surface=visibleAltAt(az,distanceKm);
-              if(Number.isFinite(surface)&&alt<surface-.15) return null; // 尾根の裏は出さない
-              /* 左右の縁は「路面は水平」とみなして中心と同じ標高を使う。
-                 縁ごとに標高を引くと、DEMの粒より道幅が狭い場所で路面がねじれる。 */
-              const sides=[];
-              for(const sign of [1,-1]){
-                const ex=eastM+perpEast*halfWidth*sign, ny=northM+perpNorth*halfWidth*sign;
-                const edgeDistance=Math.max(1,Math.hypot(ex,ny));
-                const edgeAz=norm360(atan2d(ex,ny));
-                const edgeAlt=altFromElevation(elevation,edgeDistance);
-                const p=toXY(edgeAz,edgeAlt);
-                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){sides.length=0;break;}
-                sides.push(p);
-              }
-              const centre=toXY(az,alt);
-              if(!centre||!Number.isFinite(centre[0])) return null;
-              /* 足元では道幅の見かけの角度が画角より広くなり、左右の縁が投影できない。
-                 そこで断面ごと捨てると、立っている道が足元だけ丸ごと消えて
-                 地面の緑で塗り潰されてしまう。縁が作れないときは、中心点から
-                 画面上の法線方向へ道幅ぶんずらして代用する(はみ出しはCanvasが切る)。 */
-              const halfPx=Math.atan2(halfWidth,Math.max(.4,distanceM))*R2D*pixelsPerDegree;
-              return {left:sides[0]||null,right:sides[1]||null,centre,distanceM,halfPx};
-            };
-            /* 2つの断面から四角形の4隅を得る。縁が無い断面は画面上の法線で作る。 */
-            const ribbonCorners=(previous,current)=>{
-              let nx=current.centre[0]-previous.centre[0], ny=current.centre[1]-previous.centre[1];
-              const length=Math.hypot(nx,ny);
-              // 進行方向を90度回したものが道幅の向き。長さが取れなければ水平とみなす。
-              let ux=length>.001?-ny/length:1, uy=length>.001?nx/length:0;
-              const sideOf=(section,which)=>{
-                const real=which<0?section.left:section.right;
-                if(real) return real;
-                const sign=which<0?1:-1;
-                return [section.centre[0]+ux*section.halfPx*sign,section.centre[1]+uy*section.halfPx*sign];
-              };
-              return {pl:sideOf(previous,-1),cl:sideOf(current,-1),cr:sideOf(current,1),pr:sideOf(previous,1)};
-            };
-            /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
-               違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
-               模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
-            const buildRibbon=(ways,fillPaths,markPaths,markKind)=>{
-            for(const way of ways){
-              const halfWidth=way.widthM/2;
-              const points=way.points;
-              let previous=null;      // 直前のリボン断面
-              let travelM=0;          // 道に沿って進んだ実距離(センターラインの破線用)
-              for(let i=0;i<points.length-1;i++){
-                const ax=(points[i][1]-originLon)*metrePerDegLon,ay=(points[i][0]-originLat)*111320;
-                const bx=(points[i+1][1]-originLon)*metrePerDegLon,by=(points[i+1][0]-originLat)*111320;
-                const segmentM=Math.hypot(bx-ax,by-ay);
-                if(segmentM<.01) continue;
-                // 両端とも範囲外の区間は刻む前に捨てる(市街地で節点が数千になるため)。
-                if(Math.hypot(ax,ay)>roadRangeM+50&&Math.hypot(bx,by)>roadRangeM+50){previous=null;travelM+=segmentM;continue;}
-                // 進行方向を90度回した向きが道幅の方向。
-                const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
-                const perpEast=dirNorth, perpNorth=-dirEast;
-                /* 足元は1歩ぶんの距離で見かけが大きく変わるので、近い区間だけ細かく刻む。 */
-                const nearestM=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
-                const stepM=nearestM<30?1.5:sampleM;
-                const steps=Math.max(1,Math.ceil(segmentM/stepM));
-                for(let s=(i>0?1:0);s<=steps;s++){
-                  const f=s/steps;
-                  const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
-                  const here=travelM+segmentM*f;
-                  const current=edgePair(eastM,northM,perpEast,perpNorth,halfWidth);
-                  if(!current){previous=null;continue;}
-                  if(previous&&Math.abs(current.centre[0]-previous.centre[0])<W*.5){
-                    // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
-                    const bucket=roadBucketOf(current.distanceM);
-                    const path=fillPaths[bucket];
-                    const corner=ribbonCorners(previous,current);
-                    path.moveTo(corner.pl[0],corner.pl[1]);
-                    path.lineTo(corner.cl[0],corner.cl[1]);
-                    path.lineTo(corner.cr[0],corner.cr[1]);
-                    path.lineTo(corner.pr[0],corner.pr[1]);
-                    path.closePath();
-                    if(markKind==="centre"){
-                      // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
-                      const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
-                      if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
-                        markPaths[bucket].moveTo(previous.centre[0],previous.centre[1]);
-                        markPaths[bucket].lineTo(current.centre[0],current.centre[1]);
-                      }
-                    }else if(markKind==="ties"){
-                      // 枕木は実距離で等間隔。奥ほど詰まるので、そのまま奥行きの手がかりになる。
-                      if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(here/TIE_INTERVAL_M)){
-                        const tie=ribbonCorners(previous,current);
-                        markPaths[bucket].moveTo(tie.cl[0],tie.cl[1]);
-                        markPaths[bucket].lineTo(tie.cr[0],tie.cr[1]);
-                      }
-                    }
-                  }
-                  current.travel=here;
-                  previous=current;
-                }
-                travelM+=segmentM;
-              }
-            }
-            };
-            if(roadPaths) buildRibbon(osmRoadState.ways,roadPaths,roadCentrePaths,"centre");
-            if(railPaths) buildRibbon(osmRailState.ways,railPaths,railTiePaths,"ties");
-          }
-
-          tctx.save();
-          tctx.lineWidth=1;tctx.lineJoin="round";
-          const strokeFaded=(paths,rgb,baseAlpha)=>{
-            const color=rgb.join(",");
-            for(let i=0;i<FADE_BUCKETS;i++){
-              const alpha=baseAlpha*fadeOfBucket(i);
-              if(alpha<.012) continue; // ここまで薄いと画面上では見えない
-              tctx.strokeStyle=`rgba(${color},${alpha.toFixed(3)})`;
-              tctx.stroke(paths[i]);
-            }
-          };
-          if(gridPaths){
-            // 夜は地面がほぼ黒なので、同じ濃さだと線だけが浮いて星より目立ってしまう。
-            strokeFaded(gridPaths,mixRGB([92,108,132],[36,52,32],terrainDayFactor),lerp(.14,.42,terrainDayFactor));
-          }
-          if(contourPaths){
-            // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
-            strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
-          }
-          if(roadPaths){
-            // アスファルトのグレー。夜は暗い路面、昼は明るい路面として見えるようにする。
-            const roadRGB=mixRGB([104,108,116],[132,132,130],terrainDayFactor);
-            const color=roadRGB.join(",");
-            const baseAlpha=lerp(.62,.86,terrainDayFactor);
-            // センターラインは路面より明るいグレー。
-            const centreRGB=mixRGB([158,162,170],[226,226,222],terrainDayFactor);
-            const centreColor=centreRGB.join(",");
-            for(let i=0;i<FADE_BUCKETS;i++){
-              const fade=roadFadeOfBucket(i);
-              if(fade<=0) continue;
-              const alpha=baseAlpha*fade;
-              if(alpha<.012) continue;
-              tctx.fillStyle=`rgba(${color},${alpha.toFixed(3)})`;
-              tctx.fill(roadPaths[i]);
-              const centreAlpha=lerp(.45,.8,terrainDayFactor)*fade;
-              if(centreAlpha>=.02){
-                tctx.strokeStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
-                tctx.lineWidth=Math.max(.8,1.6*fade);
-                tctx.stroke(roadCentrePaths[i]);
-                tctx.lineWidth=1;
-              }
-            }
-          }
-          if(railPaths){
-            // バラスト(道床)は道路より暗く、少し茶色寄りにして道路と見分けられるようにする。
-            const railRGB=mixRGB([84,80,76],[104,96,88],terrainDayFactor);
-            const railColor=railRGB.join(",");
-            const baseAlpha=lerp(.66,.88,terrainDayFactor);
-            const tieRGB=mixRGB([150,145,136],[58,50,42],terrainDayFactor);
-            const tieColor=tieRGB.join(",");
-            const pixelsPerDegree=W/Math.max(1,s.fovH);
-            for(let i=0;i<FADE_BUCKETS;i++){
-              const fade=roadFadeOfBucket(i);
-              if(fade<=0) continue;
-              const alpha=baseAlpha*fade;
-              if(alpha<.012) continue;
-              tctx.fillStyle=`rgba(${railColor},${alpha.toFixed(3)})`;
-              tctx.fill(railPaths[i]);
-              /* 枕木は画面上の間隔が詰まりすぎると模様が潰れて汚くなるだけなので、
-                 2.5px以上あく距離帯だけ描く。 */
-              const centreM=Math.max(5,roadRangeM*(i+.5)/FADE_BUCKETS);
-              const tieSpacingPx=Math.atan2(2,centreM)*R2D*pixelsPerDegree;
-              const tieAlpha=lerp(.5,.75,terrainDayFactor)*fade;
-              if(tieSpacingPx>=2.5&&tieAlpha>=.02){
-                tctx.strokeStyle=`rgba(${tieColor},${tieAlpha.toFixed(3)})`;
-                tctx.lineWidth=Math.max(.8,1.4*fade);
-                tctx.stroke(railTiePaths[i]);
-                tctx.lineWidth=1;
-              }
-            }
-          }
-          tctx.restore();
-        }
-        drawGroundOverlays();
+        drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount);
         if(sharedTerrainProjectionPass!=="replay"){wmctx.globalCompositeOperation="source-over";}
         return painted>0;
       }
