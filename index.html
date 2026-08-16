@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="536-world-terrain";
+const APP_VERSION="537-world-faster";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8716,7 +8716,27 @@ function drawTerrainTopView(){
    ========================================================= */
 const WORLD_FIELD_ZOOMS=[14,12,10];       // dem_pngはz14まで。足元(約8m/px)/中距離(約32m)/遠景(約127m)
 const WORLD_FIELD_SWITCH_M=[1200,9000];   // この距離を超えたら次の段へ
-const worldFieldTiles=new Map();          // key: "z/x/y" -> Float32Array | null | "loading"
+/* 段ごとに独立したMapを持ち、キーは文字列ではなく数値にする。
+   レイマーチは1フレームで数十万回ここを引くので、"z/x/y"の文字列生成が
+   そのまま描画時間になっていた。さらに、同じ光線上の連続する点は
+   ほとんど同じタイルに入るため、直前に引いたタイルを1枚だけ覚えておく。 */
+const worldFieldLevels=new Map();         // zoom -> Map(numericKey -> Float32Array|null|"loading")
+const worldTileMemo=new Map();            // zoom -> {key,tile}
+function worldLevelMap(z){
+  let level=worldFieldLevels.get(z);
+  if(!level){ level=new Map(); worldFieldLevels.set(z,level); }
+  return level;
+}
+function worldTileKey(x,y){ return x*32768+y; }
+function worldTileFor(z,x,y){
+  const key=worldTileKey(x,y);
+  const memo=worldTileMemo.get(z);
+  if(memo&&memo.key===key) return memo.tile;
+  const tile=worldLevelMap(z).get(key);
+  const value=(tile&&tile!=="loading")?tile:null;
+  worldTileMemo.set(z,{key,tile:value});
+  return value;
+}
 let worldFieldPending=0;
 function worldDecodeTile(pixels){
   const out=new Float32Array(256*256);
@@ -8729,13 +8749,14 @@ function worldDecodeTile(pixels){
   return out;
 }
 function worldRequestTile(z,x,y){
-  const key=`${z}/${x}/${y}`;
-  if(worldFieldTiles.has(key)) return;
-  worldFieldTiles.set(key,"loading");
+  const level=worldLevelMap(z),key=worldTileKey(x,y);
+  if(level.has(key)) return;
+  level.set(key,"loading");
   worldFieldPending++;
-  loadGsiDemTile({z,x,y,key}).then(pixels=>{
-    worldFieldTiles.set(key,pixels?worldDecodeTile(pixels):null);
-  }).catch(()=>{ worldFieldTiles.set(key,null); }).finally(()=>{
+  loadGsiDemTile({z,x,y,key:`${z}/${x}/${y}`}).then(pixels=>{
+    level.set(key,pixels?worldDecodeTile(pixels):null);
+    worldTileMemo.delete(z);   // 記憶していた「未取得」を捨てる
+  }).catch(()=>{ level.set(key,null); }).finally(()=>{
     worldFieldPending--;
     if(worldFieldPending<=0){ drawPhoto._terrainRenderKey=null; if(typeof update==="function") update(); }
   });
@@ -8810,10 +8831,10 @@ function worldHeightAt(lat,lon,z){
   let sum=0,weight=0,haveTile=false;
   for(let j=0;j<2;j++) for(let i=0;i<2;i++){
     const gx=x0+i,gy=y0+j;
-    const tile=worldFieldTiles.get(`${z}/${Math.floor(gx/256)}/${Math.floor(gy/256)}`);
-    if(!tile||tile==="loading") continue;
+    const tile=worldTileFor(z,gx>>8,gy>>8);
+    if(!tile) continue;
     haveTile=true;   // タイルはある＝値がNaNなら「標高データなし＝海」
-    const v=tile[(((gy%256)+256)%256)*256+(((gx%256)+256)%256)];
+    const v=tile[(gy&255)*256+(gx&255)];
     if(!Number.isFinite(v)) continue;
     const w=(i?fx:1-fx)*(j?fy:1-fy);
     sum+=v*w;weight+=w;
@@ -14109,6 +14130,13 @@ function drawPhoto(ctx,s){
         const moving=(typeof walkActive==="function"&&walkActive())||walkBusy;
         return Math.max(200,Math.round(moving?W/3:W/1.5));
       }
+      /* 海の早期判定。dem_pngは海が「標高データなし」なので、粗い段(z10)で
+         データが無い場所は、細かい段を引くまでもなく海と決まる。
+         3段すべてを引く無駄が消えるので、海が広い場所ほど効く。 */
+      function worldLikelySea(lat,lon){
+        const coarse=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]);
+        return !worldHeightTileMissing&&!Number.isFinite(coarse);
+      }
       function drawWorldTerrain(){
         const originLat=+el.lat.value, originLon=+el.lon.value;
         if(!Number.isFinite(originLat)||!Number.isFinite(originLon)) return false;
@@ -14142,12 +14170,17 @@ function drawPhoto(ctx,s){
           let runMax=-Math.PI/2, yPrev=H, d=WORLD_MIN_STEP_M, step=WORLD_MIN_STEP_M*.6;
           while(d<WORLD_MAX_DIST_M){
             const pLat=originLat+cosAz*d/111320, pLon=originLon+sinAz*d/metrePerDegLon;
-            let elev=worldHeightForDistance(pLat,pLon,d);
-            if(worldHeightTileMissing){              // まだ取得できていない範囲は塗らずに飛ばす
-              step=Math.max(WORLD_MIN_STEP_M,step*growth);d+=step;continue;
+            let elev,noData;
+            if(worldLikelySea(pLat,pLon)){           // 粗い段で欠損＝海。細かい段は引かない
+              elev=0;noData=true;
+            }else{
+              elev=worldHeightForDistance(pLat,pLon,d);
+              if(worldHeightTileMissing){            // まだ取得できていない範囲は塗らずに飛ばす
+                step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));d+=step;continue;
+              }
+              noData=!Number.isFinite(elev);
+              if(noData) elev=0;                     // 標高データなし＝海
             }
-            const noData=!Number.isFinite(elev);
-            if(noData) elev=0;                       // 標高データなし＝海
             const water=noData||worldWaterAt(pLat,pLon);
             const drop=d*d/(2*6371000*(7/6));
             const alt=Math.atan2(elev-eyeElev-drop,d);
@@ -14167,7 +14200,9 @@ function drawPhoto(ctx,s){
               yPrev=Math.min(yPrev,yTop);
               runMax=alt;
             }
-            step=Math.max(WORLD_MIN_STEP_M,step*growth);
+            /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
+               稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
+            step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
             d+=step;
           }
         }
