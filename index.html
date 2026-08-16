@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="547-world-rock-fix";
+const APP_VERSION="548-rock-waterline";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14211,6 +14211,18 @@ function drawPhoto(ctx,s){
          動かしても地形データの作り直しが無いのが最大の狙い。
          ========================================================= */
       const WORLD_MIN_STEP_M=4, WORLD_MAX_DIST_M=90000;
+      /* 局所高精細データ(立巌岩など)は「岩の形」を出すためのもので、
+         陸/海の判定を置き換えるものではない。層描画の頃も水域では
+         局所データを使っていなかった(waterWeight<.5 の条件)。
+         レイマーチ化したときにこの条件が抜け、円の中で標高が取れた点を
+         すべて陸として塗っていた。
+         実測(立巌岩を模した半径50mの円): 円内で標高が取れた5,194点のうち、
+         海岸線が海と判定した1,921点の90%(1,722点)は標高1m未満、つまり
+         岩ではなく周りの海面だった。これを陸にしていたため、岩のまわりに
+         直径100mの陸が出ていた。移動中は光線が半分になり1本が2倍の幅を塗るので、
+         その面積がさらに約2.6倍に広がって「動かすと陸になる」ように見えていた。
+         海と分かっている場所では、水面より明らかに高い点だけを陸として採る。 */
+      const LOCAL_DETAIL_LAND_M=1.0;
       let worldImageData=null,worldPixels=null,worldImageW=0,worldImageH=0;
       /* 水面マスク。層描画では図形ごとに合成モードを切り替えて作っていたが、
          レイマーチでは塗った画素がそのまま水かどうか分かるので、
@@ -14310,7 +14322,7 @@ function drawPhoto(ctx,s){
              既存の地形生成が前後左右の合意を取っているのと同じ考え方で、
              ここでは光線に沿った前後の点と合意が取れたときだけ陸/海を確定する。
              そのため判定を1サンプル遅らせ、前の点を「その前」と「次」で挟んで決める。 */
-          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null,prevLocal=false;
+          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null,prevLocal=false,prevBaseHas=false;
           let hasPrev2=false,prev2Elev=0,prev2Has=false;
           const paintSample=(sd,sElev,sWater)=>{
             const drop=sd*sd/(2*6371000*(7/6));
@@ -14347,10 +14359,13 @@ function drawPhoto(ctx,s){
               else if(nextHas) elev=nextElev;
               else elev=0;
             }
-            const seaByCoast=prevLocal?false:prevSea;   // 局所高精細で拾った岩などは陸
+            // 局所高精細で水面より十分高い＝本物の岩。海面すれすれの点は海のまま。
+            const localIsLand=prevLocal&&elev>=LOCAL_DETAIL_LAND_M;
             let water;
-            if(seaByCoast===null) water=!prevHas;      // 海岸線が無い地域は従来どおりDEMの欠損で判断
-            else water=seaByCoast;
+            if(prevSea===true) water=!localIsLand;     // 海岸線が海と言う所は、岩だけ陸に戻す
+            else if(prevSea===false) water=false;      // 海岸線が陸と言う所はそのまま陸
+            else if(prevLocal) water=!prevBaseHas&&!localIsLand; // 海岸線が無い地域
+            else water=!prevHas;                       // 従来どおりDEMの欠損で判断
             if(water) elev=0;                          // 海面は0m
             if(!water&&worldWaterAt(prevLat,prevLon)) water=true;  // 湖・池はポリゴンで確定
             const drop=prevD*prevD/(2*6371000*(7/6));
@@ -14372,9 +14387,11 @@ function drawPhoto(ctx,s){
               const local=sampleLocalDetailElevation(sinAz*d,cosAz*d);
               if(local&&Number.isFinite(local.elevation)) localElev=local;
             }
+            let baseHas=false;
             if(localElev){
               const base=worldHeightForDistance(pLat,pLon,d);
-              elev=Number.isFinite(base)?lerp(base,localElev.elevation,localElev.blend):localElev.elevation;
+              baseHas=Number.isFinite(base);
+              elev=baseHas?lerp(base,localElev.elevation,localElev.blend):localElev.elevation;
               hasData=true;
             }else if(seaHere===true){
               elev=0;hasData=false;
@@ -14390,12 +14407,14 @@ function drawPhoto(ctx,s){
             }
             if(resolvePrev(hasData,elev)) break;
             hasPrev2=hasPrev;prev2Elev=prevElev;prev2Has=prevHas;
-            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;prevSea=seaHere;prevLocal=!!localElev;
+            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;prevSea=seaHere;prevLocal=!!localElev;prevBaseHas=baseHas;
             /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
                稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
             step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
-            if(d+step>localEnterM&&d<localExitM) step=Math.min(step,2.5); // 岩の区間だけ細かく
-            else if(d<localEnterM&&d+step>localEnterM) d=localEnterM-2.5; // 入口へ寄せる
+            /* 手前の判定を先に書かないと、円の40m手前から2.5m刻みで這ってしまう
+               (最初に書いた順序ではこちらの分岐へ入れなかった)。 */
+            if(d<localEnterM&&d+step>localEnterM){ d=localEnterM-2.5;step=2.5; } // 入口へ寄せる
+            else if(d>=localEnterM&&d<localExitM) step=Math.min(step,2.5);        // 岩の区間だけ細かく
             d+=step;
           }
           resolvePrev(false,0);   // 最後の1点
