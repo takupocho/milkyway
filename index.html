@@ -1243,17 +1243,33 @@
   }
   .drone-gimbal-btn.active{border-color:var(--core-amber);color:var(--core-amber);}
   .drone-gimbal-label{font:700 8px/1 'Inter',sans-serif;color:rgba(202,215,245,.7);text-shadow:0 1px 3px rgba(0,0,0,.9);}
+  /* 画面上部中央の情報の並び。上から「ドローン高度」「住所」。
+     時計はこの高さぶんだけ下へ逃がす(高さはJSで測って設定する)。 */
+  .sim-top-stack{
+    position:absolute;top:20px;left:0;right:0;z-index:9;
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    pointer-events:none;
+  }
   .drone-badge{
-    /* 左右中央。上部中央には時計があるので、その真下へ置く。 */
-    position:absolute;top:52px;left:50%;transform:translateX(-50%);z-index:9;pointer-events:none;
     padding:4px 9px;border-radius:9px;
     border:1px solid rgba(154,196,232,.55);background:rgba(12,20,38,.66);
     color:#cfe2ff;font:700 11px/1.25 'IBM Plex Mono',monospace;letter-spacing:.02em;
     text-shadow:0 1px 4px rgba(0,0,0,.9);white-space:nowrap;
   }
   .drone-badge[hidden]{display:none;}
+  .sim-address-label{
+    padding:4px 10px;border-radius:9px;pointer-events:none;
+    border:1px solid rgba(196,206,232,.4);background:rgba(12,16,30,.6);
+    color:rgba(232,238,252,.92);font:600 11px/1.25 'Inter','Noto Sans JP',sans-serif;letter-spacing:.02em;
+    text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:nowrap;
+    max-width:88%;overflow:hidden;text-overflow:ellipsis;
+  }
+  .sim-address-label[hidden]{display:none;}
+  body.ar-active .sim-top-stack{display:none;}
   @media (max-width:760px){
-    .drone-badge{top:44px;font-size:10px;padding:3px 8px;}
+    .sim-top-stack{top:14px;gap:4px;}
+    .drone-badge{font-size:10px;padding:3px 8px;}
+    .sim-address-label{font-size:10px;padding:3px 8px;}
   }
   body.ar-active .drone-badge{display:none;}
   .simulation-clock-overlay{
@@ -2932,6 +2948,7 @@
                 <button id="popupTerrainMeshBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">地形メッシュ</button>
                 <button id="popupWorldGridBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地面グリッド</button>
                 <button id="popupContourBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">等高線</button>
+                <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">リフレ</button>
                 <div class="display-popup-section-title">アニメーション</div>
@@ -2946,7 +2963,10 @@
               <video id="arCameraVideo" class="ar-camera-video" playsinline muted></video>
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
-              <div id="droneBadge" class="drone-badge" hidden></div>
+              <div class="sim-top-stack" id="simTopStack">
+                <div id="droneBadge" class="drone-badge" hidden></div>
+                <div id="simAddressLabel" class="sim-address-label" hidden></div>
+              </div>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
                 <div class="drone-gimbal" aria-label="カメラの仰角">
@@ -3290,7 +3310,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="526-badge-center";
+const APP_VERSION="528-address-roads";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4140,7 +4160,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -5490,6 +5510,7 @@ const WORLD_GRID_SPACING_M=10;  // 地面グリッドの間隔
 const CONTOUR_INTERVAL_M=1;     // 等高線の標高間隔
 let worldGridVisible=true;
 let contourLinesVisible=true;
+let roadLinesVisible=false; // 通信を伴うので既定はOFF
 
 /* 三脚に載せたカメラの地面からの高さ(m)。
    見かけの高度は atan((地物の標高 - カメラの標高) / 距離) なので、
@@ -5531,16 +5552,78 @@ function syncTripodHeightControl(){
     : base;
   syncDroneBadge();
 }
-/* 上昇中だけ画面左上に高度を出す。DOMの重ね表示なので保存写真には写らない。 */
+/* 上昇中だけ高度を出す。DOMの重ね表示なので保存写真には写らない。 */
 function syncDroneBadge(){
   if(!el.droneBadge) return;
   const flying=cameraRiseM>=.5;
   el.droneBadge.hidden=!flying;
-  if(!flying) return;
-  const ground=groundElevationM();
-  el.droneBadge.textContent=ground!==null
-    ? `ドローン 上空 ${Math.round(cameraRiseM)}m ／ 海抜 ${Math.round(ground+cameraRiseM)}m`
-    : `ドローン 上空 ${Math.round(cameraRiseM)}m`;
+  if(flying){
+    const ground=groundElevationM();
+    el.droneBadge.textContent=ground!==null
+      ? `ドローン 上空 ${Math.round(cameraRiseM)}m ／ 海抜 ${Math.round(ground+cameraRiseM)}m`
+      : `ドローン 上空 ${Math.round(cameraRiseM)}m`;
+  }
+  syncSimTopStack();
+}
+/* 上部の並びの高さを測って、時計をその下へ逃がす。
+   高度表示・住所は出たり消えたりするので、固定値ではなく実際の高さで決める。 */
+function syncSimTopStack(){
+  if(!el.simTopStack||!el.simulationClockOverlay) return;
+  const stackTop=parseFloat(getComputedStyle(el.simTopStack).top)||20;
+  const height=el.simTopStack.offsetHeight;
+  el.simulationClockOverlay.style.top=height>0?`${Math.round(stackTop+height+10)}px`:"";
+}
+/* 画面上部に出す現在地の住所。町名まで出したいので、市区町村までしか返さない
+   国土地理院のリバースジオコーダとは別に、OSM(Nominatim)へ問い合わせる。
+   通信が落ちた場合は、既存の「観測地」表示と同じ市区町村までを使う。 */
+let simAddressCache=new Map();
+let simAddressSeq=0;
+function setSimAddressLabel(text){
+  if(!el.simAddressLabel) return;
+  const value=(text||"").trim();
+  el.simAddressLabel.hidden=!value;
+  el.simAddressLabel.textContent=value;
+  syncSimTopStack();
+}
+/* 都道府県→郡→市区町村→区→町名 の順に組み立てる。
+   OSMは場所によって町名が入る欄が違う(quarter / neighbourhood / hamlet)ので順に拾い、
+   同じ語が二重に入らないよう重複を落とす。 */
+function composeJapaneseAddress(address){
+  if(!address) return "";
+  const candidates=[
+    address.province||address.state,
+    address.county,
+    address.city||address.town||address.village,
+    address.city_district,
+    address.suburb,
+    address.quarter||address.neighbourhood||address.hamlet
+  ];
+  const parts=[];
+  candidates.forEach(part=>{ if(part&&!parts.includes(part)) parts.push(part); });
+  return parts.join("");
+}
+async function updateSimAddress(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  // 約100m四方でまとめる。歩いても飛んでも問い合わせが増え続けないようにする。
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if(simAddressCache.has(key)){ setSimAddressLabel(simAddressCache.get(key)); return; }
+  const mySeq=++simAddressSeq;
+  try{
+    // zoom=18まで下げないと町名(大字・丁目)が返ってこない。
+    const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=ja&lat=${lat}&lon=${lon}`;
+    const res=await fetch(url,{headers:{Accept:"application/json"}});
+    if(!res.ok) throw new Error(`nominatim ${res.status}`);
+    const data=await res.json();
+    const text=composeJapaneseAddress(data&&data.address);
+    if(!text) throw new Error("no address");
+    simAddressCache.set(key,text);
+    if(mySeq===simAddressSeq) setSimAddressLabel(text);
+  }catch(error){
+    // 取得できないときは、既に表示している市区町村までの名前で代用する。
+    if(mySeq!==simAddressSeq) return;
+    const fallback=(el.observedPlaceName&&el.observedPlaceName.textContent||"").trim();
+    setSimAddressLabel(/取得|エラー/.test(fallback)?"":fallback);
+  }
 }
 el.tripodHeight.addEventListener("input",()=>{
   syncTripodHeightControl();
@@ -5713,6 +5796,8 @@ function syncDisplayPopupControls(){
   el.popupWorldGridBtn.setAttribute("aria-pressed",String(worldGridVisible));
   el.popupContourBtn.classList.toggle("active",contourLinesVisible);
   el.popupContourBtn.setAttribute("aria-pressed",String(contourLinesVisible));
+  el.popupRoadBtn.classList.toggle("active",roadLinesVisible);
+  el.popupRoadBtn.setAttribute("aria-pressed",String(roadLinesVisible));
   el.popupWaterBoundaryBtn.classList.toggle("active",waterLandBoundaryVisible);
   el.popupWaterBoundaryBtn.setAttribute("aria-pressed",String(waterLandBoundaryVisible));
   el.popupReflectionBtn.classList.toggle("active",waterReflectionEnabled);
@@ -5750,6 +5835,13 @@ el.popupMoonPathBtn.addEventListener("click",()=>{
 });
 el.popupWorldGridBtn.addEventListener("click",()=>{
   worldGridVisible=!worldGridVisible;
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupRoadBtn.addEventListener("click",()=>{
+  roadLinesVisible=!roadLinesVisible;
+  // ONにした時点で取りに行く。OFFのままなら通信そのものが発生しない。
+  if(roadLinesVisible) requestOsmRoads(+el.lat.value,+el.lon.value);
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
@@ -6886,6 +6978,7 @@ function collectPersistedSettings(){
     terrainMeshLinesVisible:terrainMeshLinesVisible,
     worldGridVisible:worldGridVisible,
     contourLinesVisible:contourLinesVisible,
+    roadLinesVisible:roadLinesVisible,
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
@@ -6988,6 +7081,7 @@ async function loadPersistedSettings(){
     terrainMeshLinesVisible=hasGroundOverlaySettings?!!s.terrainMeshLinesVisible:false;
     worldGridVisible=s.worldGridVisible!==false;
     contourLinesVisible=s.contourLinesVisible!==false;
+    roadLinesVisible=!!s.roadLinesVisible;
     if(s.tripodHeight!==undefined){
       const saved=Math.round(+s.tripodHeight); // 0cmを160cmへ化けさせないため || は使わない
       el.tripodHeight.value=clamp(Number.isFinite(saved)?saved:160,0,200);
@@ -7252,6 +7346,7 @@ function setObservedPlaceDisplay(text, isStatus){
 }
 async function reverseGeocodeAndShow(lat, lon){
   const mySeq = ++reverseGeocodeSeq; // 連続クリック時に古い結果で上書きされないようにする
+  updateSimAddress(lat,lon);         // 画面上部の住所表示(町名まで)も同じ機会に更新する
   el.observedPlaceName.style.display="block";
   setObservedPlaceDisplay("取得中…", true);
   try{
@@ -8928,6 +9023,68 @@ function parseOsmCoastlineWays(data){
     elem.type==="way"&&elem.tags?.natural==="coastline"&&Array.isArray(elem.geometry)
   ).map(elem=>elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon])).filter(points=>points.length>=2);
 }
+/* ===== 道路(OSM highway) =====
+   撮影地点までのアクセス、機材を担ぐ距離、車のヘッドライトが来る向きを掴むための簡易表示。
+   水域と違って地形データには一切焼き込まず、描画時に線を重ねるだけなので、
+   地形の作り直しやキャッシュ整合の心配が要らない。
+   高さはDEMから拾うため、橋は谷へ垂れ下がる。トンネルは山の上に線が乗るので捨てる。 */
+const OSM_ROAD_RADIUS_KM=1.2;   // これ以遠はDEMの距離目盛りが粗く、地面にめり込むため出さない
+const osmRoadCache=new Map();
+// 種別ごとのおおよその幅(m)。ここに載っている種別だけを描く(歩道・農道などは除外)。
+const ROAD_CLASS_WIDTH_M={
+  motorway:12,motorway_link:9,trunk:11,trunk_link:8,primary:9,primary_link:7,
+  secondary:8,secondary_link:6,tertiary:6.5,tertiary_link:5,
+  unclassified:5,residential:5,living_street:4.5
+};
+function parseOsmRoadWays(data){
+  return (data.elements||[]).filter(elem=>
+    elem.type==="way"&&Array.isArray(elem.geometry)&&elem.tags&&
+    ROAD_CLASS_WIDTH_M[elem.tags.highway]&&
+    elem.tags.tunnel!=="yes"&&elem.tags.tunnel!=="building_passage"&&elem.tags.covered!=="yes"
+  ).map(elem=>({
+    widthM:ROAD_CLASS_WIDTH_M[elem.tags.highway],
+    points:elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon])
+  })).filter(way=>way.points.length>=2);
+}
+async function fetchOsmRoadWaysNetwork(query){
+  try{ return parseOsmRoadWays(await firstSuccessfulWaterRequest(query)); }
+  catch(firstError){
+    await delayPromise(2200);
+    return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200));
+  }
+}
+function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
+  if(osmRoadCache.has(key)) return osmRoadCache.get(key);
+  const radiusM=Math.round(radiusKm*1000);
+  const query=`[out:json][timeout:35];way["highway"](around:${radiusM},${lat},${lon});out geom;`;
+  const promise=(async()=>{
+    const saved=await externalGeoCacheGet(`roads-v1:${key}`);
+    if(Array.isArray(saved)) return saved;
+    try{
+      const ways=await fetchOsmRoadWaysNetwork(query);
+      externalGeoCacheSet(`roads-v1:${key}`,ways);
+      return ways;
+    }catch(error){ return null; }
+  })();
+  osmRoadCache.set(key,promise);
+  return promise;
+}
+/* 取得結果の置き場。表示がONのときだけ取りに行く(Overpassの負荷を増やさないため)。 */
+let osmRoadState={key:"",ways:null,loading:false};
+function requestOsmRoads(lat,lon){
+  if(!roadLinesVisible||!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if(osmRoadState.key===key&&(osmRoadState.ways||osmRoadState.loading)) return;
+  osmRoadState={key,ways:null,loading:true};
+  fetchOsmRoadWays(lat,lon).then(ways=>{
+    if(osmRoadState.key!==key) return;
+    osmRoadState.ways=ways||[];
+    osmRoadState.loading=false;
+    drawPhoto._terrainRenderKey=null;
+    update();
+  }).catch(()=>{ if(osmRoadState.key===key) osmRoadState.loading=false; });
+}
 function createCoastlineSeaClassifier(originLat,originLon,ways){
   const cosLat=Math.cos(originLat*Math.PI/180),segments=[];
   let nearestSq=Infinity,nearestCross=0;
@@ -9493,6 +9650,7 @@ function requestRealTerrainProfile(lat,lon){
   if(cached){
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
+    requestOsmRoads(lat,lon);
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready","キャッシュ");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -9540,6 +9698,7 @@ function requestRealTerrainProfile(lat,lon){
     while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
+    requestOsmRoads(lat,lon);
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -10878,7 +11037,7 @@ function drawPhoto(ctx,s){
         localDetailMeshStepValue(),
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
-        (worldGridVisible?"g":"")+(contourLinesVisible?"c":""),
+        (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
       const terrainRenderKey=terrainGeometryKey;
@@ -13669,7 +13828,7 @@ function drawPhoto(ctx,s){
            手前の地形に隠れる部分には出ない。
            --------------------------------------------------------- */
         function drawGroundOverlays(){
-          if(!worldGridVisible&&!contourLinesVisible) return;
+          if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)) return;
           const rangeM=groundOverlayRangeM();
           /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
              線が潰れて塗り潰しにしか見えず、本数ぶん重くもなる。
@@ -13727,6 +13886,18 @@ function drawPhoto(ctx,s){
           const newPaths=()=>Array.from({length:FADE_BUCKETS},()=>new Path2D());
           const gridPaths=worldGridVisible?newPaths():null;
           const contourPaths=contourLinesVisible?newPaths():null;
+          /* 道路は足元の補助表示より遠くまで出す。距離の目盛りが1km以遠で急に粗くなり、
+             それ以上は地面にめり込むので、取得半径と同じ1.2kmで打ち切る。 */
+          const roadRangeM=OSM_ROAD_RADIUS_KM*1000;
+          const roadBucketOf=distanceM=>clamp(Math.floor(distanceM/roadRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
+          /* 道路は「線」ではなく実寸の幅を持った面(リボン)として貼る。
+             左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
+             路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
+             破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
+          const roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
+          const roadCentrePaths=roadPaths?newPaths():null;
+          // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
+          const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
 
           if(gridPaths){
             /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
@@ -13832,6 +14003,86 @@ function drawPhoto(ctx,s){
             }
           }
 
+          if(roadPaths){
+            /* OSMの節点は直線区間だと100m以上離れているので、5mごとに刻んで
+               地形の起伏に沿わせる。高さはグリッドと同じくDEMの標高から計算する。 */
+            const originLat=+el.lat.value,originLon=+el.lon.value;
+            const metrePerDegLon=111320*Math.cos(originLat*D2R);
+            const sampleM=5;
+            const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
+            // 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
+            const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
+              const distanceM=Math.hypot(eastM,northM);
+              if(distanceM<2||distanceM>roadRangeM) return null;
+              const az=norm360(atan2d(eastM,northM));
+              const distanceKm=distanceM/1000;
+              const elevation=rayBaseElevationAt(az,distanceKm);
+              if(!Number.isFinite(elevation)) return null;
+              const alt=altFromElevation(elevation,distanceM);
+              const surface=visibleAltAt(az,distanceKm);
+              if(Number.isFinite(surface)&&alt<surface-.15) return null; // 尾根の裏は出さない
+              /* 左右の縁は「路面は水平」とみなして中心と同じ標高を使う。
+                 縁ごとに標高を引くと、DEMの粒より道幅が狭い場所で路面がねじれる。 */
+              const sides=[];
+              for(const sign of [1,-1]){
+                const ex=eastM+perpEast*halfWidth*sign, ny=northM+perpNorth*halfWidth*sign;
+                const edgeDistance=Math.max(1,Math.hypot(ex,ny));
+                const edgeAz=norm360(atan2d(ex,ny));
+                const edgeAlt=altFromElevation(elevation,edgeDistance);
+                const p=toXY(edgeAz,edgeAlt);
+                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) return null;
+                sides.push(p);
+              }
+              const centre=toXY(az,alt);
+              if(!centre||!Number.isFinite(centre[0])) return null;
+              return {left:sides[0],right:sides[1],centre,distanceM};
+            };
+            for(const way of osmRoadState.ways){
+              const halfWidth=way.widthM/2;
+              const points=way.points;
+              let previous=null;      // 直前のリボン断面
+              let travelM=0;          // 道に沿って進んだ実距離(センターラインの破線用)
+              for(let i=0;i<points.length-1;i++){
+                const ax=(points[i][1]-originLon)*metrePerDegLon,ay=(points[i][0]-originLat)*111320;
+                const bx=(points[i+1][1]-originLon)*metrePerDegLon,by=(points[i+1][0]-originLat)*111320;
+                const segmentM=Math.hypot(bx-ax,by-ay);
+                if(segmentM<.01) continue;
+                // 両端とも範囲外の区間は刻む前に捨てる(市街地で節点が数千になるため)。
+                if(Math.hypot(ax,ay)>roadRangeM+50&&Math.hypot(bx,by)>roadRangeM+50){previous=null;travelM+=segmentM;continue;}
+                // 進行方向を90度回した向きが道幅の方向。
+                const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
+                const perpEast=dirNorth, perpNorth=-dirEast;
+                const steps=Math.max(1,Math.ceil(segmentM/sampleM));
+                for(let s=(i>0?1:0);s<=steps;s++){
+                  const f=s/steps;
+                  const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
+                  const here=travelM+segmentM*f;
+                  const current=edgePair(eastM,northM,perpEast,perpNorth,halfWidth);
+                  if(!current){previous=null;continue;}
+                  if(previous&&Math.abs(current.centre[0]-previous.centre[0])<W*.5){
+                    // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
+                    const path=roadPaths[roadBucketOf(current.distanceM)];
+                    path.moveTo(previous.left[0],previous.left[1]);
+                    path.lineTo(current.left[0],current.left[1]);
+                    path.lineTo(current.right[0],current.right[1]);
+                    path.lineTo(previous.right[0],previous.right[1]);
+                    path.closePath();
+                    // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
+                    const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
+                    if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
+                      const centrePath=roadCentrePaths[roadBucketOf(current.distanceM)];
+                      centrePath.moveTo(previous.centre[0],previous.centre[1]);
+                      centrePath.lineTo(current.centre[0],current.centre[1]);
+                    }
+                  }
+                  current.travel=here;
+                  previous=current;
+                }
+                travelM+=segmentM;
+              }
+            }
+          }
+
           tctx.save();
           tctx.lineWidth=1;tctx.lineJoin="round";
           const strokeFaded=(paths,rgb,baseAlpha)=>{
@@ -13850,6 +14101,30 @@ function drawPhoto(ctx,s){
           if(contourPaths){
             // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
             strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
+          }
+          if(roadPaths){
+            // アスファルトのグレー。夜は暗い路面、昼は明るい路面として見えるようにする。
+            const roadRGB=mixRGB([104,108,116],[132,132,130],terrainDayFactor);
+            const color=roadRGB.join(",");
+            const baseAlpha=lerp(.62,.86,terrainDayFactor);
+            // センターラインは路面より明るいグレー。
+            const centreRGB=mixRGB([158,162,170],[226,226,222],terrainDayFactor);
+            const centreColor=centreRGB.join(",");
+            for(let i=0;i<FADE_BUCKETS;i++){
+              const fade=roadFadeOfBucket(i);
+              if(fade<=0) continue;
+              const alpha=baseAlpha*fade;
+              if(alpha<.012) continue;
+              tctx.fillStyle=`rgba(${color},${alpha.toFixed(3)})`;
+              tctx.fill(roadPaths[i]);
+              const centreAlpha=lerp(.45,.8,terrainDayFactor)*fade;
+              if(centreAlpha>=.02){
+                tctx.strokeStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
+                tctx.lineWidth=Math.max(.8,1.6*fade);
+                tctx.stroke(roadCentrePaths[i]);
+                tctx.lineWidth=1;
+              }
+            }
           }
           tctx.restore();
         }
@@ -15643,7 +15918,12 @@ if(el.droneSticks){
 }
 update();
 if(monthTableVisible) renderMonthTable();
-loadPersistedSettings();
+/* 保存設定の読み込みは非同期なので、道路と住所は読み込み完了後に要求する。
+   先に呼ぶと、まだHTMLの初期値のままの緯度経度で問い合わせてしまう。 */
+loadPersistedSettings().then(()=>{
+  requestOsmRoads(+el.lat.value,+el.lon.value);
+  updateSimAddress(+el.lat.value,+el.lon.value);
+}).catch(()=>{});
 loadSavedLocations();
 loadLocalDetailPresets();
 
