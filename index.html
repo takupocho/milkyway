@@ -2949,6 +2949,7 @@
                 <button id="popupWorldGridBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地面グリッド</button>
                 <button id="popupContourBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">等高線</button>
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
+                <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">リフレ</button>
                 <div class="display-popup-section-title">アニメーション</div>
@@ -3310,7 +3311,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="528-address-roads";
+const APP_VERSION="529-railways";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4160,7 +4161,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -5511,6 +5512,7 @@ const CONTOUR_INTERVAL_M=1;     // 等高線の標高間隔
 let worldGridVisible=true;
 let contourLinesVisible=true;
 let roadLinesVisible=false; // 通信を伴うので既定はOFF
+let railLinesVisible=false;
 
 /* 三脚に載せたカメラの地面からの高さ(m)。
    見かけの高度は atan((地物の標高 - カメラの標高) / 距離) なので、
@@ -5798,6 +5800,8 @@ function syncDisplayPopupControls(){
   el.popupContourBtn.setAttribute("aria-pressed",String(contourLinesVisible));
   el.popupRoadBtn.classList.toggle("active",roadLinesVisible);
   el.popupRoadBtn.setAttribute("aria-pressed",String(roadLinesVisible));
+  el.popupRailBtn.classList.toggle("active",railLinesVisible);
+  el.popupRailBtn.setAttribute("aria-pressed",String(railLinesVisible));
   el.popupWaterBoundaryBtn.classList.toggle("active",waterLandBoundaryVisible);
   el.popupWaterBoundaryBtn.setAttribute("aria-pressed",String(waterLandBoundaryVisible));
   el.popupReflectionBtn.classList.toggle("active",waterReflectionEnabled);
@@ -5835,6 +5839,12 @@ el.popupMoonPathBtn.addEventListener("click",()=>{
 });
 el.popupWorldGridBtn.addEventListener("click",()=>{
   worldGridVisible=!worldGridVisible;
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupRailBtn.addEventListener("click",()=>{
+  railLinesVisible=!railLinesVisible;
+  if(railLinesVisible) requestOsmRails(+el.lat.value,+el.lon.value);
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
@@ -6979,6 +6989,7 @@ function collectPersistedSettings(){
     worldGridVisible:worldGridVisible,
     contourLinesVisible:contourLinesVisible,
     roadLinesVisible:roadLinesVisible,
+    railLinesVisible:railLinesVisible,
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
@@ -7082,6 +7093,7 @@ async function loadPersistedSettings(){
     worldGridVisible=s.worldGridVisible!==false;
     contourLinesVisible=s.contourLinesVisible!==false;
     roadLinesVisible=!!s.roadLinesVisible;
+    railLinesVisible=!!s.railLinesVisible;
     if(s.tripodHeight!==undefined){
       const saved=Math.round(+s.tripodHeight); // 0cmを160cmへ化けさせないため || は使わない
       el.tripodHeight.value=clamp(Number.isFinite(saved)?saved:160,0,200);
@@ -8939,7 +8951,7 @@ function parseOsmWaterRings(data){
 function delayPromise(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 // 取得先を一斉に叩かず、2.5秒ずつ時間差で開始する。最初に成功した応答を採用し、
 // 全て失敗した場合だけrejectする。混雑した1サーバーを長時間待ち続けないためのヘッジ取得。
-function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=2500){
+function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=2500,timeoutMs=18000){
   return new Promise((resolve,reject)=>{
     let failed=0,settled=false,lastError=null;
     endpoints.forEach((endpoint,index)=>{
@@ -8947,7 +8959,7 @@ function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,stagger
         if(index) await delayPromise(index*staggerMs);
         if(settled) return;
         try{
-          const data=await fetchOsmWaterRingsOnce(endpoint,query,18000);
+          const data=await fetchOsmWaterRingsOnce(endpoint,query,timeoutMs);
           if(!settled){settled=true;resolve(data);}
         }catch(error){
           lastError=error;failed++;
@@ -9046,11 +9058,14 @@ function parseOsmRoadWays(data){
     points:elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon])
   })).filter(way=>way.points.length>=2);
 }
+/* Overpassの応答は混み具合で17秒を超えることがあり、水域と同じ18秒では取りこぼす。
+   道路・線路は表示を待たせても支障が無いので、待ち時間を長めに取る。 */
+const OSM_LINE_TIMEOUT_MS=40000;
 async function fetchOsmRoadWaysNetwork(query){
-  try{ return parseOsmRoadWays(await firstSuccessfulWaterRequest(query)); }
+  try{ return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS)); }
   catch(firstError){
     await delayPromise(2200);
-    return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200));
+    return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200,OSM_LINE_TIMEOUT_MS));
   }
 }
 function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
@@ -9065,7 +9080,10 @@ function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
       const ways=await fetchOsmRoadWaysNetwork(query);
       externalGeoCacheSet(`roads-v1:${key}`,ways);
       return ways;
-    }catch(error){ return null; }
+    }catch(error){
+      osmRoadCache.delete(key); // 失敗した約束を残すと、以後ずっと空のまま返ってしまう
+      return null;
+    }
   })();
   osmRoadCache.set(key,promise);
   return promise;
@@ -9079,11 +9097,74 @@ function requestOsmRoads(lat,lon){
   osmRoadState={key,ways:null,loading:true};
   fetchOsmRoadWays(lat,lon).then(ways=>{
     if(osmRoadState.key!==key) return;
-    osmRoadState.ways=ways||[];
+    // 取得失敗(null)は「道路が無い」ではないので、空配列にせず未取得のまま残して次の機会に再挑戦する。
+    osmRoadState.ways=Array.isArray(ways)?ways:null;
     osmRoadState.loading=false;
+    if(!osmRoadState.ways) return;
     drawPhoto._terrainRenderKey=null;
     update();
   }).catch(()=>{ if(osmRoadState.key===key) osmRoadState.loading=false; });
+}
+/* ===== 線路(OSM railway) =====
+   道路と同じ仕組み。幅はバラスト(道床)の幅とみなし、複線は約1.9倍にする。 */
+const OSM_RAIL_RADIUS_KM=1.2;
+const osmRailCache=new Map();
+const RAIL_CLASS_WIDTH_M={rail:4.2,light_rail:3.6,narrow_gauge:3.2,tram:3.2,subway:3.6,monorail:3.2,funicular:3.2};
+function parseOsmRailWays(data){
+  return (data.elements||[]).filter(elem=>
+    elem.type==="way"&&Array.isArray(elem.geometry)&&elem.tags&&
+    RAIL_CLASS_WIDTH_M[elem.tags.railway]&&
+    elem.tags.tunnel!=="yes"&&elem.tags.covered!=="yes"
+  ).map(elem=>{
+    const tracks=parseInt(elem.tags.tracks,10);
+    const multiplier=Number.isFinite(tracks)&&tracks>1?1+(tracks-1)*.9:1;
+    return {
+      widthM:RAIL_CLASS_WIDTH_M[elem.tags.railway]*multiplier,
+      points:elem.geometry.filter(Boolean).map(pt=>[pt.lat,pt.lon])
+    };
+  }).filter(way=>way.points.length>=2);
+}
+async function fetchOsmRailWaysNetwork(query){
+  try{ return parseOsmRailWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS)); }
+  catch(firstError){
+    await delayPromise(2200);
+    return parseOsmRailWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200,OSM_LINE_TIMEOUT_MS));
+  }
+}
+function fetchOsmRailWays(lat,lon,radiusKm=OSM_RAIL_RADIUS_KM){
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
+  if(osmRailCache.has(key)) return osmRailCache.get(key);
+  const radiusM=Math.round(radiusKm*1000);
+  const query=`[out:json][timeout:35];way["railway"~"^(rail|light_rail|narrow_gauge|tram|subway|monorail|funicular)$"](around:${radiusM},${lat},${lon});out geom;`;
+  const promise=(async()=>{
+    const saved=await externalGeoCacheGet(`rails-v1:${key}`);
+    if(Array.isArray(saved)) return saved;
+    try{
+      const ways=await fetchOsmRailWaysNetwork(query);
+      externalGeoCacheSet(`rails-v1:${key}`,ways);
+      return ways;
+    }catch(error){
+      osmRailCache.delete(key);
+      return null;
+    }
+  })();
+  osmRailCache.set(key,promise);
+  return promise;
+}
+let osmRailState={key:"",ways:null,loading:false};
+function requestOsmRails(lat,lon){
+  if(!railLinesVisible||!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if(osmRailState.key===key&&(osmRailState.ways||osmRailState.loading)) return;
+  osmRailState={key,ways:null,loading:true};
+  fetchOsmRailWays(lat,lon).then(ways=>{
+    if(osmRailState.key!==key) return;
+    osmRailState.ways=Array.isArray(ways)?ways:null;
+    osmRailState.loading=false;
+    if(!osmRailState.ways) return;
+    drawPhoto._terrainRenderKey=null;
+    update();
+  }).catch(()=>{ if(osmRailState.key===key) osmRailState.loading=false; });
 }
 function createCoastlineSeaClassifier(originLat,originLon,ways){
   const cosLat=Math.cos(originLat*Math.PI/180),segments=[];
@@ -9650,7 +9731,7 @@ function requestRealTerrainProfile(lat,lon){
   if(cached){
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
-    requestOsmRoads(lat,lon);
+    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);updateSimAddress(lat,lon);
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready","キャッシュ");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -9698,7 +9779,7 @@ function requestRealTerrainProfile(lat,lon){
     while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
-    requestOsmRoads(lat,lon);
+    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);updateSimAddress(lat,lon);
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -9819,7 +9900,9 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H){
   if(!kmzBuildingVisible||!kmzBuildingModel||arActive)return;const cfg=currentKmzBuildingSettings();
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
-  const eye=(realTerrainState.observerElevation||0)+1.6,earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
+  /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
+     地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
   for(const triangle of kmzBuildingModel.triangles){
     const points=[];let depth=0,valid=true;
     for(const vertex of triangle){
@@ -11037,7 +11120,7 @@ function drawPhoto(ctx,s){
         localDetailMeshStepValue(),
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
-        (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:""),
+        (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
       const terrainRenderKey=terrainGeometryKey;
@@ -12090,7 +12173,8 @@ function drawPhoto(ctx,s){
             const waterPoint=grid[idx].find(point=>point&&point.water&&Number.isFinite(point.baseElevation));
             if(waterPoint) waterElevation=waterPoint.baseElevation;
           }
-          const eyeAboveWater=Math.max(1.6,(realTerrainState.observerElevation||0)+1.6-waterElevation);
+          // ここも視点の高さで変わる。上昇すると水面を見下ろす角度が深くなる。
+          const eyeAboveWater=Math.max(.05,(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM()-waterElevation);
           return Math.atan2(eyeAboveWater,Math.max(1,km*1000))*R2D;
         }
         const waterFarEdge=[],waterNearEdge=[];
@@ -13828,7 +13912,7 @@ function drawPhoto(ctx,s){
            手前の地形に隠れる部分には出ない。
            --------------------------------------------------------- */
         function drawGroundOverlays(){
-          if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)) return;
+          if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) return;
           const rangeM=groundOverlayRangeM();
           /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
              線が潰れて塗り潰しにしか見えず、本数ぶん重くもなる。
@@ -13896,6 +13980,8 @@ function drawPhoto(ctx,s){
              破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
           const roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
           const roadCentrePaths=roadPaths?newPaths():null;
+          const railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
+          const railTiePaths=railPaths?newPaths():null;
           // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
           const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
 
@@ -14003,13 +14089,14 @@ function drawPhoto(ctx,s){
             }
           }
 
-          if(roadPaths){
+          if(roadPaths||railPaths){
             /* OSMの節点は直線区間だと100m以上離れているので、5mごとに刻んで
                地形の起伏に沿わせる。高さはグリッドと同じくDEMの標高から計算する。 */
             const originLat=+el.lat.value,originLon=+el.lon.value;
             const metrePerDegLon=111320*Math.cos(originLat*D2R);
             const sampleM=5;
             const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
+            const TIE_INTERVAL_M=2;                // 枕木の間隔(実寸)
             // 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
             const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
               const distanceM=Math.hypot(eastM,northM);
@@ -14037,7 +14124,11 @@ function drawPhoto(ctx,s){
               if(!centre||!Number.isFinite(centre[0])) return null;
               return {left:sides[0],right:sides[1],centre,distanceM};
             };
-            for(const way of osmRoadState.ways){
+            /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
+               違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
+               模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
+            const buildRibbon=(ways,fillPaths,markPaths,markKind)=>{
+            for(const way of ways){
               const halfWidth=way.widthM/2;
               const points=way.points;
               let previous=null;      // 直前のリボン断面
@@ -14061,18 +14152,26 @@ function drawPhoto(ctx,s){
                   if(!current){previous=null;continue;}
                   if(previous&&Math.abs(current.centre[0]-previous.centre[0])<W*.5){
                     // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
-                    const path=roadPaths[roadBucketOf(current.distanceM)];
+                    const bucket=roadBucketOf(current.distanceM);
+                    const path=fillPaths[bucket];
                     path.moveTo(previous.left[0],previous.left[1]);
                     path.lineTo(current.left[0],current.left[1]);
                     path.lineTo(current.right[0],current.right[1]);
                     path.lineTo(previous.right[0],previous.right[1]);
                     path.closePath();
-                    // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
-                    const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
-                    if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
-                      const centrePath=roadCentrePaths[roadBucketOf(current.distanceM)];
-                      centrePath.moveTo(previous.centre[0],previous.centre[1]);
-                      centrePath.lineTo(current.centre[0],current.centre[1]);
+                    if(markKind==="centre"){
+                      // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
+                      const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
+                      if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
+                        markPaths[bucket].moveTo(previous.centre[0],previous.centre[1]);
+                        markPaths[bucket].lineTo(current.centre[0],current.centre[1]);
+                      }
+                    }else if(markKind==="ties"){
+                      // 枕木は実距離で等間隔。奥ほど詰まるので、そのまま奥行きの手がかりになる。
+                      if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(here/TIE_INTERVAL_M)){
+                        markPaths[bucket].moveTo(current.left[0],current.left[1]);
+                        markPaths[bucket].lineTo(current.right[0],current.right[1]);
+                      }
                     }
                   }
                   current.travel=here;
@@ -14081,6 +14180,9 @@ function drawPhoto(ctx,s){
                 travelM+=segmentM;
               }
             }
+            };
+            if(roadPaths) buildRibbon(osmRoadState.ways,roadPaths,roadCentrePaths,"centre");
+            if(railPaths) buildRibbon(osmRailState.ways,railPaths,railTiePaths,"ties");
           }
 
           tctx.save();
@@ -14122,6 +14224,34 @@ function drawPhoto(ctx,s){
                 tctx.strokeStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
                 tctx.lineWidth=Math.max(.8,1.6*fade);
                 tctx.stroke(roadCentrePaths[i]);
+                tctx.lineWidth=1;
+              }
+            }
+          }
+          if(railPaths){
+            // バラスト(道床)は道路より暗く、少し茶色寄りにして道路と見分けられるようにする。
+            const railRGB=mixRGB([84,80,76],[104,96,88],terrainDayFactor);
+            const railColor=railRGB.join(",");
+            const baseAlpha=lerp(.66,.88,terrainDayFactor);
+            const tieRGB=mixRGB([150,145,136],[58,50,42],terrainDayFactor);
+            const tieColor=tieRGB.join(",");
+            const pixelsPerDegree=W/Math.max(1,s.fovH);
+            for(let i=0;i<FADE_BUCKETS;i++){
+              const fade=roadFadeOfBucket(i);
+              if(fade<=0) continue;
+              const alpha=baseAlpha*fade;
+              if(alpha<.012) continue;
+              tctx.fillStyle=`rgba(${railColor},${alpha.toFixed(3)})`;
+              tctx.fill(railPaths[i]);
+              /* 枕木は画面上の間隔が詰まりすぎると模様が潰れて汚くなるだけなので、
+                 2.5px以上あく距離帯だけ描く。 */
+              const centreM=Math.max(5,roadRangeM*(i+.5)/FADE_BUCKETS);
+              const tieSpacingPx=Math.atan2(2,centreM)*R2D*pixelsPerDegree;
+              const tieAlpha=lerp(.5,.75,terrainDayFactor)*fade;
+              if(tieSpacingPx>=2.5&&tieAlpha>=.02){
+                tctx.strokeStyle=`rgba(${tieColor},${tieAlpha.toFixed(3)})`;
+                tctx.lineWidth=Math.max(.8,1.4*fade);
+                tctx.stroke(railTiePaths[i]);
                 tctx.lineWidth=1;
               }
             }
@@ -15922,6 +16052,7 @@ if(monthTableVisible) renderMonthTable();
    先に呼ぶと、まだHTMLの初期値のままの緯度経度で問い合わせてしまう。 */
 loadPersistedSettings().then(()=>{
   requestOsmRoads(+el.lat.value,+el.lon.value);
+  requestOsmRails(+el.lat.value,+el.lon.value);
   updateSimAddress(+el.lat.value,+el.lon.value);
 }).catch(()=>{});
 loadSavedLocations();
