@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="542-world-fast-coast";
+const APP_VERSION="544-world-exact";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8741,11 +8741,16 @@ let worldFieldPending=0;
 function worldDecodeTile(pixels){
   const out=new Float32Array(256*256);
   const d=pixels.data||pixels;
+  let any=false;
   for(let i=0,q=0;i<out.length;i++,q+=4){
     const v=d[q]*65536+d[q+1]*256+d[q+2];
     // 0x800000 は標高データなし。海などはここで NaN になる。
-    out[i]=(v===8388608)?NaN:(v<8388608?v*0.01:(v-16777216)*0.01);
+    const e=(v===8388608)?NaN:(v<8388608?v*0.01:(v-16777216)*0.01);
+    out[i]=e;
+    if(!any&&Number.isFinite(e)) any=true;
   }
+  // 全部欠損のタイル(沖合など)は、以後4隅を調べずに即座に諦められる。
+  out.worldAllNoData=!any;
   return out;
 }
 function worldRequestTile(z,x,y){
@@ -8902,6 +8907,7 @@ function worldHeightAt(lat,lon,z){
     const gx=x0+i,gy=y0+j;
     const tile=worldTileFor(z,gx>>8,gy>>8);
     if(!tile) continue;
+    if(tile.worldAllNoData){ haveTile=true; continue; }   // 全欠損のタイルは中身を見ない
     haveTile=true;   // タイルはある＝値がNaNなら「標高データなし＝海」
     const v=tile[(gy&255)*256+(gx&255)];
     if(!Number.isFinite(v)) continue;
@@ -8913,17 +8919,14 @@ function worldHeightAt(lat,lon,z){
 }
 /* タイル未取得(=まだ分からない)と、標高データなし(=海)は区別する。
    区別しないと、読み込み中の範囲が全部海になって画面が真っ青になる。 */
-/* どの段が答えたかを覚えておく。z14/z12が空の地域では毎回3段とも引いていたが、
-   「その地点でどの段が答えるか」は場所ごとにほぼ一定なので、
-   前回答えた段から試せば多くの点が1回で済む。光線ごとに初期化する。 */
-let worldZoomHint=0;
+/* 「前回答えた段から試す」という近似はやめた。
+   粗い段が先に答えると、細かい段なら別の値を返せた場所でも粗い値を採ってしまい、
+   陸から始まる光線と海から始まる光線で山の高さが食い違って、
+   陸/海の境目に縦の継ぎ目が出た（v542・v543で確認）。
+   速度は「そのタイルが全部欠損か」を1度だけ調べて覚える方法で稼ぐ。
+   これは近似ではないので、どの光線から見ても同じ値になる。 */
 function worldHeightForDistance(lat,lon,distanceM){
   const level=distanceM<WORLD_FIELD_SWITCH_M[0]?0:(distanceM<WORLD_FIELD_SWITCH_M[1]?1:2);
-  const hint=Math.max(level,worldZoomHint);
-  if(hint>level){
-    const quick=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[hint]);
-    if(Number.isFinite(quick)){ worldHeightTileMissing=false; return quick; }
-  }
   let value=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[level]);
   /* 値が無ければ粗い段で代用する。z14のdem_pngは海際で欠損が多く、
      ここを省くと海岸の低地が丸ごと海になってしまう(実測で確認)。
@@ -8935,7 +8938,6 @@ function worldHeightForDistance(lat,lon,distanceM){
     if(!worldHeightTileMissing) missing=false;
     answered=next;
   }
-  if(Number.isFinite(value)) worldZoomHint=answered;
   worldHeightTileMissing=missing&&!Number.isFinite(value);
   return value;
 }
@@ -14270,7 +14272,6 @@ function drawPhoto(ctx,s){
              既存の地形生成が前後左右の合意を取っているのと同じ考え方で、
              ここでは光線に沿った前後の点と合意が取れたときだけ陸/海を確定する。
              そのため判定を1サンプル遅らせ、前の点を「その前」と「次」で挟んで決める。 */
-          worldZoomHint=0;   // 光線ごとに段の記憶をやり直す
           let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null;
           let hasPrev2=false,prev2Elev=0,prev2Has=false;
           const paintSample=(sd,sElev,sWater)=>{
