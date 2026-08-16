@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="537-world-faster";
+const APP_VERSION="538-world-water";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14124,6 +14124,10 @@ function drawPhoto(ctx,s){
          ========================================================= */
       const WORLD_MIN_STEP_M=4, WORLD_MAX_DIST_M=90000;
       let worldImageData=null,worldPixels=null,worldImageW=0,worldImageH=0;
+      /* 水面マスク。層描画では図形ごとに合成モードを切り替えて作っていたが、
+         レイマーチでは塗った画素がそのまま水かどうか分かるので、
+         地形と同じループで白/透明を書き込むだけで済む。反射はこれを使う。 */
+      let worldMaskData=null,worldMaskPixels=null;
       /* 動かしている間は光線を減らして滑らかさを優先し、止まったら
          画面の横幅と同じ密度で描き直す。品質がつまみ1本なので切り替えられる。 */
       function worldRayCount(){
@@ -14148,12 +14152,16 @@ function drawPhoto(ctx,s){
         const eyeElev=baseGround+eyeHeightAboveGroundM();
         const rays=worldRayCount();
         const cellW=W/rays;
+        const wantMask=sharedTerrainProjectionPass!=="replay";
         if(worldImageW!==W||worldImageH!==H||!worldImageData){
           worldImageData=tctx.createImageData(W,H);
           worldPixels=new Uint32Array(worldImageData.data.buffer);
+          worldMaskData=tctx.createImageData(W,H);
+          worldMaskPixels=new Uint32Array(worldMaskData.data.buffer);
           worldImageW=W;worldImageH=H;
         }
         worldPixels.fill(0); // 空は透明のまま。地形だけを塗る。
+        if(wantMask) worldMaskPixels.fill(0);
         const tanHalfH=Math.tan(s.fovH/2*D2R), tanHalfV=tanHalfH*(H/W);
         const pitchTan=Math.tan(s.facingAlt*D2R);
         const facingRad=s.facingAz*D2R;
@@ -14190,9 +14198,11 @@ function drawPhoto(ctx,s){
               if(yB>yA){
                 const rgbArr=rayBandColor(water,d/1000,alt*R2D);
                 const colour=pack(rgbArr[0],rgbArr[1],rgbArr[2]);
+                const maskValue=water?0xffffffff:0;
                 for(let y=yA;y<yB;y++){
                   const base=y*W;
                   for(let x=x0;x<x1;x++) worldPixels[base+x]=colour;
+                  if(wantMask) for(let x=x0;x<x1;x++) worldMaskPixels[base+x]=maskValue;
                 }
                 painted++;
               }
@@ -14208,11 +14218,10 @@ function drawPhoto(ctx,s){
         }
         if(!painted) return false;
         tctx.putImageData(worldImageData,0,0);
-        /* 水面マスク。反射はまだこの経路に載せていないので、
-           いまは水面を残さない（誤った反射を出さないため）。 */
-        if(sharedTerrainProjectionPass!=="replay"){
+        if(wantMask){
           wmctx.globalCompositeOperation="source-over";
           wmctx.clearRect(0,0,W,H);
+          wmctx.putImageData(worldMaskData,0,0);
         }
         return true;
       }
