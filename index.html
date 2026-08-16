@@ -1265,6 +1265,15 @@
     max-width:88%;overflow:hidden;text-overflow:ellipsis;
   }
   .sim-address-label[hidden]{display:none;}
+  /* 移動中に地形を取り直している間の表示。操作が効いていないのか、
+     データ待ちなのかを見分けられるようにする。 */
+  .sim-loading-label{
+    padding:3px 9px;border-radius:9px;pointer-events:none;
+    border:1px solid rgba(240,200,120,.5);background:rgba(30,22,8,.62);
+    color:rgba(250,226,170,.95);font:700 10px/1.25 'Inter','Noto Sans JP',sans-serif;
+    text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:nowrap;
+  }
+  .sim-loading-label[hidden]{display:none;}
   body.ar-active .sim-top-stack{display:none;}
   @media (max-width:760px){
     .sim-top-stack{top:14px;gap:4px;}
@@ -2967,6 +2976,7 @@
               <div class="sim-top-stack" id="simTopStack">
                 <div id="droneBadge" class="drone-badge" hidden></div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
+                <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
               </div>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
@@ -3311,7 +3321,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="529-railways";
+const APP_VERSION="530-cache-and-sticks";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4161,7 +4171,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -5580,6 +5590,30 @@ function syncSimTopStack(){
    通信が落ちた場合は、既存の「観測地」表示と同じ市区町村までを使う。 */
 let simAddressCache=new Map();
 let simAddressSeq=0;
+let simLoadingShown=false,simLoadingOnTimer=0,simLoadingOffTimer=0;
+function setSimLoadingShown(next){
+  if(next===simLoadingShown) return;
+  simLoadingShown=next;
+  el.simLoadingLabel.hidden=!next;
+  syncSimTopStack();
+}
+/* 移動中は11mごとに地形を作り直すため、そのまま連動させると表示が点滅する。
+   少し続いてから出し、消すときも一拍おく。 */
+function syncSimLoadingLabel(){
+  if(!el.simLoadingLabel) return;
+  const busy=()=>!!walkBusy||!!(realTerrainState&&realTerrainState.loadingKey);
+  if(busy()){
+    clearTimeout(simLoadingOffTimer);simLoadingOffTimer=0;
+    if(!simLoadingShown&&!simLoadingOnTimer){
+      simLoadingOnTimer=setTimeout(()=>{simLoadingOnTimer=0;if(busy())setSimLoadingShown(true);},180);
+    }
+  }else{
+    clearTimeout(simLoadingOnTimer);simLoadingOnTimer=0;
+    if(simLoadingShown&&!simLoadingOffTimer){
+      simLoadingOffTimer=setTimeout(()=>{simLoadingOffTimer=0;if(!busy())setSimLoadingShown(false);},420);
+    }
+  }
+}
 function setSimAddressLabel(text){
   if(!el.simAddressLabel) return;
   const value=(text||"").trim();
@@ -8683,14 +8717,73 @@ function openExternalGeoCacheDb(){
   });
   return externalGeoCacheDbPromise;
 }
+/* 永続キャッシュの整理。
+   地形は1件あたり数MB、鍵は緯度経度4桁(約11m)刻みなので、放っておくと
+   訪れた地点のぶんだけ際限なく増える(12地点でJSON換算150MB)。
+   「最後に使った時刻」をlocalStorageの小さな表に持ち、古いものから消す。
+   時刻を巨大な本体と一緒に書き戻すと1回数MBの書き込みになるため、別に持つ。 */
+const CACHE_TOUCH_KEY="mwsim.cacheTouch.v1";
+const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,mountain:200};
+let cacheTouchMap=(()=>{ try{ return JSON.parse(localStorage.getItem(CACHE_TOUCH_KEY))||{}; }catch(error){ return {}; } })();
+let cacheTouchSaveTimer=0;
+function saveCacheTouchMap(){
+  clearTimeout(cacheTouchSaveTimer);
+  cacheTouchSaveTimer=setTimeout(()=>{
+    try{ localStorage.setItem(CACHE_TOUCH_KEY,JSON.stringify(cacheTouchMap)); }catch(error){}
+  },1500);
+}
+function touchCacheEntry(id){ cacheTouchMap[String(id)]=Date.now(); saveCacheTouchMap(); }
+function cacheKindOf(id){ const text=String(id),index=text.indexOf(":"); return index<0?text:text.slice(0,index); }
+let cachePruneTimer=0;
+function scheduleCachePrune(delayMs=8000){
+  clearTimeout(cachePruneTimer);
+  cachePruneTimer=setTimeout(()=>{ pruneExternalGeoCache(); },delayMs);
+}
+async function pruneExternalGeoCache(){
+  try{
+    const db=await openExternalGeoCacheDb();
+    const keys=await new Promise((resolve,reject)=>{
+      const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");
+      const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).getAllKeys();
+      req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);
+    });
+    const doomed=[],byKind={};
+    for(const key of keys){
+      const id=String(key);
+      // 形式を上げた古い地形キャッシュは二度と読まれないので無条件に捨てる。
+      if(/^terrain:v\d+:/.test(id)&&!id.startsWith(`terrain:v${TERRAIN_CACHE_FORMAT}:`)){ doomed.push(key); continue; }
+      const kind=cacheKindOf(id);
+      (byKind[kind]=byKind[kind]||[]).push(id);
+    }
+    for(const kind in byKind){
+      const limit=CACHE_KEEP_COUNT[kind];
+      if(!limit||byKind[kind].length<=limit) continue;
+      // 最後に使った時刻の新しい順。記録が無いものは古いものとして先に消える。
+      byKind[kind].sort((a,b)=>(cacheTouchMap[b]||0)-(cacheTouchMap[a]||0));
+      doomed.push(...byKind[kind].slice(limit));
+    }
+    if(!doomed.length) return 0;
+    await new Promise(resolve=>{
+      const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");
+      const store=tx.objectStore(EXTERNAL_GEO_CACHE_STORE);
+      doomed.forEach(key=>store.delete(key));
+      tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();
+    });
+    doomed.forEach(key=>{ delete cacheTouchMap[String(key)]; });
+    saveCacheTouchMap();
+    return doomed.length;
+  }catch(error){ return 0; }
+}
 async function externalGeoCacheGet(id){
   try{
     const db=await openExternalGeoCacheDb();
-    return await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>resolve(req.result?.data??null);req.onerror=()=>reject(req.error);});
+    return await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>{if(req.result)touchCacheEntry(id);resolve(req.result?.data??null);};req.onerror=()=>reject(req.error);});
   }catch(error){return null;}
 }
 async function externalGeoCacheSet(id,data){
   try{
+    touchCacheEntry(id);
+    if(cacheKindOf(id)==="terrain") scheduleCachePrune(); // 重いのは地形だけなので、これを入れた時に整理する
     const db=await openExternalGeoCacheDb();
     await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).put({id,data,savedAt:Date.now()});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
   }catch(error){}
@@ -9742,6 +9835,7 @@ function requestRealTerrainProfile(lat,lon){
   const token=++realTerrainState.requestToken;
   realTerrainState.loadingKey=key;
   realTerrainState.failedKey="";
+  syncSimLoadingLabel();
   const forceRefresh=forcedTerrainRefreshKeys.delete(key);
   setExternalDataStatus("elevation","loading",forceRefresh?"再取得中":"保存済みキャッシュ確認中");
   setExternalDataStatus("water","loading",forceRefresh?"標高データ待ち":"保存済みキャッシュ確認中");
@@ -9767,6 +9861,7 @@ function requestRealTerrainProfile(lat,lon){
     if(!result) result=await buildRealTerrainProfile(lat,lon,token);
     if(token!==realTerrainState.requestToken) return;
     realTerrainState.loadingKey="";
+    syncSimLoadingLabel();
     if(!result){
       realTerrainState.key=key;realTerrainState.failedKey=key;realTerrainState.profile=null;realTerrainState.observerElevation=null;
       document.body.classList.remove("real-terrain-visible");
@@ -13826,10 +13921,15 @@ function drawPhoto(ctx,s){
             while(runEnd+1<columns.length&&waterGrid[(runEnd+1)*layerCount+k]===runWater) runEnd++;
             // 隣の区間と1点だけ重ねて、境目に隙間ができないようにする。
             const lastIndex=Math.min(columns.length-1,runEnd+1);
+            const ownLastAlt=altGrid[runEnd*layerCount+k];
             const points=[];
             let altSum=0,altCount=0;
             for(let c=runStart;c<=lastIndex;c++){
-              const alt=altGrid[c*layerCount+k];
+              /* はみ出す1点は「隣の高さ」をそのまま使ってはいけない。
+                 上空から見ると水面と岸の見かけ高度差が大きいため、水面の帯が
+                 岸の高さまで一気に持ち上がり、水際に三角形のヒゲになって残る。
+                 低い方を採ればヒゲは消え、隣の帯が画面下端まで塗るので隙間も出ない。 */
+              const alt=c>runEnd?Math.min(altGrid[c*layerCount+k],ownLastAlt):altGrid[c*layerCount+k];
               const p=toXY(columns[c].az,alt);
               if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){points.push(null);continue;}
               points.push(p);altSum+=alt;altCount++;
@@ -15837,6 +15937,7 @@ function applyCachedWaterRings(result){
 async function refreshTerrainWhileWalking(){
   if(walkBusy){ walkPending=true; return; }
   walkBusy=true;
+  syncSimLoadingLabel();
   try{
     const lat=+el.lat.value, lon=+el.lon.value;
     if(Number.isFinite(lat)&&Number.isFinite(lon)){
@@ -15850,11 +15951,16 @@ async function refreshTerrainWhileWalking(){
         document.body.classList.add("real-terrain-visible");
         drawPhoto._terrainRenderKey=null;
         update();
+      }else{
+        /* resultがnull＝必要なDEMタイルが未取得。地形は直前のものを保つが、
+           描き直しまで止めると「操作しても画面が動かない=効いていない」ように見える。
+           位置と向きは確定しているので、そのぶんだけでも描き直す。 */
+        update();
       }
-      // resultがnull＝必要なDEMタイルが未取得。直前の地形を保ったまま次の要求を待つ。
     }
   }catch(e){}
   walkBusy=false;
+  syncSimLoadingLabel();
   if(walkPending){ walkPending=false; refreshTerrainWhileWalking(); }
 }
 
@@ -15993,7 +16099,8 @@ function bindDroneStick(base,onMove,onRelease){
     onMove(stickResponse(dx),stickResponse(-dy));
   };
   const release=event=>{
-    if(activePointer===null||(event&&event.pointerId!==undefined&&event.pointerId!==activePointer)) return;
+    if(activePointer===null) return;
+    if(event&&event.pointerId!==undefined&&event.pointerId!==activePointer) return;
     try{ base.releasePointerCapture(activePointer); }catch(e){}
     activePointer=null;
     base.classList.remove("active");
@@ -16001,7 +16108,11 @@ function bindDroneStick(base,onMove,onRelease){
     onRelease();
   };
   base.addEventListener("pointerdown",event=>{
-    if(activePointer!==null||arActive) return;
+    if(arActive) return;
+    /* 前回の指を離したイベントを取りこぼすと(描画で固まっている間に指が外れた、
+       ポインタ捕捉に失敗した等)、activePointerが残って以後ずっと無反応になる。
+       新しく触られたら、前の状態は捨てて必ず受け付ける。 */
+    if(activePointer!==null) release(null);
     activePointer=event.pointerId;
     try{ base.setPointerCapture(activePointer); }catch(e){}
     base.classList.add("active");
@@ -16017,6 +16128,10 @@ function bindDroneStick(base,onMove,onRelease){
   base.addEventListener("pointerup",release);
   base.addEventListener("pointercancel",release);
   base.addEventListener("lostpointercapture",release);
+  // 台座の外で指を離した場合の保険。捕捉が外れていてもここで確実に止まる。
+  window.addEventListener("pointerup",event=>{ if(activePointer!==null&&event.pointerId===activePointer) release(event); });
+  window.addEventListener("pointercancel",event=>{ if(activePointer!==null&&event.pointerId===activePointer) release(event); });
+  window.addEventListener("blur",()=>{ if(activePointer!==null) release(null); });
 }
 bindDroneStick(el.droneStickLeft,
   (x,y)=>{walkTurn=x;walkRise=y;},
@@ -16050,6 +16165,7 @@ update();
 if(monthTableVisible) renderMonthTable();
 /* 保存設定の読み込みは非同期なので、道路と住所は読み込み完了後に要求する。
    先に呼ぶと、まだHTMLの初期値のままの緯度経度で問い合わせてしまう。 */
+setTimeout(()=>{ pruneExternalGeoCache(); },12000); // 起動直後の読み込みと競合させない
 loadPersistedSettings().then(()=>{
   requestOsmRoads(+el.lat.value,+el.lon.value);
   requestOsmRails(+el.lat.value,+el.lon.value);
