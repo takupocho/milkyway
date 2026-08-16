@@ -1710,6 +1710,16 @@
     color:rgba(235,238,248,.62);font:600 8px/1.25 'IBM Plex Mono',monospace;
     letter-spacing:.02em;pointer-events:none;
   }
+  /* 水際の不具合を切り分けるための診断表示。既定は非表示。 */
+  .sea-diag-panel{
+    display:none;position:absolute;left:7px;bottom:38px;z-index:8;
+    padding:5px 7px;border-radius:5px;background:rgba(3,5,14,.72);
+    color:rgba(226,234,250,.92);font:500 9px/1.45 'IBM Plex Mono',monospace;
+    letter-spacing:.01em;white-space:pre;pointer-events:none;
+  }
+  body.sea-diag-on .sea-diag-panel{display:block;}
+  body.ar-active .sea-diag-panel{display:none;}
+  .photo-canvas-wrap.portrait .sea-diag-panel{left:calc(16.6667% + 7px);}
   body.ar-active .app-version-badge{display:none;}
   .photo-canvas-wrap.portrait .app-version-badge{left:calc(16.6667% + 7px);}
   body.real-terrain-visible:not(.ar-active) .terrain-credit{display:block;}
@@ -2984,6 +2994,7 @@
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
+                <button id="popupSeaDiagBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">水際診断</button>
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">リフレ</button>
@@ -3046,6 +3057,7 @@
               </div>
               <div class="terrain-credit" aria-label="地形データの出典">地形：国土地理院 標高タイルを加工</div>
               <div class="app-version-badge" id="appVersionBadge" aria-label="バージョン"></div>
+              <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3353,7 +3365,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="548-rock-waterline";
+const APP_VERSION="552-water-diagnostics";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4204,7 +4216,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4804,6 +4816,9 @@ function refreshDroneMapSize(){
   setTimeout(()=>{ map.invalidateSize(false); droneMapKey=""; syncDroneMap(); },60);
 }
 let placeNameVisible=true; // 画面内の地名表示
+/* 水際の判定がどの層で決まっているかを画面に出す。原因の切り分け用。
+   既定は非表示で、描画にも触らない（数え上げだけ）。 */
+let seaDiagVisible=false;
 let droneModeOn=false;
 /* ドローンモード。ONの間だけ画面内コントローラーを出す。
    構図(縦・横)には連動させない。OFFにしたら着地させる——
@@ -5936,6 +5951,9 @@ function syncDisplayPopupControls(){
   el.popupRailBtn.setAttribute("aria-pressed",String(railLinesVisible));
   el.popupPlaceNameBtn.classList.toggle("active",placeNameVisible);
   el.popupPlaceNameBtn.setAttribute("aria-pressed",String(placeNameVisible));
+  el.popupSeaDiagBtn.classList.toggle("active",seaDiagVisible);
+  el.popupSeaDiagBtn.setAttribute("aria-pressed",String(seaDiagVisible));
+  document.body.classList.toggle("sea-diag-on",seaDiagVisible);
   el.popupWaterBoundaryBtn.classList.toggle("active",waterLandBoundaryVisible);
   el.popupWaterBoundaryBtn.setAttribute("aria-pressed",String(waterLandBoundaryVisible));
   el.popupReflectionBtn.classList.toggle("active",waterReflectionEnabled);
@@ -5980,6 +5998,15 @@ el.popupPlaceNameBtn.addEventListener("click",()=>{
   placeNameVisible=!placeNameVisible;
   setSimAddressLabel();   // 文言は保持したまま出し入れするだけ
   syncDisplayPopupControls();scheduleSaveSettings();
+});
+el.popupSeaDiagBtn.addEventListener("click",()=>{
+  seaDiagVisible=!seaDiagVisible;
+  if(seaDiagVisible&&el.seaDiagPanel&&!el.seaDiagPanel.textContent){
+    el.seaDiagPanel.textContent=TERRAIN_RENDERER==="world"?"描画待ち…":"通常の地形描画では出ません\n(?terrain=world 専用)";
+  }
+  syncDisplayPopupControls();
+  drawPhoto._terrainRenderKey=null;   // 数え直すために一度描き直す
+  update();scheduleSaveSettings();
 });
 /* 天の川の自動構図。旧「天の川を自動構図にする」アイコンの機能をここへ移した。
    押すたびに 中心 → アーチ全体 → 地景込み と切り替わる。 */
@@ -7141,6 +7168,7 @@ function collectPersistedSettings(){
     roadLinesVisible:roadLinesVisible,
     railLinesVisible:railLinesVisible,
     placeNameVisible:placeNameVisible,
+    seaDiagVisible:seaDiagVisible,
     droneModeOn:droneModeOn,
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
@@ -7247,6 +7275,7 @@ async function loadPersistedSettings(){
     roadLinesVisible=!!s.roadLinesVisible;
     railLinesVisible=!!s.railLinesVisible;
     placeNameVisible=s.placeNameVisible!==false;
+    seaDiagVisible=s.seaDiagVisible===true;
     droneModeOn=!!s.droneModeOn;
     if(typeof syncDroneModeButton==="function") syncDroneModeButton();
     if(typeof refreshDroneMapSize==="function") refreshDroneMapSize();
@@ -8781,10 +8810,16 @@ function worldEnsureTiles(lat,lon){
    それだけで数百msかかる(実測305ms)。塗っておけば1回の配列参照で済む。
    カメラが動いても塗り直さないので、岸の位置が量子化し直されることも無い。 */
 const WORLD_WATER_GRID=640, WORLD_WATER_SPAN_M=11000;
-let worldWaterMask=null,worldWaterKey="",worldWaterOrigin=null,worldWaterMs=0;
+let worldWaterMask=null,worldWaterKey=null,worldWaterOrigin=null,worldWaterMs=0;
 function worldBuildWaterMask(lat,lon,rings){
-  const key=`${lat.toFixed(3)},${lon.toFixed(3)},${(rings||[]).length}`;
-  if(key===worldWaterKey) return;
+  const key=rings||null;   // 配列そのものを鍵にする(取得し直せば別の配列になる)
+  if(worldWaterMask&&key===worldWaterKey&&worldWaterOrigin){
+    // こちらも世界に固定。内側の半分にいるあいだは作り直さない。
+    const mLonNow=Math.max(1,111320*Math.cos(worldWaterOrigin.lat*D2R));
+    const dEast=Math.abs(lon-worldWaterOrigin.lon)*mLonNow;
+    const dNorth=Math.abs(lat-worldWaterOrigin.lat)*111320;
+    if(Math.max(dEast,dNorth)<WORLD_WATER_SPAN_M*.25) return;
+  }
   worldWaterKey=key;
   const t0=performance.now();
   worldWaterOrigin={lat,lon};
@@ -8827,63 +8862,127 @@ function worldBuildWaterMask(lat,lon,rings){
    これが要る理由: この海岸ではDEMがz10(1画素127m)しか値を持たず、
    標高の欠損から岸を決めるとどうやっても127mの階段になる。
    海岸線はベクタなのでメートル精度で岸が決まる。DEMは高さ専用にする。 */
-let worldSeaMask=null,worldSeaKey="",worldSeaMs=0,worldSeaSegments=0;
+/* v549: 海マスクから観測位置への依存を取り除いた。
+
+   これまでは各行の左端が海かどうかを createCoastlineSeaClassifier で決めていた。
+   この判定器は「観測地点のいちばん近くにある海岸線の向き」から
+   観測地点自身が海の上かどうか(originAtSea)を先に決め、そこからの
+   交差回数の偶奇で他の点を決める作りになっている。
+   つまり海の位置という世界の性質が、立ち位置で決まってしまう。
+   汀線の近くでは最寄りの線分が数mの移動で入れ替わり、そのたびに
+   偶奇の基準が反転しうるので、動かすと海と陸が入れ替わって見えていた。
+   (向きだけ変えたときは作り直しが走らないので、直前の状態のまま残る。)
+
+   代わりに海岸線データそのものが持つ向きを使う。OSMのnatural=coastlineは
+   「進行方向の左が陸、右が海」で登録する決まりなので、交差した線分が
+   北を向いているか南を向いているかだけで、東へ進むときに海へ入るのか
+   出るのかが決まる。立ち位置は一切関係しない。
+
+   ただし取得した海岸線は7.5km四方で切り取られた開いた線なので、
+   巻き数の基準(格子の左端が陸か海か)だけは別に決める必要がある。
+   ここは1点で決めず、格子全体をDEMと突き合わせて多数決で決める。
+   数千点の多数決なので、数mの移動でひっくり返ることはない。 */
+/* 取得できた海岸線を1組だけ覚えておく。
+   海岸線は絶対座標の線なので、観測地点が変わっても近くなら使い回せる。
+   移動先でOverpassが失敗・遅延すると _osmCoastlineWays が空になり、
+   その間だけ海の判定がDEM任せ(1画素127m)に落ちて海が陸として描かれる。
+   実測でも、移動先で30秒待っても海岸線0本のまま「海の上なのに画面の89%が陸」
+   という状態が再現した。直前のデータを使えばこの穴は開かない。 */
+let worldLastCoastline=null;   // {lat,lon,ways}
+function worldCoastlineFor(lat,lon){
+  const fresh=realTerrainState._osmCoastlineWays;
+  if(Array.isArray(fresh)&&fresh.length){ worldLastCoastline={lat,lon,ways:fresh}; return fresh; }
+  if(!worldLastCoastline) return fresh;
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R));
+  const dEast=(lon-worldLastCoastline.lon)*mLon, dNorth=(lat-worldLastCoastline.lat)*111320;
+  // 取得半径(7.5km)の内側にいるあいだだけ使い回す。
+  return Math.hypot(dEast,dNorth)<OSM_COASTLINE_RADIUS_KM*1000 ? worldLastCoastline.ways : fresh;
+}
+let worldSeaMask=null,worldSeaKey=null,worldSeaMs=0,worldSeaSegments=0;
+let worldSeaOrigin=null,worldSeaFlipped=false,worldSeaAgreement=0;
 function worldBuildSeaMask(lat,lon,ways){
   const list=Array.isArray(ways)?ways:[];
-  const key=`${lat.toFixed(3)},${lon.toFixed(3)},${list.length}`;
-  if(key===worldSeaKey) return;
+  const half=WORLD_WATER_SPAN_M/2;
+  /* 作り直しの条件。マスクは世界に固定なので、観測地点が内側の半分に
+     いるあいだは作り直す必要が無い。歩くたびに640行を塗り直さずに済む。 */
+  /* 作り直しの判定は「本数が同じ」ではなく「同じ配列かどうか」で行う。
+     取得し直すと新しい配列になるので、本数が偶然同じでも取りこぼさない。 */
+  const key=list;
+  if(worldSeaMask&&key===worldSeaKey&&worldSeaOrigin){
+    const mLonNow=Math.max(1,111320*Math.cos(worldSeaOrigin.lat*D2R));
+    const dEast=Math.abs(lon-worldSeaOrigin.lon)*mLonNow;
+    const dNorth=Math.abs(lat-worldSeaOrigin.lat)*111320;
+    if(Math.max(dEast,dNorth)<half*.5) return;
+  }
   worldSeaKey=key;
-  worldSeaMask=null;worldSeaSegments=0;
+  worldSeaMask=null;worldSeaSegments=0;worldSeaOrigin=null;worldSeaFlipped=false;worldSeaAgreement=0;
   if(!list.length) return;
   const t0=performance.now();
-  let classifier=null;
-  try{ classifier=createCoastlineSeaClassifier(lat,lon,list); }catch(error){ classifier=null; }
-  if(!classifier||!classifier.valid) return;
-  const mLon=Math.max(1,111320*Math.cos(lat*D2R)),half=WORLD_WATER_SPAN_M/2;
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R));
   const scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
   const toGridX=pLon=>((pLon-lon)*mLon+half)*scale;
   const toGridY=pLat=>(half-(pLat-lat)*111320)*scale;
-  // 海岸線の線分を格子座標へ落とす
+  /* 海岸線の線分を格子座標へ落とす。
+     dir=+1: 格子のyが減る向き(＝北向き)。東へ進むとこの線分で海へ入る。 */
   const segs=[];
   for(const way of list){
     for(let i=1;i<way.length;i++){
       const a=way[i-1],b=way[i];
-      segs.push([toGridX(a[1]),toGridY(a[0]),toGridX(b[1]),toGridY(b[0])]);
+      const x1=toGridX(a[1]),y1=toGridY(a[0]),x2=toGridX(b[1]),y2=toGridY(b[0]);
+      segs.push([x1,y1,x2,y2,y2<y1?1:-1]);
     }
   }
   worldSeaSegments=segs.length;
   if(!segs.length) return;
   const mask=new Uint8Array(WORLD_WATER_GRID*WORLD_WATER_GRID);
-  const leftLon=lon-half/mLon;              // 行の左端(格子の外)の経度
   for(let y=0;y<WORLD_WATER_GRID;y++){
-    const cy=y+.5;
-    const rowLat=lat+(half-cy/scale)/111320;
-    let sea=false;
-    try{ sea=!!classifier.classify(rowLat,leftLon); }catch(error){ sea=false; }
-    const xs=[];
+    const cy=y+.5,xs=[];
     for(let i=0;i<segs.length;i++){
       const s=segs[i];
       if((s[1]>cy)===(s[3]>cy)) continue;
-      xs.push(s[0]+(cy-s[1])/(s[3]-s[1])*(s[2]-s[0]));
+      xs.push([s[0]+(cy-s[1])/(s[3]-s[1])*(s[2]-s[0]),s[4]]);
     }
-    xs.sort((m,n)=>m-n);
-    let x=0,ci=0;
+    if(!xs.length) continue;
+    xs.sort((m,n)=>m[0]-n[0]);
+    let winding=0,x=0,ci=0;
     while(x<WORLD_WATER_GRID){
-      const next=ci<xs.length?Math.min(WORLD_WATER_GRID,Math.max(0,Math.round(xs[ci]))):WORLD_WATER_GRID;
-      if(sea){ const base=y*WORLD_WATER_GRID; for(let px=x;px<next;px++) mask[base+px]=1; }
+      const next=ci<xs.length?Math.min(WORLD_WATER_GRID,Math.max(0,Math.round(xs[ci][0]))):WORLD_WATER_GRID;
+      if(winding>0){ const base=y*WORLD_WATER_GRID; for(let px=x;px<next;px++) mask[base+px]=1; }
       x=next;
-      if(ci<xs.length){ sea=!sea;ci++; } else break;
+      if(ci<xs.length){ winding+=xs[ci][1];ci++; } else break;
     }
   }
+  /* 巻き数の基準をDEMとの多数決で決める。dem_pngは海が「標高データなし」なので、
+     マスクが海と言う所でデータが無ければ一致、あれば不一致とする。
+     全体が裏返っていれば不一致が多数になるので、そのときだけ反転する。 */
+  let agree=0,disagree=0;
+  const stride=8;
+  for(let y=stride>>1;y<WORLD_WATER_GRID;y+=stride) for(let x=stride>>1;x<WORLD_WATER_GRID;x+=stride){
+    const pLat=lat+(half-(x*0+y+.5)/scale)/111320;
+    const pLon=lon+((x+.5)/scale-half)/mLon;
+    worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]);
+    if(worldHeightTileMissing) continue;            // 未取得のタイルは票に入れない
+    const demSea=!Number.isFinite(worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]));
+    if((mask[y*WORLD_WATER_GRID+x]===1)===demSea) agree++; else disagree++;
+  }
+  if(disagree>agree){ for(let i=0;i<mask.length;i++) mask[i]^=1; worldSeaFlipped=true; }
+  const total=agree+disagree;
+  worldSeaAgreement=total?Math.max(agree,disagree)/total:0;
+  /* DEMがまだ1枚も届いていないと票が0になり、裏返りを直せない。
+     その場合は鍵を残さず、タイルが揃った次の描画で作り直す。 */
+  if(!total) worldSeaKey=null;
   worldSeaMask=mask;
+  worldSeaOrigin={lat,lon};
   worldSeaMs=performance.now()-t0;
 }
 function worldSeaAt(lat,lon){
-  if(!worldSeaMask||!worldWaterOrigin) return null;   // 海岸線が無い＝判断できない
-  const mLon=Math.max(1,111320*Math.cos(worldWaterOrigin.lat*D2R));
+  // 海マスクは自分の原点を持つ。水域マスクの原点を借りると、片方だけ
+  // 作り直された瞬間に岸が最大110mずれる。
+  if(!worldSeaMask||!worldSeaOrigin) return null;   // 海岸線が無い＝判断できない
+  const mLon=Math.max(1,111320*Math.cos(worldSeaOrigin.lat*D2R));
   const half=WORLD_WATER_SPAN_M/2,scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
-  const gx=((lon-worldWaterOrigin.lon)*mLon+half)*scale|0;
-  const gy=((half-(lat-worldWaterOrigin.lat)*111320)*scale)|0;
+  const gx=((lon-worldSeaOrigin.lon)*mLon+half)*scale|0;
+  const gy=((half-(lat-worldSeaOrigin.lat)*111320)*scale)|0;
   if(gx<0||gy<0||gx>=WORLD_WATER_GRID||gy>=WORLD_WATER_GRID) return null;
   return worldSeaMask[gy*WORLD_WATER_GRID+gx]===1;
 }
@@ -14241,12 +14340,64 @@ function drawPhoto(ctx,s){
         const coarse=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]);
         return !worldHeightTileMissing&&!Number.isFinite(coarse);
       }
+      /* 水際診断の表示。どの層が水を決めているのかを、そのフレームの
+         実際の数字でそのまま出す。推測を挟まないのが目的なので、
+         整形以外の加工はしない。 */
+      function renderSeaDiagPanel(st){
+        const box=el.seaDiagPanel;if(!box) return;
+        const pad=(v,n)=>String(v).padStart(n," ");
+        const total=st.water+st.land;
+        const pct=total?(st.water/total*100).toFixed(1):"--";
+        // 海マスクの原点からどれだけ離れているか（作り直しの目安は2.75km）
+        let maskLine="海マスク なし";
+        if(worldSeaMask&&worldSeaOrigin){
+          const mLon=Math.max(1,111320*Math.cos(worldSeaOrigin.lat*D2R));
+          const dx=(st.originLon-worldSeaOrigin.lon)*mLon,dy=(st.originLat-worldSeaOrigin.lat)*111320;
+          maskLine=`海マスク 有 線${worldSeaSegments} 原点${(Math.hypot(dx,dy)/1000).toFixed(2)}km ${worldSeaMs.toFixed(0)}ms`
+            +(worldSeaFlipped?" 反転":"")+` 一致${(worldSeaAgreement*100).toFixed(0)}%`;
+        }
+        // 水面・反射を描く側が持っている情報（レイマーチとは別系統）
+        const nearProfile=realTerrainState.waterNearKm||[];
+        let nearCount=0;for(let i=0;i<nearProfile.length;i++) if(Number.isFinite(nearProfile[i])) nearCount++;
+        const openSea=realTerrainState.coastlineOpenSeaAz||[];
+        let openCount=0;for(let i=0;i<openSea.length;i++) if(openSea[i]) openCount++;
+        const layers=realTerrainState.terrainLayers||[];
+        let bandCount=0;
+        layers.forEach(layer=>{ if(layer&&layer.waterProfile) for(let az=0;az<360;az++) if((layer.waterProfile[az]||0)>=.5){bandCount++;break;} });
+        // 観測地点と、地形データが作られた地点のずれ
+        let lagText="-";
+        const key=String(realTerrainState.key||"");
+        const parts=key.split(",");
+        if(parts.length===2&&Number.isFinite(+parts[0])){
+          const mLon=Math.max(1,111320*Math.cos(st.originLat*D2R));
+          const dx=(st.originLon-(+parts[1]))*mLon,dy=(st.originLat-(+parts[0]))*111320;
+          lagText=`${Math.round(Math.hypot(dx,dy))}m`;
+        }
+        const ways=(realTerrainState._osmCoastlineWays||[]).length;
+        const rings=(realTerrainState._osmWaterRings||[]).length;
+        const refine=realTerrainState._osmRefineStatus||"-";
+        const moving=((typeof walkActive==="function"&&walkActive())||walkBusy)?"移動中":"静止";
+        box.textContent=
+          `海岸線 ${pad(ways,3)}本  水域 ${pad(rings,3)}形  refine ${refine}
+`+
+          `${maskLine}
+`+
+          `光線判定 水${pct}%  水${pad(st.water,6)} 陸${pad(st.land,6)}
+`+
+          `  内訳 海${pad(st.seaTrue,6)} 陸${pad(st.seaFalse,6)} 不明${pad(st.seaNull,6)}
+`+
+          `水面層 方位${pad(confirmedWaterAz.filter(Boolean).length,3)} 汀線${pad(nearCount,3)} 沖${pad(openCount,3)} 帯${bandCount}
+`+
+          `${moving} 光線${st.rays} ${st.ms.toFixed(0)}ms  地形ずれ ${lagText}
+`+
+          `位置 ${st.originLat.toFixed(5)},${st.originLon.toFixed(5)} 方位${Math.round(s.facingAz)}° 仰角${Math.round(s.facingAlt)}°`;
+      }
       function drawWorldTerrain(){
         const originLat=+el.lat.value, originLon=+el.lon.value;
         if(!Number.isFinite(originLat)||!Number.isFinite(originLon)) return false;
         worldEnsureTiles(originLat,originLon);
         worldBuildWaterMask(originLat,originLon,realTerrainState._osmWaterRings);
-        worldBuildSeaMask(originLat,originLon,realTerrainState._osmCoastlineWays);
+        worldBuildSeaMask(originLat,originLon,worldCoastlineFor(originLat,originLon));
         const groundHere=worldHeightForDistance(originLat,originLon,0);
         if(!Number.isFinite(groundHere)&&!Number.isFinite(realTerrainState.observerElevation)) return false;
         const baseGround=Number.isFinite(groundHere)?groundHere:realTerrainState.observerElevation;
@@ -14278,6 +14429,10 @@ function drawPhoto(ctx,s){
         const growth=1.03;
         const pack=(r,g,b)=>(255<<24)|(b<<16)|(g<<8)|r;
         let painted=0;
+        /* 診断用の数え上げ。表示がOFFのときは加算しない。 */
+        const diagOn=seaDiagVisible;
+        let diagWater=0,diagLand=0,diagSeaTrue=0,diagSeaFalse=0,diagSeaNull=0;
+        const diagT0=diagOn?performance.now():0;
         for(let ray=0;ray<rays;ray++){
           const xNorm=((ray+0.5)/rays-0.5)*2*tanHalfH;
           const azRad=facingRad+Math.atan(xNorm);
@@ -14359,6 +14514,7 @@ function drawPhoto(ctx,s){
               else if(nextHas) elev=nextElev;
               else elev=0;
             }
+            if(diagOn){ if(prevSea===true)diagSeaTrue++;else if(prevSea===false)diagSeaFalse++;else diagSeaNull++; }
             // 局所高精細で水面より十分高い＝本物の岩。海面すれすれの点は海のまま。
             const localIsLand=prevLocal&&elev>=LOCAL_DETAIL_LAND_M;
             let water;
@@ -14368,6 +14524,7 @@ function drawPhoto(ctx,s){
             else water=!prevHas;                       // 従来どおりDEMの欠損で判断
             if(water) elev=0;                          // 海面は0m
             if(!water&&worldWaterAt(prevLat,prevLon)) water=true;  // 湖・池はポリゴンで確定
+            if(diagOn){ if(water)diagWater++;else diagLand++; }
             const drop=prevD*prevD/(2*6371000*(7/6));
             overlayAdvance(prevD/1000,Math.atan2(elev-eyeElev-drop,prevD)*R2D,water);
             return paintSample(prevD,elev,water);
@@ -14420,6 +14577,12 @@ function drawPhoto(ctx,s){
           resolvePrev(false,0);   // 最後の1点
           overlayAdvance(Infinity,overlayAltDeg,overlayWaterFlag);   // 残りの距離目盛りを埋める
         }
+        if(diagOn) renderSeaDiagPanel({
+          originLat,originLon,rays,painted,
+          water:diagWater,land:diagLand,
+          seaTrue:diagSeaTrue,seaFalse:diagSeaFalse,seaNull:diagSeaNull,
+          ms:performance.now()-diagT0
+        });
         if(!painted) return false;
         tctx.putImageData(worldImageData,0,0);
         drawGroundOverlays(overlayColumns,overlayAlt,overlayWater,overlayLayerKm,overlayLayerCount);
