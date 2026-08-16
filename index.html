@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="546-world-localdetail";
+const APP_VERSION="547-world-rock-fix";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14274,6 +14274,25 @@ function drawPhoto(ctx,s){
           const x0=Math.max(0,Math.floor(ray*cellW)), x1=Math.min(W,Math.ceil((ray+1)*cellW));
           let runMax=-Math.PI/2, yPrev=H, d=WORLD_MIN_STEP_M, step=WORLD_MIN_STEP_M*.6;
           overlayColumns[ray]={az:norm360(azRad*R2D)};
+          /* 局所高精細データ(立巌岩など)の円を、この光線が通る距離区間を先に求める。
+             岩は数十mしかないのに、500m先では1歩が約40mまで広がるので、
+             そのままだと光線が岩をまたいでしまい、見る向きや立ち位置で
+             出たり消えたりする(旧方式でも同種の取りこぼしを一度出している)。
+             交差する区間だけ歩幅を細かくする。交差しない光線は一切影響を受けない。 */
+          let localEnterM=Infinity, localExitM=-Infinity;
+          if(localDetailTerrainEnabled&&localDetailTerrainData){
+            const data=localDetailTerrainData;
+            const eastC=(data.lon-originLon)*metrePerDegLon;
+            const northC=(data.lat-originLat)*111320;
+            const along=eastC*sinAz+northC*cosAz;          // 円の中心までの、光線方向の距離
+            const perp=Math.abs(eastC*cosAz-northC*sinAz); // 光線から円の中心までの横のずれ
+            const r=Math.max(20,(data.radiusM||100)+10);
+            if(along>0&&perp<r){
+              const halfChord=Math.sqrt(r*r-perp*perp);
+              localEnterM=Math.max(WORLD_MIN_STEP_M,along-halfChord);
+              localExitM=along+halfChord;
+            }
+          }
           let overlayIndex=0;                       // どの距離目盛りまで書き終えたか
           let overlayAltDeg=bottomAltDeg, overlayWaterFlag=0;
           const overlayAdvance=(distanceKm,altDeg,water)=>{
@@ -14375,6 +14394,8 @@ function drawPhoto(ctx,s){
             /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
                稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
             step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
+            if(d+step>localEnterM&&d<localExitM) step=Math.min(step,2.5); // 岩の区間だけ細かく
+            else if(d<localEnterM&&d+step>localEnterM) d=localEnterM-2.5; // 入口へ寄せる
             d+=step;
           }
           resolvePrev(false,0);   // 最後の1点
