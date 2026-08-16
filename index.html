@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="545-world-overlays";
+const APP_VERSION="546-world-localdetail";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14291,7 +14291,7 @@ function drawPhoto(ctx,s){
              既存の地形生成が前後左右の合意を取っているのと同じ考え方で、
              ここでは光線に沿った前後の点と合意が取れたときだけ陸/海を確定する。
              そのため判定を1サンプル遅らせ、前の点を「その前」と「次」で挟んで決める。 */
-          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null;
+          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null,prevLocal=false;
           let hasPrev2=false,prev2Elev=0,prev2Has=false;
           const paintSample=(sd,sElev,sWater)=>{
             const drop=sd*sd/(2*6371000*(7/6));
@@ -14328,7 +14328,7 @@ function drawPhoto(ctx,s){
               else if(nextHas) elev=nextElev;
               else elev=0;
             }
-            const seaByCoast=prevSea;
+            const seaByCoast=prevLocal?false:prevSea;   // 局所高精細で拾った岩などは陸
             let water;
             if(seaByCoast===null) water=!prevHas;      // 海岸線が無い地域は従来どおりDEMの欠損で判断
             else water=seaByCoast;
@@ -14344,7 +14344,20 @@ function drawPhoto(ctx,s){
             /* 海岸線のマスクで海と分かっている点は、標高を引く必要が無い。
                海の上のDEM参照(1点あたり最大12回のタイル参照)が丸ごと消える。 */
             const seaHere=worldSeaAt(pLat,pLon);
-            if(seaHere===true){
+            /* 局所高精細地形。取得済みの範囲内なら、粗いDEMより優先して使う。
+               戻り値は数値ではなく {elevation, blend} なので取り違えないこと
+               (以前ここで全サンプルを捨てる不具合を出している)。
+               blendは範囲の縁で滑らかに戻すための重み。 */
+            let localElev=null;
+            if(localDetailTerrainEnabled&&localDetailTerrainData&&d<=2000){
+              const local=sampleLocalDetailElevation(sinAz*d,cosAz*d);
+              if(local&&Number.isFinite(local.elevation)) localElev=local;
+            }
+            if(localElev){
+              const base=worldHeightForDistance(pLat,pLon,d);
+              elev=Number.isFinite(base)?lerp(base,localElev.elevation,localElev.blend):localElev.elevation;
+              hasData=true;
+            }else if(seaHere===true){
               elev=0;hasData=false;
             }else if(seaHere===null&&worldLikelySea(pLat,pLon)){  // 海岸線が無い地域だけ従来の足切り
               elev=0;hasData=false;
@@ -14358,7 +14371,7 @@ function drawPhoto(ctx,s){
             }
             if(resolvePrev(hasData,elev)) break;
             hasPrev2=hasPrev;prev2Elev=prevElev;prev2Has=prevHas;
-            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;prevSea=seaHere;
+            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;prevSea=seaHere;prevLocal=!!localElev;
             /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
                稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
             step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
