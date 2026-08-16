@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="538-world-water";
+const APP_VERSION="540-world-coast-agree";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14176,45 +14176,77 @@ function drawPhoto(ctx,s){
           const cosSpread=1/Math.sqrt(1+xNorm*xNorm); // 斜め方向の見かけ高度の補正
           const x0=Math.max(0,Math.floor(ray*cellW)), x1=Math.min(W,Math.ceil((ray+1)*cellW));
           let runMax=-Math.PI/2, yPrev=H, d=WORLD_MIN_STEP_M, step=WORLD_MIN_STEP_M*.6;
+          /* 陸/海は1サンプルでは決めない。
+             dem_pngは海際でよく欠損し、逆に海の上でも粗い段(z10・1画素127m)が
+             飛び飛びで0.6mを返すことがある(熊野で実測)。1点で決めると、その孤立点が
+             127m四方の陸ブロックになって水際が階段になる。
+             既存の地形生成が前後左右の合意を取っているのと同じ考え方で、
+             ここでは光線に沿った前後の点と合意が取れたときだけ陸/海を確定する。
+             そのため判定を1サンプル遅らせ、前の点を「その前」と「次」で挟んで決める。 */
+          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0;
+          let hasPrev2=false,prev2Elev=0,prev2Has=false;
+          const paintSample=(sd,sElev,sWater)=>{
+            const drop=sd*sd/(2*6371000*(7/6));
+            const alt=Math.atan2(sElev-eyeElev-drop,sd);
+            if(alt<=runMax) return false;
+            const yTop=Math.round(H/2-(Math.tan(alt)*cosSpread-pitchTan)/tanHalfV*(H/2));
+            const yA=Math.max(0,yTop), yB=Math.min(H,yPrev);
+            if(yB>yA){
+              const rgbArr=rayBandColor(sWater,sd/1000,alt*R2D);
+              const colour=pack(rgbArr[0],rgbArr[1],rgbArr[2]);
+              const maskValue=sWater?0xffffffff:0;
+              for(let y=yA;y<yB;y++){
+                const base=y*W;
+                for(let x=x0;x<x1;x++) worldPixels[base+x]=colour;
+                if(wantMask) for(let x=x0;x<x1;x++) worldMaskPixels[base+x]=maskValue;
+              }
+              painted++;
+            }
+            runMax=alt;
+            if(yTop<=0) return true;      // 画面上端を超えた＝この光線は終わり
+            yPrev=Math.min(yPrev,yTop);
+            return false;
+          };
+          /* 前後の点と突き合わせて、真ん中の点の陸/海を確定して塗る。 */
+          const resolvePrev=(nextHas,nextElev)=>{
+            if(!hasPrev) return false;
+            let elev,water;
+            if(prevHas){
+              // 標高があっても、前後どちらとも繋がっていない孤立点は陸として採らない。
+              const supported=(hasPrev2&&prev2Has)||nextHas;
+              if(supported){ elev=prevElev;water=false; }
+              else{ elev=0;water=true; }
+            }else{
+              // 欠損でも、前後が陸なら海際の抜けとみなして両隣から埋める。
+              const surrounded=hasPrev2&&prev2Has&&nextHas;
+              if(surrounded){ elev=(prev2Elev+nextElev)/2;water=false; }
+              else{ elev=0;water=true; }
+            }
+            if(!water&&worldWaterAt(prevLat,prevLon)) water=true;  // 湖・池はポリゴンで確定
+            return paintSample(prevD,elev,water);
+          };
           while(d<WORLD_MAX_DIST_M){
             const pLat=originLat+cosAz*d/111320, pLon=originLon+sinAz*d/metrePerDegLon;
-            let elev,noData;
+            let elev,hasData;
             if(worldLikelySea(pLat,pLon)){           // 粗い段で欠損＝海。細かい段は引かない
-              elev=0;noData=true;
+              elev=0;hasData=false;
             }else{
               elev=worldHeightForDistance(pLat,pLon,d);
-              if(worldHeightTileMissing){            // まだ取得できていない範囲は塗らずに飛ばす
+              if(worldHeightTileMissing){            // まだ取得できていない範囲は判定を保留する
                 step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));d+=step;continue;
               }
-              noData=!Number.isFinite(elev);
-              if(noData) elev=0;                     // 標高データなし＝海
+              hasData=Number.isFinite(elev);
+              if(!hasData) elev=0;
             }
-            const water=noData||worldWaterAt(pLat,pLon);
-            const drop=d*d/(2*6371000*(7/6));
-            const alt=Math.atan2(elev-eyeElev-drop,d);
-            if(alt>runMax){
-              const yTop=Math.round(H/2-(Math.tan(alt)*cosSpread-pitchTan)/tanHalfV*(H/2));
-              const yA=Math.max(0,yTop), yB=Math.min(H,yPrev);
-              if(yB>yA){
-                const rgbArr=rayBandColor(water,d/1000,alt*R2D);
-                const colour=pack(rgbArr[0],rgbArr[1],rgbArr[2]);
-                const maskValue=water?0xffffffff:0;
-                for(let y=yA;y<yB;y++){
-                  const base=y*W;
-                  for(let x=x0;x<x1;x++) worldPixels[base+x]=colour;
-                  if(wantMask) for(let x=x0;x<x1;x++) worldMaskPixels[base+x]=maskValue;
-                }
-                painted++;
-              }
-              if(yTop<=0){ runMax=alt; break; }
-              yPrev=Math.min(yPrev,yTop);
-              runMax=alt;
-            }
+            if(resolvePrev(hasData,elev)) break;
+            hasPrev2=hasPrev;prev2Elev=prevElev;prev2Has=prevHas;
+            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;
             /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
                稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
             step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
             d+=step;
           }
+          resolvePrev(false,0);   // 最後の1点
         }
         if(!painted) return false;
         tctx.putImageData(worldImageData,0,0);
