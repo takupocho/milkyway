@@ -3335,7 +3335,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="532-landscape-sticks";
+const APP_VERSION="533-road-underfoot";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14238,10 +14238,12 @@ function drawPhoto(ctx,s){
             const sampleM=5;
             const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
             const TIE_INTERVAL_M=2;                // 枕木の間隔(実寸)
-            // 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
+            const pixelsPerDegree=W/Math.max(1,s.fovH);
+            /* 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
+               縁は世界座標で作るので、遠近法に正しく従った幅になる。 */
             const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
               const distanceM=Math.hypot(eastM,northM);
-              if(distanceM<2||distanceM>roadRangeM) return null;
+              if(distanceM<.4||distanceM>roadRangeM) return null;
               const az=norm360(atan2d(eastM,northM));
               const distanceKm=distanceM/1000;
               const elevation=rayBaseElevationAt(az,distanceKm);
@@ -14258,12 +14260,31 @@ function drawPhoto(ctx,s){
                 const edgeAz=norm360(atan2d(ex,ny));
                 const edgeAlt=altFromElevation(elevation,edgeDistance);
                 const p=toXY(edgeAz,edgeAlt);
-                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) return null;
+                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){sides.length=0;break;}
                 sides.push(p);
               }
               const centre=toXY(az,alt);
               if(!centre||!Number.isFinite(centre[0])) return null;
-              return {left:sides[0],right:sides[1],centre,distanceM};
+              /* 足元では道幅の見かけの角度が画角より広くなり、左右の縁が投影できない。
+                 そこで断面ごと捨てると、立っている道が足元だけ丸ごと消えて
+                 地面の緑で塗り潰されてしまう。縁が作れないときは、中心点から
+                 画面上の法線方向へ道幅ぶんずらして代用する(はみ出しはCanvasが切る)。 */
+              const halfPx=Math.atan2(halfWidth,Math.max(.4,distanceM))*R2D*pixelsPerDegree;
+              return {left:sides[0]||null,right:sides[1]||null,centre,distanceM,halfPx};
+            };
+            /* 2つの断面から四角形の4隅を得る。縁が無い断面は画面上の法線で作る。 */
+            const ribbonCorners=(previous,current)=>{
+              let nx=current.centre[0]-previous.centre[0], ny=current.centre[1]-previous.centre[1];
+              const length=Math.hypot(nx,ny);
+              // 進行方向を90度回したものが道幅の向き。長さが取れなければ水平とみなす。
+              let ux=length>.001?-ny/length:1, uy=length>.001?nx/length:0;
+              const sideOf=(section,which)=>{
+                const real=which<0?section.left:section.right;
+                if(real) return real;
+                const sign=which<0?1:-1;
+                return [section.centre[0]+ux*section.halfPx*sign,section.centre[1]+uy*section.halfPx*sign];
+              };
+              return {pl:sideOf(previous,-1),cl:sideOf(current,-1),cr:sideOf(current,1),pr:sideOf(previous,1)};
             };
             /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
                違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
@@ -14284,7 +14305,10 @@ function drawPhoto(ctx,s){
                 // 進行方向を90度回した向きが道幅の方向。
                 const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
                 const perpEast=dirNorth, perpNorth=-dirEast;
-                const steps=Math.max(1,Math.ceil(segmentM/sampleM));
+                /* 足元は1歩ぶんの距離で見かけが大きく変わるので、近い区間だけ細かく刻む。 */
+                const nearestM=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
+                const stepM=nearestM<30?1.5:sampleM;
+                const steps=Math.max(1,Math.ceil(segmentM/stepM));
                 for(let s=(i>0?1:0);s<=steps;s++){
                   const f=s/steps;
                   const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
@@ -14295,10 +14319,11 @@ function drawPhoto(ctx,s){
                     // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
                     const bucket=roadBucketOf(current.distanceM);
                     const path=fillPaths[bucket];
-                    path.moveTo(previous.left[0],previous.left[1]);
-                    path.lineTo(current.left[0],current.left[1]);
-                    path.lineTo(current.right[0],current.right[1]);
-                    path.lineTo(previous.right[0],previous.right[1]);
+                    const corner=ribbonCorners(previous,current);
+                    path.moveTo(corner.pl[0],corner.pl[1]);
+                    path.lineTo(corner.cl[0],corner.cl[1]);
+                    path.lineTo(corner.cr[0],corner.cr[1]);
+                    path.lineTo(corner.pr[0],corner.pr[1]);
                     path.closePath();
                     if(markKind==="centre"){
                       // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
@@ -14310,8 +14335,9 @@ function drawPhoto(ctx,s){
                     }else if(markKind==="ties"){
                       // 枕木は実距離で等間隔。奥ほど詰まるので、そのまま奥行きの手がかりになる。
                       if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(here/TIE_INTERVAL_M)){
-                        markPaths[bucket].moveTo(current.left[0],current.left[1]);
-                        markPaths[bucket].lineTo(current.right[0],current.right[1]);
+                        const tie=ribbonCorners(previous,current);
+                        markPaths[bucket].moveTo(tie.cl[0],tie.cl[1]);
+                        markPaths[bucket].lineTo(tie.cr[0],tie.cr[1]);
                       }
                     }
                   }
