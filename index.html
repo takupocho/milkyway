@@ -3353,7 +3353,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="541-world-coastline";
+const APP_VERSION="542-world-fast-coast";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8913,17 +8913,29 @@ function worldHeightAt(lat,lon,z){
 }
 /* タイル未取得(=まだ分からない)と、標高データなし(=海)は区別する。
    区別しないと、読み込み中の範囲が全部海になって画面が真っ青になる。 */
+/* どの段が答えたかを覚えておく。z14/z12が空の地域では毎回3段とも引いていたが、
+   「その地点でどの段が答えるか」は場所ごとにほぼ一定なので、
+   前回答えた段から試せば多くの点が1回で済む。光線ごとに初期化する。 */
+let worldZoomHint=0;
 function worldHeightForDistance(lat,lon,distanceM){
   const level=distanceM<WORLD_FIELD_SWITCH_M[0]?0:(distanceM<WORLD_FIELD_SWITCH_M[1]?1:2);
+  const hint=Math.max(level,worldZoomHint);
+  if(hint>level){
+    const quick=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[hint]);
+    if(Number.isFinite(quick)){ worldHeightTileMissing=false; return quick; }
+  }
   let value=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[level]);
   /* 値が無ければ粗い段で代用する。z14のdem_pngは海際で欠損が多く、
      ここを省くと海岸の低地が丸ごと海になってしまう(実測で確認)。
      そのぶん海の上は3段調べることになり重い。ここは今後の詰めどころ。 */
   let missing=worldHeightTileMissing;
+  let answered=level;
   for(let next=level+1;!Number.isFinite(value)&&next<WORLD_FIELD_ZOOMS.length;next++){
     value=worldHeightAt(lat,lon,WORLD_FIELD_ZOOMS[next]);
     if(!worldHeightTileMissing) missing=false;
+    answered=next;
   }
+  if(Number.isFinite(value)) worldZoomHint=answered;
   worldHeightTileMissing=missing&&!Number.isFinite(value);
   return value;
 }
@@ -14258,7 +14270,8 @@ function drawPhoto(ctx,s){
              既存の地形生成が前後左右の合意を取っているのと同じ考え方で、
              ここでは光線に沿った前後の点と合意が取れたときだけ陸/海を確定する。
              そのため判定を1サンプル遅らせ、前の点を「その前」と「次」で挟んで決める。 */
-          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0;
+          worldZoomHint=0;   // 光線ごとに段の記憶をやり直す
+          let hasPrev=false,prevD=0,prevElev=0,prevHas=false,prevLat=0,prevLon=0,prevSea=null;
           let hasPrev2=false,prev2Elev=0,prev2Has=false;
           const paintSample=(sd,sElev,sWater)=>{
             const drop=sd*sd/(2*6371000*(7/6));
@@ -14295,7 +14308,7 @@ function drawPhoto(ctx,s){
               else if(nextHas) elev=nextElev;
               else elev=0;
             }
-            const seaByCoast=worldSeaAt(prevLat,prevLon);
+            const seaByCoast=prevSea;
             let water;
             if(seaByCoast===null) water=!prevHas;      // 海岸線が無い地域は従来どおりDEMの欠損で判断
             else water=seaByCoast;
@@ -14306,7 +14319,12 @@ function drawPhoto(ctx,s){
           while(d<WORLD_MAX_DIST_M){
             const pLat=originLat+cosAz*d/111320, pLon=originLon+sinAz*d/metrePerDegLon;
             let elev,hasData;
-            if(worldLikelySea(pLat,pLon)){           // 粗い段で欠損＝海。細かい段は引かない
+            /* 海岸線のマスクで海と分かっている点は、標高を引く必要が無い。
+               海の上のDEM参照(1点あたり最大12回のタイル参照)が丸ごと消える。 */
+            const seaHere=worldSeaAt(pLat,pLon);
+            if(seaHere===true){
+              elev=0;hasData=false;
+            }else if(seaHere===null&&worldLikelySea(pLat,pLon)){  // 海岸線が無い地域だけ従来の足切り
               elev=0;hasData=false;
             }else{
               elev=worldHeightForDistance(pLat,pLon,d);
@@ -14318,7 +14336,7 @@ function drawPhoto(ctx,s){
             }
             if(resolvePrev(hasData,elev)) break;
             hasPrev2=hasPrev;prev2Elev=prevElev;prev2Has=prevHas;
-            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;
+            hasPrev=true;prevD=d;prevElev=elev;prevHas=hasData;prevLat=pLat;prevLon=pLon;prevSea=seaHere;
             /* 遠景は1歩を大きくする。10km以遠は1歩が数百mになっても
                稜線の形はほとんど変わらないのに、歩数の3割をここで使っていた。 */
             step=Math.max(WORLD_MIN_STEP_M,step*(d<10000?growth:1.10));
