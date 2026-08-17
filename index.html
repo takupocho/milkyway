@@ -1329,6 +1329,20 @@
   }
   /* 測定線を点線にし、流れるように動かす。
      とびとびの長さ(8+6=14)の整数倍だけずらすと継ぎ目が見えない。 */
+  /* 「この場所に設定」は押さないと反映されない。
+     未適用の候補がある間だけ、縁を光らせて存在を知らせる。
+     押して反映されたら自然に止まる。 */
+  @keyframes applyBtnPulse{
+    0%,100%{ border-color:var(--core-amber); box-shadow:0 0 0 0 rgba(232,166,89,.55),0 0 6px rgba(232,166,89,.5); }
+    50%    { border-color:#ffd8a3;           box-shadow:0 0 0 6px rgba(232,166,89,0),0 0 18px rgba(232,166,89,.95); }
+  }
+  .osm-map-actions button#osmApplyBtn.needs-apply{
+    animation:applyBtnPulse 1.25s ease-in-out infinite;
+    color:var(--core-amber);
+  }
+  @media (prefers-reduced-motion:reduce){
+    .osm-map-actions button#osmApplyBtn.needs-apply{animation:none;border-color:var(--core-amber);}
+  }
   @keyframes measureDashMove{ to{ stroke-dashoffset:-28; } }
   .measure-dash{
     stroke-dasharray:8 6;
@@ -3477,7 +3491,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="580-measure-dashed";
+const APP_VERSION="581-apply-btn-pulse";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5136,6 +5150,22 @@ function updateOsmSelectionMarker(){
     osmSelectionMarker.setLatLng(latLng);
   }
 }
+/* 地図で選んだ場所が、まだ観測地点に反映されていないかを見て、
+   「この場所に設定」の縁を光らせる。
+   1m未満の差は丸め誤差なので同じ場所とみなす。 */
+function syncOsmApplyHighlight(){
+  if(!el.osmApplyBtn) return;
+  let pending=false;
+  if(Number.isFinite(osmCandidateLat)&&Number.isFinite(osmCandidateLon)){
+    const lat0=+el.lat.value, lon0=+el.lon.value;
+    if(!Number.isFinite(lat0)||!Number.isFinite(lon0)) pending=true;
+    else{
+      const mLon=Math.max(1,111320*Math.cos(lat0*D2R));
+      pending=Math.hypot((osmCandidateLon-lon0)*mLon,(osmCandidateLat-lat0)*111320)>1;
+    }
+  }
+  el.osmApplyBtn.classList.toggle("needs-apply",pending);
+}
 function setOsmCandidate(lat,lon,moveMap=false){
   lat=Math.max(-85,Math.min(85,+lat));
   lon=((+lon+180)%360+360)%360-180;
@@ -5145,6 +5175,7 @@ function setOsmCandidate(lat,lon,moveMap=false){
   if(moveMap&&osmMapInstance) osmMapInstance.setView([lat,lon],Math.max(15,osmMapInstance.getZoom()));
   updateOsmCoordinateLabel();
   updateOsmFovOverlay();
+  syncOsmApplyHighlight();
 }
 function destinationLatLng(lat,lon,bearing,distanceMeters){
   const earthRadius=6371008.8;
@@ -5569,6 +5600,7 @@ el.osmApplyBtn.addEventListener("click",()=>{
   update();
   reverseGeocodeAndShow(osmCandidateLat,osmCandidateLon);
   scheduleSaveSettings();
+  syncOsmApplyHighlight();   // 反映したので光りを止める
   setOsmMapScreenOpen(false);
 });
 window.addEventListener("resize",()=>{if(osmMapScreenOpen&&osmMapInstance) requestAnimationFrame(()=>osmMapInstance.invalidateSize());});
