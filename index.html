@@ -2549,29 +2549,16 @@
      画面幅に関係なく確実に効かせる。
      ========================================================= */
   #displayOptionsPopup.show{
-    background:rgba(250,251,255,.975);
-    border:1px solid rgba(22,28,52,.20);
+    /* 白20%のすりガラス。縁だけ白50%で輪郭を出す。 */
+    background:rgba(255,255,255,.20);
+    border:1px solid rgba(255,255,255,.50);
     box-shadow:0 12px 30px rgba(4,8,20,.42);
-    backdrop-filter:blur(3px);
-    -webkit-backdrop-filter:blur(3px);
+    /* 背景が透けるので、ぼかしを強めにして星空と文字が混ざらないようにする。 */
+    backdrop-filter:blur(14px) saturate(120%);
+    -webkit-backdrop-filter:blur(14px) saturate(120%);
   }
-  #displayOptionsPopup .display-popup-section-title{
-    color:#28304a;
-  }
-  #displayOptionsPopup .constellation-toggle-btn{
-    background:#eef1f8;
-    color:#1d2438;
-    border:1px solid rgba(22,28,52,.22);
-  }
-  #displayOptionsPopup .constellation-toggle-btn:hover{
-    background:#e2e7f4;
-  }
-  #displayOptionsPopup .constellation-toggle-btn.active{
-    background:var(--core-amber);
-    color:#1c1120;
-    border-color:var(--core-amber);
-    font-weight:700;
-  }
+  /* 中のボタンと見出しはv572で白地向けに暗い文字へ変えていたが、
+     白20%だと下の星空が透けて暗くなるので、元の明るい文字に戻す。 */
 </style>
 </head>
 <body>
@@ -3019,14 +3006,11 @@
                 <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
                 <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
-                <button id="popupTerrainMeshBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">地形メッシュ</button>
                 <button id="popupWorldGridBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地面グリッド</button>
                 <button id="popupContourBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">等高線</button>
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
-                <button id="popupWorldTerrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">新地形</button>
-                <button id="popupSeaDiagBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">水際診断</button>
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">リフレ</button>
@@ -3397,7 +3381,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="572-display-popup-light";
+const APP_VERSION="573-popup-glass";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6004,8 +5988,12 @@ function syncDisplayPopupControls(){
   el.popupSouth50Btn.classList.toggle("active",showBelowHorizon && +el.belowHorizonOpacitySlider.value===50);
   el.popupSkylineBtn.classList.toggle("active",showSkylineBoundary);
   el.popupSkylineBtn.setAttribute("aria-pressed",String(showSkylineBoundary));
-  el.popupTerrainMeshBtn.classList.toggle("active",terrainMeshLinesVisible);
-  el.popupTerrainMeshBtn.setAttribute("aria-pressed",String(terrainMeshLinesVisible));
+  /* 地形メッシュ・新地形・水際診断のボタンはv573で取り外した。
+     仕組み自体は残してあるので、ボタンが無い場合だけ見見合わせを飛ばす。 */
+  if(el.popupTerrainMeshBtn){
+    el.popupTerrainMeshBtn.classList.toggle("active",terrainMeshLinesVisible);
+    el.popupTerrainMeshBtn.setAttribute("aria-pressed",String(terrainMeshLinesVisible));
+  }
   el.popupWorldGridBtn.classList.toggle("active",worldGridVisible);
   el.popupWorldGridBtn.setAttribute("aria-pressed",String(worldGridVisible));
   el.popupContourBtn.classList.toggle("active",contourLinesVisible);
@@ -6016,10 +6004,14 @@ function syncDisplayPopupControls(){
   el.popupRailBtn.setAttribute("aria-pressed",String(railLinesVisible));
   el.popupPlaceNameBtn.classList.toggle("active",placeNameVisible);
   el.popupPlaceNameBtn.setAttribute("aria-pressed",String(placeNameVisible));
-  el.popupWorldTerrainBtn.classList.toggle("active",TERRAIN_RENDERER==="world");
-  el.popupWorldTerrainBtn.setAttribute("aria-pressed",String(TERRAIN_RENDERER==="world"));
-  el.popupSeaDiagBtn.classList.toggle("active",seaDiagVisible);
-  el.popupSeaDiagBtn.setAttribute("aria-pressed",String(seaDiagVisible));
+  if(el.popupWorldTerrainBtn){
+    el.popupWorldTerrainBtn.classList.toggle("active",TERRAIN_RENDERER==="world");
+    el.popupWorldTerrainBtn.setAttribute("aria-pressed",String(TERRAIN_RENDERER==="world"));
+  }
+  if(el.popupSeaDiagBtn){
+    el.popupSeaDiagBtn.classList.toggle("active",seaDiagVisible);
+    el.popupSeaDiagBtn.setAttribute("aria-pressed",String(seaDiagVisible));
+  }
   document.body.classList.toggle("sea-diag-on",seaDiagVisible);
   el.popupWaterBoundaryBtn.classList.toggle("active",waterLandBoundaryVisible);
   el.popupWaterBoundaryBtn.setAttribute("aria-pressed",String(waterLandBoundaryVisible));
@@ -6068,14 +6060,14 @@ el.popupPlaceNameBtn.addEventListener("click",()=>{
   setSimAddressLabel();   // 文言は保持したまま出し入れするだけ
   syncDisplayPopupControls();scheduleSaveSettings();
 });
-el.popupWorldTerrainBtn.addEventListener("click",()=>{
+if(el.popupWorldTerrainBtn) el.popupWorldTerrainBtn.addEventListener("click",()=>{
   TERRAIN_RENDERER=TERRAIN_RENDERER==="world"?"layered":"world";
   syncAppVersionBadge();
   drawPhoto._terrainRenderKey=null;      // 方式が変わるので描き直す
   drawPhoto._confirmedWaterAzCache=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
-el.popupSeaDiagBtn.addEventListener("click",()=>{
+if(el.popupSeaDiagBtn) el.popupSeaDiagBtn.addEventListener("click",()=>{
   seaDiagVisible=!seaDiagVisible;
   if(seaDiagVisible&&el.seaDiagPanel&&!el.seaDiagPanel.textContent){
     el.seaDiagPanel.textContent="描画待ち…";
@@ -6113,7 +6105,7 @@ el.popupContourBtn.addEventListener("click",()=>{
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
-el.popupTerrainMeshBtn.addEventListener("click",()=>{
+if(el.popupTerrainMeshBtn) el.popupTerrainMeshBtn.addEventListener("click",()=>{
   terrainMeshLinesVisible=!terrainMeshLinesVisible;
   drawPhoto._terrainRenderKey=null; // 地形の縁の色が変わるので描き直す
   syncDisplayPopupControls();update();scheduleSaveSettings();
