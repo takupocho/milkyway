@@ -3366,7 +3366,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="568-kmz-clip-eye-height";
+const APP_VERSION="569-clip-fov-and-stick";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -10831,8 +10831,14 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
   const eyeNow=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
   const earthRadius=6371000*(7/6);
   const samples=[];
-  for(let az=0;az<360;az++){
-    const row=grid[az];
+  /* 360方位すべてを拾ってはいけない。画角の外の方位も toXY は座標を返すので、
+     背後の山が画面内のx座標に紛れ込み、稜線が滅茶苦茶になる。
+     v568ではそれが原因で、遠くの稜線と水平線の間に建物をえぐる帯が出ていた。
+     水面反射の処理と同じように、画角のぶんだけを細かく刻んで拾う。 */
+  const halfFov=Math.max(5,(Number.isFinite(s.fovH)?s.fovH:60)/2+8);
+  for(let diff=-halfFov;diff<=halfFov;diff+=.25){
+    const az=norm360(s.facingAz+diff);
+    const row=grid[Math.round(az)%360];
     if(!row||!row.length) continue;
     let best=-Infinity;
     for(let i=0;i<row.length;i++){
@@ -10849,7 +10855,6 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
     if(!Number.isFinite(best)) continue;
     const point=toXY(az,best);
     if(!point||!point.every(Number.isFinite)) continue;
-    if(point[0]<-W||point[0]>W*2) continue;      // 画面から大きく外れた方位は稜線を歪める
     samples.push(point);
   }
   return samples.length>=8?buildSkylineYArray(samples,W,H):null;
@@ -17481,6 +17486,13 @@ function bindDroneStick(base,onMove,onRelease){
     if(event.pointerId!==activePointer) return;
     event.preventDefault();
     applyPointer(event);
+    /* 指を置いた瞬間はスティックが中央＝遊びの中なので出力が0になり、
+       pointerdown で起こしたループは最初の1フレームで
+       「操作されていない」と判断して自分から止まってしまう。
+       そのあと傾けても誰も起こし直さないので、片方だけだと無反応に見えた。
+       （もう片方を触ると pointerdown が走って、そのついでに動き出していた）
+       傾けるたびに起こし直す。既に動いていれば何もしない。 */
+    startWalkLoop();
   });
   base.addEventListener("pointerup",release);
   base.addEventListener("pointercancel",release);
