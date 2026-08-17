@@ -2994,6 +2994,7 @@
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
+                <button id="popupWorldTerrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">新地形</button>
                 <button id="popupSeaDiagBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">水際診断</button>
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
@@ -3365,20 +3366,49 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="552-water-diagnostics";
+const APP_VERSION="568-kmz-clip-eye-height";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
    同じ地点・同じ構図で新旧を見比べられる。問題が出たときの退避経路でもある。 */
-const TERRAIN_RENDERER=(()=>{
+/* 地形描画方式。これまでURLの ?terrain= でしか切り替えられず、
+   URLを付け忘れたブラウザと付けたブラウザで見え方が変わって
+   どちらを見ているのか分からなくなっていた。
+   画面のボタンで切り替えられるようにし、版名の横に今どちらかを出す。 */
+const TERRAIN_RENDERER_FROM_URL=(()=>{
+  try{ return new URLSearchParams(location.search).get("terrain")||""; }catch(e){ return ""; }
+})();
+let TERRAIN_RENDERER=(()=>{
   try{
     const value=new URLSearchParams(location.search).get("terrain");
     if(value==="legacy") return "legacy";
     if(value==="quads") return "quads";   // 旧レイマーチ(短冊を1枚ずつ塗る方式)
     if(value==="world") return "world";   // 試験中。世界座標タイル＋レイマーチ
+    if(value==="normal"||value==="layered") return "layered";
+    /* 既定は従来どおりの地形描画に戻した（v555）。
+       新方式は水際こそ安定していたが、山の見え方が不自然になるため採用しない。
+       比較用に「表示→新地形」で切り替えられる状態は残す。
+       （以下はv554時の覚え書き）
+       旧方式は移動のたびに近距離グリッドの水判定を作り直すのだが、
+       その作り直しがOSMの水域ポリゴン(池・湖)だけを見ていて、
+       海岸線から決まった海を落としてしまう(applyCachedWaterRings)。
+       このため前後左右に動かすと海が陸になり、移動をやめると
+       通常経路の取り直しが走って元に戻る、という挙動になっていた。
+       新方式は世界固定の海マスクを使うので移動しても変わらない。
+       比較できるよう、旧方式は「表示→新地形」をOFFにすれば使える。 */
     return "layered";
-  }catch(e){ return "raymarch"; }
+  }catch(e){ return "layered"; }
 })();
+function terrainRendererLabel(){
+  if(TERRAIN_RENDERER==="world") return "新方式";
+  if(TERRAIN_RENDERER==="legacy") return "legacy";
+  if(TERRAIN_RENDERER==="quads") return "quads";
+  return "通常";
+}
+function syncAppVersionBadge(){
+  const badge=document.getElementById("appVersionBadge");
+  if(badge) badge.textContent=`v${APP_VERSION} [${terrainRendererLabel()}]`;
+}
 
 /* =========================================================
    1. 天文計算コアエンジン
@@ -4216,7 +4246,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -5951,6 +5981,8 @@ function syncDisplayPopupControls(){
   el.popupRailBtn.setAttribute("aria-pressed",String(railLinesVisible));
   el.popupPlaceNameBtn.classList.toggle("active",placeNameVisible);
   el.popupPlaceNameBtn.setAttribute("aria-pressed",String(placeNameVisible));
+  el.popupWorldTerrainBtn.classList.toggle("active",TERRAIN_RENDERER==="world");
+  el.popupWorldTerrainBtn.setAttribute("aria-pressed",String(TERRAIN_RENDERER==="world"));
   el.popupSeaDiagBtn.classList.toggle("active",seaDiagVisible);
   el.popupSeaDiagBtn.setAttribute("aria-pressed",String(seaDiagVisible));
   document.body.classList.toggle("sea-diag-on",seaDiagVisible);
@@ -5999,10 +6031,17 @@ el.popupPlaceNameBtn.addEventListener("click",()=>{
   setSimAddressLabel();   // 文言は保持したまま出し入れするだけ
   syncDisplayPopupControls();scheduleSaveSettings();
 });
+el.popupWorldTerrainBtn.addEventListener("click",()=>{
+  TERRAIN_RENDERER=TERRAIN_RENDERER==="world"?"layered":"world";
+  syncAppVersionBadge();
+  drawPhoto._terrainRenderKey=null;      // 方式が変わるので描き直す
+  drawPhoto._confirmedWaterAzCache=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
 el.popupSeaDiagBtn.addEventListener("click",()=>{
   seaDiagVisible=!seaDiagVisible;
   if(seaDiagVisible&&el.seaDiagPanel&&!el.seaDiagPanel.textContent){
-    el.seaDiagPanel.textContent=TERRAIN_RENDERER==="world"?"描画待ち…":"通常の地形描画では出ません\n(?terrain=world 専用)";
+    el.seaDiagPanel.textContent="描画待ち…";
   }
   syncDisplayPopupControls();
   drawPhoto._terrainRenderKey=null;   // 数え直すために一度描き直す
@@ -7169,6 +7208,7 @@ function collectPersistedSettings(){
     railLinesVisible:railLinesVisible,
     placeNameVisible:placeNameVisible,
     seaDiagVisible:seaDiagVisible,
+    terrainRendererWorld:TERRAIN_RENDERER==="world",
     droneModeOn:droneModeOn,
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
@@ -7276,6 +7316,13 @@ async function loadPersistedSettings(){
     railLinesVisible=!!s.railLinesVisible;
     placeNameVisible=s.placeNameVisible!==false;
     seaDiagVisible=s.seaDiagVisible===true;
+    // 設定の読み込みは初回描画より後なので、ONなら一度描き直して数値を埋める。
+    if(seaDiagVisible&&typeof drawPhoto==="function") drawPhoto._terrainRenderKey=null;
+    // URLで明示された場合はそちらを優先する（従来の切り替え方も残す）
+    if(!TERRAIN_RENDERER_FROM_URL&&typeof s.terrainRendererWorld==="boolean"){
+      TERRAIN_RENDERER=s.terrainRendererWorld?"world":"layered";
+      syncAppVersionBadge();
+    }
     droneModeOn=!!s.droneModeOn;
     if(typeof syncDroneModeButton==="function") syncDroneModeButton();
     if(typeof refreshDroneMapSize==="function") refreshDroneMapSize();
@@ -8792,7 +8839,11 @@ function worldRequestTile(z,x,y){
     worldTileMemo.delete(z);   // 記憶していた「未取得」を捨てる
   }).catch(()=>{ level.set(key,null); }).finally(()=>{
     worldFieldPending--;
-    if(worldFieldPending<=0){ drawPhoto._terrainRenderKey=null; if(typeof update==="function") update(); }
+    if(worldFieldPending<=0){
+      // タイルが揃った＝マスクの裏表を決める票が集まった。見送っていた分をここで作る。
+      if(typeof prepareSeaMasks==="function") prepareSeaMasks(+el.lat.value,+el.lon.value);
+      drawPhoto._terrainRenderKey=null; if(typeof update==="function") update();
+    }
   });
 }
 /* 観測地点のまわりのタイルを、段ごとにまとめて要求する。移動しても
@@ -8898,9 +8949,215 @@ function worldCoastlineFor(lat,lon){
   // 取得半径(7.5km)の内側にいるあいだだけ使い回す。
   return Math.hypot(dEast,dNorth)<OSM_COASTLINE_RADIUS_KM*1000 ? worldLastCoastline.ways : fresh;
 }
+/* =========================================================
+   水面レイヤ（v564）— 海を「線」ではなく「面」で受け取る
+
+   湖と池は最初から面(natural=water)で来るので一度も問題を起こしていない。
+   海だけが線(natural=coastline)で来るため、線から面を起こす仕組みが要り、
+   そこに向きの規約・行ごとの種・多数決・反転判定・行の補修と継ぎ当てが積み上がった。
+   破れ方が無限にあるのは、線を面にしている限り当たり前だった。
+
+   国土地理院の淡色地図タイルは、水面を単色 RGB(190,210,255) で塗っている。
+   これは海岸線ではなく「水面という面」そのもの。実測:
+     沖合10km z17 … 水面100.0%
+     湾内     z17 … 水面 83.2%（注記等による穴 0個）
+     内陸(山) z17 … 水面  0.0%（誤検出なし）
+   許容幅を0から±16まで振っても汀線タイルの水面率は17.6%→17.9%しか動かない。
+
+   1画素は z16 で約2m、z14 で約8m、z12 で約32m、z10 で約127m。
+   標高タイルと同じ仕組み・同じCDNなので通信の作りも変わらない。
+
+   注意（v550で踏んだ失敗）:
+   - 河川の細線色 RGB(20,90,255) は入れない。水部の**青い注記文字**を
+     拾って斜面に青い斑点が出る。塗り色だけなら誤検出は出ない。
+   - 標高の扱いには一切触らない。触ったときは陸に挟まれた水の点が
+     両隣の山の高さで埋められ、山の高さの水柱になった。
+   ========================================================= */
+const WORLD_MAP_ZOOMS=[16,14,12,10];      // 約2m/px / 8m / 32m / 127m
+const WORLD_MAP_RADIUS=[2,2,1,1];
+const worldMapLevels=new Map();           // zoom -> Map(numericKey -> Uint8Array|null|"loading")
+const worldMapMemo=new Map();
+let worldMapPending=0,worldMapTiles=0;
+function worldMapLevelMap(z){
+  let level=worldMapLevels.get(z);
+  if(!level){ level=new Map(); worldMapLevels.set(z,level); }
+  return level;
+}
+function worldMapDecodeTile(pixels){
+  const out=new Uint8Array(256*256),d=pixels.data||pixels;
+  for(let i=0,q=0;i<out.length;i++,q+=4){
+    if(Math.abs(d[q]-190)<=6&&Math.abs(d[q+1]-210)<=6&&Math.abs(d[q+2]-255)<=6) out[i]=1;
+  }
+  return out;
+}
+function worldMapRequestTile(z,x,y){
+  const level=worldMapLevelMap(z),key=worldTileKey(x,y);
+  if(level.has(key)) return;
+  level.set(key,"loading");
+  worldMapPending++;
+  fetch(`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,{mode:"cors",cache:"force-cache"})
+    .then(r=>{ if(!r.ok) throw new Error(`map ${r.status}`); return r.blob(); })
+    .then(imageBlobToPixels)
+    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels):null);worldMapMemo.delete(z);worldMapTiles++; })
+    .catch(()=>{ level.set(key,null); })
+    .finally(()=>{
+      worldMapPending--;
+      if(worldMapPending<=0){
+        /* 到着が描画より遅れることがある。届いた時点で当て直して描き直す。 */
+        if(typeof applyMapWaterToGrids==="function") applyMapWaterToGrids(realTerrainState);
+        drawPhoto._confirmedWaterAzCache=null;
+        drawPhoto._terrainRenderKey=null;
+        if(typeof update==="function") update();
+      }
+    });
+}
+function worldMapEnsureTiles(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  WORLD_MAP_ZOOMS.forEach((z,level)=>{
+    const t=terrainTilePoint(lat,lon,z),r=WORLD_MAP_RADIUS[level];
+    for(let dy=-r;dy<=r;dy++) for(let dx=-r;dx<=r;dx++) worldMapRequestTile(z,t.x+dx,t.y+dy);
+  });
+}
+function worldMapTileFor(z,x,y){
+  const key=worldTileKey(x,y),memo=worldMapMemo.get(z);
+  if(memo&&memo.key===key) return memo.tile;
+  const tile=worldMapLevelMap(z).get(key);
+  const value=(tile&&tile!=="loading")?tile:null;
+  worldMapMemo.set(z,{key,tile:value});
+  return value;
+}
+/* 1点の水面判定。タイルが無ければ null（＝判断できない）。2値なので補間しない。 */
+function worldMapWaterAt(lat,lon,z){
+  const span=(2**z)*256,clamped=clamp(lat,-85.05112878,85.05112878);
+  const gx=((lon+180)/360*span)|0;
+  const gy=((1-Math.asinh(Math.tan(clamped*D2R))/Math.PI)/2*span)|0;
+  const tile=worldMapTileFor(z,gx>>8,gy>>8);
+  if(!tile) return null;
+  return tile[(gy&255)*256+(gx&255)]===1;
+}
+function worldMapWaterForDistance(lat,lon,distanceM){
+  const level=distanceM<1000?0:(distanceM<8000?1:(distanceM<30000?2:3));
+  for(let i=level;i<WORLD_MAP_ZOOMS.length;i++){
+    const value=worldMapWaterAt(lat,lon,WORLD_MAP_ZOOMS[i]);
+    if(value!==null) return value;
+  }
+  return null;   // 未取得、または日本国外
+}
+/* 海岸線を走査線で塗って、海=1 の格子を作る。遠景用と近景用で
+   格子の大きさだけ変えて使い回す。
+   OSMのnatural=coastlineは「進行方向の左が陸、右が海」で登録する決まりなので、
+   交差した線分が北を向いているかどうかで巻き数を増減すれば、
+   立ち位置と無関係に海側が決まる。全体の裏表だけは呼び出し側で決める。 */
+/* 巻き数だけで塗ると、外側（巻き数0）が必ず陸になる。
+   ところが海岸線データは「陸地の輪郭」なので、外側は普通は海だ。
+   実測（和歌山県由良町）: 360本のうち242本が閉じた輪（島や岬）で、
+   外洋はどの輪の内側でもないため巻き数0＝陸と塗られ、
+   精査済みの地形と37.5%しか一致しなかった。しかも食い違いは全部
+   「マスクは陸、実際は海」の一方向（20,114点）。つまりほぼ全面が陸。
+   全体を反転させると今度は島も陸地も海になるので、どちらにしても合わない。
+
+   直し方は、外側が海か陸かを推測でなく行ごとに決めること。
+   各行の左端（観測地点から5.5km西）で標高データの有無を見る。
+   そこは沖か内陸のどちらかで、浅い湾のような紛らわしい場所ではないので
+   「データが無い＝海」が素直に効く。あとは交点ごとに反転していけばよい。
+   これなら立ち位置にも、全体の多数決にも依存しない。 */
+function worldFillSeaGrid(lat,lon,list,gridN,spanM){
+  const half=spanM/2,scale=gridN/spanM;
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R));
+  const toGridX=pLon=>((pLon-lon)*mLon+half)*scale;
+  const toGridY=pLat=>(half-(pLat-lat)*111320)*scale;
+  const segs=[];
+  for(const way of list){
+    for(let i=1;i<way.length;i++){
+      const a=way[i-1],b=way[i];
+      const x1=toGridX(a[1]),y1=toGridY(a[0]),x2=toGridX(b[1]),y2=toGridY(b[0]);
+      // 格子の外を左右に大きく外れた線分は、どの行とも交差しないので落とす。
+      if((x1<0&&x2<0)||(x1>gridN&&x2>gridN)) continue;
+      if((y1<0&&y2<0)||(y1>gridN&&y2>gridN)) continue;
+      segs.push([x1,y1,x2,y2,y2<y1?1:-1]);
+    }
+  }
+  if(!segs.length) return {mask:null,segments:0};
+  const mask=new Uint8Array(gridN*gridN);
+  const coarseZ=WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1];
+  const leftLon=lon-half/mLon;          // 行の左端の経度（格子の西の縁）
+  const rightLon=lon+half/mLon;         // 行の右端（格子の東の縁）
+  /* 標高データが「あるか」だけを見る小道具。無い＝海。 */
+  const demSeaAt=(pLat,pLon)=>{
+    worldHeightAt(pLat,pLon,coarseZ);
+    if(worldHeightTileMissing) return null;
+    return !Number.isFinite(worldHeightAt(pLat,pLon,coarseZ));
+  };
+  let seeded=0,inherited=0,prevSeed=null,repaired=0;
+  for(let y=0;y<gridN;y++){
+    const cy=y+.5,xs=[];
+    for(let i=0;i<segs.length;i++){
+      const s=segs[i];
+      if((s[1]>cy)===(s[3]>cy)) continue;
+      xs.push(s[0]+(cy-s[1])/(s[3]-s[1])*(s[2]-s[0]));
+    }
+    const rowLat=lat+(half-cy/scale)/111320;
+    // この行の左端が海かどうかを、標高データの有無で決める
+    let sea=demSeaAt(rowLat,leftLon);
+    if(sea===null){ sea=prevSeed;inherited++; } else { seeded++;prevSeed=sea; }
+    if(sea===null||sea===undefined) continue;   // まだ判断できない行は塗らない
+    /* 行の整合性を確かめる。
+       海岸線データには途中で途切れた線が混じっていて（実測: 360本中118本）、
+       その端点の近くを通る行では交点を1つ数え損なう。すると、その行だけ
+       途中から陸と海が入れ替わり、沖に向かって細長い誤った陸が伸びる。
+       行が何本か続くと、四角い「地図に無い島」になって見える。
+       左端と右端の両方を標高データで確かめれば、この取りこぼしは検出できる。
+       交点が偶数なら両端は同じ、奇数なら逆になっているはず。
+       合わなければその行は信用せず、標高データだけで塗る。 */
+    const rightSea=demSeaAt(rowLat,rightLon);
+    if(rightSea!==null&&rightSea!==(xs.length%2?!sea:sea)){
+      repaired++;
+      const base=y*gridN;
+      for(let px=0;px<gridN;px++){
+        const cellLon=lon+((px+.5)/scale-half)/mLon;
+        if(demSeaAt(rowLat,cellLon)===true) mask[base+px]=1;
+      }
+      continue;
+    }
+    if(!xs.length){
+      if(sea){ const base=y*gridN;mask.fill(1,base,base+gridN); }
+      continue;
+    }
+    xs.sort((m,n)=>m-n);
+    let x=0,ci=0,state=sea;
+    while(x<gridN){
+      const next=ci<xs.length?Math.min(gridN,Math.max(0,Math.round(xs[ci]))):gridN;
+      if(state){ const base=y*gridN; for(let px=x;px<next;px++) mask[base+px]=1; }
+      x=next;
+      if(ci<xs.length){ state=!state;ci++; } else break;
+    }
+  }
+  return {mask,segments:segs.length,seededRows:seeded,inheritedRows:inherited,repairedRows:repaired};
+}
 let worldSeaMask=null,worldSeaKey=null,worldSeaMs=0,worldSeaSegments=0;
-let worldSeaOrigin=null,worldSeaFlipped=false,worldSeaAgreement=0;
-function worldBuildSeaMask(lat,lon,ways){
+let worldSeaOrigin=null,worldSeaFlipped=false,worldSeaAgreement=0,worldSeaRepairedRows=0;
+/* マスクの表裏を決める投票。
+   これまではDEMの欠損（＝海のはず）だけを基準にしていたが、入り江や
+   浅い湾ではDEMが水面にも値を持つので基準として弱い。実測でも、
+   ご指定の地点で一致65%＝ほぼ五分五分となり、間違った側へ反転して
+   画面全体が海になった。
+   通常経路が海岸線から精査した地形グリッドが手元にあるときは、
+   そちらを基準にする。何千点もある確定済みの陸/海なので桁違いに確か。 */
+function worldSeaVoteSamples(){
+  const out=[];
+  for(const grid of [realTerrainState.nearSurfaceGrid,realTerrainState.rayGrid]){
+    if(!grid) continue;
+    for(let r=0;r<grid.length;r+=2){
+      const row=grid[r];if(!row) continue;
+      for(let c=0;c<row.length;c+=2){
+        const pt=row[c];
+        if(pt&&Number.isFinite(pt.lat)&&Number.isFinite(pt.lon)) out.push(pt);
+      }
+    }
+  }
+  return out;
+}
+function worldBuildSeaMask(lat,lon,ways,voteSamples){
   const list=Array.isArray(ways)?ways:[];
   const half=WORLD_WATER_SPAN_M/2;
   /* 作り直しの条件。マスクは世界に固定なので、観測地点が内側の半分に
@@ -8920,62 +9177,153 @@ function worldBuildSeaMask(lat,lon,ways){
   const t0=performance.now();
   const mLon=Math.max(1,111320*Math.cos(lat*D2R));
   const scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
-  const toGridX=pLon=>((pLon-lon)*mLon+half)*scale;
-  const toGridY=pLat=>(half-(pLat-lat)*111320)*scale;
-  /* 海岸線の線分を格子座標へ落とす。
-     dir=+1: 格子のyが減る向き(＝北向き)。東へ進むとこの線分で海へ入る。 */
-  const segs=[];
-  for(const way of list){
-    for(let i=1;i<way.length;i++){
-      const a=way[i-1],b=way[i];
-      const x1=toGridX(a[1]),y1=toGridY(a[0]),x2=toGridX(b[1]),y2=toGridY(b[0]);
-      segs.push([x1,y1,x2,y2,y2<y1?1:-1]);
-    }
-  }
-  worldSeaSegments=segs.length;
-  if(!segs.length) return;
-  const mask=new Uint8Array(WORLD_WATER_GRID*WORLD_WATER_GRID);
-  for(let y=0;y<WORLD_WATER_GRID;y++){
-    const cy=y+.5,xs=[];
-    for(let i=0;i<segs.length;i++){
-      const s=segs[i];
-      if((s[1]>cy)===(s[3]>cy)) continue;
-      xs.push([s[0]+(cy-s[1])/(s[3]-s[1])*(s[2]-s[0]),s[4]]);
-    }
-    if(!xs.length) continue;
-    xs.sort((m,n)=>m[0]-n[0]);
-    let winding=0,x=0,ci=0;
-    while(x<WORLD_WATER_GRID){
-      const next=ci<xs.length?Math.min(WORLD_WATER_GRID,Math.max(0,Math.round(xs[ci][0]))):WORLD_WATER_GRID;
-      if(winding>0){ const base=y*WORLD_WATER_GRID; for(let px=x;px<next;px++) mask[base+px]=1; }
-      x=next;
-      if(ci<xs.length){ winding+=xs[ci][1];ci++; } else break;
-    }
-  }
+  const filled=worldFillSeaGrid(lat,lon,list,WORLD_WATER_GRID,WORLD_WATER_SPAN_M);
+  worldSeaSegments=filled.segments;
+  worldSeaRepairedRows=filled.repairedRows||0;
+  if(!filled.mask) return;
+  const mask=filled.mask;
   /* 巻き数の基準をDEMとの多数決で決める。dem_pngは海が「標高データなし」なので、
      マスクが海と言う所でデータが無ければ一致、あれば不一致とする。
      全体が裏返っていれば不一致が多数になるので、そのときだけ反転する。 */
   let agree=0,disagree=0;
-  const stride=8;
-  for(let y=stride>>1;y<WORLD_WATER_GRID;y+=stride) for(let x=stride>>1;x<WORLD_WATER_GRID;x+=stride){
-    const pLat=lat+(half-(x*0+y+.5)/scale)/111320;
-    const pLon=lon+((x+.5)/scale-half)/mLon;
-    worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]);
-    if(worldHeightTileMissing) continue;            // 未取得のタイルは票に入れない
-    const demSea=!Number.isFinite(worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]));
-    if((mask[y*WORLD_WATER_GRID+x]===1)===demSea) agree++; else disagree++;
+  const maskSaysSeaAt=(pLat,pLon)=>{
+    const gx=((pLon-lon)*mLon+half)*scale|0, gy=((half-(pLat-lat)*111320)*scale)|0;
+    if(gx<0||gy<0||gx>=WORLD_WATER_GRID||gy>=WORLD_WATER_GRID) return null;
+    return mask[gy*WORLD_WATER_GRID+gx]===1;
+  };
+  const samples=Array.isArray(voteSamples)?voteSamples:null;
+  if(samples&&samples.length>=200){
+    // 精査済みの地形グリッドを基準にする（いちばん確か）
+    for(let i=0;i<samples.length;i++){
+      const pt=samples[i],says=maskSaysSeaAt(pt.lat,pt.lon);
+      if(says===null) continue;
+      if(says===!!pt.water) agree++; else disagree++;
+    }
   }
-  if(disagree>agree){ for(let i=0;i<mask.length;i++) mask[i]^=1; worldSeaFlipped=true; }
+  if(agree+disagree<200){
+    // 基準が無いときだけ、従来どおりDEMの欠損で投票する
+    agree=0;disagree=0;
+    const stride=8;
+    for(let y=stride>>1;y<WORLD_WATER_GRID;y+=stride) for(let x=stride>>1;x<WORLD_WATER_GRID;x+=stride){
+      const pLat=lat+(half-(y+.5)/scale)/111320;
+      const pLon=lon+((x+.5)/scale-half)/mLon;
+      worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]);
+      if(worldHeightTileMissing) continue;          // 未取得のタイルは票に入れない
+      const demSea=!Number.isFinite(worldHeightAt(pLat,pLon,WORLD_FIELD_ZOOMS[WORLD_FIELD_ZOOMS.length-1]));
+      if((mask[y*WORLD_WATER_GRID+x]===1)===demSea) agree++; else disagree++;
+    }
+  }
   const total=agree+disagree;
-  worldSeaAgreement=total?Math.max(agree,disagree)/total:0;
-  /* DEMがまだ1枚も届いていないと票が0になり、裏返りを直せない。
-     その場合は鍵を残さず、タイルが揃った次の描画で作り直す。 */
-  if(!total) worldSeaKey=null;
+  /* 票が足りないまま向きを決めると、全面が海（または全面が陸）になった
+     マスクをそのまま画面に出してしまう。
+     実測: 描画方式を切り替えた直後、標高タイルが未取得で票が0になり、
+     1フレームだけ「水100.0% / 陸0」つまり全画面が海になるのを診断表示で確認した。
+     票が足りないマスクは採用しない。マスク無し（＝DEMへ退避）のまま、
+     鍵も残さず、タイルが揃った次の描画で作り直す。 */
+  const WORLD_SEA_MIN_VOTES=200, WORLD_SEA_MIN_AGREEMENT=.85;
+  const ratio=total?agree/total:0;   // 反転しないので、素の一致率で見る
+  /* 票が少ない、あるいは僅差のマスクは採用しない。
+     僅差＝表裏がどちらとも言えないということで、間違った側へ反転すると
+     陸と海が丸ごと入れ替わる。実測で一致65%のまま反転し、画面の緑が
+     25.8%から0.4%へ落ちた（＝全部海になった）。
+     採用しなければマスク無しとして扱われ、この修正を入れる前と同じ挙動に戻るだけ。 */
+  /* 行ごとに種を与えるようになったので、全体を反転させる処理は要らない。
+     一致率は「そのマスクが信用できるか」の目安として残し、
+     大きく外れているものだけ採用しない。 */
+  if(total<WORLD_SEA_MIN_VOTES||ratio<WORLD_SEA_MIN_AGREEMENT){
+    worldSeaKey=null;worldSeaAgreement=ratio;
+    worldSeaMs=performance.now()-t0;
+    return;                      // worldSeaMask は null のまま
+  }
+  worldSeaAgreement=Math.max(agree,disagree)/total;
   worldSeaMask=mask;
   worldSeaOrigin={lat,lon};
   worldSeaMs=performance.now()-t0;
 }
+/* 近距離用の高解像度マスク（v558）。
+
+   遠景用は11km四方を640格子で持つので1マス17.2m。砂浜のように水際が平らな
+   場所ならこの誤差は見えないが、水際がそのまま山になっている海岸では、
+   17mの横ずれが斜面の高さに化けて、山の裾が水に沈んだように見える。
+   足元1km四方だけを同じ640格子で持てば1マス3.1mになり、5.5倍細かくなる。
+   塗る範囲が狭いぶん線分も少ないので、作る手間は遠景用より軽い。
+   裏表は完成済みの遠景マスクと突き合わせて決めるので、多数決は要らない。 */
+const WORLD_SEA_NEAR_SPAN_M=2000;
+let worldSeaNearMask=null,worldSeaNearKey=null,worldSeaNearOrigin=null,worldSeaNearMs=0,worldSeaNearSegments=0;
+function worldBuildSeaNearMask(lat,lon,ways){
+  const list=Array.isArray(ways)?ways:[];
+  const half=WORLD_SEA_NEAR_SPAN_M/2;
+  if(worldSeaNearMask&&list===worldSeaNearKey&&worldSeaNearOrigin){
+    const mLonNow=Math.max(1,111320*Math.cos(worldSeaNearOrigin.lat*D2R));
+    const dEast=Math.abs(lon-worldSeaNearOrigin.lon)*mLonNow;
+    const dNorth=Math.abs(lat-worldSeaNearOrigin.lat)*111320;
+    if(Math.max(dEast,dNorth)<half*.5) return;   // 内側の半分にいるうちは作り直さない
+  }
+  worldSeaNearKey=list;
+  worldSeaNearMask=null;worldSeaNearOrigin=null;worldSeaNearSegments=0;
+  // 裏表の基準に遠景マスクを使うので、そちらが無いときは作らない。
+  if(!list.length||!worldSeaMask||!worldSeaOrigin) return;
+  const t0=performance.now();
+  const filled=worldFillSeaGrid(lat,lon,list,WORLD_WATER_GRID,WORLD_SEA_NEAR_SPAN_M);
+  worldSeaNearSegments=filled.segments;
+  if(!filled.mask){ worldSeaNearMs=performance.now()-t0; return; }
+  const mask=filled.mask;
+  /* 裏表を遠景マスクと突き合わせる。近景マスクは遠景マスクの内側に
+     すっぽり入るので、同じ場所を引いて多い方に合わせればよい。 */
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R)),scale=WORLD_WATER_GRID/WORLD_SEA_NEAR_SPAN_M;
+  let agree=0,disagree=0;
+  const stride=8;
+  for(let y=stride>>1;y<WORLD_WATER_GRID;y+=stride) for(let x=stride>>1;x<WORLD_WATER_GRID;x+=stride){
+    const pLat=lat+(half-(y+.5)/scale)/111320, pLon=lon+((x+.5)/scale-half)/mLon;
+    const far=worldSeaAtFar(pLat,pLon);
+    if(far===null) continue;
+    if((mask[y*WORLD_WATER_GRID+x]===1)===far) agree++; else disagree++;
+  }
+  if(agree+disagree<200){ worldSeaNearKey=null;worldSeaNearMs=performance.now()-t0;return; }
+  if(disagree>agree) for(let i=0;i<mask.length;i++) mask[i]^=1;
+  worldSeaNearMask=mask;
+  worldSeaNearOrigin={lat,lon};
+  worldSeaNearMs=performance.now()-t0;
+}
+/* 海マスクを前もって用意しておく（v559）。
+
+   これまで海マスクを作るのは applyCachedWaterRings の中だけ、つまり
+   「移動しているとき」だけだった。しかしマスクの裏表を決めるには標高タイルが要り、
+   そのタイルを要求するのもこの関数の中なので、止まっている間は一枚も落ちてこない。
+   結果、動き出した最初の数歩はマスクが間に合わず、海岸線由来の海が復元されない。
+   そこに「前後左右に動かすと陸が水面に変わり、手を離すと戻る」の正体があった。
+   （手を離すと通常の取得経路が走り、海岸線から正しく作り直されるため戻る。
+     方位を変えたから戻るのではなく、移動をやめたから戻っていた。）
+
+   止まっている間にタイルとマスクを揃えておけば、動き出した瞬間から効く。 */
+function prepareSeaMasks(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  const ways=worldCoastlineFor(lat,lon);
+  if(!Array.isArray(ways)||!ways.length) return;
+  worldMapEnsureTiles(lat,lon);         // 水面の面データ（地図タイル）を先に用意する
+  worldEnsureTiles(lat,lon);            // 裏表の判定に使う標高タイルを先に要求する
+  worldBuildSeaMask(lat,lon,ways,worldSeaVoteSamples());
+  worldBuildSeaNearMask(lat,lon,ways);
+}
+function worldSeaAtFar(lat,lon){
+  if(!worldSeaMask||!worldSeaOrigin) return null;
+  const mLon=Math.max(1,111320*Math.cos(worldSeaOrigin.lat*D2R));
+  const half=WORLD_WATER_SPAN_M/2,scale=WORLD_WATER_GRID/WORLD_WATER_SPAN_M;
+  const gx=((lon-worldSeaOrigin.lon)*mLon+half)*scale|0;
+  const gy=((half-(lat-worldSeaOrigin.lat)*111320)*scale)|0;
+  if(gx<0||gy<0||gx>=WORLD_WATER_GRID||gy>=WORLD_WATER_GRID) return null;
+  return worldSeaMask[gy*WORLD_WATER_GRID+gx]===1;
+}
 function worldSeaAt(lat,lon){
+  // 足元は細かいマスクを先に引く。範囲外なら遠景用へ落とす。
+  if(worldSeaNearMask&&worldSeaNearOrigin){
+    const mLonN=Math.max(1,111320*Math.cos(worldSeaNearOrigin.lat*D2R));
+    const halfN=WORLD_SEA_NEAR_SPAN_M/2,scaleN=WORLD_WATER_GRID/WORLD_SEA_NEAR_SPAN_M;
+    const nx=((lon-worldSeaNearOrigin.lon)*mLonN+halfN)*scaleN|0;
+    const ny=((halfN-(lat-worldSeaNearOrigin.lat)*111320)*scaleN)|0;
+    if(nx>=0&&ny>=0&&nx<WORLD_WATER_GRID&&ny<WORLD_WATER_GRID)
+      return worldSeaNearMask[ny*WORLD_WATER_GRID+nx]===1;
+  }
   // 海マスクは自分の原点を持つ。水域マスクの原点を借りると、片方だけ
   // 作り直された瞬間に岸が最大110mずれる。
   if(!worldSeaMask||!worldSeaOrigin) return null;   // 海岸線が無い＝判断できない
@@ -10253,7 +10601,14 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
        realTerrainState へ自動では伝わらない（Object.assignはこの非同期処理より前に
        済んでいる）ため、明示的に渡しておく。 */
     resultObj._osmCoastlineWays=Array.isArray(coastlineWays)?coastlineWays:null;
-    if(realTerrainState.key===key) realTerrainState._osmCoastlineWays=resultObj._osmCoastlineWays;
+    if(realTerrainState.key===key){
+      realTerrainState._osmCoastlineWays=resultObj._osmCoastlineWays;
+      prepareSeaMasks(lat,lon);   // 動き出す前に海マスクを用意しておく
+    }
+    /* 静止時の判定も面データに合わせる。これで静止と移動が同じ絵になる。 */
+    worldMapEnsureTiles(lat,lon);
+    applyMapWaterToGrids(resultObj);
+    drawPhoto._confirmedWaterAzCache=null;
     const meshObserverWater=classifyObserverWaterFromNearGrid(resultObj.nearSurfaceGrid);
     resultObj.observerWaterEvidence.mesh=meshObserverWater;
     resultObj.observerWaterNearby=!!resultObj.observerAtSea||osmObserverWater.water||
@@ -10286,6 +10641,7 @@ function requestRealTerrainProfile(lat,lon){
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);updateSimAddress(lat,lon);
+    prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready","キャッシュ");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -10336,6 +10692,7 @@ function requestRealTerrainProfile(lat,lon){
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);updateSimAddress(lat,lon);
+    prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
@@ -10452,10 +10809,59 @@ function kmzDestinationPoint(lat,lon,bearing,distanceKm){
   const l2=l+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p),Math.cos(d)-Math.sin(p)*Math.sin(p2));
   return{lat:p2*R2D,lon:((l2*R2D+540)%360)-180};
 }
-function drawKmzBuildingLayer(targetCtx,s,toXY,W,H){
+/* 建物より「手前」にある地形だけで作った稜線を、画面のx座標ごとに返す。
+
+   これまでKMZ建物は地形より先に描いていたので、あとから描かれる地形すべてが
+   建物を隠していた。地上から見ると建物が立つ山に隠れて自然に見えるが、
+   ドローンで上昇して奥の山が見えてくると、その奥の山にまで隠されてしまう。
+   建物より遠い山が手前の建物を覆うのは明らかにおかしい。
+
+   そこで建物は地形の「あと」に描き、代わりに
+   「建物までの距離より近い地形」だけで作った稜線から上へ切り抜く。
+   こうすると手前の山は今までどおり建物を隠し、奥の山は隠さなくなる。 */
+function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
+  const grid=realTerrainState.rayGrid||realTerrainState.nearSurfaceGrid;
+  if(!Array.isArray(grid)||grid.length<360||!Number.isFinite(limitKm)) return null;
+  /* 地形グリッドが持っている alt は、グリッドを作った時点の視点の高さ（三脚の1.6m）
+     で計算された見かけ高度で、上昇しても作り直されない。
+     一方KMZ建物側は今の視点の高さで毎回計算し直している。
+     そのまま突き合わせると、上昇するほど建物だけが下がり、
+     動かない稜線に飲み込まれて消えてしまう。
+     ここでは各点の実標高から、今の視点の高さで見かけ高度を計算し直す。 */
+  const eyeNow=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  const earthRadius=6371000*(7/6);
+  const samples=[];
+  for(let az=0;az<360;az++){
+    const row=grid[az];
+    if(!row||!row.length) continue;
+    let best=-Infinity;
+    for(let i=0;i<row.length;i++){
+      const pt=row[i];
+      if(!pt) continue;
+      if(Number.isFinite(pt.distanceKm)&&pt.distanceKm>=limitKm) break;   // 行は距離順
+      let alt=pt.alt;
+      if(Number.isFinite(pt.baseElevation)&&Number.isFinite(pt.distanceKm)){
+        const distanceM=Math.max(1,pt.distanceKm*1000);
+        alt=Math.atan2(pt.baseElevation-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
+      }
+      if(Number.isFinite(alt)&&alt>best) best=alt;
+    }
+    if(!Number.isFinite(best)) continue;
+    const point=toXY(az,best);
+    if(!point||!point.every(Number.isFinite)) continue;
+    if(point[0]<-W||point[0]>W*2) continue;      // 画面から大きく外れた方位は稜線を歪める
+    samples.push(point);
+  }
+  return samples.length>=8?buildSkylineYArray(samples,W,H):null;
+}
+function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(!kmzBuildingVisible||!kmzBuildingModel||arActive)return;const cfg=currentKmzBuildingSettings();
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
+  /* 手前の地形だけの稜線が作れるなら地形のあとに描く（奥の山に隠されない）。
+     作れないときだけ、従来どおり地形の前に描いて全部に隠させる。 */
+  const nearSky=kmzNearTerrainSkyline(s,toXY,W,H,base.distanceKm);
+  if(phase==="before"?!!nearSky:!nearSky) return;
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
@@ -10471,7 +10877,17 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H){
     if(valid)projected.push({points,depth:depth/3});
   }
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52],rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)));
-  targetCtx.save();targetCtx.globalAlpha=cfg.opacity;targetCtx.fillStyle=`rgb(${rgb.join(",")})`;targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
+  targetCtx.save();
+  if(nearSky){
+    // 手前の地形の稜線より上だけを残す。稜線より下は手前の山に隠れている。
+    const clip=new Path2D();
+    clip.moveTo(0,nearSky[0]);
+    for(let x=1;x<nearSky.length;x++) clip.lineTo(x,nearSky[x]);
+    clip.lineTo(W,nearSky[nearSky.length-1]);
+    clip.lineTo(W,-H);clip.lineTo(0,-H);clip.closePath();
+    targetCtx.clip(clip);
+  }
+  targetCtx.globalAlpha=cfg.opacity;targetCtx.fillStyle=`rgb(${rgb.join(",")})`;targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
   for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
   targetCtx.restore();
 }
@@ -11601,9 +12017,9 @@ function drawPhoto(ctx,s){
   // これにより水平線近くの天の川や恒星も、色付きながら自然に見えにくくなる。
   drawForegroundAtmosphericVeil(ctx,false);
 
-  // KMZ建物を地形より先に描く。続いて描かれるDEM地形が建物の下部を自然に隠し、
-  // 山頂・稜線より上へ出た部分だけが天の川や空の手前に残る。
-  drawKmzBuildingLayer(ctx,s,toXY,W,H);
+  /* KMZ建物は原則として地形のあとに描く（下の drawKmzBuildingLayer 参照）。
+     ここでは、手前の地形だけの稜線が作れなかったときの保険として呼ぶ。 */
+  drawKmzBuildingLayer(ctx,s,toXY,W,H,"before");
 
   // 地平線シルエット (方位に応じてスクロールする360度パノラマ)
   // ARモード中は、実際のカメラ映像に映る地面がそのまま見えるように、この暗いシルエットは描画しない
@@ -11668,8 +12084,18 @@ function drawPhoto(ctx,s){
       let terrainAtmosphere=atmosphere;
       // 地形形状は日時アニメーション中の大半で変わらない。画角・方位・地形データと、
       // 見た目に分からない程度に量子化した昼夜色が同じ間は完成済みレイヤーを再利用する。
+      /* 観測位置は realTerrainState.key にも入っているが、そちらは小数4桁
+         （約11m刻み）でしか動かない。この鍵は地形の絵だけでなく、
+         「どの方位に水があるか(confirmedWaterAz)」と水面反射の形も
+         キャッシュしているので、11m未満の移動ではそれらが前の位置のまま
+         使い回されていた。地形の絵だけは毎歩描き直されるので、
+         水の位置だけが取り残されて陸に見える。
+         方位を1°でも動かすと鍵が変わって作り直され、正常に戻る——
+         「移動すると陸、方位を触ると戻る」の正体がこれ。
+         位置そのものを鍵に入れて、1歩でも動いたら作り直す。 */
       const terrainGeometryKey=[
         W,H,realTerrainState.key,realTerrainState._renderRevision||0,
+        s.lat.toFixed(6),s.lon.toFixed(6),
         s.facingAz.toFixed(3),s.facingAlt.toFixed(3),s.fovH.toFixed(3),
         mobileLensMode,s.focalLength,s.sensor.crop,
         normalTerrainAzimuthStepValue(),
@@ -14346,15 +14772,23 @@ function drawPhoto(ctx,s){
       function renderSeaDiagPanel(st){
         const box=el.seaDiagPanel;if(!box) return;
         const pad=(v,n)=>String(v).padStart(n," ");
-        const total=st.water+st.land;
+        /* 通常方式のときは光線の内訳が無い。データ側の行だけ出す。 */
+        const originLat=st?st.originLat:(+el.lat.value||0);
+        const originLon=st?st.originLon:(+el.lon.value||0);
+        const total=st?st.water+st.land:0;
         const pct=total?(st.water/total*100).toFixed(1):"--";
         // 海マスクの原点からどれだけ離れているか（作り直しの目安は2.75km）
-        let maskLine="海マスク なし";
+        let maskLine=worldSeaAgreement>0
+          ? `海マスク 不採用（一致${(worldSeaAgreement*100).toFixed(0)}%）`
+          : "海マスク なし";
         if(worldSeaMask&&worldSeaOrigin){
           const mLon=Math.max(1,111320*Math.cos(worldSeaOrigin.lat*D2R));
-          const dx=(st.originLon-worldSeaOrigin.lon)*mLon,dy=(st.originLat-worldSeaOrigin.lat)*111320;
+          const dx=(originLon-worldSeaOrigin.lon)*mLon,dy=(originLat-worldSeaOrigin.lat)*111320;
           maskLine=`海マスク 有 線${worldSeaSegments} 原点${(Math.hypot(dx,dy)/1000).toFixed(2)}km ${worldSeaMs.toFixed(0)}ms`
-            +(worldSeaFlipped?" 反転":"")+` 一致${(worldSeaAgreement*100).toFixed(0)}%`;
+            +(worldSeaRepairedRows?` 補修${worldSeaRepairedRows}行`:"")+` 一致${(worldSeaAgreement*100).toFixed(0)}%`;
+          maskLine+=worldSeaNearMask
+            ? `\n  近景マスク 有 ${(WORLD_SEA_NEAR_SPAN_M/WORLD_WATER_GRID).toFixed(1)}m格子 線${worldSeaNearSegments} ${worldSeaNearMs.toFixed(0)}ms`
+            : "\n  近景マスク なし";
         }
         // 水面・反射を描く側が持っている情報（レイマーチとは別系統）
         const nearProfile=realTerrainState.waterNearKm||[];
@@ -14369,35 +14803,60 @@ function drawPhoto(ctx,s){
         const key=String(realTerrainState.key||"");
         const parts=key.split(",");
         if(parts.length===2&&Number.isFinite(+parts[0])){
-          const mLon=Math.max(1,111320*Math.cos(st.originLat*D2R));
-          const dx=(st.originLon-(+parts[1]))*mLon,dy=(st.originLat-(+parts[0]))*111320;
+          const mLon=Math.max(1,111320*Math.cos(originLat*D2R));
+          const dx=(originLon-(+parts[1]))*mLon,dy=(originLat-(+parts[0]))*111320;
           lagText=`${Math.round(Math.hypot(dx,dy))}m`;
         }
+        /* 旧地形の足元の水は、近距離メッシュの各点が持つ water で決まる。
+           移動中にここが落ちると、水際が陸として描かれる。 */
+        let gridWater=0,gridTotal=0;
+        const nearGrid=realTerrainState.nearSurfaceGrid||[];
+        for(let r=0;r<nearGrid.length;r++){
+          const row=nearGrid[r];if(!row) continue;
+          for(let c=0;c<row.length;c++){ const pt=row[c];if(!pt) continue;gridTotal++;if(pt.water) gridWater++; }
+        }
+        const mapLine=`水面タイル ${worldMapTiles}枚`+(worldMapPending?`（取得中${worldMapPending}）`:"");
         const ways=(realTerrainState._osmCoastlineWays||[]).length;
         const rings=(realTerrainState._osmWaterRings||[]).length;
         const refine=realTerrainState._osmRefineStatus||"-";
         const moving=((typeof walkActive==="function"&&walkActive())||walkBusy)?"移動中":"静止";
+        const rayLines=st
+          ? `光線判定 水${pct}%  水${pad(st.water,6)} 陸${pad(st.land,6)}
+`+
+            `  内訳 海${pad(st.seaTrue,6)} 陸${pad(st.seaFalse,6)} 不明${pad(st.seaNull,6)}
+`
+          : `光線判定 －（通常方式では光線を使いません）
+`;
+        const tail=st
+          ? `${moving} 光線${st.rays} ${st.ms.toFixed(0)}ms  地形ずれ ${lagText}
+`
+          : `${moving}  地形ずれ ${lagText}
+`;
         box.textContent=
+          `方式 ${terrainRendererLabel()}
+`+
           `海岸線 ${pad(ways,3)}本  水域 ${pad(rings,3)}形  refine ${refine}
 `+
           `${maskLine}
 `+
-          `光線判定 水${pct}%  水${pad(st.water,6)} 陸${pad(st.land,6)}
+          `${mapLine}
 `+
-          `  内訳 海${pad(st.seaTrue,6)} 陸${pad(st.seaFalse,6)} 不明${pad(st.seaNull,6)}
-`+
+          rayLines+
           `水面層 方位${pad(confirmedWaterAz.filter(Boolean).length,3)} 汀線${pad(nearCount,3)} 沖${pad(openCount,3)} 帯${bandCount}
 `+
-          `${moving} 光線${st.rays} ${st.ms.toFixed(0)}ms  地形ずれ ${lagText}
+          `近景メッシュ 水${pad(gridWater,5)} / 全${pad(gridTotal,5)}点
 `+
-          `位置 ${st.originLat.toFixed(5)},${st.originLon.toFixed(5)} 方位${Math.round(s.facingAz)}° 仰角${Math.round(s.facingAlt)}°`;
+          tail+
+          `位置 ${originLat.toFixed(5)},${originLon.toFixed(5)} 方位${Math.round(s.facingAz)}° 仰角${Math.round(s.facingAlt)}°`;
       }
       function drawWorldTerrain(){
         const originLat=+el.lat.value, originLon=+el.lon.value;
         if(!Number.isFinite(originLat)||!Number.isFinite(originLon)) return false;
         worldEnsureTiles(originLat,originLon);
         worldBuildWaterMask(originLat,originLon,realTerrainState._osmWaterRings);
-        worldBuildSeaMask(originLat,originLon,worldCoastlineFor(originLat,originLon));
+        const coastNow=worldCoastlineFor(originLat,originLon);
+        worldBuildSeaMask(originLat,originLon,coastNow);
+        worldBuildSeaNearMask(originLat,originLon,coastNow);
         const groundHere=worldHeightForDistance(originLat,originLon,0);
         if(!Number.isFinite(groundHere)&&!Number.isFinite(realTerrainState.observerElevation)) return false;
         const baseGround=Number.isFinite(groundHere)?groundHere:realTerrainState.observerElevation;
@@ -15280,6 +15739,8 @@ function drawPhoto(ctx,s){
         seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
         // 新方式: レイマーチ1本で地表を描く。可視帯が高度方向を隙間なく敷き詰めるため、
         // 下敷き・水域下地・距離帯シルエットのような補助レイヤーは一切不要。
+        /* 診断は方式を問わず出す。新方式のときは光線の内訳も一緒に出る。 */
+        if(seaDiagVisible&&TERRAIN_RENDERER!=="world") renderSeaDiagPanel(null);
         if(TERRAIN_RENDERER==="world"&&drawWorldTerrain()) return true;
         if(TERRAIN_RENDERER==="layered"&&drawLayeredTerrain()) return true;
         if(TERRAIN_RENDERER==="quads"&&drawRayMarchTerrain()) return true;
@@ -15313,6 +15774,9 @@ function drawPhoto(ctx,s){
       ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0);
       if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0);}
       ctx.restore();
+      /* 地形を重ねたあとにKMZ建物を描く。建物より手前の地形だけで切り抜くので、
+         手前の山には隠れ、奥の山には隠されない。 */
+      drawKmzBuildingLayer(ctx,s,toXY,W,H,"after");
       // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
       drawWaterReflections();
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
@@ -16691,9 +17155,73 @@ function applyDroneAltitudeHold(){
 
 /* 取得済みの水域ポリゴンを、移動先のグリッドへ当て直す。
    通信を伴わないので移動中でも湖や海の形が保たれる。 */
+/* 海マスクより優先して陸として残す標高。
+   8mは取得経路(refineTerrainWaterWithOsm)が高い山を保護するのと同じ基準。 */
+const SEA_MASK_KEEP_LAND_M=8, SEA_MASK_KEEP_LOCAL_M=1;
+/* 移動中の水判定の入れ直し。
+
+   ここが「前後左右に動かすと水際が陸になる」原因だった。
+   海は海岸線(natural=coastline・実測422本)から決まるのに、この関数は
+   OSMの水域ポリゴン(natural=water・実測12形＝池と湖だけ)しか見ずに
+   point.water を入れ直していたため、海の点が例外なく「陸」で上書きされていた。
+   移動のたびに上書きされるので移動中はずっと陸のまま、移動をやめて
+   向きを変えると通常の取得経路が走って海岸線から作り直され、水際が戻る。
+
+   海岸線から毎回判定し直すのは重すぎる(1点ごとに3万本の線分と交差判定)。
+   そこで、世界座標に固定した海マスク(17.2m格子・1回引くだけ)を使う。
+   カメラが動いてもマスクは作り直さないので、判定が揺れることもない。 */
+/* 水面の面データ（地図タイル）を地形グリッドへ当てる。
+
+   v564では移動中だけこれを使い、静止時は従来の海岸線精査のままだった。
+   その二重基準が「方位を振ると謎の島が出て、動かすと消える」の正体。
+   実測（由良町）: 静止時の判定は面データと93.3%しか合わず、
+   海なのに陸としていた点が1,047点あった（移動中は0点）。
+   静止時も同じ関数を通せば、二つの絵は原理的に一致する。
+
+   局所高精細地形の円の中だけは触らない。地図タイルは2m格子なので、
+   1mメッシュをわざわざ登録した岩より粗いため。 */
+function applyMapWaterToGrids(target){
+  if(!target) return 0;
+  const originLat=+el.lat.value,originLon=+el.lon.value;
+  if(!Number.isFinite(originLat)||!Number.isFinite(originLon)) return 0;
+  const metrePerDegLonHere=Math.max(1,111320*Math.cos(originLat*D2R));
+  const localRockOn=!!(localDetailTerrainEnabled&&localDetailTerrainData);
+  let applied=0;
+  [target.nearSurfaceGrid,target.rayGrid].forEach(grid=>{
+    if(!grid) return;
+    grid.forEach(row=>row&&row.forEach(point=>{
+      if(!point) return;
+      if(localRockOn&&sampleLocalDetailElevation((point.lon-originLon)*metrePerDegLonHere,
+                                                 (point.lat-originLat)*111320)) return;
+      const w=worldMapWaterForDistance(point.lat,point.lon,(point.distanceKm||0)*1000);
+      if(w===null) return;              // タイル未取得・国外は触らない
+      if(w===true){ point.water=true;applied++;return; }
+      /* 面データが「水色でない」だけでは陸と断定しない。
+         地図は防波堤・桟橋・消波ブロックなど、海の上の構造物も
+         水色ではない色で描く。そのまま陸にすると、海面に細長い塊が立つ。
+         標高データが無い場所（＝海の上）は、水のままにしておく。 */
+      if(point.baseNoData||point.baseKnown) return;
+      point.water=false;applied++;
+    }));
+  });
+  return applied;
+}
 function applyCachedWaterRings(result){
-  const rings=realTerrainState._osmWaterRings;
-  if(!rings||!rings.length||!result) return;
+  const rings=realTerrainState._osmWaterRings||[];
+  const ways=realTerrainState._osmCoastlineWays;
+  if(!result||(!rings.length&&!(Array.isArray(ways)&&ways.length))) return;
+  const originLat=+el.lat.value, originLon=+el.lon.value;
+  const metrePerDegLonHere=Math.max(1,111320*Math.cos(originLat*D2R));
+  const localRockOn=!!(localDetailTerrainEnabled&&localDetailTerrainData);
+  let seaMaskReady=false;
+  if(Array.isArray(ways)&&ways.length&&Number.isFinite(originLat)&&Number.isFinite(originLon)){
+    /* マスクの向きは標高タイルとの多数決で決めるので、そのタイルも要る。
+       旧描画が既に落としているのと同じ dem_png なので通信は増えない。 */
+    worldEnsureTiles(originLat,originLon);
+    worldBuildSeaMask(originLat,originLon,ways,worldSeaVoteSamples());
+    worldBuildSeaNearMask(originLat,originLon,ways);
+    seaMaskReady=!!worldSeaMask;
+  }
   /* 4万点すべてを全リングと突き合わせると60ms以上かかる。
      水域は観測地点の周囲数十kmにしか無いので、全リングを囲む1つの矩形で先に足切りする。
      矩形の外にある点は判定するまでもなく陸なので、遠方の大半をここで弾ける。 */
@@ -16711,8 +17239,50 @@ function applyCachedWaterRings(result){
     if(!grid) return;
     grid.forEach(row=>row.forEach(point=>{
       if(!point) return;
+      /* 局所高精細地形の円の中は、ここでは一切触らない。
+
+         マスクは17.2m格子なので、それより小さい沖の岩を表現できない。
+         そこは1mメッシュをわざわざ登録してある場所なので、
+         地形生成側の判定をそのまま信じる。
+
+         v556ではこの除外を、下の baseNoData/baseKnown の後ろに置いていた。
+         しかし局所データの合成は detailedLand のとき baseNoData だけを消し、
+         baseKnown は残したままにする。そのため、岩が既知の水域の中にあると
+         baseKnown で先に water=true され、移動のたびに岩の周りの陸が水面に戻っていた。
+         除外を先頭へ移して、円の中を完全に地形生成側に任せる。 */
+      if(localRockOn&&sampleLocalDetailElevation((point.lon-originLon)*metrePerDegLonHere,
+                                                 (point.lat-originLat)*111320)) return;
+      /* 水面は面データで決める。ただし断定するのは「水」の側だけ。
+
+         地図は防波堤・桟橋・消波ブロックなど、海の上の構造物も水色ではない色で描く。
+         「水色でない＝陸」としたv565では、それらが海面に立つ細長い塊になって現れた。
+         標高データが無い場所は海の上なので、面データが水色でなくても水のままにする。
+         つまり「どちらかが水と言えば水、両方が陸と言ったときだけ陸」。 */
+      const mapFirst=worldMapWaterForDistance(point.lat,point.lon,(point.distanceKm||0)*1000);
+      if(mapFirst===true){ point.water=true;return; }
       const base=!!point.baseNoData||!!point.baseKnown;
       if(base){point.water=true;return;}
+      if(mapFirst===false){ point.water=false;return; }
+      /* 水面は地図タイル（面）で決める。線から面を起こす仕組みを通らないので、
+         向き・種・多数決・行の整合性といった破れどころが存在しない。 */
+      const mapWater=worldMapWaterForDistance(point.lat,point.lon,(point.distanceKm||0)*1000);
+      if(mapWater!==null){ point.water=mapWater;return; }
+      // 地図タイルが無いとき（国外・未取得）だけ、従来の海岸線マスクへ落とす。
+      if(seaMaskReady&&worldSeaAt(point.lat,point.lon)===true){
+        /* ただし海マスクは17.2m格子なので、沖の小さな岩は
+           丸ごと海として塗ってしまう。そのままだと実標高を持ったまま
+           水面扱いになるので、岩が水に沈んでいくように見え、反射も崩れる。
+           水面より明らかに高い点は陸のまま残す。
+           取得経路も同じ考えで高い山を保護している(baseElevation>8)。
+           局所高精細で拾った点は数mの岩でも拾えているので基準を下げる。 */
+        if(Number.isFinite(point.baseElevation)&&point.baseElevation>SEA_MASK_KEEP_LAND_M){ point.water=false;return; }
+        /* 岩の袾は標高0～8mなので上の条件だけでは拾えない。
+           局所高精細データはそのために登録されているので直接引く。
+           実測(半径50mの円)では円内の約49%が標高0.5m未満の海面なので、
+           水面すれすれの点は海のまま残る。 */
+        point.water=true;point.coastlineSeaCandidate=true;point.baseCoastlineSea=true;return;
+      }
+      if(!rings.length){point.water=false;return;}
       if(point.lat<minLat||point.lat>maxLat||point.lon<minLon||point.lon>maxLon){point.water=false;return;}
       point.water=pointInWaterRings(point.lat,point.lon,rings);
     }));
@@ -16946,7 +17516,7 @@ if(el.droneSticks){
 
 {
   const badge=document.getElementById("appVersionBadge");
-  if(badge) badge.textContent=`v${APP_VERSION}${TERRAIN_RENDERER==="legacy"?" (legacy地形)":""}`;
+  if(badge) syncAppVersionBadge();
 }
 update();
 if(monthTableVisible) renderMonthTable();
