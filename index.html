@@ -2541,6 +2541,37 @@
     /* 従来の上余白10pxから-5pxへ変更し、時間バー以降を合計15px上へ詰める */
     .slider-row{ margin-top:-5px; }
   }
+  /* =========================================================
+     「表示」ウインドウの見た目（v572）
+     白ベースにし、透け具合を下げて背景の星空と混ざらないようにする。
+     中のボタンは暗い背景前提の配色なので、ここでまとめて上書きする。
+     メディアクエリ内の既存規則より後に、IDを含む選択子で書くことで
+     画面幅に関係なく確実に効かせる。
+     ========================================================= */
+  #displayOptionsPopup.show{
+    background:rgba(250,251,255,.975);
+    border:1px solid rgba(22,28,52,.20);
+    box-shadow:0 12px 30px rgba(4,8,20,.42);
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+  }
+  #displayOptionsPopup .display-popup-section-title{
+    color:#28304a;
+  }
+  #displayOptionsPopup .constellation-toggle-btn{
+    background:#eef1f8;
+    color:#1d2438;
+    border:1px solid rgba(22,28,52,.22);
+  }
+  #displayOptionsPopup .constellation-toggle-btn:hover{
+    background:#e2e7f4;
+  }
+  #displayOptionsPopup .constellation-toggle-btn.active{
+    background:var(--core-amber);
+    color:#1c1120;
+    border-color:var(--core-amber);
+    font-weight:700;
+  }
 </style>
 </head>
 <body>
@@ -3366,7 +3397,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="571-address-while-walking";
+const APP_VERSION="572-display-popup-light";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -7054,7 +7085,11 @@ el.mobileDisplayOptionsBtn.addEventListener("click",(e)=>{
   el.displayOptionsPopup.classList.toggle("show");
 });
 el.displayOptionsPopup.addEventListener("click",e=>{
-  if(e.target.closest("button")) scheduleSaveSettings();
+  if(e.target.closest("button")){ scheduleSaveSettings(); return; }
+  /* ボタン以外（余白や見出し）を押したら閉じる。
+     外側を押して閉じるのは別の処理で既にできているので、
+     これで「ボタン以外のどこを押しても閉じる」になる。 */
+  el.displayOptionsPopup.classList.remove("show");
 });
 document.addEventListener("click",(e)=>{
   if(!el.displayOptionsPopup.classList.contains("show")) return;
