@@ -3366,7 +3366,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="570-kmz-above-water";
+const APP_VERSION="571-address-while-walking";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5781,6 +5781,10 @@ function composeJapaneseAddress(address){
   candidates.forEach(part=>{ if(part&&!parts.includes(part)) parts.push(part); });
   return parts.join("");
 }
+/* 移動中の地名更新の間隔。短くしても中身は100m四方で覚えているので
+   ほとんどが覚えた文字の出し直しになる。 */
+const SIM_ADDRESS_WALK_INTERVAL_MS=2000;
+let simAddressWalkAt=0;
 async function updateSimAddress(lat,lon){
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
   // 約100m四方でまとめる。歩いても飛んでも問い合わせが増え続けないようにする。
@@ -6028,6 +6032,8 @@ el.popupWorldGridBtn.addEventListener("click",()=>{
 });
 el.popupPlaceNameBtn.addEventListener("click",()=>{
   placeNameVisible=!placeNameVisible;
+  // 消している間は問い合わせを止めているので、点けた時点で今の地点に合わせ直す。
+  if(placeNameVisible) updateSimAddress(+el.lat.value,+el.lon.value);
   setSimAddressLabel();   // 文言は保持したまま出し入れするだけ
   syncDisplayPopupControls();scheduleSaveSettings();
 });
@@ -17349,6 +17355,19 @@ function stepObserver(forwardM,strafeM){
   el.lon.value=(lon+eastM/metrePerDegLon).toFixed(6);
   el.citySelect.value=0; // 手動で動かしたのでプリセットから外す
   walkMoved=true;
+  /* 移動中も地名を追いかける。これまでは地点確定のときだけ問い合わせていたので、
+     動かし続けているあいだ地名が古いままだった。
+     updateSimAddress は約100m四方で答えを覚えているので、同じ区画にいる限り
+     通信は起きず、覚えている文字を出し直すだけで済む。
+     区画をまたいだときだけ問い合わせが1回走る。
+     それでも呼びすぎないよう2秒に1回に抑え、地名を消しているときは呼ばない。 */
+  if(placeNameVisible){
+    const now=performance.now();
+    if(now-simAddressWalkAt>SIM_ADDRESS_WALK_INTERVAL_MS){
+      simAddressWalkAt=now;
+      updateSimAddress(+el.lat.value,+el.lon.value);
+    }
+  }
   refreshTerrainWhileWalking();
 }
 
