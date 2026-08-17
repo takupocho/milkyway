@@ -1267,6 +1267,22 @@
     background:rgba(10,12,28,.6);
   }
   .drone-map{width:100%;height:210px;}
+  /* 地図の上に重ねる小さなボタン。Leafletの操作面より上へ出す。 */
+  .drone-map-panel{position:relative;}
+  .drone-map-btn{
+    position:absolute;z-index:600;
+    padding:4px 9px;border-radius:8px;
+    border:1px solid rgba(255,255,255,.5);
+    background:rgba(255,255,255,.2);
+    -webkit-backdrop-filter:blur(14px) saturate(120%);
+    backdrop-filter:blur(14px) saturate(120%);
+    color:var(--star-white);font:700 11px/1.2 'Inter',sans-serif;
+    cursor:pointer;
+  }
+  .drone-map-btn.active{background:var(--core-amber);color:#1c1120;border-color:var(--core-amber);}
+  .drone-map-layer-btn{right:8px;top:8px;}
+  .drone-map-move-btn{left:50%;transform:translateX(-50%);bottom:24px;display:none;}
+  .drone-map-move-btn.show{display:block;}
   @media (max-width:760px){ .drone-map{height:180px;} }
   /* 横構図ではコントローラーがシミュレーション画面の下へせり出しているので、
      地図はその下から始める(重なると地図が触れなくなるため)。 */
@@ -3252,6 +3268,8 @@
             <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
             <div id="droneMapPanel" class="drone-map-panel" aria-label="ドローンの現在地と撮影方位">
               <div id="droneMap" class="drone-map"></div>
+              <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="航空写真に切り替える">航空写真</button>
+              <button id="droneMapMoveBtn" type="button" class="drone-map-btn drone-map-move-btn" aria-label="地図の中心へ撮影位置を移す">ここへ移動</button>
             </div>
           </div>
           <div class="datetime-row">
@@ -3381,7 +3399,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="573-popup-glass";
+const APP_VERSION="574-drone-map-and-descent";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4261,7 +4279,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), droneMapMoveBtn:$("droneMapMoveBtn"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4805,18 +4823,41 @@ function applyMilkyWayFraming(mode){
    (地図をドラッグして中心がずれると、今どこを飛んでいるのか分からなくなるため)。
    方位はすぐ上の方位バーで変えられ、扇形もシミュレーション画面も同時に動く。 */
 let droneMapInstance=null,droneMapMarker=null,droneMapFovFill=null,droneMapFovOutline=null,droneMapKey="";
+/* 地図をドラッグして撮影位置を移せるようにした（v574）。
+   ただし「地図を見る」と「機体を追う」は両立しないので、
+   ドラッグを始めたら追従を止め、離した位置に「ここへ移動」を出す。
+   押せばそこへ移り、押さずに済ませたい時は機体の追従へ戻す。 */
+let droneMapPanned=false,droneMapSatellite=false,droneMapSatLayer=null,droneMapBaseLayer=null;
+/* こちらから中心を戻したときも moveend は飛ぶ。
+   それを「人が地図を動かした」と取ると、ドラッグ直後に自分で
+   フラグを消してしまうので、自分発の移動中だけ印を付けて除外する。 */
+let droneMapProgrammatic=false;
+/* 最後にこちらから合わせた中心。これと今の中心が違えば、
+   違いを作ったのは人だと分かる。Leafletのイベントに依存しない。 */
+let droneMapLastSetCentre=null;
+function droneMapReturnToDrone(){
+  droneMapPanned=false;droneMapLastSetCentre=null;
+  if(el.droneMapMoveBtn) el.droneMapMoveBtn.classList.remove("show");
+  droneMapKey="";                 // 次のsyncで中心を機体へ戻す
+  syncDroneMap();
+}
 function ensureDroneMap(){
   if(droneMapInstance) return droneMapInstance;
   if(typeof window.L==="undefined"||!el.droneMap) return null;
   const lat=Number.isFinite(+el.lat.value)?+el.lat.value:35.36, lon=Number.isFinite(+el.lon.value)?+el.lon.value:138.73;
   droneMapInstance=L.map(el.droneMap,{
     zoomControl:true,attributionControl:true,zoomAnimation:false,
-    dragging:false,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:false,boxZoom:false,keyboard:false,tap:false
+    dragging:true,scrollWheelZoom:false,doubleClickZoom:false,touchZoom:true,boxZoom:false,keyboard:false,tap:false
   }).setView([lat,lon],16);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  droneMapBaseLayer=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{
     maxZoom:19,minZoom:3,keepBuffer:2,detectRetina:false,
     attribution:'&copy; OpenStreetMap'
   }).addTo(droneMapInstance);
+  /* ドラッグを始めたら追従を止める。離したら「ここへ移動」を出す。 */
+  /* ドラッグを始めたら即座に追従を止める（指を引き戻されないように）。
+     ただし判定の本体は syncDroneMap 側で行う。端末によっては
+     dragstart / dragend / moveend が期待どおり飛ばないことがあるため。 */
+  droneMapInstance.on("dragstart",()=>{ droneMapPanned=true; });
   droneMapMarker=L.circleMarker([lat,lon],{radius:4.5,color:"#ffffff",weight:2,fillColor:"#ff4f9a",fillOpacity:1,interactive:false}).addTo(droneMapInstance);
   return droneMapInstance;
 }
@@ -4827,11 +4868,25 @@ function syncDroneMap(currentState=state){
   const lat=+el.lat.value, lon=+el.lon.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
   const fov=Number.isFinite(currentState.fovH)?currentState.fovH:60;
-  const key=`${lat.toFixed(5)},${lon.toFixed(5)},${Math.round(currentState.facingAz)},${Math.round(fov)},${map.getZoom()}`;
+  const key=`${lat.toFixed(5)},${lon.toFixed(5)},${Math.round(currentState.facingAz)},${Math.round(fov)},${map.getZoom()},${droneMapPanned?1:0}`;
   if(key===droneMapKey) return; // 値が変わった時だけ描き直す
   droneMapKey=key;
+  /* 人が地図を動かしたかどうかは、「最後にこちらが合わせた中心」と
+     今の中心を比べて決める。こちらが動かしていないのにずれていれば人の操作。
+     端末や操作の仕方でLeafletのイベントが飛ばないことがあったので、
+     イベントではなく位置そのもので見分ける。 */
   const centre=map.getCenter();
-  if(Math.abs(centre.lat-lat)>1e-6||Math.abs(centre.lng-lon)>1e-6) map.setView([lat,lon],map.getZoom(),{animate:false});
+  if(droneMapLastSetCentre&&map.distance(centre,L.latLng(droneMapLastSetCentre[0],droneMapLastSetCentre[1]))>5){
+    droneMapPanned=true;
+  }
+  if(!droneMapPanned&&(Math.abs(centre.lat-lat)>1e-6||Math.abs(centre.lng-lon)>1e-6)){
+    droneMapProgrammatic=true;
+    map.setView([lat,lon],map.getZoom(),{animate:false});
+    droneMapProgrammatic=false;
+    droneMapLastSetCentre=[lat,lon];
+  }
+  if(!droneMapLastSetCentre) droneMapLastSetCentre=[centre.lat,centre.lng];
+  if(el.droneMapMoveBtn) el.droneMapMoveBtn.classList.toggle("show",droneMapPanned);
   droneMapMarker.setLatLng([lat,lon]);
   // 扇形は画面上の見た目の大きさを一定に保ちたいので、画素で決めた半径をメートルへ直す。
   const size=map.getSize();
@@ -4853,6 +4908,40 @@ function syncDroneMap(currentState=state){
     droneMapFovOutline.setLatLngs(outline);
   }
 }
+/* 航空写真切り替え。メインの地図と同じEsriのタイルを使う。 */
+if(el.droneMapLayerBtn) el.droneMapLayerBtn.addEventListener("click",()=>{
+  const map=ensureDroneMap();
+  if(!map) return;
+  droneMapSatellite=!droneMapSatellite;
+  if(droneMapSatellite){
+    if(!droneMapSatLayer){
+      droneMapSatLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+        maxZoom:19,minZoom:3,keepBuffer:2,detectRetina:false,attribution:'Tiles &copy; Esri'
+      });
+    }
+    droneMapSatLayer.addTo(map);
+    if(droneMapBaseLayer) map.removeLayer(droneMapBaseLayer);
+  }else{
+    if(droneMapBaseLayer) droneMapBaseLayer.addTo(map);
+    if(droneMapSatLayer) map.removeLayer(droneMapSatLayer);
+  }
+  el.droneMapLayerBtn.classList.toggle("active",droneMapSatellite);
+  el.droneMapLayerBtn.setAttribute("aria-pressed",String(droneMapSatellite));
+  el.droneMapLayerBtn.textContent=droneMapSatellite?"地図":"航空写真";
+  scheduleSaveSettings();
+});
+/* 「ここへ移動」。地図の中心を新しい撮影位置にする。 */
+if(el.droneMapMoveBtn) el.droneMapMoveBtn.addEventListener("click",()=>{
+  const map=droneMapInstance;
+  if(!map) return;
+  const centre=map.getCenter();
+  el.lat.value=centre.lat.toFixed(6);
+  el.lon.value=centre.lng.toFixed(6);
+  el.citySelect.value=0;
+  droneMapReturnToDrone();
+  update();
+  scheduleSaveSettings();
+});
 /* 非表示のまま作るとLeafletが大きさを0と認識するので、出したあとで測り直させる。 */
 function refreshDroneMapSize(){
   if(!droneModeOn) return;
@@ -4874,13 +4963,35 @@ function syncDroneModeButton(){
   el.mobileDroneModeBtn.setAttribute("aria-pressed",String(droneModeOn));
   el.mobileDroneModeBtn.title=droneModeOn?"ドローンモード ON":"ドローンモード";
 }
-el.mobileDroneModeBtn.addEventListener("click",()=>{
-  droneModeOn=!droneModeOn;
-  if(!droneModeOn&&cameraRiseM>0){
-    cameraRiseM=0;droneHoldElevation=null;
+/* ドローンモードをOFFにしたときの降下。
+   これまでは即座に0mへ戻していたので、景色が一瞬で入れ替わっていた。
+   実機の着陸と同じように、一定の速さで高度を減らしていく。
+   途中で再度ONにされたらその場で止める。 */
+let droneDescentRaf=0;
+const DRONE_DESCENT_MPS=22;
+function stopDroneDescent(){ if(droneDescentRaf){ cancelAnimationFrame(droneDescentRaf); droneDescentRaf=0; } }
+function startDroneDescent(){
+  stopDroneDescent();
+  if(cameraRiseM<=0) return;
+  droneHoldElevation=null;
+  let last=performance.now();
+  const tick=now=>{
+    droneDescentRaf=0;
+    if(droneModeOn) return;
+    const dt=Math.min(.2,Math.max(0,(now-last)/1000));
+    last=now;
+    cameraRiseM=Math.max(0,cameraRiseM-DRONE_DESCENT_MPS*dt);
     syncTripodHeightControl();
     drawPhoto._terrainRenderKey=null;
-  }
+    update();
+    if(cameraRiseM>0) droneDescentRaf=requestAnimationFrame(tick);
+  };
+  droneDescentRaf=requestAnimationFrame(tick);
+}
+el.mobileDroneModeBtn.addEventListener("click",()=>{
+  droneModeOn=!droneModeOn;
+  if(droneModeOn) stopDroneDescent();
+  else if(cameraRiseM>0) startDroneDescent();
   syncDroneModeButton();
   update();
   refreshDroneMapSize();
