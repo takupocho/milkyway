@@ -1281,7 +1281,29 @@
   }
   .drone-map-btn svg{width:100%;height:100%;}
   .drone-map-btn.active{background:var(--core-amber);color:#1c1120;border-color:var(--core-amber);}
-  .drone-map-layer-btn{right:8px;top:8px;}
+  /* 距離ボタンを地図切替アイコンの上に置く。 */
+  .drone-map-measure-btn{right:8px;top:8px;}
+  .drone-map-layer-btn{right:8px;top:44px;}
+  /* 計測中の終了ボタンと距離表示。地図の上に重ねる。 */
+  .drone-measure-end-btn{
+    position:absolute;z-index:601;left:50%;transform:translateX(-50%);top:8px;
+    display:none;padding:5px 12px;border-radius:9px;
+    border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.2);
+    -webkit-backdrop-filter:blur(14px) saturate(120%);
+    backdrop-filter:blur(14px) saturate(120%);
+    color:var(--star-white);font:700 11px/1.2 'Inter',sans-serif;cursor:pointer;white-space:nowrap;
+  }
+  .drone-measure-readout{
+    position:absolute;z-index:601;left:50%;transform:translateX(-50%);bottom:26px;
+    display:none;padding:4px 12px;border-radius:9px;
+    border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.2);
+    -webkit-backdrop-filter:blur(14px) saturate(120%);
+    backdrop-filter:blur(14px) saturate(120%);
+    color:var(--star-white);font:700 13px/1.2 'IBM Plex Mono',monospace;
+    pointer-events:none;white-space:nowrap;
+  }
+  body.drone-measure .drone-measure-end-btn,
+  body.drone-measure .drone-measure-readout{display:block;}
   @media (max-width:760px){ .drone-map{height:180px;} }
   /* 横構図ではコントローラーがシミュレーション画面の下へせり出しているので、
      地図はその下から始める(重なると地図が触れなくなるため)。 */
@@ -3267,6 +3289,9 @@
             <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
             <div id="droneMapPanel" class="drone-map-panel" aria-label="ドローンの現在地と撮影方位">
               <div id="droneMap" class="drone-map"></div>
+              <button id="droneMapMeasureBtn" type="button" class="drone-map-btn drone-map-measure-btn" aria-pressed="false" aria-label="距離を測る" title="距離を測る"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M6 24 26 8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="6" cy="24" r="3" stroke="currentColor" stroke-width="2"/><circle cx="26" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M11 17.5l2.4 2M15.5 13.8l2.4 2M20 10.1l2.4 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+              <button id="droneMeasureEndBtn" type="button" class="drone-measure-end-btn">距離測定を終了する</button>
+              <div id="droneMeasureReadout" class="drone-measure-readout" aria-live="polite"></div>
               <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="衛星画像に切り替える" title="地図／衛星画像切替"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg></button>
             </div>
           </div>
@@ -3397,7 +3422,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="576-drone-map-centre-follow";
+const APP_VERSION="577-map-distance";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4277,7 +4302,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), droneMapMeasureBtn:$("droneMapMeasureBtn"), droneMeasureEndBtn:$("droneMeasureEndBtn"), droneMeasureReadout:$("droneMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -4831,6 +4856,47 @@ let droneMapProgrammatic=false;
 /* 指で引いている最中は、こちらから中心を戻さない。
    戻すと地図が指についてこなくなる。 */
 let droneMapDragging=false;
+/* 距離測定（v577）。
+   ボタンを押したときの地図の中心を開始点として固定し、
+   あとは地図を動かすと中心が終了点になる。
+   測っている間は撮影位置を確定させないので、
+   カメラの位置も方位も動かない。 */
+let droneMeasureOn=false,droneMeasureStart=null,droneMeasureLine=null,droneMeasureStartDot=null;
+function formatMeasureDistance(metres){
+  if(!Number.isFinite(metres)) return "";
+  return metres<1000?`${Math.round(metres)} m`:`${(metres/1000).toFixed(metres<10000?2:1)} km`;
+}
+function updateDroneMeasure(){
+  const map=droneMapInstance;
+  if(!map||!droneMeasureOn||!droneMeasureStart) return;
+  const centre=map.getCenter();
+  const path=[droneMeasureStart,centre];
+  if(!droneMeasureLine){
+    droneMeasureLine=L.polyline(path,{interactive:false,color:"#ffd479",weight:2.5,opacity:.95}).addTo(map);
+    droneMeasureStartDot=L.circleMarker(droneMeasureStart,{radius:4.5,interactive:false,
+      color:"#ffd479",weight:2,fillColor:"#1c1120",fillOpacity:1}).addTo(map);
+  }else{
+    droneMeasureLine.setLatLngs(path);
+    droneMeasureStartDot.setLatLng(droneMeasureStart);
+  }
+  if(el.droneMeasureReadout) el.droneMeasureReadout.textContent=formatMeasureDistance(map.distance(droneMeasureStart,centre));
+}
+function stopDroneMeasure(){
+  droneMeasureOn=false;droneMeasureStart=null;
+  const map=droneMapInstance;
+  if(map){
+    if(droneMeasureLine){ map.removeLayer(droneMeasureLine); droneMeasureLine=null; }
+    if(droneMeasureStartDot){ map.removeLayer(droneMeasureStartDot); droneMeasureStartDot=null; }
+  }
+  document.body.classList.remove("drone-measure");
+  if(el.droneMapMeasureBtn){
+    el.droneMapMeasureBtn.classList.remove("active");
+    el.droneMapMeasureBtn.setAttribute("aria-pressed","false");
+  }
+  if(el.droneMeasureReadout) el.droneMeasureReadout.textContent="";
+  droneMapKey="";           // 地図の中心を撮影位置へ戻す
+  syncDroneMap();
+}
 function ensureDroneMap(){
   if(droneMapInstance) return droneMapInstance;
   if(typeof window.L==="undefined"||!el.droneMap) return null;
@@ -4853,12 +4919,16 @@ function ensureDroneMap(){
   droneMapInstance.on("dragend",()=>{ droneMapDragging=false; });
   droneMapInstance.on("move",()=>{
     if(droneMapProgrammatic) return;
+    /* 測定中は撮影位置を動かさないので、印はそのまま。
+       代わりに開始点からの線と距離を更新する。 */
+    if(droneMeasureOn){ updateDroneMeasure(); return; }
     const c=droneMapInstance.getCenter();
     if(droneMapMarker) droneMapMarker.setLatLng(c);
   });
   /* 指を離したら、その中心を新しい撮影位置にする。 */
   droneMapInstance.on("moveend",()=>{
     if(droneMapProgrammatic) return;
+    if(droneMeasureOn){ updateDroneMeasure(); return; }   // 測定中は撮影位置を確定させない
     const c=droneMapInstance.getCenter();
     const lat0=+el.lat.value, lon0=+el.lon.value;
     if(Number.isFinite(lat0)&&Number.isFinite(lon0)&&
@@ -4883,7 +4953,7 @@ function syncDroneMap(currentState=state){
   const key=`${lat.toFixed(5)},${lon.toFixed(5)},${Math.round(currentState.facingAz)},${Math.round(fov)},${map.getZoom()}`;
   if(key===droneMapKey) return; // 値が変わった時だけ描き直す
   droneMapKey=key;
-  if(droneMapDragging) return;   // 引いている最中は触らない
+  if(droneMapDragging||droneMeasureOn) return;   // 引いている最中と測定中は触らない
   /* 撮影位置は常に地図の真ん中。ずれていたら戻す。
      こちらからの移動を moveend が「人の操作」と取らないよう印を付ける。 */
   const centre=map.getCenter();
@@ -4934,6 +5004,18 @@ if(el.droneMapLayerBtn) el.droneMapLayerBtn.addEventListener("click",()=>{
   el.droneMapLayerBtn.setAttribute("aria-pressed",String(droneMapSatellite));
   scheduleSaveSettings();
 });
+if(el.droneMapMeasureBtn) el.droneMapMeasureBtn.addEventListener("click",()=>{
+  if(droneMeasureOn){ stopDroneMeasure(); return; }
+  const map=ensureDroneMap();
+  if(!map) return;
+  droneMeasureOn=true;
+  droneMeasureStart=map.getCenter();      // 押したときの中心を開始点に固定
+  document.body.classList.add("drone-measure");
+  el.droneMapMeasureBtn.classList.add("active");
+  el.droneMapMeasureBtn.setAttribute("aria-pressed","true");
+  updateDroneMeasure();
+});
+if(el.droneMeasureEndBtn) el.droneMeasureEndBtn.addEventListener("click",stopDroneMeasure);
 /* 非表示のまま作るとLeafletが大きさを0と認識するので、出したあとで測り直させる。 */
 function refreshDroneMapSize(){
   if(!droneModeOn) return;
@@ -4983,7 +5065,7 @@ function startDroneDescent(){
 el.mobileDroneModeBtn.addEventListener("click",()=>{
   droneModeOn=!droneModeOn;
   if(droneModeOn) stopDroneDescent();
-  else if(cameraRiseM>0) startDroneDescent();
+  else{ if(droneMeasureOn) stopDroneMeasure(); if(cameraRiseM>0) startDroneDescent(); }
   syncDroneModeButton();
   update();
   refreshDroneMapSize();
