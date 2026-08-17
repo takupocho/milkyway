@@ -1332,17 +1332,59 @@
   /* 「この場所に設定」は押さないと反映されない。
      未適用の候補がある間だけ、縁を光らせて存在を知らせる。
      押して反映されたら自然に止まる。 */
-  @keyframes applyBtnPulse{
-    0%,100%{ border-color:var(--core-amber); box-shadow:0 0 0 0 rgba(232,166,89,.55),0 0 6px rgba(232,166,89,.5); }
-    50%    { border-color:#ffd8a3;           box-shadow:0 0 0 6px rgba(232,166,89,0),0 0 18px rgba(232,166,89,.95); }
+  /* 縁は、距離測定の線と同じ「流れる点線」にする。
+     CSSのborderは点線を動かせないので、ボタンの上に
+     同じ大きさのSVGの角丸四角を重ね、stroke-dashoffsetを動かす。
+     幅と高さは100%指定なので、画面幅でボタンの寸法が変わっても追従する。 */
+  /* ボタンの中のSVGはアイコン用に24px固定されているので、
+     このリングだけIDを含む選択子で上書きしてボタン全体に広げる。 */
+  .osm-map-actions button#osmApplyBtn svg.apply-dash-ring{
+    position:absolute;inset:0;width:100%;height:100%;
+    overflow:visible;pointer-events:none;opacity:0;
   }
-  .osm-map-actions button#osmApplyBtn.needs-apply{
-    animation:applyBtnPulse 1.25s ease-in-out infinite;
-    color:var(--core-amber);
+  /* 角丸はボタンの半径に合わせる（PC 8px / スマホ 12px）。 */
+  .apply-dash-ring rect{rx:8px;ry:8px;}
+  @media (max-width:760px){ .apply-dash-ring rect{rx:12px;ry:12px;} }
+  .osm-map-actions button#osmApplyBtn.needs-apply{ color:var(--core-amber); }
+  .osm-map-actions button#osmApplyBtn.needs-apply .apply-dash-ring{ opacity:1; }
+  .apply-dash-ring rect{
+    fill:none;stroke:currentColor;stroke-width:2;
+    stroke-dasharray:8 6;
+    animation:measureDashMove 1.1s linear infinite, applyRingGlow 1.25s ease-in-out infinite;
+  }
+  @keyframes applyRingGlow{
+    0%,100%{ filter:drop-shadow(0 0 2px rgba(232,166,89,.55)); }
+    50%    { filter:drop-shadow(0 0 7px rgba(232,166,89,.95)); }
   }
   @media (prefers-reduced-motion:reduce){
-    .osm-map-actions button#osmApplyBtn.needs-apply{animation:none;border-color:var(--core-amber);}
+    .apply-dash-ring rect{animation:none;}
   }
+  /* 高精細に切り替えたときの走査演出。
+     上から下へ光の帯が抜けていき、通ったあとがさっと明るくなる。 */
+  .high-detail-scan{
+    position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;
+    background:linear-gradient(to bottom,
+      rgba(140,210,255,0) 0%,
+      rgba(140,210,255,.10) 38%,
+      rgba(190,235,255,.55) 47%,
+      rgba(255,255,255,.95) 50%,
+      rgba(190,235,255,.55) 53%,
+      rgba(140,210,255,.10) 62%,
+      rgba(140,210,255,0) 100%);
+    background-size:100% 46%;
+    background-repeat:no-repeat;
+    mix-blend-mode:screen;
+  }
+  .high-detail-scan.run{ animation:highDetailScanSweep 1.15s cubic-bezier(.42,0,.35,1) 1; }
+  @keyframes highDetailScanSweep{
+    0%  { opacity:0;   background-position:0 -50%; }
+    12% { opacity:1; }
+    88% { opacity:1; }
+    100%{ opacity:0;   background-position:0 150%; }
+  }
+  @media (prefers-reduced-motion:reduce){ .high-detail-scan.run{animation:none;} }
+  /* 高精細中はボタンを琉珀色にする。 */
+  #highDetailBtn[aria-pressed="true"]{border-color:var(--core-amber);color:var(--core-amber);}
   @keyframes measureDashMove{ to{ stroke-dashoffset:-28; } }
   .measure-dash{
     stroke-dasharray:8 6;
@@ -3180,7 +3222,9 @@
               <div class="terrain-credit" aria-label="地形データの出典">地形：国土地理院 標高タイルを加工</div>
               <div class="app-version-badge" id="appVersionBadge" aria-label="バージョン"></div>
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
+              <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
+                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
@@ -3238,8 +3282,9 @@
                   <button id="osmLocateBtn" type="button" class="map-help" data-help="現在地を自動取得" aria-label="現在地へ移動" data-tooltip="現在地" title="現在地">
                     <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="9" fill="rgba(255,255,255,.72)"/><circle cx="16" cy="16" r="5.2" fill="#3432a6" stroke="#fff" stroke-width="2"/></svg>
                   </button>
-                  <button id="osmApplyBtn" type="button" class="primary map-help" data-help="観測地点への設定" aria-label="選択した位置を観測地点に設定" data-tooltip="この場所に設定" title="この場所に設定">
+                  <button id="osmApplyBtn" type="button" class="primary map-help has-dash-ring" data-help="観測地点への設定" aria-label="選択した位置を観測地点に設定" data-tooltip="この場所に設定" title="この場所に設定">
                     <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 10.5 11 8l8 2.5 8-3v15l-8 3-8-2.5-6 2.5v-15Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M11 8.3v14.4M19 10.8v14.4" stroke="currentColor" stroke-width="1.4"/><path d="M15 7a4 4 0 1 1 8 0c0 3-4 7-4 7s-4-4-4-7Z" fill="currentColor" stroke="#fff" stroke-width="1.1"/><circle cx="19" cy="7" r="1.6" fill="#10142a"/></svg>
+                    <svg class="apply-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" rx="11" ry="11"/></svg>
                   </button>
                   <button id="osmGoogleOpenBtn" type="button" class="map-help" data-help="Googleマップを開く" aria-label="選択した位置をGoogleマップで開く" data-tooltip="Googleマップで開く" title="Googleマップで開く">
                     <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3.5A9.5 9.5 0 0 0 6.5 13c0 7.2 9.5 16 9.5 16s9.5-8.8 9.5-16A9.5 9.5 0 0 0 16 3.5Z" fill="#4285F4"/><path d="M6.9 10.3 16 18.8 10.7 24A27.5 27.5 0 0 1 6.5 13c0-.9.1-1.8.4-2.7Z" fill="#FBBC04"/><path d="M10.7 24 16 18.8l5.3 5.2A39.7 39.7 0 0 1 16 29s-2.6-2.4-5.3-5Z" fill="#34A853"/><path d="M16 3.5A9.5 9.5 0 0 1 24.8 9L16 18.8 6.9 10.3A9.5 9.5 0 0 1 16 3.5Z" fill="#EA4335"/><circle cx="16" cy="13" r="4.2" fill="#20264b"/></svg>
@@ -3491,7 +3536,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="581-apply-btn-pulse";
+const APP_VERSION="583-high-detail";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4371,7 +4416,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -6103,7 +6148,17 @@ el.tripodHeight.addEventListener("input",()=>{
   scheduleSaveSettings();
 });
 syncTripodHeightControl();
+/* 高精細モード（v583）。
+   押すと、遠景の方位メッシュを2°・局所高精細を1mへ細かくし、
+   さらに描画バッファを大きくして全体をシャープにする。
+   方位・仰角を動かしても維持し、前後左右に動き出したら自動で戻る。
+   実測値(24mm・幅1200pxで地形を作り直す時間):
+     1°=244ms / 2°=114ms / 3°=66ms / 5°=46ms / 10°=34ms
+   1°は2°の2倍以上重いのに見た目の差が小さいので2°を採る。 */
+let highDetailOn=false;
+const HIGH_DETAIL_AZIMUTH_STEP=2, HIGH_DETAIL_LOCAL_MESH_M=1;
 function normalTerrainAzimuthStepValue(){
+  if(highDetailOn) return HIGH_DETAIL_AZIMUTH_STEP;
   return clamp(Math.round(+el.normalTerrainAzimuthStepSlider.value||1),1,10);
 }
 /* 実際に描画へ使う方位刻み(度)。稜線の輪郭線と地形本体の両方がこの1か所から値を取る。
@@ -6140,7 +6195,28 @@ el.normalTerrainAzimuthStepSlider.addEventListener("input",()=>{
   scheduleSaveSettings();
 });
 syncNormalTerrainAzimuthStepControl();
+function playHighDetailScan(){
+  const scan=el.highDetailScan;
+  if(!scan) return;
+  scan.classList.remove("run");
+  void scan.offsetWidth;          // 再生をやり直すために一度リセットする
+  scan.classList.add("run");
+}
+function setHighDetail(on){
+  on=!!on;
+  if(on===highDetailOn) return;
+  highDetailOn=on;
+  renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
+  if(el.highDetailBtn) el.highDetailBtn.setAttribute("aria-pressed",String(on));
+  drawPhoto._terrainRenderKey=null;
+  drawPhoto._confirmedWaterAzCache=null;
+  applyCanvasSize();
+  update();
+  if(on) playHighDetailScan();
+}
+if(el.highDetailBtn) el.highDetailBtn.addEventListener("click",()=>setHighDetail(!highDetailOn));
 function localDetailMeshStepValue(){
+  if(highDetailOn) return HIGH_DETAIL_LOCAL_MESH_M;
   return clamp(Math.round(+el.localDetailMeshStepSlider.value||5),1,5);
 }
 function syncLocalDetailMeshStepControl(){
@@ -11495,6 +11571,9 @@ function drawPhoto(ctx,s){
   waterReflectionHorizonYByX=null;
   meteorReflectionWaterPath=null;
   const isMobileView = (typeof mobileHeaderMQ!=="undefined") && mobileHeaderMQ.matches;
+  /* 高精細モードでは画素数が増えるので、絶対値で書いてある文字の大きさや
+     線の太さを同じ割合で拡大する。これが無いと文字だけ小さく見える。 */
+  const uiScale = (typeof renderSupersample==="number"&&renderSupersample>0)?renderSupersample:1;
   const labelFontBump = (isMobileView ? 3 : 0) + (arActive ? 3 : 0); // スマホ・ARモードでは名称の文字を少し大きくする
   const arSizeScale = arActive ? 1.7 : 1; // ARモードでは星座線・星・水平線・グリッドなどを目立つよう太く/大きくする
   const tapPad = isMobileView ? 10 : 0; // スマホではタップ判定を周囲に広げる
@@ -12004,7 +12083,7 @@ function drawPhoto(ctx,s){
         ctx.strokeStyle="rgba(10,12,28,0.8)";
         ctx.stroke();
         // 文字の視認性を上げるため、暗い背景の角丸パネルを敷いてから文字を重ねる
-        ctx.font=`600 ${16+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`600 ${(16+labelFontBump)*uiScale}px Inter, sans-serif`;
         const tx=x+9*arSizeScale, ty=y+5;
         const tw=ctx.measureText(hourLabel).width;
         const padX=5, padY=3.5;
@@ -12096,7 +12175,7 @@ function drawPhoto(ctx,s){
       ctx.restore();
 
       if(showSkyLabels){
-        ctx.font=`${14+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`${(14+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="rgba(230,230,245,0.95)";
         ctx.fillText("月",x+rForLabel+9,y+5);
         const mw=ctx.measureText("月").width;
@@ -12147,7 +12226,7 @@ function drawPhoto(ctx,s){
       ctx.restore();
 
       if(showSkyLabels){
-        ctx.font=`${14+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`${(14+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="rgba(255,230,180,0.95)";
         ctx.fillText("太陽",x+rForSunLabel+9,y+5);
         const sw=ctx.measureText("太陽").width;
@@ -12194,7 +12273,7 @@ function drawPhoto(ctx,s){
         ctx.fill();
       }
       if(visN>=2 && showSkyLabels){
-        ctx.font=`${15+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`${(15+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="rgba(200,222,255,0.85)";
         ctx.textAlign="center";
         const lx=sumX/visN, ly=sumY/visN-16;
@@ -12221,7 +12300,7 @@ function drawPhoto(ctx,s){
           ctx.beginPath(); ctx.arc(0,0,11,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
           ctx.restore();
           if(showSkyLabels){
-            ctx.font=`${14.5+labelFontBump}px Inter, sans-serif`;
+            ctx.font=`${(14.5+labelFontBump)*uiScale}px Inter, sans-serif`;
             ctx.fillStyle="rgba(224,214,255,0.9)";
             ctx.fillText(ANDROMEDA_GALAXY.name,x+15,y+5);
             const aw=ctx.measureText(ANDROMEDA_GALAXY.name).width;
@@ -12247,7 +12326,7 @@ function drawPhoto(ctx,s){
       ctx.beginPath(); ctx.arc(x,y,11*arSizeScale,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,3*arSizeScale,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
       if(showSkyLabels){
-        ctx.font=`600 ${15+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`600 ${(15+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="#ffffff";
         ctx.fillText(ns.name,x+13,y+5);
         const nw=ctx.measureText(ns.name).width;
@@ -12284,7 +12363,7 @@ function drawPhoto(ctx,s){
         ctx.fillStyle="rgba(255,224,180,0.95)"; ctx.fill();
       });
       if(visN>=2 && showSkyLabels){
-        ctx.font=`${15+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`${(15+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="rgba(255,214,150,0.9)";
         ctx.textAlign="center";
         const lx=sumX/visN, ly=sumY/visN-16;
@@ -12315,7 +12394,7 @@ function drawPhoto(ctx,s){
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
       ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fillStyle=`rgb(${pl.color})`; ctx.fill();
       if(showSkyLabels){
-        ctx.font=`${14.5+labelFontBump}px Inter, sans-serif`;
+        ctx.font=`${(14.5+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle=`rgba(${pl.color},0.95)`;
         ctx.fillText(pl.name,x+r+7,y+5);
         const pw=ctx.measureText(pl.name).width;
@@ -17013,6 +17092,12 @@ const photoCtx=el.photoCanvas.getContext("2d");
 const compassCtx=el.compassStrip.getContext("2d");
 let suppressPhotoDrawForUpdate=false;
 
+/* 高精細モード（v583）。
+   キャンバスの画素数を倍にして描き、表示は同じ大きさのままにする。
+   地形・道路・等高線・星まで全部が細かくなる。
+   中間のレイヤーはすべてW/Hから寸法を取っているので、ここだけで付いてくる。 */
+let renderSupersample=1;
+const HIGH_DETAIL_SUPERSAMPLE=1.5;
 function applyCanvasSize(){
   let targetW,targetH,targetAspect,isPortrait;
   if(arActive){
@@ -17025,6 +17110,9 @@ function applyCanvasSize(){
   }
   // 同じ値のwidth/height代入でもCanvasの描画バッファは消去・再確保されるため、
   // 実際に構図サイズが変わった場合だけ更新する。
+  // 高精細モードでは描画バッファだけを大きくする（見た目の大きさは aspect-ratio で決まる）。
+  targetW=Math.round(targetW*renderSupersample);
+  targetH=Math.round(targetH*renderSupersample);
   if(el.photoCanvas.width!==targetW) el.photoCanvas.width=targetW;
   if(el.photoCanvas.height!==targetH) el.photoCanvas.height=targetH;
   el.photoCanvas.style.aspectRatio=targetAspect;
@@ -17676,6 +17764,8 @@ function stepObserver(forwardM,strafeM){
   el.lon.value=(lon+eastM/metrePerDegLon).toFixed(6);
   el.citySelect.value=0; // 手動で動かしたのでプリセットから外す
   walkMoved=true;
+  // 高精細は止まって見るためのもの。動き出したら普段の描画に戻す。
+  if(highDetailOn) setHighDetail(false);
   /* 移動中も地名を追いかける。これまでは地点確定のときだけ問い合わせていたので、
      動かし続けているあいだ地名が古いままだった。
      updateSimAddress は約100m四方で答えを覚えているので、同じ区画にいる限り
