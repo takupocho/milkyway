@@ -3399,7 +3399,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="574-drone-map-and-descent";
+const APP_VERSION="575-road-cross-slope";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -15434,14 +15434,35 @@ function drawPhoto(ctx,s){
             const alt=altFromElevation(elevation,distanceM);
             const surface=visibleAltAt(az,distanceKm);
             if(Number.isFinite(surface)&&alt<surface-.15) return null; // 尾根の裏は出さない
-            /* 左右の縁は「路面は水平」とみなして中心と同じ標高を使う。
-               縁ごとに標高を引くと、DEMの粒より道幅が狭い場所で路面がねじれる。 */
+            /* 路面を横断方向の傾きに合わせる。
+
+               以前は「路面は水平」とみなして左右の縁に中心と同じ標高を使っていた。
+               平地ならそれで合うが、山の斜面では本来左右で高さが違うので、
+               路面が水平な板になって谷側が地面から浮いて見えていた。
+
+               といって縁そのものの標高を引くと、DEMの粒(約8m)より道幅が狭い所で
+               隣り合う断面ごとに値が跳ねて路面がねじれる。
+               そこで道幅より広い基線(片剁10m)で横断勾配だけを測り、
+               その傾きを道幅分だけ適用する。DEMの粒より広く取るので値が安定する。 */
+            const CROSS_SLOPE_BASE_M=10;
+            const elevAtOffset=(ox,oy)=>{
+              const d=Math.hypot(ox,oy);
+              if(d<.4) return NaN;
+              return rayBaseElevationAt(norm360(atan2d(ox,oy)),d/1000);
+            };
+            const upElev=elevAtOffset(eastM+perpEast*CROSS_SLOPE_BASE_M,northM+perpNorth*CROSS_SLOPE_BASE_M);
+            const downElev=elevAtOffset(eastM-perpEast*CROSS_SLOPE_BASE_M,northM-perpNorth*CROSS_SLOPE_BASE_M);
+            let crossGrade=0;
+            if(Number.isFinite(upElev)&&Number.isFinite(downElev)){
+              // 崖のような極端な値で路面が立ち上がらないよう頭打ちする。
+              crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-1,1);
+            }
             const sides=[];
             for(const sign of [1,-1]){
               const ex=eastM+perpEast*halfWidth*sign, ny=northM+perpNorth*halfWidth*sign;
               const edgeDistance=Math.max(1,Math.hypot(ex,ny));
               const edgeAz=norm360(atan2d(ex,ny));
-              const edgeAlt=altFromElevation(elevation,edgeDistance);
+              const edgeAlt=altFromElevation(elevation+crossGrade*halfWidth*sign,edgeDistance);
               const p=toXY(edgeAz,edgeAlt);
               if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){sides.length=0;break;}
               sides.push(p);
