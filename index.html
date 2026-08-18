@@ -1394,7 +1394,12 @@
   }
   #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
   #highDetailBtn{position:relative;}
+  /* ボタン自体が真丸（border-radius:50%）なので、縁も真丸にする。
+     pathLength=140 で周の長さを140に揃えてあるので、
+     8+6=14 がちょうど10回分で回り、継ぎ目が見えない。
+     ボタンの大きさがスマホで変わっても見え方は同じになる。 */
   .high-detail-dash-ring rect{
+    rx:50%;ry:50%;
     fill:none;stroke:currentColor;stroke-width:2;
     stroke-dasharray:8 6;
     animation:measureDashMove 1.1s linear infinite, applyRingGlow 1.25s ease-in-out infinite;
@@ -1897,9 +1902,15 @@
     display:grid;place-items:center;background:rgba(18,21,43,.82);color:rgba(255,255,255,.92);
     box-shadow:0 2px 9px rgba(0,0,0,.38);opacity:.72;cursor:pointer;
   }
-  .external-data-reload-btn:hover,.external-data-reload-btn:focus-visible{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
+  @media (hover:hover){
+    .external-data-reload-btn:hover{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
+  }
+  .external-data-reload-btn:focus-visible{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
+  /* 高精細中は、目印は点線の縁だけにする。
+     選択枠やホバーの色が重なると、OFFなのにONに見えて紛らわしい。 */
+  #highDetailBtn:focus{outline:none;}
   .external-data-reload-btn svg{width:24px;height:24px;pointer-events:none;}
-  .external-data-reload-btn.loading svg{animation:external-data-spin 1.15s linear infinite;}
+  #externalDataReloadBtn.loading svg{animation:external-data-spin 1.15s linear infinite;}
   @keyframes external-data-spin{to{transform:rotate(360deg);}}
   .external-data-lamps{display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;border-radius:8px;background:rgba(3,5,14,.35);}
   .external-data-lamp{
@@ -3241,7 +3252,7 @@
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
-                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" rx="9" ry="9"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
+                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" pathLength="140"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
@@ -3553,7 +3564,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="590-hd-1km-locked";
+const APP_VERSION="591-hd-round-ring";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6237,7 +6248,14 @@ function setHighDetail(on){
   update();
   if(on) playHighDetailScan();
 }
-if(el.highDetailBtn) el.highDetailBtn.addEventListener("click",()=>setHighDetail(!highDetailOn));
+if(el.highDetailBtn) el.highDetailBtn.addEventListener("click",()=>{
+  setHighDetail(!highDetailOn);
+  /* 押したあとは焦点を手放す。残しておくと、このあと矢印キーで
+     前後左右へ動いたときにブラウザが焦点の印を出し、
+     OFFなのに琉珀色のままでONに見えてしまう。
+     スマホでタップしたときの :hover が居座る問題もこれで消える。 */
+  if(el.highDetailBtn.blur) el.highDetailBtn.blur();
+});
 function localDetailMeshStepValue(){
   if(highDetailOn) return HIGH_DETAIL_LOCAL_MESH_M;
   return clamp(Math.round(+el.localDetailMeshStepSlider.value||5),1,5);
