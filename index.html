@@ -3536,7 +3536,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="588-hd-far-and-roads";
+const APP_VERSION="589-hd-release-cache";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6208,6 +6208,7 @@ function setHighDetail(on){
   highDetailOn=on;
   renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
   if(on) highDetailEnsureField(+el.lat.value,+el.lon.value);
+  else highDetailReleaseField();   // 降りるときに取った分を捨てる
   if(el.highDetailBtn) el.highDetailBtn.setAttribute("aria-pressed",String(on));
   drawPhoto._terrainRenderKey=null;
   drawPhoto._confirmedWaterAzCache=null;
@@ -9828,6 +9829,10 @@ let HIGH_DETAIL_FAR_LIMIT_KM=20;
 const HIGH_DETAIL_RING_SET=new Set(TERRAIN_DISTANCES_KM.map(km=>Math.round(km*1000)));
 const highDetailTiles=new Map();      // key: "x/y" -> Float32Array | null | "loading"
 let highDetailPending=0,highDetailReadyKey="",highDetailTileCount=0,highDetailUsedCells=0;
+const highDetailOwnedTileKeys=new Set();  // 高精細が自分で取った分だけ
+/* 捨てたあとに遅れて届いたタイルを拾わないための世代番号。
+   これが無いと、降りた直後に到着した分だけが残ってしまう。 */
+let highDetailGeneration=0;
 function highDetailDecode(sources){
   /* dem5a → 5b → 5c の順に見て、最初に値のある層を採る。 */
   const out=new Float32Array(256*256);out.fill(NaN);
@@ -9848,9 +9853,17 @@ function highDetailRequestTile(x,y){
   if(highDetailTiles.has(key)) return;
   highDetailTiles.set(key,"loading");
   highDetailPending++;
-  loadLocalDetailDemTile({z:15,x,y,key:`local-detail/15/${x}/${y}`})
-    .then(sources=>{ highDetailTiles.set(key,(sources&&sources.length)?highDetailDecode(sources):null);highDetailTileCount++; })
-    .catch(()=>{ highDetailTiles.set(key,null); })
+  const generation=highDetailGeneration;
+  const cacheKey=`local-detail/15/${x}/${y}`;
+  /* 登録済みの局所高精細地形が既に同じタイルを持っているなら、
+     それはこちらの持ち物ではない。降りるときに消さないよう印を付けない。 */
+  if(!localDetailDemTileCache.has(cacheKey)) highDetailOwnedTileKeys.add(cacheKey);
+  loadLocalDetailDemTile({z:15,x,y,key:cacheKey})
+    .then(sources=>{
+      if(generation!==highDetailGeneration) return;   // もう降りている
+      highDetailTiles.set(key,(sources&&sources.length)?highDetailDecode(sources):null);highDetailTileCount++;
+    })
+    .catch(()=>{ if(generation===highDetailGeneration) highDetailTiles.set(key,null); })
     .finally(()=>{
       highDetailPending--;
       if(highDetailPending<=0){
@@ -9870,6 +9883,19 @@ function highDetailEnsureField(lat,lon){
   const a=terrainTilePoint(lat-dLat,lon-dLon,15), b=terrainTilePoint(lat+dLat,lon+dLon,15);
   const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),y0=Math.min(a.y,b.y),y1=Math.max(a.y,b.y);
   for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) highDetailRequestTile(x,y);
+}
+/* 高精細をやめるときに、取った5mメッシュを全部捨てる。
+   一時的に綺麗に見るための機能なので、降りたあともタイルを持ち続ける理由がない。
+   1タイルで 256×256×4バイト = 256KB。歩き回るとこれが積み上がっていく。
+   登録済みの局所高精細地形の分は残す（向こうは常時使うデータ）。 */
+function highDetailReleaseField(){
+  highDetailGeneration++;
+  highDetailTiles.clear();
+  for(const key of highDetailOwnedTileKeys) localDetailDemTileCache.delete(key);
+  highDetailOwnedTileKeys.clear();
+  highDetailReadyKey="";
+  highDetailTileCount=0;
+  highDetailUsedCells=0;
 }
 /* 双一次補間した5mメッシュの標高。無ければ NaN。 */
 function highDetailElevationAt(lat,lon){
