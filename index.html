@@ -1383,8 +1383,25 @@
     100%{ opacity:0;   background-position:0 150%; }
   }
   @media (prefers-reduced-motion:reduce){ .high-detail-scan.run{animation:none;} }
-  /* 高精細中はボタンを琉珀色にする。 */
-  #highDetailBtn[aria-pressed="true"]{border-color:var(--core-amber);color:var(--core-amber);}
+  /* 高精細中はボタンを琉珀色にし、縁を流れる点線にする。
+     高精細は一時的な状態で、この間は前後左右へ動けない。
+     今どちらなのか一目で分かるようにしておく。
+     線の動き方は距離測定の線と同じ。 */
+  #highDetailBtn[aria-pressed="true"]{border-color:transparent;color:var(--core-amber);}
+  #highDetailBtn svg.high-detail-dash-ring{
+    position:absolute;inset:0;width:100%;height:100%;
+    overflow:visible;pointer-events:none;opacity:0;
+  }
+  #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
+  #highDetailBtn{position:relative;}
+  .high-detail-dash-ring rect{
+    fill:none;stroke:currentColor;stroke-width:2;
+    stroke-dasharray:8 6;
+    animation:measureDashMove 1.1s linear infinite, applyRingGlow 1.25s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion:reduce){ .high-detail-dash-ring rect{animation:none;} }
+  /* 高精細中は前後左右のスティックを休みに見せる。 */
+  body.high-detail #droneStickRight{opacity:.35;filter:grayscale(.6);}
   @keyframes measureDashMove{ to{ stroke-dashoffset:-28; } }
   .measure-dash{
     stroke-dasharray:8 6;
@@ -3224,7 +3241,7 @@
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
-                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
+                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" rx="9" ry="9"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
@@ -3536,7 +3553,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="589-hd-release-cache";
+const APP_VERSION="590-hd-1km-locked";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6209,6 +6226,10 @@ function setHighDetail(on){
   renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
   if(on) highDetailEnsureField(+el.lat.value,+el.lon.value);
   else highDetailReleaseField();   // 降りるときに取った分を捨てる
+  document.body.classList.toggle("high-detail",on);
+  /* 入るときは押された時点で残っている移動入力を捨て、
+     抜けるときは止めていた間の入力を持ち越さないようにする。 */
+  walkForward=0;walkStrafe=0;
   if(el.highDetailBtn) el.highDetailBtn.setAttribute("aria-pressed",String(on));
   drawPhoto._terrainRenderKey=null;
   drawPhoto._confirmedWaterAzCache=null;
@@ -9820,10 +9841,7 @@ const localDetailDemTileCache=new Map();
    1点ずつ非同期に引くと何万回も待つことになるので、
    タイルを一度だけ Float32Array へ展開しておいて、あとは配列参照で済ませる。
    ========================================================= */
-const HIGH_DETAIL_FIELD_RADIUS_M=200;
-/* 遠景を引き直す上限。これより遠いと山の見かけの大きさより
-   タイルの粒の方が小さくなり、引き直しても見た目が変わらない。 */
-let HIGH_DETAIL_FAR_LIMIT_KM=20;
+const HIGH_DETAIL_FIELD_RADIUS_M=1000;
 /* 標準の距離目盛り。富士山の高密度点や既知の山頂はこの目盛りに乗っていない。
    引き直すのを目盛り上の点だけに限れば、そういう特別な点を壊さずに済む。 */
 const HIGH_DETAIL_RING_SET=new Set(TERRAIN_DISTANCES_KM.map(km=>Math.round(km*1000)));
@@ -9915,29 +9933,23 @@ function highDetailElevationAt(lat,lon){
   }
   return weight>0?sum/weight:NaN;
 }
-/* 高精細モードの標高。列の方位そのままで引き直す。
-   近景(200m以内)は5mメッシュ、その外側は既に持っている標高タイル。
+/* 高精細モードの標高。自分の周り1kmを、5mメッシュで、
+   しかも列の実際の方位そのまま引き直す。
 
-   遠景を引き直す理由。元のレイは方位1°刻みで、その間は補間しているだけ。
-   10km先では1°が175mになるので、稜線の細かい起伏はここで潰れている。
-   z12タイルの粒は約32mなので、引き直せばその分だけ細かくなる。
-   タイルは既に取得済みなので通信は増えない。 */
+   元のレイは方位1°刻みで、その間は補間しているだけ。
+   1km先では1°が17mになるので、列の方位(約0.27°)で引き直せば
+   横方向の細かさも戻る。元のDEMは約8mなので、データ自体も細かくなる。
+   範囲を超えたら null。周りを見るための機能なので遠景には手を出さない。 */
 function highDetailBaseElevation(azDeg,distanceKm){
   if(!highDetailOn||!Number.isFinite(distanceKm)) return null;
+  if(highDetailTileCount<=0) return null;
+  const d=distanceKm*1000;
+  if(d<.5||d>HIGH_DETAIL_FIELD_RADIUS_M) return null;
   const oLat=+el.lat.value,oLon=+el.lon.value;
   if(!Number.isFinite(oLat)||!Number.isFinite(oLon)) return null;
-  const d=distanceKm*1000;
-  if(d<.5) return null;
   const mLon=Math.max(1,111320*Math.cos(oLat*D2R));
-  const la=oLat+cos(azDeg)*d/111320, lo=oLon+sin(azDeg)*d/mLon;
-  if(d<=HIGH_DETAIL_FIELD_RADIUS_M){
-    if(highDetailTileCount<=0) return null;
-    const fine=highDetailElevationAt(la,lo);
-    return Number.isFinite(fine)?fine:null;
-  }
-  if(distanceKm>HIGH_DETAIL_FAR_LIMIT_KM) return null;
-  const far=worldHeightForDistance(la,lo,d);
-  return Number.isFinite(far)?far:null;
+  const fine=highDetailElevationAt(oLat+cos(azDeg)*d/111320,oLon+sin(azDeg)*d/mLon);
+  return Number.isFinite(fine)?fine:null;
 }
 /* 検証用の覚書き。?hddebug=1 の時だけ外から中身を見られるようにする。 */
 try{
@@ -9945,7 +9957,6 @@ try{
     window.__hd={
       elevationAt:highDetailElevationAt,tiles:highDetailTiles,
       baseElevation:highDetailBaseElevation,worldFar:worldHeightForDistance,
-      setFar:km=>{HIGH_DETAIL_FAR_LIMIT_KM=km;drawPhoto._terrainRenderKey=null;},
       stats:()=>({on:highDetailOn,tileCount:highDetailTileCount,pending:highDetailPending,ready:highDetailReadyKey,used:highDetailUsedCells}),
       reset:()=>{highDetailUsedCells=0;}
     };
@@ -15189,73 +15200,32 @@ function drawPhoto(ctx,s){
             }
           }
         }
-        /* 高精細モード（v586）。
+        /* 高精細モード（v590）。
            既定の描画はこの azimuthVisibleBands が返す帯だけで出来ているので、
            高精細化はここでやらないと一切見た目に出ない。
-           （v583〜v585で触っていた drawNearSurfaceMesh は旧方式専用で、
-             普段は一度も呼ばれていなかった。実測で calls:0）
 
-           やることは登録済みの局所高精細地形と同じで、違いは範囲だけ。
-           自分の周り300mを、5mメッシュ（dem5a/5b/5c）の実測標高で打ち直す。
-           元のDEMは約8mなので、データ自体が細かくなる。
+           自分の周り1kmだけを、元の点をその場で引き直す形で細かくする。
+           点を増やさず差し替えるだけなので、並べ直しも水の探し直しも要らない。
+           （v586は5m刻みの点を新しく作って差し替えていたが、
+             範囲を1kmへ広げると水の探し直しだけで200万回の比較になってしまう。）
 
-           水には一切手を出さない。水と判定されている距離は元の点をそのまま残し、
-           陸の点だけを差し替える。ここを慎重にしないと、v550・v565と同じで
-           海が陸になったり港の構造物が陸地化したりする。 */
-        if(highDetailOn&&Number.isFinite(realTerrainState.observerElevation)&&highDetailTileCount>0){
-          const sinAzHd=sin(wrapped),cosAzHd=cos(wrapped);
-          const oLat=+el.lat.value,oLon=+el.lon.value;
-          const mLonHd=Math.max(1,111320*Math.cos(oLat*D2R));
-          const eyeHd=realTerrainState.observerElevation+eyeHeightAboveGroundM();
+           水には一切手を出さない。水と判定されている点と、標高が分からない点と、
+           距離目盛りに無い点（富士山の高密度点など）はそのまま。
+           ここを慎重にしないと、v550・v565と同じで海が陸になる。 */
+        if(highDetailOn&&highDetailTileCount>0){
           const limitKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
-          /* 元のレイのうち300m以内の点だけを見る。距離目盛りは5m間隔なので
-             50点前後しか無い。水か陸かはこの小さな配列をなぞるだけで分かる。 */
-          const nearSource=[];
-          for(const pt of (walk||[])) if(pt&&pt.distanceKm<=limitKm+.02) nearSource.push(pt);
-          const waterAtKm=km=>{
-            let best=null,bestGap=Infinity;
-            for(const pt of nearSource){
-              const gap=Math.abs(pt.distanceKm-km);
-              if(gap<bestGap){bestGap=gap;best=pt;}
-            }
-            return best?!!best.water:false;
-          };
-          const fineSamples=[];
-          const covered=[];
-          for(let d=5;d<=HIGH_DETAIL_FIELD_RADIUS_M+.001;d+=5){
-            const km=d/1000;
-            if(waterAtKm(km)) continue;                      // 水は一切触らない
-            const fine=highDetailElevationAt(oLat+cosAzHd*d/111320,oLon+sinAzHd*d/mLonHd);
-            if(!Number.isFinite(fine)) continue;             // 5mメッシュが無い所は元のまま残す
-            covered.push(km);
-            fineSamples.push({distanceKm:km,
-              alt:Math.atan2(fine-eyeHd,Math.max(.1,d))*R2D,
-              water:false,baseElevation:fine,local:true});
-          }
-          if(fineSamples.length){
-            highDetailUsedCells+=fineSamples.length;
-            /* 差し替えた距離の元の陸の点だけを抜く。
-               5mメッシュが欠けている距離の点を消すと、そこだけ穴が開く。 */
-            const coveredSet=new Set(covered.map(km=>Math.round(km*1000)));
-            walk=(walk||[]).filter(pt=>pt&&(pt.water||!coveredSet.has(Math.round(pt.distanceKm*1000))))
-              .concat(fineSamples).sort((a,b)=>a.distanceKm-b.distanceKm);
-          }
-        }
-        /* 遠景も列の方位そのままで引き直す（v588）。
-           水と、標高が分からない点と、目盛りに無い点（富士山など）は触らない。 */
-        if(highDetailOn){
-          const nearKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
           let replaced=null;
           for(let i=0;i<walk.length;i++){
             const pt=walk[i];
             if(!pt||pt.local||pt.water) continue;
-            if(pt.distanceKm<=nearKm||pt.distanceKm>HIGH_DETAIL_FAR_LIMIT_KM) continue;
+            if(pt.distanceKm>limitKm) continue;
             if(!Number.isFinite(pt.baseElevation)) continue;
             if(!HIGH_DETAIL_RING_SET.has(Math.round(pt.distanceKm*1000))) continue;
             const fine=highDetailBaseElevation(wrapped,pt.distanceKm);
             if(fine===null) continue;
             if(!replaced) replaced=walk.slice();
             replaced[i]={...pt,baseElevation:fine};
+            highDetailUsedCells++;
           }
           if(replaced) walk=replaced;
         }
@@ -17995,6 +17965,11 @@ async function refreshTerrainWhileWalking(){
 
 /* 観測地点を前後左右へずらす。方位はカメラの向きを基準にする。 */
 function stepObserver(forwardM,strafeM){
+  /* 高精細中はその場から動かない。
+     自分の周り1kmを取ってから描いているので、歩いてしまうと
+     その範囲をずっと取り直すことになり、重い上に絵も安定しない。
+     方位・仰角・高さはそのまま使える。動きたければ高精細を切る。 */
+  if(highDetailOn) return;
   const lat=+el.lat.value, lon=+el.lon.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
   const az=state?state.facingAz:+el.facingAz.value;
@@ -18008,8 +17983,6 @@ function stepObserver(forwardM,strafeM){
   el.lon.value=(lon+eastM/metrePerDegLon).toFixed(6);
   el.citySelect.value=0; // 手動で動かしたのでプリセットから外す
   walkMoved=true;
-  // 高精細は止まって見るためのもの。動き出したら普段の描画に戻す。
-  if(highDetailOn) setHighDetail(false);
   /* 移動中も地名を追いかける。これまでは地点確定のときだけ問い合わせていたので、
      動かし続けているあいだ地名が古いままだった。
      updateSimAddress は約100m四方で答えを覚えているので、同じ区画にいる限り
@@ -18035,7 +18008,7 @@ function startWalkLoop(){
     const dt=Math.min(.25,Math.max(0,(now-walkLastTime)/1000));
     walkLastTime=now;
     const viewChanged=applyViewKeys(dt,walkFast);
-    if(walkForward!==0||walkStrafe!==0){
+    if((walkForward!==0||walkStrafe!==0)&&!highDetailOn){
       const distance=walkSpeedMps(walkFast)*dt;
       stepObserver(walkForward*distance,walkStrafe*distance); // この中で再描画まで行う
     }else if(viewChanged){
