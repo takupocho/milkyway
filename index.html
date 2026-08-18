@@ -823,6 +823,17 @@
   }
   .display-popup-section-title:first-of-type{margin-top:4px;}
   .display-control-btn{border-radius:8px;}
+  /* 雲海の高度スライダー。雲海がONのときだけ出す。 */
+  .display-popup-slider{
+    display:none;align-items:center;gap:7px;
+    padding:5px 8px;margin:1px 0 3px;border-radius:8px;
+    background:rgba(255,255,255,.10);
+    border:1px solid rgba(255,255,255,.28);
+    font:600 10px/1.2 'Inter',sans-serif;color:var(--star-white);
+  }
+  .display-popup-slider.show{display:flex;}
+  .display-popup-slider input[type=range]{flex:1;min-width:96px;accent-color:var(--core-amber);}
+  .display-popup-slider .display-popup-slider-value{min-width:52px;text-align:right;color:var(--core-amber);}
   @media (max-width:900px){
     /* 上のモバイル用ブロック(760px以下)の.constellation-toggle-btnはこのベースルールより
        前に書かれているため、詳細度が同じ場合は後に書かれたベースルールが勝ってしまい、
@@ -3190,6 +3201,27 @@
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">リフレ</button>
+                <button id="popupCloudSeaBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">雲海</button>
+                <div class="display-popup-slider" id="cloudSeaRow">
+                  <label for="cloudSeaSlider">高度</label>
+                  <input type="range" id="cloudSeaSlider" min="0" max="100" step="1" value="63" aria-label="雲海の高さ(標高)">
+                  <span class="display-popup-slider-value" id="cloudSeaVal">800m</span>
+                </div>
+                <div class="display-popup-slider" id="cloudSeaWindRow">
+                  <label for="cloudSeaWindSlider">風向</label>
+                  <input type="range" id="cloudSeaWindSlider" min="0" max="350" step="10" value="270" aria-label="雲海の風向">
+                  <span class="display-popup-slider-value" id="cloudSeaWindVal">西</span>
+                </div>
+                <div class="display-popup-slider" id="cloudSeaGapRow">
+                  <label for="cloudSeaGapSlider">切れ間</label>
+                  <input type="range" id="cloudSeaGapSlider" min="0" max="60" step="1" value="0" aria-label="雲海の切れ間">
+                  <span class="display-popup-slider-value" id="cloudSeaGapVal">なし</span>
+                </div>
+                <div class="display-popup-slider" id="cloudSeaOpacityRow">
+                  <label for="cloudSeaOpacitySlider">濃さ</label>
+                  <input type="range" id="cloudSeaOpacitySlider" min="20" max="100" step="1" value="90" aria-label="雲海の濃さ">
+                  <span class="display-popup-slider-value" id="cloudSeaOpacityVal">90%</span>
+                </div>
                 <div class="display-popup-section-title">アニメーション</div>
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
@@ -3564,7 +3596,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="591-hd-round-ring";
+const APP_VERSION="608-osm-fewer-calls";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4444,7 +4476,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -6024,6 +6056,176 @@ const CONTOUR_INTERVAL_M=1;     // 等高線の標高間隔
 let worldGridVisible=true;
 let contourLinesVisible=true;
 let roadLinesVisible=false; // 通信を伴うので既定はOFF
+/* =========================================================
+   雲海（v592）
+
+   雲海は逆転層にたまった雲なので、物理的には
+   「ある標高に張った水平な面」とほぼ同じ。
+   地形の各点の高さを max(地形, 雲の高さ) に読み替えれば、
+     ・山が雲海から頭を出す
+     ・手前の尾根が奥の雲海を隠す
+     ・地球の丸みで遠くの雲海が沈む
+     ・雲の下の道路や湖が消える
+   が、追加の判定を書かずに成立する。
+
+   水とは絶対に混ぜない。雲は星を映さないし、
+   水判定はこれまで何度も壊れているので、別の印にする。 */
+let cloudSeaVisible=false;
+let cloudSwapCount=0;
+const cloudProf={sub:0,subN:0,shade:0,shadeN:0,mist:0,glow:0,fill:0,erase:0,composite:0,frames:0,waveN:0};
+let cloudSeaElevationM=800;
+/* 雲の濃さ。1なら真っ白な雲、下げると下の景色が透けて薄い雲になる。 */
+let cloudSeaOpacity=.9;
+/* 高度のスライダーは目盛りを変える。
+   実際に細かく合わせたいのは200mまでなので、
+     左半分 … 20〜200m を5m刻み
+     右半分 … 200〜2500m を50m刻み
+   としてある。つまみの真ん中がちょうど200m。 */
+const CLOUD_SEA_LOW_STEPS=36;   // 20→200m を5m刻みで
+const CLOUD_SEA_HIGH_STEPS=46;  // 200→2500m を50m刻みで
+function cloudSeaSliderToM(position){
+  const pos=clamp(Math.round(+position||0),0,100);
+  if(pos<=50) return clamp(20+Math.round(pos/50*CLOUD_SEA_LOW_STEPS)*5,20,200);
+  return clamp(200+Math.round((pos-50)/50*CLOUD_SEA_HIGH_STEPS)*50,200,2500);
+}
+function cloudSeaMToSlider(metres){
+  const m=clamp(Math.round(+metres||800),20,2500);
+  if(m<=200) return clamp(Math.round((m-20)/5*(50/CLOUD_SEA_LOW_STEPS)),0,50);
+  return clamp(50+Math.round((m-200)/50*(50/CLOUD_SEA_HIGH_STEPS)),50,100);
+}
+/* 雲を別のキャンバスへ一度不透明で描いてから、
+   最後に一回だけ重ねる。帯は奥から手前へ入れ子に重なるので、
+   その場で半透明に塗ると重なった回数だけ濃くなり、縞模様になる。
+   手前の尾根はこのキャンバスから削ることで、前後関係を保つ。 */
+let cloudLayerCanvas=null,cloudLayerCtx=null;
+function ensureCloudLayer(width,height){
+  if(!cloudLayerCanvas){
+    cloudLayerCanvas=document.createElement("canvas");
+    cloudLayerCtx=cloudLayerCanvas.getContext("2d");
+  }
+  if(cloudLayerCanvas.width!==width||cloudLayerCanvas.height!==height){
+    cloudLayerCanvas.width=width;cloudLayerCanvas.height=height;
+  }
+  cloudLayerCtx.setTransform(1,0,0,1,0,0);
+  cloudLayerCtx.globalCompositeOperation="source-over";
+  cloudLayerCtx.globalAlpha=1;
+  cloudLayerCtx.filter="none";
+  cloudLayerCtx.clearRect(0,0,width,height);
+  return cloudLayerCtx;
+}
+/* 上面の起伏。真平らだと灰色の湖にしか見えない。
+   世界座標（緯度経度）で決めるのが要。カメラ基準で作ると、
+   振り向いただけで雲が一緒に動いてしまう。 */
+const CLOUD_SEA_RELIEF_M=13;          // 上下の振れ幅
+/* 風の向き。実際の雲海は風に直交した畝になるので、
+   風に沿った方向へノイズを伸ばして筋状にする。 */
+let cloudSeaWindDeg=270;
+/* 雲の切れ間。波が低い場所には雲を置かない。
+   当初は「穴から下の地形が見える」ことを狙ったが、
+   この描画方式は各層が画面下端まで塗るので、
+   穴の向こうの雲に塗り潠されて覚かない。
+   ただし、雲海のある方位と無い方位ができるので、
+   入り江のような形になって現実の雲海らしくなる。 */
+let cloudSeaGapPct=0;
+const CLOUD_SEA_STRETCH=3.6;          // 風に沿う向きへ伸ばす倍率
+const CLOUD_SEA_MAX_KM=25;            // これより遠い雲面は描かない
+const CLOUD_SEA_DECK_M=140;           // 雲層の厚み
+const CLOUD_SEA_ENTER_M=32;           // 雲面の上この高さから、入り口のふんわりが始まる
+const CLOUD_SEA_FOG_FULL_M=70;        // 雲に入ってこれだけ潜るとほとんど見えない
+const CLOUD_SEA_WAVE_A_M=640;         // 大きいうねり
+const CLOUD_SEA_WAVE_B_M=215;         // 細かいうねり
+/* 乱数の種。以前は Math.sin を使っていたが、1度の描き直しで
+   波の値を約9万回引くので、sin だけで約90万回になっていた。
+   整数のかき混ぜで同じことができる。値の分布は変わらない。 */
+function cloudSeaHash(ix,iy){
+  let n=(ix|0)*374761393+(iy|0)*668265263;
+  n=(n^(n>>>13))*1274126177;
+  n=(n^(n>>>16))>>>0;
+  return n/4294967296;               // 0…1
+}
+function cloudSeaValueNoise(x,y){
+  const x0=Math.floor(x),y0=Math.floor(y),fx=x-x0,fy=y-y0;
+  // 角が目立たないように滑らかな補間で繋ぐ
+  const sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);
+  const a=cloudSeaHash(x0,y0),b=cloudSeaHash(x0+1,y0);
+  const c=cloudSeaHash(x0,y0+1),d=cloudSeaHash(x0+1,y0+1);
+  return lerp(lerp(a,b,sx),lerp(c,d,sx),sy);
+}
+/* 起伏の大きさ。雲面が目の高さに近いほど小さくする。
+   目の真横に近い面は、数mの上下が見かけの角度では何度にもなる。
+   そのままだと、距離の目盛りごとに雲面が跳ねて段々畑に見える（実測で確認）。
+   目との高度差の8%までに抜けば、見かけの起伏量はどの高さでも同じ程度に収まる。 */
+/* =========================================================
+   自分と雲面の高さの関係を、すべて連続な値で持つ（v604）。
+
+   以前は「雲面より2m上かどうか」の一行で切り替えていたので、
+   高度を下げていくと雲海が一瞬で消え、入れ替わりに白い霧が現れていた。
+   実際には雲の上面にはフワフワした層があり、そこを抹ける間に
+   周りが徐々に白んでいって、気が付けば中にいる。
+   ========================================================= */
+function cloudSeaAboveM(){
+  if(!cloudSeaVisible) return Infinity;
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  return eye-cloudSeaTopAt(+el.lat.value,+el.lon.value,cloudSeaReliefM());
+}
+/* 雲面をどれだけ濃く描くか。1=しっかり見えている、0=もう中に入った。 */
+function cloudSeaSurfaceFade(){
+  if(!cloudSeaVisible) return 0;
+  return clamp(cloudSeaAboveM()/CLOUD_SEA_ENTER_M,0,1);
+}
+/* 周りの白さ。0=澄んでいる、1=真っ白。
+   雲面に近づいた段階から先に白くなり始めるので、
+   雲面が消えるときにはすでにかなり霧っている。 */
+function cloudSeaFogT(){
+  if(!cloudSeaVisible) return 0;
+  const above=cloudSeaAboveM();
+  if(above>=CLOUD_SEA_ENTER_M) return 0;
+  if(above>=0) return (1-above/CLOUD_SEA_ENTER_M)*.55;      // 入る直前までに55%
+  return clamp(.55+(-above)/CLOUD_SEA_FOG_FULL_M*.45,0,1);  // 中へ入るほど濃く
+}
+/* 雲層を抜けて下へ出た割合。1になると完全に雲の下（曇り空）。 */
+function cloudSeaBelowT(){
+  if(!cloudSeaVisible) return 0;
+  return clamp((-cloudSeaAboveM()-CLOUD_SEA_DECK_M)/70,0,1);
+}
+/* 雲海が光害をどれだけ遮っているか。0（全部通る）〜1（だいぶ遮る）。
+   街の明かりは雲層の下に閉じ込められるので、雲海の上に立つと空が濃くなる。
+   雲海撮影の大きな利点なので、撮影地の判断材料としても意味がある。
+   目と雲面の差が100mになるまでで滀らかに効かせる。 */
+function cloudSeaLightBlock(){
+  if(!cloudSeaVisible) return 0;
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  const below=eye-cloudSeaElevationM;
+  if(below<=2) return 0;
+  return clamp(below/100,0,1);
+}
+/* 雲海が「自分より下に張られている」状態かどうか。
+   このときだけ、雲面が景色を隔てる。 */
+function cloudSeaCoversGround(){
+  if(!cloudSeaVisible) return false;
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  return cloudSeaElevationM+2<eye;
+}
+function cloudSeaReliefM(){
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  return Math.min(CLOUD_SEA_RELIEF_M,Math.max(.5,(eye-cloudSeaElevationM)*.08));
+}
+/* 波の形。-1（谷）〜+1（峰）を返す。
+   風の向きへ座標を回してから、風に沿う軸だけ伸ばす。
+   こうすると、丸い塩の集まりではなく、風に直交した畝になる。 */
+function cloudSeaWaveAt(lat,lon){
+  const y=lat*111320, x=lon*111320*Math.cos(lat*D2R);
+  const rad=cloudSeaWindDeg*D2R,sinW=Math.sin(rad),cosW=Math.cos(rad);
+  const along=x*sinW+y*cosW;          // 風に沿う方向
+  const across=x*cosW-y*sinW;         // 風に直交する方向
+  const n=cloudSeaValueNoise(along/(CLOUD_SEA_WAVE_A_M*CLOUD_SEA_STRETCH),across/CLOUD_SEA_WAVE_A_M)*.68
+         +cloudSeaValueNoise(along/(CLOUD_SEA_WAVE_B_M*CLOUD_SEA_STRETCH),across/CLOUD_SEA_WAVE_B_M)*.32;
+  return n*2-1;
+}
+/* ある地点の雲の上面の標高。 */
+function cloudSeaTopAt(lat,lon,reliefM){
+  return cloudSeaElevationM+cloudSeaWaveAt(lat,lon)*(Number.isFinite(reliefM)?reliefM:CLOUD_SEA_RELIEF_M);
+}
 let railLinesVisible=false;
 
 /* 三脚に載せたカメラの地面からの高さ(m)。
@@ -6033,10 +6235,15 @@ let railLinesVisible=false;
    その場で見かけ高度を計算し直すため、スライダーを動かしても地形の再取得は起きない。 */
 let tripodHeightM=1.6;
 /* キーボードで上昇した高さ(m)。三脚の高さに足して視点の高さになる。
-   0で地面(＝三脚の高さのまま)、最大150m＝ドローンの飛行高度。
+   0で地面(＝三脚の高さのまま)、最大300m。
    地形の見かけ高度は各点の実標高から描画時に計算し直しているので、
-   上昇しても地形データの取り直しは要らず、描き直すだけで反映される。 */
-const CAMERA_RISE_MAX_M=150;
+   上昇しても地形データの取り直しは要らず、描き直すだけで反映される。
+
+   上限は「どこまで上がれるか」だけではなく、移動したときに
+   絶対標高を保てる幅でもある（下の applyDroneAltitudeHold 参照）。
+   150mだと、150mまで上げた状態で100m低い土地へ移動したときに
+   上限で頭打ちになり、絶対標高が地面と一緒に下がっていた。 */
+const CAMERA_RISE_MAX_M=300;
 let cameraRiseM=0;
 /* ドローンで保つ絶対標高(m)。上昇中は「離陸地点の標高＋上昇量」を覚えておき、
    移動先の地面が上下しても同じ標高に留まる(実機の気圧高度と同じ挙動)。
@@ -6388,6 +6595,20 @@ function syncDisplayPopupControls(){
   el.popupWorldGridBtn.setAttribute("aria-pressed",String(worldGridVisible));
   el.popupContourBtn.classList.toggle("active",contourLinesVisible);
   el.popupContourBtn.setAttribute("aria-pressed",String(contourLinesVisible));
+  el.popupCloudSeaBtn.classList.toggle("active",cloudSeaVisible);
+  el.popupCloudSeaBtn.setAttribute("aria-pressed",String(cloudSeaVisible));
+  el.cloudSeaRow.classList.toggle("show",cloudSeaVisible);
+  el.cloudSeaOpacityRow.classList.toggle("show",cloudSeaVisible);
+  el.cloudSeaWindRow.classList.toggle("show",cloudSeaVisible);
+  el.cloudSeaGapRow.classList.toggle("show",cloudSeaVisible);
+  el.cloudSeaGapSlider.value=cloudSeaGapPct;
+  el.cloudSeaGapVal.textContent=cloudSeaGapPct?`${cloudSeaGapPct}%`:"なし";
+  el.cloudSeaWindSlider.value=cloudSeaWindDeg;
+  el.cloudSeaWindVal.textContent=cloudSeaWindLabel();
+  el.cloudSeaSlider.value=cloudSeaMToSlider(cloudSeaElevationM);
+  el.cloudSeaVal.textContent=`${cloudSeaElevationM}m`;
+  el.cloudSeaOpacitySlider.value=Math.round(cloudSeaOpacity*100);
+  el.cloudSeaOpacityVal.textContent=`${Math.round(cloudSeaOpacity*100)}%`;
   el.popupRoadBtn.classList.toggle("active",roadLinesVisible);
   el.popupRoadBtn.setAttribute("aria-pressed",String(roadLinesVisible));
   el.popupRailBtn.classList.toggle("active",railLinesVisible);
@@ -6482,6 +6703,40 @@ el.popupRailBtn.addEventListener("click",()=>{
   if(railLinesVisible) requestOsmRails(+el.lat.value,+el.lon.value);
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupCloudSeaBtn.addEventListener("click",()=>{
+  cloudSeaVisible=!cloudSeaVisible;
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+function cloudSeaWindLabel(){
+  const names=["北","北北東","北東","東北東","東","東南東","南東","南南東",
+               "南","南南西","南西","西南西","西","西北西","北西","北北西"];
+  return names[Math.round(norm360(cloudSeaWindDeg)/22.5)%16];
+}
+el.cloudSeaGapSlider.addEventListener("input",()=>{
+  cloudSeaGapPct=clamp(Math.round(+el.cloudSeaGapSlider.value||0),0,60);
+  el.cloudSeaGapVal.textContent=cloudSeaGapPct?`${cloudSeaGapPct}%`:"なし";
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
+});
+el.cloudSeaWindSlider.addEventListener("input",()=>{
+  cloudSeaWindDeg=clamp(Math.round(+el.cloudSeaWindSlider.value||0),0,350);
+  el.cloudSeaWindVal.textContent=cloudSeaWindLabel();
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
+});
+el.cloudSeaOpacitySlider.addEventListener("input",()=>{
+  cloudSeaOpacity=clamp((+el.cloudSeaOpacitySlider.value||90)/100,.2,1);
+  el.cloudSeaOpacityVal.textContent=`${Math.round(cloudSeaOpacity*100)}%`;
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
+});
+el.cloudSeaSlider.addEventListener("input",()=>{
+  cloudSeaElevationM=cloudSeaSliderToM(el.cloudSeaSlider.value);
+  el.cloudSeaVal.textContent=`${cloudSeaElevationM}m`;
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
 });
 el.popupRoadBtn.addEventListener("click",()=>{
   roadLinesVisible=!roadLinesVisible;
@@ -7468,6 +7723,10 @@ el.mobileDisplayOptionsBtn.addEventListener("click",(e)=>{
 });
 el.displayOptionsPopup.addEventListener("click",e=>{
   if(e.target.closest("button")){ scheduleSaveSettings(); return; }
+  /* スライダーの行は閉じない。
+     ツマを動かして指を離すとここへclickが届くので、
+     高さを合わせるたびに窓が閉じてしまっていた。 */
+  if(e.target.closest(".display-popup-slider")){ scheduleSaveSettings(); return; }
   /* ボタン以外（余白や見出し）を押したら閉じる。
      外側を押して閉じるのは別の処理で既にできているので、
      これで「ボタン以外のどこを押しても閉じる」になる。 */
@@ -7628,6 +7887,11 @@ function collectPersistedSettings(){
     worldGridVisible:worldGridVisible,
     contourLinesVisible:contourLinesVisible,
     roadLinesVisible:roadLinesVisible,
+    cloudSeaVisible:cloudSeaVisible,
+    cloudSeaElevationM:cloudSeaElevationM,
+    cloudSeaOpacity:cloudSeaOpacity,
+    cloudSeaWindDeg:cloudSeaWindDeg,
+    cloudSeaGapPct:cloudSeaGapPct,
     railLinesVisible:railLinesVisible,
     placeNameVisible:placeNameVisible,
     seaDiagVisible:seaDiagVisible,
@@ -7736,6 +8000,12 @@ async function loadPersistedSettings(){
     worldGridVisible=s.worldGridVisible!==false;
     contourLinesVisible=s.contourLinesVisible!==false;
     roadLinesVisible=!!s.roadLinesVisible;
+    cloudSeaVisible=s.cloudSeaVisible===true;
+    // 保存値はスライダーの目盛りへ寄せておく（ツマの位置と数値がずれないように）。
+    if(Number.isFinite(+s.cloudSeaElevationM)) cloudSeaElevationM=cloudSeaSliderToM(cloudSeaMToSlider(+s.cloudSeaElevationM));
+    if(Number.isFinite(+s.cloudSeaOpacity)) cloudSeaOpacity=clamp(+s.cloudSeaOpacity,.2,1);
+    if(Number.isFinite(+s.cloudSeaWindDeg)) cloudSeaWindDeg=clamp(Math.round(+s.cloudSeaWindDeg),0,350);
+    if(Number.isFinite(+s.cloudSeaGapPct)) cloudSeaGapPct=clamp(Math.round(+s.cloudSeaGapPct),0,60);
     railLinesVisible=!!s.railLinesVisible;
     placeNameVisible=s.placeNameVisible!==false;
     seaDiagVisible=s.seaDiagVisible===true;
@@ -9396,8 +9666,21 @@ function worldCoastlineFor(lat,lon){
    - 標高の扱いには一切触らない。触ったときは陸に挟まれた水の点が
      両隣の山の高さで埋められ、山の高さの水柱になった。
    ========================================================= */
-const WORLD_MAP_ZOOMS=[16,14,12,10];      // 約2m/px / 8m / 32m / 127m
-const WORLD_MAP_RADIUS=[2,2,1,1];
+/* 距離ごとのズームと、取得するタイルの半径（枚数）。
+   緯度34°での1画素の大きさと、タイル1枚の幅、覆える範囲:
+     z17 … 0.99m/px ・ 253m/枚 ・ 半径1(3×3=9枚) で ±380m
+     z16 … 1.98m/px ・ 507m/枚 ・ 半径2(5×5=25枚) で ±1.27km
+     z14 … 7.9m/px  ・ 2.0km/枚 ・ 半径2 で ±5.1km
+     z12 … 31.7m/px ・ 8.1km/枚 ・ 半径1 で ±12km
+     z10 … 127m/px  ・ 32.5km/枚・ 半径1 で ±49km
+
+   上限がz17なのは、z18の淡色地図が海を水色で塗らないから（実測）。
+   同じ海岸での水面検出率は z17=38.9% / z16=37.9% に対し、z18は0%。
+   z18の海は白(255,255,255)で描かれており、使うと近景だけ
+   「地図が水と言わない」状態になって逆効果になる。
+   範囲の外はタイルが無いので null になり、自動で下のズームへ落ちる。 */
+const WORLD_MAP_ZOOMS=[17,16,14,12,10];   // 瀄1m/px / 2m / 8m / 32m / 127m
+const WORLD_MAP_RADIUS=[1,2,2,1,1];
 const worldMapLevels=new Map();           // zoom -> Map(numericKey -> Uint8Array|null|"loading")
 const worldMapMemo=new Map();
 let worldMapPending=0,worldMapTiles=0;
@@ -9459,7 +9742,7 @@ function worldMapWaterAt(lat,lon,z){
   return tile[(gy&255)*256+(gx&255)]===1;
 }
 function worldMapWaterForDistance(lat,lon,distanceM){
-  const level=distanceM<1000?0:(distanceM<8000?1:(distanceM<30000?2:3));
+  const level=distanceM<350?0:(distanceM<1000?1:(distanceM<8000?2:(distanceM<30000?3:4)));
   for(let i=level;i<WORLD_MAP_ZOOMS.length;i++){
     const value=worldMapWaterAt(lat,lon,WORLD_MAP_ZOOMS[i]);
     if(value!==null) return value;
@@ -9974,6 +10257,23 @@ try{
   if(new URLSearchParams(location.search).has("hddebug")){
     window.__hd={
       elevationAt:highDetailElevationAt,tiles:highDetailTiles,
+      /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
+      rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
+      injectKmz:(lat,lon,w,hgt)=>{
+        const a=w/2,tri=[],box=[[-a,-a,0],[a,-a,0],[a,a,0],[-a,a,0],[-a,-a,hgt],[a,-a,hgt],[a,a,hgt],[-a,a,hgt]];
+        const faces=[[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7],[4,5,6],[4,6,7]];
+        for(const f of faces) tri.push([box[f[0]],box[f[1]],box[f[2]]]);
+        kmzBuildingModel={triangles:tri,fileName:"debug-box"};
+        kmzBuildingVisible=true;
+        el.kmzBuildingLat.value=lat;el.kmzBuildingLon.value=lon;
+        el.kmzBuildingAltitude.value=0;el.kmzBuildingHeading.value=0;
+        el.kmzBuildingScale.value=1;el.kmzBuildingOpacity.value=100;
+        drawPhoto._terrainRenderKey=null;update();
+        return true;
+      },
+      cloud:()=>({on:cloudSeaVisible,elev:cloudSeaElevationM,obs:realTerrainState.observerElevation,eye:eyeHeightAboveGroundM(),swapped:cloudSwapCount}),
+      prof:()=>({...cloudProf}),
+      profReset:()=>{Object.keys(cloudProf).forEach(k=>cloudProf[k]=0);},
       baseElevation:highDetailBaseElevation,worldFar:worldHeightForDistance,
       stats:()=>({on:highDetailOn,tileCount:highDetailTileCount,pending:highDetailPending,ready:highDetailReadyKey,used:highDetailUsedCells}),
       reset:()=>{highDetailUsedCells=0;}
@@ -11386,6 +11686,11 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
      ここでは各点の実標高から、今の視点の高さで見かけ高度を計算し直す。 */
   const eyeNow=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
   const earthRadius=6371000*(7/6);
+  /* 雲海も「手前の地形」の一部として扱う。こうしないと、
+     谷に置いた建物が雲の上に浮かんで見える。
+     うねりのノイズは使わず平均の高さで揃える。
+     1度あたり数百点を見るので、ここでノイズを引くと重い。 */
+  const cloudFloor=(typeof cloudSeaCoversGround==="function"&&cloudSeaCoversGround())?cloudSeaElevationM:null;
   const samples=[];
   /* 360方位すべてを拾ってはいけない。画角の外の方位も toXY は座標を返すので、
      背後の山が画面内のx座標に紛れ込み、稜線が滅茶苦茶になる。
@@ -11404,7 +11709,13 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
       let alt=pt.alt;
       if(Number.isFinite(pt.baseElevation)&&Number.isFinite(pt.distanceKm)){
         const distanceM=Math.max(1,pt.distanceKm*1000);
-        alt=Math.atan2(pt.baseElevation-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
+        let elevation=pt.baseElevation;
+        if(cloudFloor!==null&&elevation<cloudFloor) elevation=cloudFloor;
+        alt=Math.atan2(elevation-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
+      }else if(cloudFloor!==null&&Number.isFinite(pt.distanceKm)&&pt.water){
+        // 標高不明の水面（海）も雲の下。
+        const distanceM=Math.max(1,pt.distanceKm*1000);
+        alt=Math.atan2(cloudFloor-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
       }
       if(Number.isFinite(alt)&&alt>best) best=alt;
     }
@@ -11505,7 +11816,15 @@ async function fetchMountainNodes(lat,lon){
 }
 function requestMountainNames(lat,lon){
   if(arActive) return;
-  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  /* 山名を出していないなら取りに行かない。
+     山頂の問い合わせは半径60kmで、このアプリがOSMへ投げる中で
+     圧倒的に重い（他は1〜7.5km）。使わない人には不要な負担。
+     「山名表示」をONにした時点で取りに行く（ボタン側で呼んでいる）。 */
+  if(!mountainNamesVisible){ setExternalDataStatus("mountain","idle","山名表示がOFF"); return; }
+  /* 鍵の粒。以前は小数4桁（約11m）だったので、少し動くだけで
+     半径60kmの検索を取り直していた（実測: 50mの移動で3回）。
+     60kmも探すのだから、1km単位で十分。他のOSM問い合わせと揃える。 */
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
   if(mountainNameState.key===key&&!mountainNameState.loadingKey&&mountainNameState.failedKey!==key){setExternalDataStatus("mountain","ready",`${mountainNameState.mountains.length}件`);return;}
   if(mountainNameState.failedKey===key){setExternalDataStatus("mountain","error","通信エラー");return;}
   if(mountainNameState.loadingKey===key){setExternalDataStatus("mountain","loading");return;}
@@ -11908,7 +12227,9 @@ function drawPhoto(ctx,s){
       const bottomY=Math.max(lowerPoint[1],horizonY);
       const span=Math.max(1,bottomY-topY);
       const horizonStop=clamp((horizonY-topY)/span,0.08,0.92);
-      const a=s.lp.base*0.55;
+      /* 雲海の上にいるときは、街の光が雲に遮られて空まで届かない。
+         完全には消さない（雲海の外側の街は残る）ので、最大で約75%減らす。 */
+      const a=s.lp.base*0.55*(1-cloudSeaLightBlock()*.75);
       const lg=ctx.createLinearGradient(0,topY,0,bottomY);
       lg.addColorStop(0,"rgba(232,126,142,0)");
       lg.addColorStop(Math.max(0,horizonStop*.58),`rgba(214,105,142,${a*.28})`);
@@ -12666,6 +12987,7 @@ function drawPhoto(ctx,s){
         localDetailMeshStepValue(),
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
+        cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}`:"cloud-off",
         (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
@@ -12861,6 +13183,9 @@ function drawPhoto(ctx,s){
         const reflectionContext=reflectionCanvas.getContext("2d");reflectionContext.clearRect(0,0,W,H);
         return ((ctx)=>{
         if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
+        /* 雲海が足元を覚っている間は、水面は雲の下なので見えない。
+           出すと、雲の上に星の反射が重なってしまう。 */
+        if(cloudSeaCoversGround()) return false;
         const reflectionCanvasScale=W/1200;
         const celestialReflectionRight=W+40,celestialReflectionBottom=H+40;
         const reflectionStep=Math.min(step,.28);
@@ -15040,11 +15365,31 @@ function drawPhoto(ctx,s){
       const rayWaterDayNear=[34,55,103],rayWaterDayFar=[24,38,86];
       const rayWaterNightHaze=[18,26,46],rayWaterDayHaze=[120,146,186];
       const RAY_HAZE_SCALE_KM=16;
+      const cloudNightNear=[96,108,132],cloudNightFar=[62,72,94];
+      const cloudDayNear=[240,243,248],cloudDayFar=[208,216,228];
+      const cloudNightHaze=[46,56,76],cloudDayHaze=[216,224,234];
       /* 足元(数十m以内)の地面。距離による減衰も大気の霞もほとんど無く、
          実際には手前ほど明るく見える。従来は最も近い所が一番暗い配色だったため、
          足元だけを明るい緑へ寄せ、NEAR_GRASS_RANGE_KMをかけて通常の配色へ戻す。 */
       const rayNearGrassDay=[108,138,68],rayNearGrassNight=[22,30,21];
       const NEAR_GRASS_RANGE_KM=.06;
+  /* 雲海の色。夜は月明かりと地上の光を受けて青白く審かに光る。
+     陸地より明るく、水面よりも白いのが目印。 */
+      function rayCloudColor(distanceKm,alt){
+        const depth=clamp(distanceKm,0,1);
+        let night=mixRGB(cloudNightNear,cloudNightFar,depth);
+        let day=mixRGB(cloudDayNear,cloudDayFar,depth);
+        if(distanceKm>1){
+          const haze=clamp(1-Math.exp(-(distanceKm-1)/RAY_HAZE_SCALE_KM),0,1);
+          night=mixRGB(night,cloudNightHaze,haze);
+          day=mixRGB(day,cloudDayHaze,haze);
+        }
+        let rgb=mixRGB(night,day,terrainDayFactor);
+        /* うねりの上向きの面を少し明るくして、平らな板に見えないようにする。
+           地形より弱めにする。雲は拡散反射で影がはっきり出ない。 */
+        const relief=clamp((alt+6)/18,0,1);
+        return rgb.map(v=>clamp(Math.round(v*(.93+relief*.09)),0,255));
+      }
       function rayBandColor(water,distanceKm,alt){
         const depth=clamp(distanceKm,0,1);
         let night=water?mixRGB(rayWaterNightNear,rayWaterNightFar,depth):mixRGB(rayLandNightNear,rayLandNightFar,depth);
@@ -15256,6 +15601,54 @@ function drawPhoto(ctx,s){
             waterFlags.push(!!previous.water); // 前後が一致し自分だけ違う=孤立反転
           }else waterFlags.push(!!point.water);
         }
+        /* 雲海（v592 / v596で順番を変更）。
+           雲の高さより低い点を、雲の上面の点へ差し替える。
+           高い点はそのままなので、山は自然に雲海から頭を出す。
+           自分の目より上に雲がある場合（雲の中・下）は何もしない。
+
+           水か陸かの判定（waterFlags）を決めたあとにやる。
+           先にやると、標高不明でまだ水と判定されていない点を見逃し、
+           そのあとの孤立反転のならしで水に戻されて、
+           雲の中に海の青い断片が浮く（実測で確認）。 */
+        if(cloudSeaVisible){
+          const __t0=performance.now();
+          /* 雲面を描くのは「まだ上にいる」間だけ。
+             この判定自体は入る/入らないの2値だが、濃さをあとで
+             cloudSeaSurfaceFade() で連続に落とすので、消え方は滀らかになる。 */
+          if(cloudSeaSurfaceFade()>.01){
+            const reliefC=cloudSeaReliefM();
+            const gapThreshold=cloudSeaGapPct>0?(-1+cloudSeaGapPct/60*1.6):null;
+            const oLatC=+el.lat.value,oLonC=+el.lon.value;
+            const mLonC=Math.max(1,111320*Math.cos(oLatC*D2R));
+            const sinC=sin(wrapped),cosC=cos(wrapped);
+            let clouded=null;
+            for(let i=0;i<walk.length;i++){
+              const pt=walk[i];
+              if(!pt) continue;
+              /* 地表の高さ。標高不明の点は、水（海）なら海面とみなす。
+                 それ以外の不明な点は触らない。推測で雲を置くと、
+                 タイルの読み損ないが雲の島になって見える。 */
+              /* 遠すぎる雲面は地平線に重なって分からないので、ここで打ち切る。
+                 90km先まで全部に雲を置いていたのをやめる。 */
+              if(pt.distanceKm>CLOUD_SEA_MAX_KM) break;    // 行は距離順
+              const ground=Number.isFinite(pt.baseElevation)?pt.baseElevation:((waterFlags[i]||pt.water||pt.baseNoData)?0:null);
+              if(ground===null) continue;
+              const d=pt.distanceKm*1000;
+              const laC=oLatC+cosC*d/111320,loC=oLonC+sinC*d/mLonC;
+              const waveC=cloudSeaWaveAt(laC,loC);
+              // 波の低い所から雲を抜いていく。雲海のある方位と無い方位ができる。
+              if(gapThreshold!==null&&waveC<gapThreshold) continue;
+              const top=cloudSeaElevationM+waveC*reliefC;
+              if(ground>=top) continue;                 // 地形が雲より高い
+              if(!clouded) clouded=walk.slice();
+              clouded[i]={distanceKm:pt.distanceKm,alt:pt.alt,water:false,cloud:true,baseElevation:top};
+              waterFlags[i]=false;                      // 雲になった点はもう水ではない
+              cloudSwapCount++;
+            }
+            if(clouded) walk=clouded;
+          }
+          cloudProf.sub+=performance.now()-__t0;cloudProf.subN++;
+        }
         let waterElevation=null;
         for(let i=0;i<walk.length;i++){
           const point=walk[i];
@@ -15299,7 +15692,7 @@ function drawPhoto(ctx,s){
             alt=Number.isFinite(mateAlt)?lerp(point.alt,mateAlt,blend):point.alt;
           }
           if(!(alt>highest)) continue; // 手前の地形に隠れている
-          if(!skylineOnly) bands.push({lo:highest,hi:alt,distanceKm:point.distanceKm,water:isWater});
+          if(!skylineOnly) bands.push({lo:highest,hi:alt,distanceKm:point.distanceKm,water:isWater,cloud:!!point.cloud});
           highest=alt;
         }
         // 標高が全く無い方位でも水平線までは地表がある(下の受け皿と同じ扱い)。
@@ -15309,14 +15702,17 @@ function drawPhoto(ctx,s){
            海と確認できていれば水面色、そうでなければ地面色にする。 */
         if(highest<0){
           const water=!!(realTerrainState.waterNearKm&&Number.isFinite(realTerrainState.waterNearKm[idx]));
-          bands.push({lo:highest,hi:0,distanceKm:water?60:20,water});
+          /* 雲海がONなら、標高データが全く無い方位も雲で埋める。
+             ここを水面色のままにすると、沖の方向だけ雲が途切れる。 */
+          const cloudFill=cloudSeaVisible&&cloudSeaSurfaceFade()>.01;
+          bands.push({lo:highest,hi:0,distanceKm:cloudFill?40:(water?60:20),water:cloudFill?false:water,cloud:cloudFill});
         }
         if(!bands.length) return null;
         if(rawBands) return bands; // 層描画は距離ごとの生の帯をそのまま使う
         /* 見た目が同じになる隣接帯をまとめる。
            距離が離れるほど色の変化は緩やかなので、遠いほど粗く量子化してよい。
            塗る図形の数が数分の1になり、描画コストが大きく下がる(色は変わらない)。 */
-        const colorKey=band=>`${band.water?1:0}:${Math.round(Math.log(1+band.distanceKm*1000)*12)}`;
+        const colorKey=band=>`${band.water?1:0}${band.cloud?"c":""}:${Math.round(Math.log(1+band.distanceKm*1000)*12)}`;
         const merged=[bands[0]];
         for(let i=1;i<bands.length;i++){
           const previous=merged[merged.length-1],current=bands[i];
@@ -16124,24 +16520,41 @@ function drawPhoto(ctx,s){
            共通の距離目盛り(TERRAIN_DISTANCES_KM)へ揃うので層として繋がる。 */
         const layerKm=TERRAIN_DISTANCES_KM;
         const layerCount=layerKm.length;
+        const cloudCoversNow=cloudSeaCoversGround();
         const altGrid=new Float64Array(columns.length*layerCount);
         const waterGrid=new Uint8Array(columns.length*layerCount);
+        const cloudGrid=new Uint8Array(columns.length*layerCount);   // 雲海（v592）
         for(let c=0;c<columns.length;c++){
           const bands=columns[c].bands;
-          let bandIndex=0,currentAlt=bottomAlt,currentWater=0;
+          let bandIndex=0,currentAlt=bottomAlt,currentWater=0,currentCloud=0;
           for(let k=0;k<layerCount;k++){
             const limit=layerKm[k];
             while(bandIndex<bands.length&&bands[bandIndex].distanceKm<=limit){
               currentAlt=bands[bandIndex].hi;
               currentWater=bands[bandIndex].water?1:0;
+              currentCloud=bands[bandIndex].cloud?1:0;
               bandIndex++;
             }
+            /* 雲海が足元を覚っている間は、水面は必ず雲の下になる。
+               レイの段階で拾い損ねた水の点が残ると、雲の中に
+               海の青い断片が浮いて見えるので、ここで揃える。 */
+            let cellWater=currentWater,cellCloud=currentCloud;
+            if(cloudCoversNow&&cellWater&&!cellCloud){ cellCloud=1;cellWater=0; }
             altGrid[c*layerCount+k]=currentAlt;
-            waterGrid[c*layerCount+k]=currentWater;
+            waterGrid[c*layerCount+k]=cellWater;
+            cloudGrid[c*layerCount+k]=cellCloud;
           }
         }
 
         const bottomY=H+4;
+        /* 雲海の後処理用。列ごとに
+             anyTopY  … 塗ったもの全体の上端（空との境目）
+             cloudTopY… 雲だけの上端
+           を覚えておく。両方が一致する列では、そこの輪郭が雲の上面。
+           各層は画面下端まで塗るので、輪郭は「最も上の y」で決まる。 */
+        const cloudTopY=cloudSeaVisible?new Float64Array(columns.length).fill(Infinity):null;
+        const anyTopY=cloudSeaVisible?new Float64Array(columns.length).fill(Infinity):null;
+        const cloudCtx=cloudSeaVisible?ensureCloudLayer(W,H):null;
         const maxJumpX=W*.5; // 魚眼で画面の反対側へ飛ぶ継ぎ目は繋がない
         const overlayRangeKm=groundOverlayRangeM()/1000;
         const meshPath=terrainMeshLinesVisible?new Path2D():null;
@@ -16163,8 +16576,11 @@ function drawPhoto(ctx,s){
           let runStart=0;
           while(runStart<columns.length){
             const runWater=waterGrid[runStart*layerCount+k];
+            const runCloud=cloudGrid[runStart*layerCount+k];
             let runEnd=runStart;
-            while(runEnd+1<columns.length&&waterGrid[(runEnd+1)*layerCount+k]===runWater) runEnd++;
+            while(runEnd+1<columns.length
+              &&waterGrid[(runEnd+1)*layerCount+k]===runWater
+              &&cloudGrid[(runEnd+1)*layerCount+k]===runCloud) runEnd++;
             // 隣の区間と1点だけ重ねて、境目に隙間ができないようにする。
             const lastIndex=Math.min(columns.length-1,runEnd+1);
             const ownLastAlt=altGrid[runEnd*layerCount+k];
@@ -16178,11 +16594,15 @@ function drawPhoto(ctx,s){
               const alt=c>runEnd?Math.min(altGrid[c*layerCount+k],ownLastAlt):altGrid[c*layerCount+k];
               const p=toXY(columns[c].az,alt);
               if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){points.push(null);continue;}
+              if(anyTopY&&c<columns.length){
+                if(p[1]<anyTopY[c]) anyTopY[c]=p[1];
+                if(runCloud&&p[1]<cloudTopY[c]) cloudTopY[c]=p[1];
+              }
               points.push(p);altSum+=alt;altCount++;
             }
             if(altCount>=2){
               const meanAlt=altSum/altCount;
-              const rgb=rayBandColor(!!runWater,distanceKm,meanAlt);
+              const rgb=runCloud?rayCloudColor(distanceKm,meanAlt):rayBandColor(!!runWater,distanceKm,meanAlt);
               const color=`rgb(${rgb.join(",")})`;
               // 画面外へ飛ぶ継ぎ目で切り、連続した部分ごとに1枚の図形として塗る。
               let segment=[];
@@ -16194,12 +16614,28 @@ function drawPhoto(ctx,s){
                 path.lineTo(segment[segment.length-1][0],bottomY);
                 path.lineTo(segment[0][0],bottomY);
                 path.closePath();
-                tctx.fillStyle=color;tctx.fill(path);
+                if(cloudCtx&&runCloud){
+                  // 雲は下描きへ。ここでは不透明に塗る。
+                  const __f0=performance.now();
+                  cloudCtx.fillStyle=color;cloudCtx.fill(path);
+                  cloudProf.fill+=performance.now()-__f0;
+                }else{
+                  tctx.fillStyle=color;tctx.fill(path);
+                  /* 雲より手前の地形は、下描きから雲を削る。
+                     奥から手前へ塗っているので、この順番で前後関係が合う。 */
+                  if(cloudCtx){
+                    const __e0=performance.now();
+                    cloudCtx.globalCompositeOperation="destination-out";
+                    cloudCtx.fillStyle="#000";cloudCtx.fill(path);
+                    cloudCtx.globalCompositeOperation="source-over";
+                    cloudProf.erase+=performance.now()-__e0;
+                  }
+                }
                 if(sharedTerrainProjectionPass!=="replay"){
                   wmctx.globalCompositeOperation=runWater?"source-over":"destination-out";
                   wmctx.fillStyle="#fff";wmctx.fill(path);
                 }
-                if(meshPath&&!runWater&&distanceKm<=overlayRangeKm){
+                if(meshPath&&!runWater&&!runCloud&&distanceKm<=overlayRangeKm){
                   meshPath.moveTo(segment[0][0],segment[0][1]);
                   for(let i=1;i<segment.length;i++) meshPath.lineTo(segment[i][0],segment[i][1]);
                 }
@@ -16224,7 +16660,7 @@ function drawPhoto(ctx,s){
             let previous=null;
             for(let k=0;k<layerCount;k++){
               if(layerKm[k]>overlayRangeKm) break;
-              if(waterGrid[c*layerCount+k]) {previous=null;continue;}
+              if(waterGrid[c*layerCount+k]||cloudGrid[c*layerCount+k]) {previous=null;continue;}
               const p=toXY(columns[c].az,altGrid[c*layerCount+k]);
               if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){previous=null;continue;}
               if(previous&&Math.abs(p[0]-previous[0])<=maxJumpX){
@@ -16243,9 +16679,278 @@ function drawPhoto(ctx,s){
             tctx.restore();
           }
         }
+        if(cloudSeaVisible) paintCloudSeaEffects(columns,cloudTopY,anyTopY,bottomY,cloudCtx);
         drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount);
         if(sharedTerrainProjectionPass!=="replay"){wmctx.globalCompositeOperation="source-over";}
         return painted>0;
+      }
+
+      /* =========================================================
+         雲海の仕上げ（v593）
+
+         帯を塗っただけだと、縁が包丁で切ったように硬く、面も板に見える。
+           1. 縁をふんわりさせる（斜面に舞う霧）
+           2. 面に明るさのムラを乗せる
+           3. 自分が雲の中・下にいるときの白さ
+         を足す。どれも地形の形には一切触らない。
+
+         縁の位置は列ごとの上端から組み直す。塗った図形をそのまま縁取ると、
+         区間同士の内側の継ぎ目まで光ってしまう。
+         ========================================================= */
+      function paintCloudSeaEffects(columns,cloudTopY,anyTopY,bottomY,cloudCtx){
+        if(!cloudTopY||!anyTopY||columns.length<2) return;
+        const eyeElev=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const deckTop=cloudSeaTopAt(+el.lat.value,+el.lon.value,cloudSeaReliefM());
+        const depthInDeck=deckTop-eyeElev;          // 正なら雲面より下にいる
+        const mistRGB=mixRGB([176,196,224],[255,255,255],terrainDayFactor);
+        const mist=mistRGB.join(",");
+        const scale=Math.max(1,H/800);
+
+        // 各列の画面上のX。帯を塗ったときと同じ方位から引く。
+        const columnX=new Float64Array(columns.length);
+        for(let c=0;c<columns.length;c++){
+          const point=toXY(columns[c].az,0);
+          columnX[c]=(point&&Number.isFinite(point[0]))?point[0]:NaN;
+        }
+
+        /* --- 雲の上面が輪郭になっている区間を拾う --- */
+        const isCloudTop=[];
+        for(let c=0;c<columns.length;c++){
+          isCloudTop.push(Number.isFinite(cloudTopY[c])&&Number.isFinite(columnX[c])&&cloudTopY[c]<=anyTopY[c]+.5);
+        }
+        /* 距離の目盛りの粗さが段差になって出るので、縁の線だけならす。
+           塗りそのものは動かさない（地形との合わせ目がずれる）。 */
+        const smooth=new Float64Array(columns.length);
+        const SPAN=3;
+        for(let c=0;c<columns.length;c++){
+          if(!isCloudTop[c]){smooth[c]=NaN;continue;}
+          let sum=0,count=0;
+          for(let d=-SPAN;d<=SPAN;d++){
+            const i=c+d;
+            if(i<0||i>=columns.length||!isCloudTop[i]) continue;
+            sum+=cloudTopY[i];count++;
+          }
+          smooth[c]=count?sum/count:cloudTopY[c];
+        }
+        const segments=[];
+        let current=null;
+        for(let c=0;c<columns.length;c++){
+          if(!Number.isFinite(smooth[c])){
+            if(current&&current.length>1) segments.push(current);
+            current=null;continue;
+          }
+          if(!current) current=[];
+          current.push([columnX[c],smooth[c]]);
+        }
+        if(current&&current.length>1) segments.push(current);
+
+        /* 波の陰影は、雲の上面が輪郭になっているかどうかとは無関係にかける。
+           盆地の雲海は周りの山の方が高いので、輪郭には一切現れない。
+           以前は霧の線と同じ条件の中に入れていたため、
+           竹田城のような典型的な雲海で一度も描かれていなかった（実測）。
+           source-atop なので、これだけで雲の中に収まる。 */
+        if(cloudCtx){
+          const __s0=performance.now();
+          cloudCtx.save();
+          /* --- 波の陰影（v598） ---
+             これまでは波と無関係な位置に斑を置いていたので、
+             どれだけ上下させても平らな板に見えていた。
+             実際の雲海で波を感じるのは輪郭ではなく面の陰影なので、
+             雲面を方位×距離の網目でたどり、各マスの波の高さと傾きで塗る。
+             世界座標から引くので、カメラを振っても波は居場所から動かない。 */
+          const eyeC=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+          const oLatW=+el.lat.value,oLonW=+el.lon.value;
+          const mLonW=Math.max(1,111320*Math.cos(oLatW*D2R));
+          const earthR=6371000*(7/6);
+          const drop=cloudSeaElevationM-eyeC;          // 負の値（雲は目より下）
+          if(drop<-1){
+            const planeAlt=d=>Math.atan2(drop-d*d/(2*earthR),d)*R2D;
+            const rings=[];
+            /* 12kmより先の雲面は画面上で水平線に役難してしまい、
+               網目を細かくしても見た目が変わらないのでそこで打ち切る。 */
+            for(let d=Math.max(30,-drop*.55);d<12000;d*=1.14) rings.push(d);
+            /* 光の向き。月が出ていれば月の方位から当てる。
+               雲海は月明かりで見え方が全く変わるので、ここが合っていないと
+               影の向きだけが月と矛盾して味が悪い。
+               月が無いときは従来どおり風に直交する向きから。 */
+            const moonUp=s.moonAltAz&&s.moonAltAz.alt>0;
+            const lightRad=(moonUp?norm360(s.moonAltAz.az+180):cloudSeaWindDeg+90)*D2R;
+            const lightE=Math.sin(lightRad),lightN=Math.cos(lightRad);
+            /* 月の強さ。高度と輝面比から決まる既存の moonContribution を使う。
+               満月が高いほど雲面の凹凸がはっきりし、月が無い夜はのっぺりする。 */
+            const moonPower=moonUp?clamp((s.moonContribution||0)/.45,0,1):0;
+            const shadeGain=1+moonPower*1.15;
+            const sampleStep=Math.max(1,Math.round(columns.length/130));
+            let lastStyle="";
+            cloudCtx.globalCompositeOperation="source-atop";
+            for(let ri=0;ri+1<rings.length;ri++){
+              const d0=rings[ri],d1=rings[ri+1],dm=(d0+d1)*.5;
+              const a0=planeAlt(d0),a1=planeAlt(d1);
+              for(let ci=0;ci+sampleStep<columns.length;ci+=sampleStep){
+                const azL=columns[ci].az,azR=columns[ci+sampleStep].az;
+                const azM=(azL+azR)*.5;
+                const sinA=sin(azM),cosA=cos(azM);
+                const lat=oLatW+cosA*dm/111320, lon=oLonW+sinA*dm/mLonW;
+                const wave=cloudSeaWaveAt(lat,lon);
+                // 傾きは光の向きへ20mずらして差を取る。
+                const lat2=lat+lightN*20/111320, lon2=lon+lightE*20/mLonW;
+                const slope=(cloudSeaWaveAt(lat2,lon2)-wave);
+                const shade=clamp((wave*.78+slope*3.1)*shadeGain,-1,1);
+                const level=Math.round(shade*10);
+                if(level===0) continue;
+                const alpha=Math.min(.38,Math.abs(level)*.036);
+                const style=level>0
+                  ?"rgba(255,255,255,"+alpha.toFixed(3)+")"
+                  :"rgba(24,34,54,"+alpha.toFixed(3)+")";
+                if(style!==lastStyle){cloudCtx.fillStyle=style;lastStyle=style;}
+                const p0=toXY(azL,a0),p1=toXY(azR,a0),p2=toXY(azR,a1),p3=toXY(azL,a1);
+                if(!p0||!p1||!p2||!p3) continue;
+                if(!Number.isFinite(p0[0])||!Number.isFinite(p1[0])||!Number.isFinite(p2[0])||!Number.isFinite(p3[0])) continue;
+                if(Math.abs(p1[0]-p0[0])>W*.5) continue;
+                cloudCtx.beginPath();
+                cloudCtx.moveTo(p0[0],p0[1]);cloudCtx.lineTo(p1[0],p1[1]);
+                cloudCtx.lineTo(p2[0],p2[1]);cloudCtx.lineTo(p3[0],p3[1]);
+                cloudCtx.closePath();cloudCtx.fill();
+              }
+            }
+          }
+          cloudCtx.restore();
+          cloudProf.shade+=performance.now()-__s0;cloudProf.shadeN++;
+        }
+        /* --- 月明かりを受けた雲面（v601） ---
+           雲海は月があると白く浮かび上がり、無いと沈む。
+           面の凹凸（上の陰影）だけではこの差が出ないので、
+           全体を少し明るくし、月のある方向をさらに明るくする。 */
+        if(cloudCtx&&s.moonAltAz&&s.moonAltAz.alt>0){
+          const moonPowerC=clamp((s.moonContribution||0)/.45,0,1);
+          if(moonPowerC>.02){
+            const moonPoint=toXY(s.moonAltAz.az,0);
+            cloudCtx.save();
+            cloudCtx.globalCompositeOperation="source-atop";
+            cloudCtx.fillStyle=`rgba(226,236,255,${(moonPowerC*.12).toFixed(3)})`;
+            cloudCtx.fillRect(0,0,W,H);
+            if(moonPoint&&Number.isFinite(moonPoint[0])){
+              const spread=W*.62;
+              const gradient=cloudCtx.createLinearGradient(moonPoint[0]-spread,0,moonPoint[0]+spread,0);
+              gradient.addColorStop(0,"rgba(226,236,255,0)");
+              gradient.addColorStop(.5,`rgba(236,243,255,${(moonPowerC*.20).toFixed(3)})`);
+              gradient.addColorStop(1,"rgba(226,236,255,0)");
+              cloudCtx.fillStyle=gradient;
+              cloudCtx.fillRect(0,0,W,H);
+            }
+            cloudCtx.restore();
+          }
+        }
+        /* --- 街の明かりを受けた雲面（v600） ---
+           光害は雲に遮られて空へは届かないが、その分の光は
+           雲を下から照らしている。遠い雲面ほど水平線に重なるので、
+           水平線を中心に暖色を乗せる。source-atop なので雲の中だけ。 */
+        if(cloudCtx&&s.lp&&s.lp.base>.05&&cloudSeaLightBlock()>0){
+          const horizon=toXY(s.facingAz,0);
+          const above=toXY(s.facingAz,6);
+          const below=toXY(s.facingAz,-22);
+          if(horizon&&above&&below&&Number.isFinite(horizon[1])){
+            const topY=Math.min(above[1],horizon[1]),bottomY2=Math.max(below[1],horizon[1]);
+            const span=Math.max(1,bottomY2-topY);
+            const stop=clamp((horizon[1]-topY)/span,.05,.95);
+            const glow=clamp(s.lp.base*cloudSeaLightBlock(),0,1);
+            const warm=mixRGB([232,150,86],[255,214,168],terrainDayFactor);
+            const gradient=cloudCtx.createLinearGradient(0,topY,0,bottomY2);
+            /* 遠い雲面は水平線のすぐ下に重なるので、
+               峰を水平線に置き、手前（画面下）へ向けてゆっくり抜く。 */
+            gradient.addColorStop(0,`rgba(${warm.join(",")},0)`);
+            gradient.addColorStop(stop,`rgba(${warm.join(",")},${(glow*.50).toFixed(3)})`);
+            gradient.addColorStop(Math.min(1,stop+(1-stop)*.45),`rgba(${warm.join(",")},${(glow*.26).toFixed(3)})`);
+            gradient.addColorStop(1,`rgba(${warm.join(",")},${(glow*.05).toFixed(3)})`);
+            cloudCtx.save();
+            cloudCtx.globalCompositeOperation="source-atop";
+            cloudCtx.fillStyle=gradient;
+            cloudCtx.fillRect(0,Math.max(-H,topY),W,Math.min(H*3,span));
+            cloudCtx.restore();
+          }
+        }
+        if(segments.length&&cloudCtx){
+          const __m0=performance.now();
+          cloudCtx.save();
+          /* 霧も明るさのムラも、すでに雲がある画素の上にだけ乗せる。
+             これが無いと、雲の外側（山や手前の斜面）にまで広がって
+             地形が白っぽくなり、見にくくなる。 */
+          cloudCtx.globalCompositeOperation="source-atop";
+          cloudCtx.lineJoin="round";cloudCtx.lineCap="round";
+          // 太くて薄い線を重ねて、縁を上下ににじませる
+          const passes=[[40*scale,.075],[22*scale,.115],[11*scale,.155],[4*scale,.20]];
+          for(let i=0;i<passes.length;i++){
+            cloudCtx.strokeStyle="rgba("+mist+","+passes[i][1]+")";
+            cloudCtx.lineWidth=passes[i][0];
+            for(const seg of segments){
+              cloudCtx.beginPath();
+              cloudCtx.moveTo(seg[0][0],seg[0][1]);
+              for(let k=1;k<seg.length;k++) cloudCtx.lineTo(seg[k][0],seg[k][1]);
+              cloudCtx.stroke();
+            }
+          }
+          /* --- 面の明るさのムラ。雲の領域にだけ乗せる --- */
+          const area=new Path2D();
+          for(const seg of segments){
+            area.moveTo(seg[0][0],seg[0][1]);
+            for(let k=1;k<seg.length;k++) area.lineTo(seg[k][0],seg[k][1]);
+            area.lineTo(seg[seg.length-1][0],bottomY);
+            area.lineTo(seg[0][0],bottomY);
+            area.closePath();
+          }
+          cloudCtx.restore();
+          cloudProf.mist+=performance.now()-__m0;
+        }
+        /* --- 下描きを一回だけ重ねる ---
+           v594ではここで全体にぼかしをかけていた。縁は柔らかくなるが、
+           雲から頭を出している山の周りにも雲がにじみ出し、
+           山そのものがピントの外れた写真のように見えたためやめた。
+           縁の柔らかさは、雲側に引いてある霧の線だけで出す。 */
+        if(cloudCtx){
+          const __c0=performance.now();
+          tctx.save();
+          tctx.globalAlpha=clamp(cloudSeaOpacity*cloudSeaSurfaceFade(),0,1);
+          tctx.drawImage(cloudLayerCanvas,0,0);
+          tctx.restore();
+          cloudProf.composite+=performance.now()-__c0;cloudProf.frames++;
+        }
+
+        /* --- 自分が雲の中、または下にいるとき（v604で連続化）---
+           以前は「雲の中なら白い布」「140mより深ければ曇り空」の2択だったので、
+           境目で見た目がパッと入れ替わっていた。
+           今は霧の濃さと曇り空の強さをそれぞれ連続な値で持ち、重ねて出す。 */
+        const belowT=cloudSeaBelowT();
+        /* 雲の中の白さはここでは描かない（v605）。
+           地形キャンバスへ焼き込むと、あとから描くKMZ建物が
+           霧の上に乗ってしまい、建物だけ霧の影響を受けない。
+           建物を描いたあとに、本体のキャンバスへ一括でかける。 */
+        if(belowT>.004){
+          /* 雲の下。雲層が天井になるので星は見えない。
+             地形は見えているので、輪郭より上だけを曇らせる。 */
+          const sky=new Path2D();
+          let started=false;
+          for(let c=0;c<columns.length;c++){
+            if(!Number.isFinite(columnX[c])) continue;
+            const y=Number.isFinite(anyTopY[c])?Math.min(anyTopY[c],H+4):H+4;
+            if(!started){ sky.moveTo(columnX[c],-4); sky.lineTo(columnX[c],y); started=true; }
+            else sky.lineTo(columnX[c],y);
+          }
+          if(started){
+            let lastX=NaN;
+            for(let c=columns.length-1;c>=0;c--){ if(Number.isFinite(columnX[c])){lastX=columnX[c];break;} }
+            sky.lineTo(lastX,-4);
+            sky.closePath();
+            const overcast=mixRGB([44,50,64],[178,182,190],terrainDayFactor);
+            tctx.save();
+            tctx.clip(sky);
+            const gradient=tctx.createLinearGradient(0,0,0,H);
+            gradient.addColorStop(0,"rgba("+overcast.join(",")+","+(belowT*.95).toFixed(3)+")");
+            gradient.addColorStop(1,"rgba("+overcast.join(",")+","+(belowT*.72).toFixed(3)+")");
+            tctx.fillStyle=gradient;
+            tctx.fillRect(0,0,W,H);
+            tctx.restore();
+          }
+        }
       }
 
       function drawRayMarchTerrain(){
@@ -16432,6 +17137,25 @@ function drawPhoto(ctx,s){
          建物より手前の地形での隠れは、この関数の中の切り抜きで処理しているので、
          描く順番を最後にしても手前の山にはきちんと隠れる。 */
       drawKmzBuildingLayer(ctx,s,toXY,W,H,"after");
+
+      /* 雲の中の霧（v605）。
+         地形も空もKMZ建物も描き終わったあとで、画面全体にかける。
+         こうすると、配置した建物だけ霧の手前に残ることがなくなる。
+         地形キャンバスは使い回しのキャッシュなので、
+         高さだけ変えたときに霧の濃さが古いままにならない利点もある。 */
+      if(!arActive&&cloudSeaVisible){
+        const fogNow=cloudSeaFogT();
+        if(fogNow>.004){
+          const fogAlpha=clamp(fogNow*.95,0,1)*(1-cloudSeaBelowT()*.45);
+          if(fogAlpha>.004){
+            const fogRGB=mixRGB([176,196,224],[255,255,255],dayFactor);
+            ctx.save();
+            ctx.fillStyle=`rgba(${fogRGB.join(",")},${fogAlpha.toFixed(3)})`;
+            ctx.fillRect(0,0,W,H);
+            ctx.restore();
+          }
+        }
+      }
 
       if(showSkylineBoundary){
         // 距離帯ごとの境界は描かず、全距離を合成した最終稜線（空との境界）だけを1本描く。
@@ -17752,7 +18476,7 @@ setTimeout(spawnMeteor, 3000+Math.random()*6000); // 初回も少し早めに(3�
 const WALK_SPEED_MPS=10;        // 通常の移動速度（早歩き〜小走り）
 const WALK_SPEED_FAST_MPS=40;   // Shift併用時
 /* 上空ほど同じ速度でも景色が動いて見えないので、上昇量に応じて速くする。
-   地上で10m/s、150mでは40m/s（Shiftでその4倍）。 */
+   地上で10m/s、150mでは40m/s、300mでは70m/s（Shiftでその4倍）。 */
 function walkSpeedMps(fast){
   return (fast?WALK_SPEED_FAST_MPS:WALK_SPEED_MPS)*(1+cameraRiseM/50);
 }
