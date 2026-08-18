@@ -3536,7 +3536,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="583-high-detail";
+const APP_VERSION="587-hd-fill-gaps";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6207,6 +6207,7 @@ function setHighDetail(on){
   if(on===highDetailOn) return;
   highDetailOn=on;
   renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
+  if(on) highDetailEnsureField(+el.lat.value,+el.lon.value);
   if(el.highDetailBtn) el.highDetailBtn.setAttribute("aria-pressed",String(on));
   drawPhoto._terrainRenderKey=null;
   drawPhoto._confirmedWaterAzCache=null;
@@ -9806,6 +9807,92 @@ function loadGsiDemTile(tile){
 // 局所高精細用は、5mメッシュの個別レイヤーを優先する。
 // 地点ごとに整備ソースが異なるため5A→5B→5C、最後に統合DEMの順で有効画素を探す。
 const localDetailDemTileCache=new Map();
+/* =========================================================
+   高精細モード用の「自分の周りの5mメッシュ」（v584）
+
+   普段の地形は dem_png (z14 = 約7.9m/画素) だけを見ているので、
+   足元の格子を1mで切っても中身は8mのデータを引き伸ばしているだけだった。
+   立巌岩が鮮明に見えるのは格子の細かさではなく、
+   dem5a/5b/5c (z15 = 5mメッシュ) という別のデータを取っているからだった。
+
+   ここでは同じデータを、登録した地点ではなく観測地点の周りへ自動で取る。
+   1点ずつ非同期に引くと何万回も待つことになるので、
+   タイルを一度だけ Float32Array へ展開しておいて、あとは配列参照で済ませる。
+   ========================================================= */
+const HIGH_DETAIL_FIELD_RADIUS_M=300;
+const highDetailTiles=new Map();      // key: "x/y" -> Float32Array | null | "loading"
+let highDetailPending=0,highDetailReadyKey="",highDetailTileCount=0,highDetailUsedCells=0;
+function highDetailDecode(sources){
+  /* dem5a → 5b → 5c の順に見て、最初に値のある層を採る。 */
+  const out=new Float32Array(256*256);out.fill(NaN);
+  for(const pixels of sources||[]){
+    const d=pixels.data||pixels;
+    for(let i=0,q=0;i<out.length;i++,q+=4){
+      if(Number.isFinite(out[i])) continue;
+      if(d[q+3]===0) continue;
+      const v=d[q]*65536+d[q+1]*256+d[q+2];
+      if(v===8388608) continue;
+      out[i]=(v<8388608?v:v-16777216)*0.01;
+    }
+  }
+  return out;
+}
+function highDetailRequestTile(x,y){
+  const key=`${x}/${y}`;
+  if(highDetailTiles.has(key)) return;
+  highDetailTiles.set(key,"loading");
+  highDetailPending++;
+  loadLocalDetailDemTile({z:15,x,y,key:`local-detail/15/${x}/${y}`})
+    .then(sources=>{ highDetailTiles.set(key,(sources&&sources.length)?highDetailDecode(sources):null);highDetailTileCount++; })
+    .catch(()=>{ highDetailTiles.set(key,null); })
+    .finally(()=>{
+      highDetailPending--;
+      if(highDetailPending<=0){
+        drawPhoto._terrainRenderKey=null;
+        if(typeof update==="function") update();
+      }
+    });
+}
+/* 観測地点の周りを覚える。同じ場所なら何度呼んでも何も起きない。 */
+function highDetailEnsureField(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if(key===highDetailReadyKey) return;
+  highDetailReadyKey=key;
+  const mLon=Math.max(1,111320*Math.cos(lat*D2R));
+  const dLat=HIGH_DETAIL_FIELD_RADIUS_M/111320, dLon=HIGH_DETAIL_FIELD_RADIUS_M/mLon;
+  const a=terrainTilePoint(lat-dLat,lon-dLon,15), b=terrainTilePoint(lat+dLat,lon+dLon,15);
+  const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),y0=Math.min(a.y,b.y),y1=Math.max(a.y,b.y);
+  for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) highDetailRequestTile(x,y);
+}
+/* 双一次補間した5mメッシュの標高。無ければ NaN。 */
+function highDetailElevationAt(lat,lon){
+  const span=(2**15)*256;
+  const xf=(lon+180)/360*span;
+  const yf=(1-Math.asinh(Math.tan(clamp(lat,-85.05112878,85.05112878)*D2R))/Math.PI)/2*span;
+  const x0=Math.floor(xf),y0=Math.floor(yf),fx=xf-x0,fy=yf-y0;
+  let sum=0,weight=0;
+  for(let j=0;j<2;j++) for(let i=0;i<2;i++){
+    const gx=x0+i,gy=y0+j;
+    const tile=highDetailTiles.get(`${gx>>8}/${gy>>8}`);
+    if(!tile||tile==="loading") continue;
+    const v=tile[(gy&255)*256+(gx&255)];
+    if(!Number.isFinite(v)) continue;
+    const w=(i?fx:1-fx)*(j?fy:1-fy);
+    sum+=v*w;weight+=w;
+  }
+  return weight>0?sum/weight:NaN;
+}
+/* 検証用の覚書き。?hddebug=1 の時だけ外から中身を見られるようにする。 */
+try{
+  if(new URLSearchParams(location.search).has("hddebug")){
+    window.__hd={
+      elevationAt:highDetailElevationAt,tiles:highDetailTiles,
+      stats:()=>({on:highDetailOn,tileCount:highDetailTileCount,pending:highDetailPending,ready:highDetailReadyKey,used:highDetailUsedCells}),
+      reset:()=>{highDetailUsedCells=0;}
+    };
+  }
+}catch(e){}
 function localDetailTilePoint(lat,lon){
   const tile=terrainTilePoint(lat,lon,15);return {...tile,key:`local-detail/${tile.key}`};
 }
@@ -13666,7 +13753,11 @@ function drawPhoto(ctx,s){
           realTerrainState.key,realTerrainState._renderRevision||0,
           (+el.lat.value).toFixed(6),(+el.lon.value).toFixed(6),
           Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation.toFixed(3):"no-observer-elevation",
-          grid.length,grid[0].length,localWorldKey,localDetailMeshStepValue()
+          grid.length,grid[0].length,localWorldKey,localDetailMeshStepValue(),
+          /* 高精細モードでは足元の格子の広さも中身も変わるので、
+             この鍵に入れて自動で作り直させる。取得したタイル数も入れて、
+             5mメッシュが届いた時点でも作り直す。 */
+          highDetailOn?`hd${highDetailTileCount}`:"hd-off"
         ].join("|");
         let worldMeshCache=drawNearSurfaceMesh._worldMeshCache;
         if(!worldMeshCache||worldMeshCache.key!==worldMeshKey){
@@ -13791,6 +13882,20 @@ function drawPhoto(ctx,s){
           let heightDeltaM=Math.tan(sourceAlt*D2R)*sourceMetres;
           // 水域属性は既存判定を優先し、陸セルだけ指定円内の5mメッシュ実測標高へ置き換える。
           // 観測地点の標高も同じ基準なので、絶対標高を眼高からの相対高さへ変換する。
+          /* 高精細モードでは、登録の有無に関係なく自分の周りを5mメッシュへ差し替える。
+             格子の細かさではなく、元データが8m→実測5mへ変わるのが効く。
+             登録済みの局所高精細地形はこのあとから上書きするので、両方が効く。
+             (v584は else if だったため、登録を一つでも持っていると
+              5mの枝が一度も実行されず、高精細が拡大だけになっていた) */
+          if(highDetailOn&&waterWeight<.5&&Number.isFinite(realTerrainState.observerElevation)){
+            const mLonHere=Math.max(1,111320*Math.cos(s.lat*D2R));
+            const fine=highDetailElevationAt(s.lat+worldNorthM/111320,s.lon+worldEastM/mLonHere);
+            if(Number.isFinite(fine)){
+              highDetailUsedCells++;
+              heightDeltaM=fine-(realTerrainState.observerElevation+1.6);
+              baseElevation=fine;
+            }
+          }
           if(localDetailTerrainEnabled&&waterWeight<.5){
             const local=sampleLocalDetailElevation(worldEastM,worldNorthM);
             if(local&&Number.isFinite(realTerrainState.observerElevation)){
@@ -14376,7 +14481,7 @@ function drawPhoto(ctx,s){
             // 元のDEMメッシュ自体が滑らかな水際・平地形状を持つ。
             const cellDistanceKm=(p00.distanceKm+p01.distanceKm+p10.distanceKm+p11.distanceKm)/4;
             // 半径50m以内は後段の正方形XY格子へ完全に置き換える。
-            if(cellDistanceKm<=.05) continue;
+            if(cellDistanceKm<=(highDetailOn?.15:.05)) continue;
             const [near0,near1]=normalTerrainCellEdge(azimuthCellIndex,d,v00,v10,rawAz,cellAzimuthSpan);
             const [far0,far1]=normalTerrainCellEdge(azimuthCellIndex,d+1,v01,v11,rawAz,cellAzimuthSpan);
             paintTriangle(near0,near1,far1);
@@ -14418,7 +14523,7 @@ function drawPhoto(ctx,s){
             const a=xyRows[y][x],b=xyRows[y][x+1],c=xyRows[y+1][x+1],d=xyRows[y+1][x];
             if(!a||!b||!c||!d) continue;
             const centerDistance=(a.distanceKm+b.distanceKm+c.distanceKm+d.distanceKm)/4;
-            if(centerDistance>.05) continue;
+            if(centerDistance>(highDetailOn?.15:.05)) continue;
             xyCells.push({a,b,c,d,centerDistance});
           }
           xyCells.sort((left,right)=>right.centerDistance-left.centerDistance);
@@ -15018,6 +15123,58 @@ function drawPhoto(ctx,s){
               walk=(row||[]).filter(p=>p&&(p.distanceKm<startKm||p.distanceKm>endKm))
                 .concat(localSamples).sort((a,b)=>a.distanceKm-b.distanceKm);
             }
+          }
+        }
+        /* 高精細モード（v586）。
+           既定の描画はこの azimuthVisibleBands が返す帯だけで出来ているので、
+           高精細化はここでやらないと一切見た目に出ない。
+           （v583〜v585で触っていた drawNearSurfaceMesh は旧方式専用で、
+             普段は一度も呼ばれていなかった。実測で calls:0）
+
+           やることは登録済みの局所高精細地形と同じで、違いは範囲だけ。
+           自分の周り300mを、5mメッシュ（dem5a/5b/5c）の実測標高で打ち直す。
+           元のDEMは約8mなので、データ自体が細かくなる。
+
+           水には一切手を出さない。水と判定されている距離は元の点をそのまま残し、
+           陸の点だけを差し替える。ここを慎重にしないと、v550・v565と同じで
+           海が陸になったり港の構造物が陸地化したりする。 */
+        if(highDetailOn&&Number.isFinite(realTerrainState.observerElevation)&&highDetailTileCount>0){
+          const sinAzHd=sin(wrapped),cosAzHd=cos(wrapped);
+          const oLat=+el.lat.value,oLon=+el.lon.value;
+          const mLonHd=Math.max(1,111320*Math.cos(oLat*D2R));
+          const eyeHd=realTerrainState.observerElevation+eyeHeightAboveGroundM();
+          const limitKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
+          /* 元のレイのうち300m以内の点だけを見る。距離目盛りは5m間隔なので
+             50点前後しか無い。水か陸かはこの小さな配列をなぞるだけで分かる。 */
+          const nearSource=[];
+          for(const pt of (walk||[])) if(pt&&pt.distanceKm<=limitKm+.02) nearSource.push(pt);
+          const waterAtKm=km=>{
+            let best=null,bestGap=Infinity;
+            for(const pt of nearSource){
+              const gap=Math.abs(pt.distanceKm-km);
+              if(gap<bestGap){bestGap=gap;best=pt;}
+            }
+            return best?!!best.water:false;
+          };
+          const fineSamples=[];
+          const covered=[];
+          for(let d=5;d<=HIGH_DETAIL_FIELD_RADIUS_M+.001;d+=5){
+            const km=d/1000;
+            if(waterAtKm(km)) continue;                      // 水は一切触らない
+            const fine=highDetailElevationAt(oLat+cosAzHd*d/111320,oLon+sinAzHd*d/mLonHd);
+            if(!Number.isFinite(fine)) continue;             // 5mメッシュが無い所は元のまま残す
+            covered.push(km);
+            fineSamples.push({distanceKm:km,
+              alt:Math.atan2(fine-eyeHd,Math.max(.1,d))*R2D,
+              water:false,baseElevation:fine,local:true});
+          }
+          if(fineSamples.length){
+            highDetailUsedCells+=fineSamples.length;
+            /* 差し替えた距離の元の陸の点だけを抜く。
+               5mメッシュが欠けている距離の点を消すと、そこだけ穴が開く。 */
+            const coveredSet=new Set(covered.map(km=>Math.round(km*1000)));
+            walk=(walk||[]).filter(pt=>pt&&(pt.water||!coveredSet.has(Math.round(pt.distanceKm*1000))))
+              .concat(fineSamples).sort((a,b)=>a.distanceKm-b.distanceKm);
           }
         }
         const waterFlags=[];
