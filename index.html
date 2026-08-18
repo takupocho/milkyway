@@ -3536,7 +3536,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="587-hd-fill-gaps";
+const APP_VERSION="588-hd-far-and-roads";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -9819,7 +9819,13 @@ const localDetailDemTileCache=new Map();
    1点ずつ非同期に引くと何万回も待つことになるので、
    タイルを一度だけ Float32Array へ展開しておいて、あとは配列参照で済ませる。
    ========================================================= */
-const HIGH_DETAIL_FIELD_RADIUS_M=300;
+const HIGH_DETAIL_FIELD_RADIUS_M=200;
+/* 遠景を引き直す上限。これより遠いと山の見かけの大きさより
+   タイルの粒の方が小さくなり、引き直しても見た目が変わらない。 */
+let HIGH_DETAIL_FAR_LIMIT_KM=20;
+/* 標準の距離目盛り。富士山の高密度点や既知の山頂はこの目盛りに乗っていない。
+   引き直すのを目盛り上の点だけに限れば、そういう特別な点を壊さずに済む。 */
+const HIGH_DETAIL_RING_SET=new Set(TERRAIN_DISTANCES_KM.map(km=>Math.round(km*1000)));
 const highDetailTiles=new Map();      // key: "x/y" -> Float32Array | null | "loading"
 let highDetailPending=0,highDetailReadyKey="",highDetailTileCount=0,highDetailUsedCells=0;
 function highDetailDecode(sources){
@@ -9883,11 +9889,37 @@ function highDetailElevationAt(lat,lon){
   }
   return weight>0?sum/weight:NaN;
 }
+/* 高精細モードの標高。列の方位そのままで引き直す。
+   近景(200m以内)は5mメッシュ、その外側は既に持っている標高タイル。
+
+   遠景を引き直す理由。元のレイは方位1°刻みで、その間は補間しているだけ。
+   10km先では1°が175mになるので、稜線の細かい起伏はここで潰れている。
+   z12タイルの粒は約32mなので、引き直せばその分だけ細かくなる。
+   タイルは既に取得済みなので通信は増えない。 */
+function highDetailBaseElevation(azDeg,distanceKm){
+  if(!highDetailOn||!Number.isFinite(distanceKm)) return null;
+  const oLat=+el.lat.value,oLon=+el.lon.value;
+  if(!Number.isFinite(oLat)||!Number.isFinite(oLon)) return null;
+  const d=distanceKm*1000;
+  if(d<.5) return null;
+  const mLon=Math.max(1,111320*Math.cos(oLat*D2R));
+  const la=oLat+cos(azDeg)*d/111320, lo=oLon+sin(azDeg)*d/mLon;
+  if(d<=HIGH_DETAIL_FIELD_RADIUS_M){
+    if(highDetailTileCount<=0) return null;
+    const fine=highDetailElevationAt(la,lo);
+    return Number.isFinite(fine)?fine:null;
+  }
+  if(distanceKm>HIGH_DETAIL_FAR_LIMIT_KM) return null;
+  const far=worldHeightForDistance(la,lo,d);
+  return Number.isFinite(far)?far:null;
+}
 /* 検証用の覚書き。?hddebug=1 の時だけ外から中身を見られるようにする。 */
 try{
   if(new URLSearchParams(location.search).has("hddebug")){
     window.__hd={
       elevationAt:highDetailElevationAt,tiles:highDetailTiles,
+      baseElevation:highDetailBaseElevation,worldFar:worldHeightForDistance,
+      setFar:km=>{HIGH_DETAIL_FAR_LIMIT_KM=km;drawPhoto._terrainRenderKey=null;},
       stats:()=>({on:highDetailOn,tileCount:highDetailTileCount,pending:highDetailPending,ready:highDetailReadyKey,used:highDetailUsedCells}),
       reset:()=>{highDetailUsedCells=0;}
     };
@@ -15034,8 +15066,14 @@ function drawPhoto(ctx,s){
         const wrapped=((azDeg%360)+360)%360;
         const i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
         const e0=baseElevationAtDistanceInRow(grid[i0],distanceKm),e1=baseElevationAtDistanceInRow(grid[i1],distanceKm);
-        if(Number.isFinite(e0)&&Number.isFinite(e1)) return lerp(e0,e1,t);
-        return Number.isFinite(e0)?e0:(Number.isFinite(e1)?e1:null);
+        const coarse=(Number.isFinite(e0)&&Number.isFinite(e1))?lerp(e0,e1,t)
+          :(Number.isFinite(e0)?e0:(Number.isFinite(e1)?e1:null));
+        /* 高精細モードでは地形本体の面が上がるので、ここを揃えないと
+           道路や線路が古い高さのままになり、「尾根の裏は出さない」判定で消える。
+           元の値が無い所(海など)は触らない。道路を海の上へ出さないため。 */
+        if(!Number.isFinite(coarse)) return coarse;
+        const fine=highDetailBaseElevation(wrapped,distanceKm);
+        return fine===null?coarse:fine;
       }
       /* 任意の方位・任意の距離における見かけ高度。方位は隣接2列を補間する。 */
       function rayAltAt(azDeg,distanceKm){
@@ -15176,6 +15214,24 @@ function drawPhoto(ctx,s){
             walk=(walk||[]).filter(pt=>pt&&(pt.water||!coveredSet.has(Math.round(pt.distanceKm*1000))))
               .concat(fineSamples).sort((a,b)=>a.distanceKm-b.distanceKm);
           }
+        }
+        /* 遠景も列の方位そのままで引き直す（v588）。
+           水と、標高が分からない点と、目盛りに無い点（富士山など）は触らない。 */
+        if(highDetailOn){
+          const nearKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
+          let replaced=null;
+          for(let i=0;i<walk.length;i++){
+            const pt=walk[i];
+            if(!pt||pt.local||pt.water) continue;
+            if(pt.distanceKm<=nearKm||pt.distanceKm>HIGH_DETAIL_FAR_LIMIT_KM) continue;
+            if(!Number.isFinite(pt.baseElevation)) continue;
+            if(!HIGH_DETAIL_RING_SET.has(Math.round(pt.distanceKm*1000))) continue;
+            const fine=highDetailBaseElevation(wrapped,pt.distanceKm);
+            if(fine===null) continue;
+            if(!replaced) replaced=walk.slice();
+            replaced[i]={...pt,baseElevation:fine};
+          }
+          if(replaced) walk=replaced;
         }
         const waterFlags=[];
         for(let i=0;i<walk.length;i++){
@@ -15831,7 +15887,12 @@ function drawPhoto(ctx,s){
             if(!Number.isFinite(elevation)) return null;
             const alt=altFromElevation(elevation,distanceM);
             const surface=visibleAltAt(az,distanceKm);
-            if(Number.isFinite(surface)&&alt<surface-.15) return null; // 尾根の裏は出さない
+            /* 尾根の裏は出さない。ただし高精細モードでは地面が本来の
+               細かさを取り戻すため、山を切り開いた道路の手前側の土手が
+               路面より高くなり、普段は見えていた区間まで消えてしまう。
+               道幅程度の段差は遠慧する。本当に尾根の裏なら差はもっと大きい。 */
+            const hideMargin=highDetailOn?Math.max(.15,Math.atan2(3,Math.max(1,distanceM))*R2D):.15;
+            if(Number.isFinite(surface)&&alt<surface-hideMargin) return null;
             /* 路面を横断方向の傾きに合わせる。
 
                以前は「路面は水平」とみなして左右の縁に中心と同じ標高を使っていた。
@@ -17254,7 +17315,7 @@ let suppressPhotoDrawForUpdate=false;
    地形・道路・等高線・星まで全部が細かくなる。
    中間のレイヤーはすべてW/Hから寸法を取っているので、ここだけで付いてくる。 */
 let renderSupersample=1;
-const HIGH_DETAIL_SUPERSAMPLE=1.5;
+const HIGH_DETAIL_SUPERSAMPLE=1.25;
 function applyCanvasSize(){
   let targetW,targetH,targetAspect,isPortrait;
   if(arActive){
