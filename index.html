@@ -1000,7 +1000,37 @@
     margin:0 auto;
   }
   .dial-card{max-width:100%;}
-  .photo-canvas-wrap{position:relative;}
+  /* 【v651】シミュレーション画面の器は、いつも縦構図の枠のまま固定する。
+     横構図はその中へ上下に余白を空けて収まるので、
+       ・構図を切り替えても画面全体の高さが変わらない（下のものが跳ねない）
+       ・まわりのボタンが動かない
+       ・回転の軸が縦横で同じ1点になる
+     縦構図の画像は「幅の2/3・高さは幅と同じ」なので、器は正方形になる。
+
+     --sim-inset-x / --sim-inset-y は、器の縁から画像の縁までの隙間。
+     画像に沿わせたい表示（出典・バージョン・時計など）はこれを足して置く。
+     器の縁に貼り付けたいボタン類は、これを足さないので動かない。 */
+  .photo-canvas-wrap{position:relative;--sim-inset-x:0px;--sim-inset-y:0px;}
+  body:not(.ar-active) .photo-canvas-wrap{aspect-ratio:1/1;}
+  body:not(.ar-active) .photo-canvas-wrap.portrait{--sim-inset-x:16.6667%;--sim-inset-y:0px;}
+  body:not(.ar-active) .photo-canvas-wrap:not(.portrait){--sim-inset-x:0px;--sim-inset-y:16.6667%;}
+  /* 3枚とも器の中央に置く。縦構図は幅2/3、横構図は幅いっぱい。
+     高さは canvas の width/height 属性から自動で決まる。 */
+  body:not(.ar-active) .photo-canvas-wrap #photoCanvas,
+  body:not(.ar-active) .photo-canvas-wrap #meteorCanvas,
+  body:not(.ar-active) .photo-canvas-wrap #walkerFxCanvas{
+    position:absolute;
+    left:50%;top:50%;
+    transform:translate(-50%,-50%);
+    width:100%;
+    height:auto;
+    margin:0;
+  }
+  body:not(.ar-active) .photo-canvas-wrap.portrait #photoCanvas,
+  body:not(.ar-active) .photo-canvas-wrap.portrait #meteorCanvas,
+  body:not(.ar-active) .photo-canvas-wrap.portrait #walkerFxCanvas{
+    width:66.6667%;
+  }
   /* ---------- ARモード ---------- */
   .ar-camera-video{
     display:none;
@@ -1034,7 +1064,8 @@
     background:transparent;
     opacity:0.72;
   }
-  body.ar-active .photo-canvas-wrap.portrait #meteorCanvas{
+  body.ar-active .photo-canvas-wrap.portrait #meteorCanvas,
+  body.ar-active .photo-canvas-wrap.portrait #walkerFxCanvas{
     position:absolute;
     left:50%;
     top:0;
@@ -1215,7 +1246,8 @@
     margin:0 auto;
     display:block;
   }
-  .photo-canvas-wrap.portrait #meteorCanvas{
+  .photo-canvas-wrap.portrait #meteorCanvas,
+  .photo-canvas-wrap.portrait #walkerFxCanvas{
     width:66.6667%;
     left:50%;
     transform:translateX(-50%);
@@ -1254,14 +1286,8 @@
   }
   .drone-stick.left{left:6px;}
   .drone-stick.right{right:6px;}
-  /* 横構図はキャンバスが浅く、下端が画面のかなり上に来るため、同じ「下から82px」でも
-     指の届く位置が縦構図とずれる。スティック1.5個ぶん(144px)下げて高さを揃える。
-     キャンバスの外へはみ出すので、下に続く要素より前に出るようz-indexはそのまま使う。 */
-  .photo-canvas-wrap:not(.portrait) .drone-stick{bottom:-62px;}
-  .photo-canvas-wrap:not(.portrait) .drone-gimbal{bottom:-104px;}
-  /* 下げたぶんスティックがキャンバス下端から外れるので、ステータスは通常位置へ戻す。
-     ただし右スティックの上端と6px重なるため、そのぶんだけ上に置く。 */
-  body.drone-mode .photo-canvas-wrap:not(.portrait) .external-data-monitor{bottom:40px;}
+  /* v651で器の高さが構図によらず一定になったので、
+     横構図だけスティックを下げていた補正は要らなくなった。 */
   /* 中心の十字。中立位置が分かるようにする。 */
   .drone-stick::before,.drone-stick::after{
     content:"";position:absolute;left:50%;top:50%;background:rgba(160,180,225,.26);
@@ -1294,7 +1320,7 @@
   /* 画面上部中央の情報の並び。上から「ドローン高度」「住所」。
      時計はこの高さぶんだけ下へ逃がす(高さはJSで測って設定する)。 */
   .sim-top-stack{
-    position:absolute;top:20px;left:0;right:0;z-index:9;
+    position:absolute;top:calc(var(--sim-inset-y) + 20px);left:0;right:0;z-index:9;
     display:flex;flex-direction:column;align-items:center;gap:6px;
     pointer-events:none;
   }
@@ -1401,7 +1427,7 @@
   /* 高精細に切り替えたときの走査演出。
      上から下へ光の帯が抜けていき、通ったあとがさっと明るくなる。 */
   .high-detail-scan{
-    position:absolute;inset:0;z-index:9;pointer-events:none;opacity:0;
+    position:absolute;inset:var(--sim-inset-y) var(--sim-inset-x);z-index:9;pointer-events:none;opacity:0;
     background:linear-gradient(to bottom,
       rgba(140,210,255,0) 0%,
       rgba(140,210,255,.10) 38%,
@@ -1516,7 +1542,7 @@
   body.ar-active .drone-badge{display:none;}
   .simulation-clock-overlay{
     position:absolute;
-    top:8px;
+    top:calc(var(--sim-inset-y) + 8px);
     left:50%;
     z-index:8;
     transform:translateX(-50%);
@@ -1568,10 +1594,8 @@
   .plan-quick-actions button:hover,.plan-quick-actions button:focus-visible{border-color:var(--core-amber);color:var(--core-amber);}
   .plan-quick-actions button:active{opacity:.72;}
   .photo-canvas-wrap.osm-map-open .plan-quick-actions,body.ar-active .plan-quick-actions{display:none;}
-  /* 縦構図ではキャンバスが中央66.7%に収まり、左右に16.7%ずつの余白ができる。
-     右側の操作系(保存・読込・写真・外部データ読み直し・ステータス)は
-     画像の上に重ねず、この余白へ出して画面外の右端へ揃える。 */
-  .photo-canvas-wrap.portrait .plan-quick-actions{right:9px;}
+  /* 右側の操作系(保存・読込・写真・外部データ読み直し・ステータス)は器の右端に貼る。
+     器は構図によらず同じ大きさなので、縦横どちらでも同じ位置に出る。 */
   .toggle-btn-row .header-circle-btn{width:44px!important;height:44px!important;min-width:44px!important;padding:0!important;border-radius:50%!important;align-items:center;justify-content:center;}
   @media(max-width:900px){.toggle-btn-row .header-circle-btn{display:inline-flex!important;width:38px!important;height:38px!important;min-width:38px!important;}}
   .plan-modal-overlay{
@@ -1683,7 +1707,6 @@
     .plan-quick-actions{top:7px;right:7px;gap:6px;}
     .plan-quick-actions button{width:39px;height:39px;border-radius:11px;}
     .plan-quick-actions button svg{width:19px;height:19px;}
-    .photo-canvas-wrap.portrait .plan-quick-actions{right:6px;}
     .plan-modal{padding:13px;}
     .header-circle-btn{width:38px;height:38px;min-width:38px;font-size:10px;}
     .header-circle-btn svg{width:20px;height:20px;}
@@ -1743,7 +1766,7 @@
   .osm-map-panel{
     display:none;
     position:absolute;
-    inset:0;
+    inset:var(--sim-inset-y) var(--sim-inset-x);
     z-index:10;
     overflow:hidden;
     border-radius:8px;
@@ -1752,7 +1775,6 @@
   .osm-map-panel.show{display:block;}
   .osm-map{width:100%;height:100%;background:#d8d8d8;}
   .osm-map .leaflet-tile{max-width:none!important;max-height:none!important;}
-  .photo-canvas-wrap.portrait .osm-map-panel{left:16.6667%;right:16.6667%;}
   .osm-map-actions{
     position:absolute;
     top:50%;
@@ -1890,8 +1912,8 @@
   .real-mw-credit{
     display:none;
     position:absolute;
-    right:9px;
-    bottom:9px;
+    right:calc(var(--sim-inset-x) + 9px);
+    bottom:calc(var(--sim-inset-y) + 9px);
     z-index:7;
     padding:3px 6px;
     border-radius:4px;
@@ -1905,34 +1927,30 @@
   .real-mw-credit a{color:inherit;text-decoration:none;}
   .real-mw-credit a:hover,.real-mw-credit a:focus{text-decoration:underline;color:#fff;}
   body.real-mw-credit-visible:not(.ar-active) .real-mw-credit{display:block;}
-  .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 9px);}
   .terrain-credit{
-    display:none;position:absolute;left:7px;bottom:7px;z-index:7;
+    display:none;position:absolute;left:calc(var(--sim-inset-x) + 7px);bottom:calc(var(--sim-inset-y) + 7px);z-index:7;
     padding:2px 5px;border-radius:4px;background:rgba(3,5,14,.52);
     color:rgba(235,238,248,.7);font:500 8px/1.25 'Inter',sans-serif;
     pointer-events:none;
   }
   /* 動作中のバージョンを常に確認できるようにする。地形データの有無に関わらず表示する。 */
   .app-version-badge{
-    position:absolute;left:7px;bottom:22px;z-index:7;
+    position:absolute;left:calc(var(--sim-inset-x) + 7px);bottom:calc(var(--sim-inset-y) + 22px);z-index:7;
     padding:2px 5px;border-radius:4px;background:rgba(3,5,14,.52);
     color:rgba(235,238,248,.62);font:600 8px/1.25 'IBM Plex Mono',monospace;
     letter-spacing:.02em;pointer-events:none;
   }
   /* 水際の不具合を切り分けるための診断表示。既定は非表示。 */
   .sea-diag-panel{
-    display:none;position:absolute;left:7px;bottom:38px;z-index:8;
+    display:none;position:absolute;left:calc(var(--sim-inset-x) + 7px);bottom:calc(var(--sim-inset-y) + 38px);z-index:8;
     padding:5px 7px;border-radius:5px;background:rgba(3,5,14,.72);
     color:rgba(226,234,250,.92);font:500 9px/1.45 'IBM Plex Mono',monospace;
     letter-spacing:.01em;white-space:pre;pointer-events:none;
   }
   body.sea-diag-on .sea-diag-panel{display:block;}
   body.ar-active .sea-diag-panel{display:none;}
-  .photo-canvas-wrap.portrait .sea-diag-panel{left:calc(16.6667% + 7px);}
   body.ar-active .app-version-badge{display:none;}
-  .photo-canvas-wrap.portrait .app-version-badge{left:calc(16.6667% + 7px);}
   body.real-terrain-visible:not(.ar-active) .terrain-credit{display:block;}
-  .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 7px);}
   .external-data-monitor{
     position:absolute;right:10px;bottom:34px;z-index:12;display:flex;flex-direction:column;align-items:center;gap:5px;
   }
@@ -1959,15 +1977,11 @@
   .external-data-lamp.ready{background:#16b968;box-shadow:0 0 0 1px rgba(0,0,0,.5),0 0 5px rgba(22,185,104,.65);}
   .external-data-lamp.loading{background:#dc3e4f;animation:external-data-pulse .82s ease-in-out infinite alternate;}
   @keyframes external-data-pulse{from{opacity:.35}to{opacity:1}}
-  .photo-canvas-wrap.portrait .external-data-monitor{right:9px;}
   .photo-canvas-wrap.osm-map-open .external-data-monitor,body.ar-active .external-data-monitor,body.icon-controls-hidden .external-data-monitor{display:none;}
   @media(max-width:760px){
-    .real-mw-credit{right:6px;bottom:6px;padding:2px 5px;font-size:8px;}
-    .photo-canvas-wrap.portrait .real-mw-credit{right:calc(16.6667% + 6px);}
-    .terrain-credit{left:6px;bottom:6px;}
-    .photo-canvas-wrap.portrait .terrain-credit{left:calc(16.6667% + 6px);}
+    .real-mw-credit{right:calc(var(--sim-inset-x) + 6px);bottom:calc(var(--sim-inset-y) + 6px);padding:2px 5px;font-size:8px;}
+    .terrain-credit{left:calc(var(--sim-inset-x) + 6px);bottom:calc(var(--sim-inset-y) + 6px);}
     .external-data-monitor{right:7px;bottom:28px;gap:4px;}
-    .photo-canvas-wrap.portrait .external-data-monitor{right:6px;}
     .external-data-reload-btn{width:38px;height:38px;}
     .external-data-reload-btn svg{width:21px;height:21px;}
     .external-data-lamp{width:6px;height:6px;}
@@ -1975,7 +1989,16 @@
     .simulation-clock-date{font-size:11px;}
     .simulation-clock-time{font-size:18px;}
   }
-  #meteorCanvas{
+  /* 構図を切り替えている間は、回っている枠だけを見せる（v650）。 */
+  .photo-canvas-wrap.spinning #photoCanvas,
+  .photo-canvas-wrap.spinning #meteorCanvas,
+  .photo-canvas-wrap.spinning #walkerFxCanvas{visibility:hidden;}
+  .photo-canvas-wrap.spinning .sim-top-stack,
+  .photo-canvas-wrap.spinning .drone-sticks{opacity:0;}
+  #orientationSpinCanvas{
+    position:absolute; left:0; top:0; z-index:10; pointer-events:none;
+  }
+  #meteorCanvas,#walkerFxCanvas{
     position:absolute;
     top:0; left:0;
     width:100%; height:100%;
@@ -2887,8 +2910,8 @@
           <div class="field">
             <label class="top">構図</label>
             <div class="seg" id="orientationSeg">
-              <button type="button" class="seg-btn active" data-o="landscape"><span class="seg-orientation-icon" aria-hidden="true"></span>横位置</button>
-              <button type="button" class="seg-btn" data-o="portrait"><span class="seg-orientation-icon portrait" aria-hidden="true"></span>縦位置</button>
+              <button type="button" class="seg-btn" data-o="landscape"><span class="seg-orientation-icon" aria-hidden="true"></span>横位置</button>
+              <button type="button" class="seg-btn active" data-o="portrait"><span class="seg-orientation-icon portrait" aria-hidden="true"></span>縦位置</button>
             </div>
           </div>
           <div class="field">
@@ -3200,7 +3223,7 @@
               <button id="mobileSettingsBtn" type="button" class="constellation-toggle-btn settings-toggle-btn header-circle-btn" aria-label="設定を開く" title="設定"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="7.1" stroke="currentColor" stroke-width="1.7" stroke-dasharray="2.3 1.5"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3 7 7M17 17l1.7 1.7M18.7 5.3 17 7M7 17l-1.7 1.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
               <button id="mobileDisplayOptionsBtn" type="button" class="constellation-toggle-btn display-options-btn header-circle-btn" aria-label="表示メニューを開く">表示</button>
               <button id="iconInfoBtn" type="button" class="constellation-toggle-btn info-toggle-btn header-circle-btn" aria-label="アイコンの説明を表示" aria-pressed="false" title="アイコン説明">i</button>
-              <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn header-circle-btn" aria-label="縦横を切り替える"><span class="orientation-icon" aria-hidden="true"></span></button>
+              <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn header-circle-btn portrait" aria-label="縦横を切り替える"><span class="orientation-icon" aria-hidden="true"></span></button>
               <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn header-circle-btn">AR</button>
               <span class="focal-badge" id="focalBadge" role="button" tabindex="0" aria-label="焦点距離を変える">24<span class="focal-badge-unit">mm</span></span>
               <div class="focal-quick" id="focalQuick" aria-hidden="true">
@@ -3267,6 +3290,7 @@
               <video id="arCameraVideo" class="ar-camera-video" playsinline muted></video>
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
+              <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
               <div class="sim-top-stack" id="simTopStack">
                 <div id="droneBadge" class="drone-badge" hidden></div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
@@ -3629,7 +3653,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="631-walker-ground";
+const APP_VERSION="651-fixed-frame";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4499,7 +4523,7 @@ const el={
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
   kmzBuildingUseKmlBtn:$("kmzBuildingUseKmlBtn"), kmzBuildingDeleteBtn:$("kmzBuildingDeleteBtn"),
-  dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
+  dialCanvas:$("dialCanvas"), photoCanvas:$("photoCanvas"), compassStrip:$("compassStrip"), meteorCanvas:$("meteorCanvas"), walkerFxCanvas:$("walkerFxCanvas"), photoCanvasWrap:$("photoCanvasWrap"),
   exifText:$("exifText"), readout:$("readout"), messages:$("messages"), bestTimeValue:$("bestTimeValue"), bestTimeBar:$("bestTimeBar"),
   bestTimeDate:$("bestTimeDate"), bestTimeRange:$("bestTimeRange"),
   moonTodayIcon:$("moonTodayIcon"), moonTodayName:$("moonTodayName"),
@@ -6340,7 +6364,8 @@ const PIXEL_WALKER_PALETTE={
   s:"#e5c9a2",   // 肌
   c:"#35496c",   // 上着
   p:"#6a7854",   // ズボン
-  g:"#81746e"    // バックパック
+  g:"#81746e",   // バックパック
+  F:"#fff600"    // シャッターを切った瞬間の光（5コマ目だけで使う）
 };
 
 
@@ -6393,6 +6418,16 @@ const PIXEL_WALKER_SPRITES={
     ["................................","................................","................................","..............hhhhhh............",".........h.hhhhhhhhhh...........",".........hhhhhhhhhhhhh..........","..........hhhhhhhhhhhhh.........","..........hhhhhhhhhhhhh.........","..........hsshhhhhhhhhh.........","...........ssshhhhhhhhh.........","...........shsshhhsshhh.........","..........sshsshhssshhh.........","..........sshssshssshh..........","..........ssssssssshhh..........","..........sssssssshh............","...........ssssssshc............","..............ssccccc...........","..............cggggccc..........","............cggcccgKKKKK........","............KccccccgKgggK.......","............KccccccgKgggK.......","...........K.cccccsggKggK.......","...........K.cssccsgKKKKK.......",".........KKKcssscssgKgggK.......","........KKKcsssscssgKgggK.......","........KKcccssccssgKgggK.......",".......sssccccscsssgKgggK.......",".......sssscccccsssgKgggK.......",".......sssscccsssscgKgggK.......","........ssss.cccccpgKKKK........","..............pppppKKKK.........","..............pppppp............",".............ppppppp............",".............pppppppp...........","............ppppppppp...........","............pppp.pppp...........","...........ppppp.pppp...........","...........ppppp..pppp..........","...........pppp...ppppp.........","..........ppppp....pppp.........",".........ppppp.....ppppp........",".........hpppp......pppp........","........hhhpp.......pppp........","......hhhhhhh.......hhhhh.......","......hhhhhhh.....hhhhhhh.......","........hhhhh....hhhhhhhh.......","..................hhhhhh........","................................"]
   ]
 };
+/* シャッターを切る5コマ（v649）。1コマ目は止まっているときの正面と同じ。
+   1→2→3→4 でカメラを構え、間を置いて5で切る。並びと間の取り方は
+   IDLE_SHOT_TIMELINE のほうに書いてある。 */
+PIXEL_WALKER_SPRITES.shot=[
+    ["................................","............hhhhhhhh..h.........","...........hhhhhhhhhhh..........","..........hhhhhhhhhhh...........",".........hhhhhhhhhhhhh..........",".........hhhsshhhhhhhh..........",".........hhssssssssshh..........",".........hhssssssssshh..........",".........shshssssshshs..........",".........ssshssssshsss..........",".........ssshssssshsss..........","..........sssssssssss...........","...........sssssssss............","............sssssss.............","............ccssscc.............","...........cccsssccc............","..........gccsssssccg...........",".........cggccsssccggc..........","........ccggcccccccggcc.........","........scgKccchcccKgcs.........",".......sssgKscchccsKgsss........",".......sssgsKsshssKsgsss........",".......sssgsKsKKKsKsgsss........",".......sssgssKKKKKssgsss........",".......ccs.ssKKgKKss.scc........",".......ccc.hsKKKKKsh.ccc........",".......ccc.hssshsssh.ccc........",".......ccc.cssshsssc.ccc........",".......sssspcccccccpssss........",".......sssspppppppppssss........",".......sssspppppppppssss........","........ss.ppppppppp.ss.........","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........hhhh.hhhh............","..........hhhhh.hhhhh...........",".........hhhhhh.hhhhhh..........","..........hhhh...hhhh...........","................................","................................"],
+    ["................................","............hhhhhhhh..h.........","...........hhhhhhhhhhh..........","..........hhhhhhhhhhh...........",".........hhhhhhhhhhhhh..........",".........hhhsshhhhhhhh..........",".........hhssssssssshh..........",".........hhssssssssshh..........",".........shshssssshshs..........",".........ssshssssshsss..........",".........ssshssssshsss..........","..........sssssshssss...........","...........sssshhsss............","............sssssss.............","............ccssscc.............","...........cccsssccc............","..........gccsssssccg...........",".........cggccsssccggc..........","........ccggcccccccggcc.........","........scgKccchcccKgcs.........",".......sssgKscchccsKgsss........","......ssssgsKsKKKsKsgsss........","......ssssgssKKKKKssgsss........","......sscccssKKgKKssgsss........",".......ccccssKKKKKss.scc........","........ccchssshsssh.ccc........","...........hssshsssh.ccc........","...........cssshsssc.ccc........","...........pcccccccpssss........","...........pppppppppssss........","...........pppppppppssss........","...........ppppppppp.ss.........","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........hhhh.hhhh............","..........hhhhh.hhhhh...........",".........hhhhhh.hhhhhh..........","..........hhhh...hhhh...........","................................","................................"],
+    ["................................","............hhhhhhhh..h.........","...........hhhhhhhhhhh..........","..........hhhhhhhhhhh...........",".........hhhhhhhhhhhhh..........",".........hhhsshhhhhhhh..........",".........hhssssssssshh..........",".........hhssssssssshh..........",".........shshssssshshs..........",".........ssshssssshsss..........",".........ssshssssshsss..........","..........sssssshssss...........","...........sssshhsss............","............sKKKsss.............","..........ssKKKKKcc.............","..........ssKKgKKccc............",".........cccKKKKKKcKg...........","........cccccccccKKggc..........",".......sccccccchccccgcc.........","......ssssgKccchccscgcs.........","......ssssgsssshssssgsss........","......ssssgsssshssssgsss........",".......ss.gsssshssssgsss........","..........csssshssssgsss........","..........csssshssss.scc........","..........chssshsssh.ccc........","...........hssshsssh.ccc........","...........cssshsssc.ccc........","...........pcccccccpssss........","...........pppppppppssss........","...........pppppppppssss........","...........ppppppppp.ss.........","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........hhhh.hhhh............","..........hhhhh.hhhhh...........",".........hhhhhh.hhhhhh..........","..........hhhh...hhhh...........","................................","................................"],
+    ["................................","............hhhhhhhh..h.........","...........hhhhhhhhhhh..........","..........hhhhhhhhhhh...........",".........hhhhhhhhhhhhh..........",".........hhhsshhhhhhhh..........",".........hhssssssssshh..........",".........hhssssssssshh..........",".........ssKKKsssshshs..........","........ssKKKKKssshsss..........","........ssKKgKKsssssss..........",".......cccKKKKKKsssss...........","......ccccKssssKssss............",".....sscc.K.ssssKKs.............",".....ssss..Kccssscc.............",".....sssc..Kccsscccc............","......sscccccssssKcKg...........",".......sscccccssssKggc..........",".......sssccccccccccgcc.........","........ssgsscchccscgcs.........","..........gsssshssssgsss........","..........gsssshssssgsss........","..........gsssshssssgsss........","..........csssshssssgsss........","..........csssshssss.scc........","..........chssshsssh.ccc........","...........hssshsssh.ccc........","...........cssshsssc.ccc........","...........pcccccccpssss........","...........pppppppppssss........","...........pppppppppssss........","...........ppppppppp.ss.........","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........hhhh.hhhh............","..........hhhhh.hhhhh...........",".........hhhhhh.hhhhhh..........","..........hhhh...hhhh...........","................................","................................"],
+    ["................................","............hhhhhhhh..h.........","...........hhhhhhhhhhh..........",".....F....hhhhhhhhhhh...........",".....F...hhhhhhhhhhhhh..........","....FFF..hhhsshhhhhhhh..........","..FFFFFFFhhssssssssshh..........","....FFF..hhssssssssshh..........",".....F...ssKKKsssssshs..........",".....F..ssKKKKKsshhhss..........","........ssKKgKKsssssss..........",".......cccKKKKKKsssss...........","......ccccKssssKssss............",".....sscc.K.ssssKKs.............",".....ssss..Kccssscc.............",".....sssc..Kccsscccc............","......sscccccssssKcKg...........",".......sscccccssssKggc..........",".......sssccccccccccgcc.........","........ssgsscchccscgcs.........","..........gsssshssssgsss........","..........gsssshssssgsss........","..........gsssshssssgsss........","..........csssshssssgsss........","..........csssshssss.scc........","..........chssshsssh.ccc........","...........hssshsssh.ccc........","...........cssshsssc.ccc........","...........pcccccccpssss........","...........pppppppppssss........","...........pppppppppssss........","...........ppppppppp.ss.........","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........pppp.pppp............","...........hhhh.hhhh............","..........hhhhh.hhhhh...........",".........hhhhhh.hhhhhh..........","..........hhhh...hhhh...........","................................","................................"]
+];
 const PIXEL_WALKER_W=32, PIXEL_WALKER_H=48;
 let pixelWalkerCache=null;   // {scale, canvases:{back:[..],front:[..],side:[..]}}
 function buildPixelWalkerCache(scale){
@@ -6417,25 +6452,40 @@ function buildPixelWalkerCache(scale){
   pixelWalkerCache={scale,canvases};
   return pixelWalkerCache;
 }
-let pixelWalkerFacing="front";   // 最後に向いていた方向を覚えておく
+let pixelWalkerFacing="back";    // 落ち着いているときは、あなたと同じ景色を見ている
 let pixelWalkerFlip=false;
+/* 今画面に出ているのが、落ち着いた姿（後ろ向き）でないかどうか。
+   動き終わったあとに描き直しが走らなければ、振り向いた姿のまま固まる。
+   後退のあとは地形の取得待ちで描き直しが遅れることもあるので、
+   endWalk() でこれを見て、その場で1回だけ描き直す。 */
+let pixelWalkerPoseStale=false;
 /* コマ送りの位置を自分で覚えておく。
    v629は performance.now() から直接コマを割り出していたが、
    重い場所では再描画に150〜200msかかるので、描く間に時計が2コマ分進んで
    3→1→3→5 のように途中を飛ばしてしまった。
    、1回の描画で進むのは多くても1コマとし、必ず順番どおりに見せる。 */
 let pixelWalkerStep=0, pixelWalkerStepAt=0;
+/* 最後に本人を描いた位置と大きさ。上に重ねたcanvasが同じ場所へ描くために使う。 */
+let pixelWalkerLastLayout=null;
 function drawPixelWalker(ctx,W,H,s){
   if(!pixelWalkerVisible||arActive) return;
   const moving=(walkForward!==0||walkStrafe!==0);
+  /* 向きを決めるのは移動方向だけ。
+     方位角を振っても、止まっても、最後に向いた向きのまま残る。 */
   if(moving){
     if(Math.abs(walkForward)>=Math.abs(walkStrafe)){
-      pixelWalkerFacing=walkForward>0?"back":"front"; pixelWalkerFlip=false;
+      pixelWalkerFacing=walkForward>0?"back":"front";
     }else{
       /* 左向きも描いてもらっているので、反転は使わない。 */
-      pixelWalkerFacing=walkStrafe<0?"sideLeft":"side"; pixelWalkerFlip=false;
+      pixelWalkerFacing=walkStrafe<0?"sideLeft":"side";
     }
   }
+  /* 向きを書き換えるのは、実際に移動したときだけ。
+     止まっても方位を振っても、最後に向いた向きのままにする。 */
+  pixelWalkerFlip=false;
+  /* 歩いている間は歩行のコマを出しているので、止まったあとに
+     両足が揃うコマへ戻すための描き直しが1回必要になる。 */
+  pixelWalkerPoseStale=moving;
   /* 画面の高さに合わせて控えめに。
      ドット絵のマス目が変わっても画面上の実寸が変わらないよう、
      64マスを基準にして割り戻す。 */
@@ -6451,7 +6501,10 @@ function drawPixelWalker(ctx,W,H,s){
      止まっているときは両足が揃うコマを出す。 */
   const idle=Math.min(PIXEL_WALKER_IDLE_FRAME,frames.length-1);
   let frame=idle;
-  if(moving&&frames.length>1){
+  /* 足を動かすのは実際に移動しているときだけ。
+     方位を振っている間はその場から動いていないので、足は止めておく。 */
+  const stepping=moving;
+  if(stepping&&frames.length>1){
     const seq=PIXEL_WALKER_SEQUENCE;
     const now=performance.now();
     if(now-pixelWalkerStepAt>=PIXEL_WALKER_FRAME_MS){
@@ -6487,7 +6540,12 @@ function drawPixelWalker(ctx,W,H,s){
   const goneFrom=PIXEL_WALKER_RISE_GONE_M*.6;
   if(riseM>goneFrom)
     alpha=Math.min(alpha,clamp(1-(riseM-goneFrom)/(PIXEL_WALKER_RISE_GONE_M-goneFrom),0,1));
+  /* 描く位置と大きさを覚えておく。シャッターの演出は1枚上のcanvasで動かすので、
+     そちらが同じ場所へ同じ大きさで描けるようにするため。 */
+  pixelWalkerLastLayout={x,y,scale,drawW,drawH,alpha};
   if(alpha<=.02) return;
+  /* 演出中は上のレイヤーが本人を描いている。ここで描くと二重になる。 */
+  if(idleShotState) return;
   ctx.save();
   ctx.globalAlpha=alpha;
   ctx.imageSmoothingEnabled=false;
@@ -6503,6 +6561,121 @@ function drawPixelWalker(ctx,W,H,s){
   }
   ctx.restore();
 }
+
+/* =========================================================
+   15秒じっとしていると、こちらを向いてシャッターを切る（v649）
+
+   ただの遊び心。重くしないために、写真そのものを描き直すのは
+   「始まるとき」と「終わるとき」の2回だけにしてある。
+   その間は、流れ星と同じように1枚上に重ねたcanvasだけを動かす。
+   ========================================================= */
+const IDLE_SHOT_DELAY_MS=15000;   // 何も操作しないでいる時間
+const IDLE_SHOT_STEP_MS=160;      // 構える／下ろすときの1コマ
+const IDLE_SHOT_AIM_HOLD_MS=500;  // 構えきってからシャッターまでの間
+const IDLE_SHOT_HOLD_MS=1000;     // 切ったあと、そのままでいる時間
+const IDLE_SHOT_FLASH_MS=420;     // 画面が光っている時間
+/* コマの進み方を時刻の表にしておく。読めばそのまま演出の台本になる。 */
+const IDLE_SHOT_TIMELINE=(()=>{
+  const steps=[]; let at=0;
+  for(const frame of [0,1,2,3]){ steps.push({at,frame}); at+=IDLE_SHOT_STEP_MS; }
+  at=at-IDLE_SHOT_STEP_MS+IDLE_SHOT_AIM_HOLD_MS;  // 4コマ目のまま間を置く
+  const fireAt=at;
+  steps.push({at,frame:4}); at+=IDLE_SHOT_HOLD_MS;
+  for(const frame of [3,2,1,0]){ steps.push({at,frame}); at+=IDLE_SHOT_STEP_MS; }
+  return {steps,fireAt,totalMs:at};
+})();
+let idleShotState=null;   // 演出中だけ {startAt,raf}
+let idleShotTimer=0;
+/* 演出を始めてよい状態かどうか。本人が出ていないときや、
+   歩いている・時刻を流している・地図やARを開いている間は出さない。 */
+function canPlayIdleShot(){
+  if(!pixelWalkerVisible||arActive||playbackTimer||document.hidden) return false;
+  if(typeof walkActive==="function"&&walkActive()) return false;
+  if(typeof osmMapScreenOpen!=="undefined"&&osmMapScreenOpen) return false;
+  const layout=pixelWalkerLastLayout;
+  return !!layout&&layout.alpha>.2;   // 画面外へ流れて薄いときは出さない
+}
+function clearIdleShotCanvas(){
+  const canvas=el.walkerFxCanvas;
+  if(!canvas) return;
+  canvas.getContext("2d").clearRect(0,0,canvas.width,canvas.height);
+}
+function drawIdleShotFrame(now){
+  const canvas=el.walkerFxCanvas, layout=pixelWalkerLastLayout;
+  if(!canvas||!layout) return;
+  const ctx=canvas.getContext("2d"), W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const elapsed=now-idleShotState.startAt;
+  let frame=0;
+  for(const step of IDLE_SHOT_TIMELINE.steps) if(elapsed>=step.at) frame=step.frame;
+  const sprites=buildPixelWalkerCache(layout.scale).canvases.shot;
+  const sprite=sprites&&(sprites[frame]||sprites[0]);
+  if(sprite){
+    ctx.save();
+    ctx.globalAlpha=layout.alpha;
+    ctx.imageSmoothingEnabled=false;
+    // 足元の影は写真のレイヤー側と同じものを引き継ぐ。
+    ctx.fillStyle="rgba(0,0,0,.28)";
+    ctx.beginPath();
+    ctx.ellipse(layout.x+layout.drawW/2,layout.y+layout.drawH-layout.scale*1.5,
+                layout.drawW*.34,layout.scale*1.1,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.drawImage(sprite,layout.x,layout.y);
+    ctx.restore();
+  }
+  /* シャッターに合わせて画面全体を光らせる。ぱっと明るくなって、すっと落ちる。 */
+  const since=elapsed-IDLE_SHOT_TIMELINE.fireAt;
+  if(since>=0&&since<IDLE_SHOT_FLASH_MS){
+    const rise=Math.min(1,since/60);
+    const fall=Math.max(0,1-(since-60)/(IDLE_SHOT_FLASH_MS-60));
+    const alpha=.55*rise*fall*fall;
+    if(alpha>.004){
+      ctx.save();
+      ctx.fillStyle="rgba(255,255,255,"+alpha.toFixed(3)+")";
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+  }
+}
+function idleShotTick(now){
+  if(!idleShotState) return;
+  idleShotState.raf=0;
+  if(now-idleShotState.startAt>=IDLE_SHOT_TIMELINE.totalMs){ endIdleShot(); return; }
+  if(!canPlayIdleShot()){ endIdleShot(); return; }
+  drawIdleShotFrame(now);
+  idleShotState.raf=requestAnimationFrame(idleShotTick);
+}
+function startIdleShot(){
+  idleShotTimer=0;
+  if(idleShotState) return;
+  /* まだ出せる状態ではないだけなので、数え直してまた待つ。
+     ここでやめると、一度裏に回っただけで二度と出なくなる。 */
+  if(!canPlayIdleShot()){ armIdleShot(); return; }
+  idleShotState={startAt:performance.now(),raf:0};
+  update();   // 本人を写真のレイヤーから外す。ここでの描き直しは1回だけ。
+  idleShotState.raf=requestAnimationFrame(idleShotTick);
+}
+function endIdleShot(){
+  if(!idleShotState) return;
+  if(idleShotState.raf) cancelAnimationFrame(idleShotState.raf);
+  idleShotState=null;
+  clearIdleShotCanvas();
+  update();   // 本人を写真のレイヤーへ戻す
+  armIdleShot();
+}
+function armIdleShot(){
+  if(idleShotTimer) clearTimeout(idleShotTimer);
+  idleShotTimer=setTimeout(startIdleShot,IDLE_SHOT_DELAY_MS);
+}
+/* 何か操作したら、演出は取りやめて数え直し。 */
+function noteUserActivity(){
+  if(idleShotState) endIdleShot(); else armIdleShot();
+}
+for(const type of ["keydown","pointerdown","wheel","touchstart"])
+  window.addEventListener(type,noteUserActivity,{passive:true,capture:true});
+document.addEventListener("visibilitychange",noteUserActivity);
+armIdleShot();
+
 /* =========================================================
    雲海（v592）
 
@@ -7597,13 +7770,137 @@ el.photoCanvas.addEventListener("touchend",(e)=>{
   if(!e.touches || e.touches.length<2) photoPinchStartDist=0;
 });
 
+
+/* =========================================================
+   構図を切り替えるときの回転（v650）
+
+   縦の枠の中央を軸にして、枠だけを回す。中の景色はずっと正立のまま、
+   上下が削れて左右が広がる。
+
+   仕組み: 切り替えの前と後の絵を1枚ずつ取っておき、その2枚を中央で
+   重ねて（十字形の絵になる）、回っていく長方形で切り抜いて見せる。
+   実際のcanvasは切り替えた時点でもう新しい構図になっていて、
+   ここで動かしているのは使い捨ての1枚だけなので、描き直しは増えない。
+
+   2枚を中央で重ねてよい理由: 縦と横は同じセンサーを90度倒しただけで、
+   1画素あたりの見かけの角度が完全に一致する。
+   （実測 885x590 / 590x885 表示、どちらも 0.7375 CSS画素/バッファ画素）
+   ========================================================= */
+const ORIENTATION_SPIN_MS=380;
+let orientationSpin=null;
+/* 切り替える直前の絵と枠を控える。出せない状況なら null を返して、
+   これまでどおり即座に切り替わる。 */
+function beginOrientationSpin(){
+  if(arActive||orientationSpin) return null;
+  const canvas=el.photoCanvas, wrap=el.photoCanvasWrap;
+  if(!canvas.width||!canvas.height) return null;
+  const wr=wrap.getBoundingClientRect(), cr=canvas.getBoundingClientRect();
+  if(cr.width<40||cr.height<40) return null;   // 画面に出ていないときは動かさない
+  const shot=document.createElement("canvas");
+  shot.width=canvas.width; shot.height=canvas.height;
+  shot.getContext("2d").drawImage(canvas,0,0);
+  return {shot,w:cr.width,h:cr.height,
+          cx:cr.left-wr.left+cr.width/2, cy:cr.top-wr.top+cr.height/2,
+          wrapW:wr.width, wrapH:wr.height};
+}
+function endOrientationSpin(){
+  const spin=orientationSpin;
+  if(!spin) return;
+  orientationSpin=null;
+  if(spin.raf) cancelAnimationFrame(spin.raf);
+  if(spin.timer) clearTimeout(spin.timer);
+  if(spin.layer&&spin.layer.parentNode) spin.layer.parentNode.removeChild(spin.layer);
+  el.photoCanvasWrap.classList.remove("spinning");
+  el.photoCanvasWrap.style.minHeight="";
+}
+function finishOrientationSpin(before){
+  const canvas=el.photoCanvas, wrap=el.photoCanvasWrap;
+  const wr=wrap.getBoundingClientRect(), cr=canvas.getBoundingClientRect();
+  if(cr.width<40||cr.height<40) return;
+  const after=document.createElement("canvas");
+  after.width=canvas.width; after.height=canvas.height;
+  after.getContext("2d").drawImage(canvas,0,0);
+  const dst={shot:after,w:cr.width,h:cr.height,
+             cx:cr.left-wr.left+cr.width/2, cy:cr.top-wr.top+cr.height/2,
+             wrapH:wr.height};
+  /* 使い捨ての1枚。両方の枠が収まる大きさにしておく。 */
+  const layerW=Math.max(before.wrapW,wr.width);
+  const layerH=Math.max(before.wrapH,wr.height);
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const layer=document.createElement("canvas");
+  layer.id="orientationSpinCanvas";
+  layer.style.width=layerW+"px"; layer.style.height=layerH+"px";
+  layer.width=Math.round(layerW*dpr); layer.height=Math.round(layerH*dpr);
+  wrap.appendChild(layer);
+  wrap.classList.add("spinning");
+  const ctx=layer.getContext("2d");
+  /* 縦→横は時計回り、横→縦は反時計回り。行きと帰りで向きが揃う。 */
+  const turn=(orientation==="portrait")?1:-1;
+  const startAt=performance.now();
+  const spin={layer,raf:0,timer:0};
+  orientationSpin=spin;
+  const draw=(now)=>{
+    spin.raf=0;
+    const raw=Math.min(1,(now-startAt)/ORIENTATION_SPIN_MS);
+    // 行きも帰りもなめらかに（easeInOutQuad）
+    const t=raw<.5 ? 2*raw*raw : 1-Math.pow(-2*raw+2,2)/2;
+    const angle=turn*(1-t)*Math.PI/2;
+    const cx=before.cx+(dst.cx-before.cx)*t;
+    const cy=before.cy+(dst.cy-before.cy)*t;
+    /* 斜めを向いている途中だけ、回った長方形の四隅が
+       2枚の絵の外側（十字形のはみ出し部分）へ出てしまう。
+       その分だけ枠を縮めて、絵の無いところを見せない。
+       真っすぐのとき（行きと帰り）は1のままで、真ん中で 0.85 ほど。 */
+    const halfA=Math.max(before.w,before.h,dst.w,dst.h)/2;
+    const halfB=Math.min(before.w,before.h,dst.w,dst.h)/2;
+    const ca=Math.cos(angle), sa=Math.sin(angle);
+    const hw=dst.w/2, hh=dst.h/2;
+    /* 回した長方形の隅は2種類。両方を見ないと片方だけはみ出す。 */
+    const corners=[[hw*ca-hh*sa,hw*sa+hh*ca],[hw*ca+hh*sa,hw*sa-hh*ca]];
+    const fitIn=(x,y,hx,hy)=>Math.min(
+      Math.abs(x)>1e-6?hx/Math.abs(x):Infinity,
+      Math.abs(y)>1e-6?hy/Math.abs(y):Infinity);
+    let fit=1;
+    for(const [x,y] of corners)
+      fit=Math.min(fit,Math.max(fitIn(x,y,halfA,halfB),fitIn(x,y,halfB,halfA)));
+    const winW=dst.w*fit, winH=dst.h*fit;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,layerW,layerH);
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.rect(-winW/2,-winH/2,winW,winH);
+    ctx.clip();
+    /* 斜めを向いている間だけ、四隅に絵の無いところができる。
+       穴に見えないよう、いちばん暗い夜空の色で埋めておく。 */
+    ctx.fillStyle="#05070d";
+    ctx.fillRect(-winW/2,-winH/2,winW,winH);
+    ctx.rotate(-angle);   // 枠だけ回し、中身は正立に戻す
+    /* 2枚は同じ瞬間・同じ向きの同じ景色なので、
+       重なるところは中身も同じ。淡々と重ねれば継ぎ目は出ない。 */
+    ctx.drawImage(before.shot,-before.w/2,-before.h/2,before.w,before.h);
+    ctx.drawImage(dst.shot,-dst.w/2,-dst.h/2,dst.w,dst.h);
+    ctx.restore();
+    if(raw>=1){ endOrientationSpin(); return; }
+    spin.raf=requestAnimationFrame(draw);
+  };
+  spin.raf=requestAnimationFrame(draw);
+  /* requestAnimationFrame が止まる環境でも取り残されないようにする。 */
+  spin.timer=setTimeout(endOrientationSpin,ORIENTATION_SPIN_MS+400);
+}
+
 /* 構図(横位置/縦位置) */
-let orientation="landscape";
+let orientation="portrait";   // 既定は縦構図（v650）
 function setOrientation(newOrientation){
+  /* 実際に構図が変わるときだけ回す。同じ値で呼ばれる経路（プランの読み込みなど）は
+     これまでどおり描き直すだけにする。 */
+  const spin=(newOrientation!==orientation)?beginOrientationSpin():null;
   orientation=newOrientation;
   [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
   el.mobileOrientationToggleBtn.classList.toggle("portrait", orientation==="portrait");
   update();
+  if(spin) finishOrientationSpin(spin);
   if(osmMapScreenOpen&&osmMapInstance) requestAnimationFrame(()=>{
     osmMapInstance.invalidateSize({pan:false});
     updateOsmFovOverlay(state);
@@ -16981,37 +17278,143 @@ function drawPhoto(ctx,s){
           const originLat=+el.lat.value,originLon=+el.lon.value;
           const metrePerDegLon=111320*Math.cos(originLat*D2R);
           const sampleM=5;
+          /* 自分が立っている場所の地面の高さ。近距離の基準に使う。 */
+          const footElev=Number.isFinite(realTerrainState.observerElevation)
+            ? realTerrainState.observerElevation
+            : worldHeightForDistance(originLat,originLon,0);
           const CENTRE_DASH_M=4, CENTRE_GAP_M=6; // センターラインの白線と間隔(実寸)
+          const CENTRE_HALF_M=.075;              // 白線の幅15cmの半分(実寸)
+          /* 【v648】道路・線路の上に立つと路面が崩れていた問題。
+
+             旧版は「視線から大きく外れた点は投影できない」として、
+             断面の中心が視野の円錐の外に出たらその断面ごと捨てていた。
+             ところが道の上に立つと、足元の断面は中心が真横や真後ろにあっても
+             道幅の半分はしっかり画面に写っている。それを丸ごと捨てていたので、
+             ・道を横から見る向きでは、踏んでいるはずの路面が丸ごと消える
+             ・残った数枚だけが巨大な板になり、途中でブツ切れる
+             （実測: 34.872508,134.902045 の道上で方位300度→四角形 0 枚、
+              方位120度→わずか 8 枚だけで 2.6m〜8.9m で途切れていた）
+
+             角度で門前払いするのをやめ、四角形を実寸の3次元座標のまま作ってから
+             カメラの手前面と画面の四辺で切り取る。切り取ってから投影すれば
+             座標が飛ぶことはなく、直線は直線のまま残る。 */
+          const camForward=toVec(s.facingAz,s.facingAlt);
+          const camRight=[cos(s.facingAz),-sin(s.facingAz),0];
+          const camUp=cross(camRight,camForward);
+          const EARTH_DROP=2*6371000*(7/6); // 地球の丸みで沈む量の分母
+          /* 地面の点(東,北,標高)を、目の位置を原点とした3次元ベクトルにする。
+             このベクトルの向きは従来の az/alt と完全に一致し、長さは実距離になる。
+             実距離を持っているので、2点の間を直線で内分できる(=切れる)。 */
+          const groundVec=(eastM,northM,elevation)=>[
+            eastM,northM,
+            elevation-eyeElevationNow-(eastM*eastM+northM*northM)/EARTH_DROP
+          ];
+          const NEAR_Z_M=.25;   // 目の前これより手前は写せない
+          const CLIP_MARGIN=1.3; // 画面の外側に少し余裕を残して切る
+          const clipHalfX=(W/2)/scale*CLIP_MARGIN, clipHalfY=(H/2)/scale*CLIP_MARGIN;
+          /* 切り取りの面。値が0以上の側を残す。
+             魚眼は180度分が写るので、四辺では切らず手前面だけにする。 */
+          const clipPlanes=useDiagonalFisheye
+            ? [v=>dot(v,camForward)-NEAR_Z_M]
+            : [v=>dot(v,camForward)-NEAR_Z_M,
+               v=>dot(v,camRight)+clipHalfX*dot(v,camForward),
+               v=>clipHalfX*dot(v,camForward)-dot(v,camRight),
+               v=>dot(v,camUp)+clipHalfY*dot(v,camForward),
+               v=>clipHalfY*dot(v,camForward)-dot(v,camUp)];
+          /* 多角形を1枚の面で切る(Sutherland-Hodgman)。 */
+          const clipByPlane=(poly,f)=>{
+            const out=[];
+            for(let i=0;i<poly.length;i++){
+              const a=poly[i],b=poly[(i+1)%poly.length];
+              const da=f(a),db=f(b);
+              if(da>=0) out.push(a);
+              if((da>=0)!==(db>=0)){
+                const k=da/(da-db);
+                out.push([a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k]);
+              }
+            }
+            return out;
+          };
+          const clipToView=(poly)=>{
+            let p=poly;
+            for(const f of clipPlanes){ p=clipByPlane(p,f); if(p.length<3) return null; }
+            return p;
+          };
+          /* 切り取ったあとの頂点を画面座標へ。
+             通常レンズは toXY と同じ式をカメラ座標のまま使う（比なので長さによらない）。
+             魚眼は式が違うので az/alt に戻して toXY に任せる。 */
+          const projectGround=(v)=>{
+            if(useDiagonalFisheye){
+              const flat=Math.hypot(v[0],v[1]);
+              return toXY(norm360(atan2d(v[0],v[1])),Math.atan2(v[2],Math.max(.05,flat))*R2D);
+            }
+            const zc=dot(v,camForward);
+            if(!(zc>1e-6)) return null;
+            return [W/2+dot(v,camRight)/zc*scale, H/2-dot(v,camUp)/zc*scale];
+          };
+          const fillGroundPolygon=(path,poly)=>{
+            const clipped=clipToView(poly);
+            if(!clipped) return false;
+            let started=false;
+            for(const v of clipped){
+              const p=projectGround(v);
+              if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) return false;
+              if(started) path.lineTo(p[0],p[1]); else { path.moveTo(p[0],p[1]); started=true; }
+            }
+            if(!started) return false;
+            path.closePath();
+            return true;
+          };
+          /* 枕木は線なので、手前面だけで切ってから引く。 */
+          const strokeGroundSegment=(path,a,b)=>{
+            const fa=dot(a,camForward)-NEAR_Z_M, fb=dot(b,camForward)-NEAR_Z_M;
+            if(fa<0&&fb<0) return;
+            let p=a,q=b;
+            if(fa<0){ const k=fa/(fa-fb); p=[a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k]; }
+            else if(fb<0){ const k=fb/(fb-fa); q=[b[0]+(a[0]-b[0])*k,b[1]+(a[1]-b[1])*k,b[2]+(a[2]-b[2])*k]; }
+            const p1=projectGround(p),p2=projectGround(q);
+            if(!p1||!p2||!Number.isFinite(p1[0])||!Number.isFinite(p2[0])) return;
+            path.moveTo(p1[0],p1[1]); path.lineTo(p2[0],p2[1]);
+          };
           const TIE_INTERVAL_M=2;                // 枕木の間隔(実寸)
           const pixelsPerDegree=W/Math.max(1,s.fovH);
-          /* 中心の1点を、路面の左右の縁2点に開いて画面座標へ落とす。
-             縁は世界座標で作るので、遠近法に正しく従った幅になる。 */
-          const edgePair=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
+          /* 遠くで細くなりすぎて消えないよう、画面上0.45画素分の幅は実寸で確保する。 */
+          const minHalfMetresAt=(distanceM)=>.45*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          const NEAR_BLEND_M=25;
+          const CROSS_SLOPE_BASE_M=10;
+          /* 1つの断面を、左右の縁と中心の「実寸の3次元ベクトル」で返す。
+             ここでは投影も視野の判定もしない。写るかどうかは切り取りが決める。 */
+          const sectionAt=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
             const distanceM=Math.hypot(eastM,northM);
-            if(distanceM<.4||distanceM>roadRangeM) return null;
+            if(distanceM>roadRangeM) return null;
             const az=norm360(atan2d(eastM,northM));
             const distanceKm=distanceM/1000;
-            const elevation=rayBaseElevationAt(az,distanceKm);
+            /* 足元の標高をDEMから引くと、見かけの高度が暴れる。
+               高度角は atan(高さの差 ÷ 距離) なので、距離1mでは
+               DEMの誤差30cmがそのまま17度の狂いになる。
+               DEMの粒は約8mなので、そもそも足元の地面は表現できない。
+               自分が立っている場所の地面の高さは分かっているので、
+               近いうちはそちらを使い、離れるにつれてDEMへ滑らかに移す。 */
+            let elevation=distanceM<.5?footElev:rayBaseElevationAt(az,distanceKm);
             if(!Number.isFinite(elevation)) return null;
-            const alt=altFromElevation(elevation,distanceM);
-            const surface=visibleAltAt(az,distanceKm);
-            /* 尾根の裏は出さない。ただし高精細モードでは地面が本来の
-               細かさを取り戻すため、山を切り開いた道路の手前側の土手が
-               路面より高くなり、普段は見えていた区間まで消えてしまう。
-               道幅程度の段差は遠慧する。本当に尾根の裏なら差はもっと大きい。 */
-            const hideMargin=highDetailOn?Math.max(.15,Math.atan2(3,Math.max(1,distanceM))*R2D):.15;
-            if(Number.isFinite(surface)&&alt<surface-hideMargin) return null;
-            /* 路面を横断方向の傾きに合わせる。
-
-               以前は「路面は水平」とみなして左右の縁に中心と同じ標高を使っていた。
-               平地ならそれで合うが、山の斜面では本来左右で高さが違うので、
-               路面が水平な板になって谷側が地面から浮いて見えていた。
-
-               といって縁そのものの標高を引くと、DEMの粒(約8m)より道幅が狭い所で
-               隣り合う断面ごとに値が跳ねて路面がねじれる。
-               そこで道幅より広い基線(片剁10m)で横断勾配だけを測り、
-               その傾きを道幅分だけ適用する。DEMの粒より広く取るので値が安定する。 */
-            const CROSS_SLOPE_BASE_M=10;
+            if(distanceM<NEAR_BLEND_M&&Number.isFinite(footElev)){
+              const w=distanceM/NEAR_BLEND_M;
+              elevation=footElev*(1-w)+elevation*w;
+            }
+            /* 尾根の裏は出さない。ただし足元(25m以内)は、標高を自分の地面へ
+               寄せている分だけDEMの地面より低く出るので、自分自身の地面に
+               隠されたことになってしまう。この範囲では隠れ判定をしない。 */
+            if(distanceM>=NEAR_BLEND_M){
+              const alt=altFromElevation(elevation,distanceM);
+              const surface=visibleAltAt(az,distanceKm);
+              /* 高精細モードでは地面が本来の細かさを取り戻すため、山を切り開いた
+                 道路の手前側の土手が路面より高くなる。道幅程度の段差は遠慮する。 */
+              const hideMargin=highDetailOn?Math.max(.15,Math.atan2(3,Math.max(1,distanceM))*R2D):.15;
+              if(Number.isFinite(surface)&&alt<surface-hideMargin) return null;
+            }
+            /* 路面を横断方向の傾きに合わせる。道幅より広い基線(片奥10m)で
+               横断勾配だけを測り、その傾きを道幅分だけ適用する。
+               DEMの粒より広く取るので値が安定する。 */
             const elevAtOffset=(ox,oy)=>{
               const d=Math.hypot(ox,oy);
               if(d<.4) return NaN;
@@ -17021,42 +17424,25 @@ function drawPhoto(ctx,s){
             const downElev=elevAtOffset(eastM-perpEast*CROSS_SLOPE_BASE_M,northM-perpNorth*CROSS_SLOPE_BASE_M);
             let crossGrade=0;
             if(Number.isFinite(upElev)&&Number.isFinite(downElev)){
-              // 崖のような極端な値で路面が立ち上がらないよう頭打ちする。
-              crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-1,1);
+              /* 道路としてありえる範囲(±15%)で頭打ちにする。 */
+              crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-.15,.15);
             }
-            const sides=[];
-            for(const sign of [1,-1]){
-              const ex=eastM+perpEast*halfWidth*sign, ny=northM+perpNorth*halfWidth*sign;
-              const edgeDistance=Math.max(1,Math.hypot(ex,ny));
-              const edgeAz=norm360(atan2d(ex,ny));
-              const edgeAlt=altFromElevation(elevation+crossGrade*halfWidth*sign,edgeDistance);
-              const p=toXY(edgeAz,edgeAlt);
-              if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){sides.length=0;break;}
-              sides.push(p);
-            }
-            const centre=toXY(az,alt);
-            if(!centre||!Number.isFinite(centre[0])) return null;
-            /* 足元では道幅の見かけの角度が画角より広くなり、左右の縁が投影できない。
-               そこで断面ごと捨てると、立っている道が足元だけ丸ごと消えて
-               地面の緑で塗り潰されてしまう。縁が作れないときは、中心点から
-               画面上の法線方向へ道幅ぶんずらして代用する(はみ出しはCanvasが切る)。 */
-            const halfPx=Math.atan2(halfWidth,Math.max(.4,distanceM))*R2D*pixelsPerDegree;
-            return {left:sides[0]||null,right:sides[1]||null,centre,distanceM,halfPx};
-          };
-          /* 2つの断面から四角形の4隅を得る。縁が無い断面は画面上の法線で作る。 */
-          const ribbonCorners=(previous,current)=>{
-            let nx=current.centre[0]-previous.centre[0], ny=current.centre[1]-previous.centre[1];
-            const length=Math.hypot(nx,ny);
-            // 進行方向を90度回したものが道幅の向き。長さが取れなければ水平とみなす。
-            let ux=length>.001?-ny/length:1, uy=length>.001?nx/length:0;
-            const sideOf=(section,which)=>{
-              const real=which<0?section.left:section.right;
-              if(real) return real;
-              const sign=which<0?1:-1;
-              return [section.centre[0]+ux*section.halfPx*sign,section.centre[1]+uy*section.halfPx*sign];
+            return {
+              centre:groundVec(eastM,northM,elevation),
+              left:groundVec(eastM+perpEast*halfWidth,northM+perpNorth*halfWidth,elevation+crossGrade*halfWidth),
+              right:groundVec(eastM-perpEast*halfWidth,northM-perpNorth*halfWidth,elevation-crossGrade*halfWidth),
+              distanceM
             };
-            return {pl:sideOf(previous,-1),cl:sideOf(current,-1),cr:sideOf(current,1),pr:sideOf(previous,1)};
           };
+          const mixVec=(a,b,f)=>[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f,a[2]+(b[2]-a[2])*f];
+          /* 2つの断面から四角形の4隅を得る。
+             frac=1 で道幅いっぱい、小さくすると中央寄りの細い帯になる。 */
+          const ribbonQuad=(previous,current,frac)=>[
+            mixVec(previous.centre,previous.left,frac),
+            mixVec(current.centre,current.left,frac),
+            mixVec(current.centre,current.right,frac),
+            mixVec(previous.centre,previous.right,frac)
+          ];
           /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
              違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
              模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
@@ -17084,31 +17470,26 @@ function drawPhoto(ctx,s){
                 const f=s/steps;
                 const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
                 const here=travelM+segmentM*f;
-                const current=edgePair(eastM,northM,perpEast,perpNorth,halfWidth);
+                const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth);
                 if(!current){previous=null;continue;}
-                if(previous&&Math.abs(current.centre[0]-previous.centre[0])<W*.5){
-                  // 前の断面との間を四角形1枚として塗る。距離でバケツ分けして濃さを変える。
+                if(previous){
+                  // 前の断面との間を1枚の四角形として塗る。距離でバケツ分けして濃さを変える。
                   const bucket=roadBucketOf(current.distanceM);
-                  const path=fillPaths[bucket];
-                  const corner=ribbonCorners(previous,current);
-                  path.moveTo(corner.pl[0],corner.pl[1]);
-                  path.lineTo(corner.cl[0],corner.cl[1]);
-                  path.lineTo(corner.cr[0],corner.cr[1]);
-                  path.lineTo(corner.pr[0],corner.pr[1]);
-                  path.closePath();
+                  fillGroundPolygon(fillPaths[bucket],ribbonQuad(previous,current,1));
                   if(markKind==="centre"){
                     // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
                     const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
                     if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
-                      markPaths[bucket].moveTo(previous.centre[0],previous.centre[1]);
-                      markPaths[bucket].lineTo(current.centre[0],current.centre[1]);
+                      /* 線ではなく、幅15cmの帯として面で塗る。
+                         実寸なので奥へ行くほど細くなり、それが奥行きになる。 */
+                      const wantHalf=Math.max(CENTRE_HALF_M,minHalfMetresAt(current.distanceM));
+                      const frac=Math.min(1,wantHalf/Math.max(.05,halfWidth));
+                      fillGroundPolygon(markPaths[bucket],ribbonQuad(previous,current,frac));
                     }
                   }else if(markKind==="ties"){
                     // 枕木は実距離で等間隔。奥ほど詰まるので、そのまま奥行きの手がかりになる。
                     if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(here/TIE_INTERVAL_M)){
-                      const tie=ribbonCorners(previous,current);
-                      markPaths[bucket].moveTo(tie.cl[0],tie.cl[1]);
-                      markPaths[bucket].lineTo(tie.cr[0],tie.cr[1]);
+                      strokeGroundSegment(markPaths[bucket],current.left,current.right);
                     }
                   }
                 }
@@ -17159,10 +17540,9 @@ function drawPhoto(ctx,s){
             tctx.fill(roadPaths[i]);
             const centreAlpha=lerp(.45,.8,terrainDayFactor)*fade;
             if(centreAlpha>=.02){
-              tctx.strokeStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
-              tctx.lineWidth=Math.max(.8,1.6*fade);
-              tctx.stroke(roadCentrePaths[i]);
-              tctx.lineWidth=1;
+              // 幅15cmの帯を面で塗る。線幅固定のストロークと違い、奥で細くなる。
+              tctx.fillStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
+              tctx.fill(roadCentrePaths[i]);
             }
           }
         }
@@ -18781,6 +19161,8 @@ function applyCanvasSize(){
   if(el.compassStrip.width!==targetW) el.compassStrip.width=targetW;
   if(el.meteorCanvas.width!==targetW) el.meteorCanvas.width=targetW;
   if(el.meteorCanvas.height!==targetH) el.meteorCanvas.height=targetH;
+  if(el.walkerFxCanvas.width!==targetW) el.walkerFxCanvas.width=targetW;
+  if(el.walkerFxCanvas.height!==targetH) el.walkerFxCanvas.height=targetH;
 }
 
 /* AR中の姿勢更新専用。
@@ -19468,6 +19850,10 @@ function startWalkLoop(){
 /* 移動を終えたら、通常の取得経路を一度通して水域・海岸線・山名を本来の精度へ戻す。 */
 function endWalk(){
   if(walkRaf){cancelAnimationFrame(walkRaf);walkRaf=0;}
+  /* 旋回だけで終わったときは、このあと誰も描き直さない。
+     回り込んだ姿のまま固まってしまうので、1回だけ描き直す。
+     移動していたときは下の地形取得で描き直されるので、二重には走らせない。 */
+  if(pixelWalkerVisible&&!arActive&&pixelWalkerPoseStale) update();
   if(!walkMoved) return;
   walkMoved=false;
   const lat=+el.lat.value, lon=+el.lon.value;
