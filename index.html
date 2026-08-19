@@ -758,19 +758,47 @@
     width:11px;
     height:18px;
   }
+  /* 数字の下に mm を中央揃えで置く。
+     1200mmまで伸ばすと横一列では幅を食うので、2行にして幅を押さえる。 */
   .focal-badge{
     font-family:'IBM Plex Mono',monospace;
     font-size:14px;
     font-weight:700;
     color:var(--star-white);
     white-space:nowrap;
+    display:inline-flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    line-height:1.02;
+    cursor:pointer;
   }
   .focal-badge-unit{
-    font-size:10px;
+    display:block;
+    font-size:9px;
     font-weight:500;
     color:var(--dim);
-    margin-left:1px;
+    margin-left:0;
+    letter-spacing:.02em;
   }
+  /* バッジの真下に出す焦点距離のスライダー。 */
+  .focal-quick{
+    position:absolute;z-index:1200;display:none;
+    padding:9px 12px 10px;border-radius:12px;
+    background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.34);
+    -webkit-backdrop-filter:blur(16px) saturate(130%);
+    backdrop-filter:blur(16px) saturate(130%);
+    box-shadow:0 6px 20px rgba(0,0,0,.42);
+    min-width:190px;
+  }
+  .focal-quick.show{display:block;}
+  .focal-quick-head{
+    display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    font:700 11px/1.2 'Inter',sans-serif;color:var(--star-white);margin-bottom:7px;
+  }
+  .focal-quick-value{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--core-amber);}
+  .focal-quick input[type=range]{width:100%;accent-color:var(--core-amber);}
   .focal-badge.fisheye-mode{
     display:inline-flex;
     flex-direction:column;
@@ -2165,6 +2193,8 @@
   .dt-time-label{justify-content:space-between;}
   .dt-time-label .val{font-size:16px;color:var(--core-amber);font-weight:600;}
   .next-day-label{font-size:12px;}
+  /* 秒だけ同じ色系のままわずかに薄くし、時分と見分けられるようにする。 */
+  .clock-sec{opacity:.66;font-size:.86em;}
   .dt-time-label-left{display:flex;align-items:baseline;gap:9px;}
   .time-range-mode-btn{
     flex:none;
@@ -2822,7 +2852,7 @@
           <div class="field">
             <label class="top">焦点距離 <span class="val mono" id="flVal">—</span></label>
             <input type="range" id="focalRange" min="0" max="100" step="1" value="27" aria-label="焦点距離">
-            <input type="hidden" id="focalLength" min="8" max="600" value="24">
+            <input type="hidden" id="focalLength" min="8" max="1200" value="24">
           </div>
           <div class="field">
             <label class="top">絞り <span class="val mono" id="apVal">—</span></label>
@@ -3172,7 +3202,11 @@
               <button id="iconInfoBtn" type="button" class="constellation-toggle-btn info-toggle-btn header-circle-btn" aria-label="アイコンの説明を表示" aria-pressed="false" title="アイコン説明">i</button>
               <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn header-circle-btn" aria-label="縦横を切り替える"><span class="orientation-icon" aria-hidden="true"></span></button>
               <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn header-circle-btn">AR</button>
-              <span class="focal-badge" id="focalBadge">24<span class="focal-badge-unit">mm</span></span>
+              <span class="focal-badge" id="focalBadge" role="button" tabindex="0" aria-label="焦点距離を変える">24<span class="focal-badge-unit">mm</span></span>
+              <div class="focal-quick" id="focalQuick" aria-hidden="true">
+                <div class="focal-quick-head"><span>焦点距離</span><span class="focal-quick-value" id="focalQuickVal">24mm</span></div>
+                <input type="range" id="focalQuickRange" min="0" max="100" step="1" value="27" aria-label="焦点距離">
+              </div>
               <div class="display-options-popup" id="displayOptionsPopup">
                 <button id="constellationToggleBtn" type="button" class="constellation-toggle-btn active">星座</button>
                 <button id="planetToggleBtn" type="button" class="constellation-toggle-btn active">惑星</button>
@@ -3511,7 +3545,7 @@
               </div>
             </div>
             <div class="dt-col">
-              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">15時間モード</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
+              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
               <div class="timeline-row">
                 <span class="timeline-icon">🌙</span>
                 <canvas class="timeline-bar-canvas" id="moonTimelineBar" width="760" height="44"></canvas>
@@ -3594,7 +3628,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="619-time-fine";
+const APP_VERSION="622-fine-30min";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4412,7 +4446,7 @@ const el={
   jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   mwStartTimeLabel:$("mwStartTimeLabel"), mwEndTimeLabel:$("mwEndTimeLabel"),
-  focalLength:$("focalLength"), focalRange:$("focalRange"), flVal:$("flVal"), focalBadge:$("focalBadge"),
+  focalLength:$("focalLength"), focalRange:$("focalRange"), focalQuick:$("focalQuick"), focalQuickRange:$("focalQuickRange"), focalQuickVal:$("focalQuickVal"), flVal:$("flVal"), focalBadge:$("focalBadge"),
   aperture:$("aperture"), apVal:$("apVal"),
   isoSlider:$("isoSlider"), isoVal:$("isoVal"),
   shutter:$("shutter"), ssVal:$("ssVal"),
@@ -4593,10 +4627,7 @@ let fineTimeCenter=null;   // 微調整モードに入ったときの中心時�
      ±1分(120秒) → 1画素 0.4秒
    600mmでは空が1秒に約1.5画素動くので、±1分なら指で合わせられる。 */
 function fineTimeHalfMin(){
-  const focal=Math.max(1,+el.focalLength.value||24);
-  if(focal>=300) return 1;
-  if(focal>=100) return 2;
-  return 5;
+  return 15;   // 前後15分（合計30分）
 }
 function getTimeDisplayRange(){
   if(timeRangeMode==="fine"){
@@ -4670,9 +4701,10 @@ function applyTimeRangeMode(){
   renderTickRow();
   renderSliderTickMarks();
   updateRangeHint();
+  /* ボタンには「次に切り替わる先」ではなく「今のモード」を出す。 */
   el.timeRangeModeBtn.textContent =
-    timeRangeMode==="30h" ? "15時間モード" :
-    timeRangeMode==="15h" ? "微調整モード" : "30時間モード";
+    timeRangeMode==="30h" ? "30時間モード" :
+    timeRangeMode==="15h" ? "15時間モード" : "微調整モード";
 }
 el.timeRangeModeBtn.addEventListener("click",()=>{
   /* 30時間 → 15時間 → 微調整 → 30時間 と循環する。
@@ -4686,6 +4718,7 @@ el.timeRangeModeBtn.addEventListener("click",()=>{
 /* 焦点距離を変えたら時刻の刻みも合わせ直す。 */
 if(el.focalLength) el.focalLength.addEventListener("input",()=>{ syncTimeSliderStep(); updateRangeHint(); });
 syncTimeSliderStep();
+applyTimeRangeMode();   // 起動時にもボタンの表示を今のモードへ揃える
 renderTickRow();
 renderSliderTickMarks();
 updateRangeHint();
@@ -4845,6 +4878,50 @@ el.focalRange.addEventListener("input",()=>{
 });
 /* センサーを変えても画角が変わるので、そこでも合わせ直す。 */
 el.sensor.addEventListener("input",syncAimStepControls);
+
+/* シミュレーション画面の焦点距離バッジを押すと、真下にスライダーを出す。
+   設定パネルを開かなくても、見ながら素早く変えられるようにするため。 */
+function positionFocalQuick(){
+  if(!el.focalQuick||!el.focalBadge) return;
+  const badge=el.focalBadge.getBoundingClientRect();
+  const parent=el.focalQuick.offsetParent?el.focalQuick.offsetParent.getBoundingClientRect():{left:0,top:0};
+  const width=el.focalQuick.offsetWidth||190;
+  let left=badge.left-parent.left+badge.width/2-width/2;
+  const maxLeft=(el.focalQuick.offsetParent?el.focalQuick.offsetParent.clientWidth:window.innerWidth)-width-8;
+  left=Math.max(8,Math.min(left,Math.max(8,maxLeft)));
+  el.focalQuick.style.left=`${Math.round(left)}px`;
+  el.focalQuick.style.top=`${Math.round(badge.bottom-parent.top+6)}px`;
+}
+function setFocalQuickOpen(open){
+  if(!el.focalQuick) return;
+  el.focalQuick.classList.toggle("show",!!open);
+  el.focalQuick.setAttribute("aria-hidden",String(!open));
+  if(open){ syncFocalRangeFromValue(); positionFocalQuick(); }
+}
+if(el.focalBadge){
+  el.focalBadge.addEventListener("click",e=>{
+    e.stopPropagation();
+    setFocalQuickOpen(!el.focalQuick.classList.contains("show"));
+  });
+  el.focalBadge.addEventListener("keydown",e=>{
+    if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setFocalQuickOpen(!el.focalQuick.classList.contains("show")); }
+  });
+}
+if(el.focalQuickRange){
+  el.focalQuick.addEventListener("click",e=>e.stopPropagation());
+  el.focalQuickRange.addEventListener("input",()=>{
+    const mm=focalPositionToMm(el.focalQuickRange.value);
+    if(String(mm)===String(el.focalLength.value)) return;
+    el.focalLength.value=String(mm);
+    if(mobileLensMode==="fisheye") fisheyeLensFocalLength=mm; else normalLensFocalLength=mm;
+    syncAimStepControls();
+    if(el.focalQuickVal) el.focalQuickVal.textContent=`${mm}mm`;
+    if(el.focalRange) el.focalRange.value=String(focalMmToPosition(mm));
+    el.focalLength.dispatchEvent(new Event("input",{bubbles:true}));
+  });
+  document.addEventListener("click",()=>setFocalQuickOpen(false));
+  window.addEventListener("resize",()=>{ if(el.focalQuick.classList.contains("show")) positionFocalQuick(); });
+}
 [el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp]
   .forEach(inp=>inp.addEventListener("input",scheduleUpdate));
 
@@ -5026,21 +5103,39 @@ let fisheyeLensFocalLength=15;
    ========================================================= */
 const FOCAL_MID_MM=50;
 function focalRangeIsFisheye(){ return mobileLensMode==="fisheye"; }
+const FOCAL_MAX_MM=1200;
+/* 右半分は倍率で伸ばす。上へ行くほど刻みも粗くするので、
+   50〜1200mmのどこでも実用的な値を選べる。 */
+function focalSnapStep(value){
+  if(value<100) return 5;
+  if(value<200) return 10;
+  if(value<400) return 25;
+  if(value<800) return 50;
+  return 100;
+}
 function focalPositionToMm(position){
   const pos=clamp(Math.round(+position||0),0,100);
   if(focalRangeIsFisheye()) return clamp(Math.round(8+pos/100*8),8,16);
   if(pos<=50) return clamp(8+Math.round(pos/50*42),8,FOCAL_MID_MM);
-  return clamp(FOCAL_MID_MM+Math.round((pos-50)/50*55)*10,FOCAL_MID_MM,600);
+  const t=(pos-50)/50;
+  const raw=FOCAL_MID_MM*Math.pow(FOCAL_MAX_MM/FOCAL_MID_MM,t);
+  const step=focalSnapStep(raw);
+  return clamp(Math.round(raw/step)*step,FOCAL_MID_MM,FOCAL_MAX_MM);
 }
 function focalMmToPosition(mm){
-  const value=clamp(Math.round(+mm||24),8,600);
+  const value=clamp(Math.round(+mm||24),8,FOCAL_MAX_MM);
   if(focalRangeIsFisheye()) return clamp(Math.round((clamp(value,8,16)-8)/8*100),0,100);
   if(value<=FOCAL_MID_MM) return clamp(Math.round((value-8)/42*50),0,50);
-  return clamp(50+Math.round((value-FOCAL_MID_MM)/10*(50/55)),50,100);
+  const t=Math.log(value/FOCAL_MID_MM)/Math.log(FOCAL_MAX_MM/FOCAL_MID_MM);
+  return clamp(50+Math.round(t*50),50,100);
 }
 /* 隠し入力のmmから、ツマの位置を合わせ直す。
    コード側が el.focalLength.value を書き換えたときに呼ぶ。 */
 function syncFocalRangeFromValue(){
+  if(el.focalQuickRange){
+    el.focalQuickRange.value=String(focalMmToPosition(+el.focalLength.value||24));
+    if(el.focalQuickVal) el.focalQuickVal.textContent=`${+el.focalLength.value||24}mm`;
+  }
   if(!el.focalRange) return;
   el.focalRange.value=String(focalMmToPosition(+el.focalLength.value||24));
   // 焦点距離が変わったら、方位・仰角の刻みも画角に合わせ直す。
@@ -5055,9 +5150,9 @@ function applyMobileLensFocalRange(){
     el.focalLength.value=String(clamp(Math.round(fisheyeLensFocalLength),8,16));
   } else {
     el.focalLength.min="8";
-    el.focalLength.max="600";
+    el.focalLength.max=String(FOCAL_MAX_MM);
     el.focalLength.step="1";
-    el.focalLength.value=String(clamp(Math.round(normalLensFocalLength),8,600));
+    el.focalLength.value=String(clamp(Math.round(normalLensFocalLength),8,FOCAL_MAX_MM));
   }
   syncFocalRangeFromValue();
 }
@@ -5135,7 +5230,7 @@ el.mobileLensModeBtn.addEventListener("click",()=>{
     fisheyeLensFocalLength=clamp(+el.focalLength.value||15,8,16);
     mobileLensMode="normal";
   } else {
-    normalLensFocalLength=clamp(+el.focalLength.value||24,8,600);
+    normalLensFocalLength=clamp(+el.focalLength.value||24,8,FOCAL_MAX_MM);
     mobileLensMode="fisheye";
   }
   applyMobileLensFocalRange();
@@ -5380,8 +5475,8 @@ function updateSimulationClock(minutes,seconds){
   const d=new Date(Date.UTC(baseY,baseMo-1,baseDa+dayOffset));
   const weekdays=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"];
   el.simulationClockDate.textContent=`${d.getUTCFullYear()}.${String(d.getUTCMonth()+1).padStart(2,"0")}.${String(d.getUTCDate()).padStart(2,"0")}${weekdays[d.getUTCDay()]}`;
-  el.simulationClockTime.textContent=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
-    +(Number.isFinite(seconds)?`:${String(seconds).padStart(2,"0")}`:"");
+  el.simulationClockTime.innerHTML=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
+    +(Number.isFinite(seconds)?`<span class="clock-sec">:${String(Math.floor(seconds)).padStart(2,"0")}</span>`:"");
 }
 syncSimulationClockVisibility();
 el.mobileClockToggleBtn.addEventListener("click",()=>{
@@ -7079,7 +7174,7 @@ function updatePlaybackClockLabel(minutes){
   const ss=Math.floor((minutes-rounded)*60);
   el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")
     +`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
-    +(showSeconds?`:${String(ss).padStart(2,"0")}`:"");
+    +(showSeconds?`<span class="clock-sec">:${String(ss).padStart(2,"0")}</span>`:"");
   updateSimulationClock(minutes,showSeconds?ss:null);
 }
 /* =========================================================
@@ -7177,7 +7272,11 @@ function stopPlayback(commit=true){
   el.playPauseBtn.classList.remove("playing");
   if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
   if(commit){
-    el.timeSlider.value=clamp(Math.round(playbackVisualMinutes),0,1800);
+    /* 以前は分単位へ丸めていたので、一時停止するだけで
+       最大27秒も飛んでいた。今の刻み（分/秒/0.1秒）へ丸める。 */
+    const stepMin=(typeof timeStepMinutes==="function")?timeStepMinutes():1;
+    const snapped=Math.round(playbackVisualMinutes/stepMin)*stepMin;
+    el.timeSlider.value=clamp(+snapped.toFixed(6),0,1800);
     update();
   }
 }
@@ -9333,16 +9432,24 @@ function computeState(){
      数字が変わらず「動いていない」と見える。 */
   const timeStep=(typeof timeStepMinutes==="function")?timeStepMinutes():1;
   const secondsPart=(totalTenthSec-wholeMin*600)/10;
+  /* 秒は整数で表示する。小数以下は裏で持ったまま。
+     同じ色系のまま少しだけ薄くして、時分と見分けられるようにする。 */
   const secondsText=timeStep>=1?""
-    :(timeStep>=1/60?`:${String(Math.floor(secondsPart)).padStart(2,"0")}`
-                    :`:${secondsPart.toFixed(1).padStart(4,"0")}`);
+    :`<span class="clock-sec">:${String(Math.floor(secondsPart)).padStart(2,"0")}</span>`;
   el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}${secondsText}`;
   const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
   const timeWeekdayCircled=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"][dispDateObj.getUTCDay()];
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}${timeWeekdayCircled}`;
-  updateSimulationClock(minutes);
+  // 大きい時計にも、刻みが分未満のときは秒を出す。
+  updateSimulationClock(minutes,timeStep>=1?null:Math.floor(secondsPart));
 
-  const utcMs = Date.UTC(y,(mo-1),da,hh,mm,0) - tz*3600000;
+  /* 時刻を hh と mm だけから組み立てていたため、
+     スライダーの分未満（秒・0.1秒）が丸ごと捨てられていた。
+     時計の表示だけが秒まで動いて、空は1分単位でしか動かない状態。
+     微調整モードで月が小刻みに動かなかったのはこれが原因。
+     再生中は jdForSliderMinutes を使っていて小数を保っていたので、
+     「再生すれば滀らかだが、手で合わせると動かない」という見え方になっていた。 */
+  const utcMs = Date.UTC(y,(mo-1),da,0,0,0) + minutes*60000 - tz*3600000;
   const dateUTC = new Date(utcMs);
   const jd = toJulianDay(dateUTC);
 
@@ -12939,14 +13046,23 @@ function drawPhoto(ctx,s){
     if(!arActive) ctx.setLineDash([5,5]); // ARモード中は点線ではなく通常の実線にする
     ctx.beginPath();
     let drawing=false;
+    /* 軌跡は20分間隔で持っている。600mmだと20分が画面の約1,700画素分になるので、
+       以前の「画面±60画素を外れたら線を切る」だと、連続する2点が
+       ともに枠内に入ることがほぼ無く、線が1本も引かれなかった（約282mm以上）。
+       画面外の点も繋いでしまって、はみ出しはCanvasの切り抜きに任せる。
+       線を切るのは、投影が反対側へ回り込んだときだけにする。 */
+    const jumpLimit=Math.max(W,H)*3;
+    let lastX=NaN,lastY=NaN;
     path.forEach(p=>{
       if(p.alt<-3){ drawing=false; return; }
       const pt=toXY(p.az,p.alt);
-      if(!pt){ drawing=false; return; }
+      if(!pt||!Number.isFinite(pt[0])||!Number.isFinite(pt[1])){ drawing=false; return; }
       const [x,y]=pt;
-      if(x<-60||x>W+60||y<-60||y>H+60){ drawing=false; return; }
+      if(Math.abs(x)>W*40||Math.abs(y)>H*40){ drawing=false; return; }
+      if(drawing&&(Math.abs(x-lastX)>jumpLimit||Math.abs(y-lastY)>jumpLimit)) drawing=false;
       if(!drawing){ ctx.moveTo(x,y); drawing=true; }
       else ctx.lineTo(x,y);
+      lastX=x;lastY=y;
     });
     ctx.stroke();
     ctx.setLineDash([]);
