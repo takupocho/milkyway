@@ -2821,7 +2821,8 @@
         <div class="ctrl-group-body">
           <div class="field">
             <label class="top">焦点距離 <span class="val mono" id="flVal">—</span></label>
-            <input type="range" id="focalLength" min="8" max="50" step="1">
+            <input type="range" id="focalRange" min="0" max="100" step="1" value="27" aria-label="焦点距離">
+            <input type="hidden" id="focalLength" min="8" max="600" value="24">
           </div>
           <div class="field">
             <label class="top">絞り <span class="val mono" id="apVal">—</span></label>
@@ -2958,12 +2959,9 @@
         <h2 class="ctrl-group-toggle">アニメーション<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <div class="field">
-            <label class="top">再生速度</label>
-            <select id="animationSpeedSelect">
-              <option value="10">10倍速</option>
-              <option value="20" selected>20倍速</option>
-              <option value="30">30倍速</option>
-            </select>
+            <label class="top">再生速度 <span class="val mono" id="animationSpeedVal">20倍速</span></label>
+            <input type="range" id="animationSpeedRange" min="0" max="100" step="1" value="33" aria-label="再生速度">
+            <input type="hidden" id="animationSpeedSelect" value="20">
           </div>
           <button id="lockAzToGcBtn" type="button" class="toggle-btn"><span>🌌 方位を天の川の中心に固定</span><span id="lockAzToGcState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <div style="display:flex;gap:8px;margin-top:8px;">
@@ -3596,7 +3594,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="608-osm-fewer-calls";
+const APP_VERSION="619-time-fine";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4414,7 +4412,7 @@ const el={
   jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   mwStartTimeLabel:$("mwStartTimeLabel"), mwEndTimeLabel:$("mwEndTimeLabel"),
-  focalLength:$("focalLength"), flVal:$("flVal"), focalBadge:$("focalBadge"),
+  focalLength:$("focalLength"), focalRange:$("focalRange"), flVal:$("flVal"), focalBadge:$("focalBadge"),
   aperture:$("aperture"), apVal:$("apVal"),
   isoSlider:$("isoSlider"), isoVal:$("isoVal"),
   shutter:$("shutter"), ssVal:$("ssVal"),
@@ -4426,7 +4424,7 @@ const el={
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
-  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
+  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), animationSpeedRange:$("animationSpeedRange"), animationSpeedVal:$("animationSpeedVal"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileDroneModeBtn:$("mobileDroneModeBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
@@ -4577,20 +4575,60 @@ el.kmzBuildingUseKmlBtn.addEventListener("click",()=>{
 el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzBuildingRestoreToken++;kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";setKmzBuildingStatus("建物を削除しました。別のKMZを読み込めます。");refreshKmzBuildingControls();});
 refreshKmzBuildingControls(false);
 
-/* 時刻スライダーの表示モード: 30時間(0:00〜翌6:00、3時間毎の目盛り) / 15時間(16:00〜翌7:00、1時間毎の目盛り) */
-let is15hMode=false;
+/* 時刻スライダーの表示モード。
+   30時間(0:00〜翌6:00) / 15時間(16:00〜翌7:00) / 微調整(現在時刻の前後5分)
+
+   微調整を追加した理由（v619）。
+   600mmの水平画角は3.4°。空は1秒に約0.0042°動くので、
+   1分進むと月は画面の約7割も飛ぶ。分単位の目盛りでは合わせられない。
+   ただし刻みを細かくしても、30時間分を横幅に入れたスライダーでは
+   1画素が約6分になるので、指では絶対に合わせられない。
+   だから「範囲を狭める」モードを用意する。前後5分なら、
+   スライダー全幅で600秒。300画素なら1画素＝2秒で、指で合わせられる。 */
+let timeRangeMode="30h";   // "30h" | "15h" | "fine"
+let fineTimeCenter=null;   // 微調整モードに入ったときの中心時刻(分)
+/* 微調整モードで見る幅。望遠ほど狭くする。
+   スライダーの横幅が約300画素だとして、
+     ±5分(600秒) → 1画素 2.0秒
+     ±1分(120秒) → 1画素 0.4秒
+   600mmでは空が1秒に約1.5画素動くので、±1分なら指で合わせられる。 */
+function fineTimeHalfMin(){
+  const focal=Math.max(1,+el.focalLength.value||24);
+  if(focal>=300) return 1;
+  if(focal>=100) return 2;
+  return 5;
+}
 function getTimeDisplayRange(){
-  return is15hMode ? {start:16*60, end:31*60} : {start:0, end:30*60};
+  if(timeRangeMode==="fine"){
+    const center=Number.isFinite(fineTimeCenter)?fineTimeCenter:+el.timeSlider.value||0;
+    return {start:Math.max(0,center-fineTimeHalfMin()),end:Math.min(1800,center+fineTimeHalfMin())};
+  }
+  return timeRangeMode==="15h" ? {start:16*60, end:31*60} : {start:0, end:30*60};
+}
+/* 時刻の刻み。望遠になるほど細かくする。
+   分単位で保持しているので、1秒＝1/60分、0.1秒＝1/600分。 */
+function timeStepMinutes(){
+  const focal=Math.max(1,+el.focalLength.value||24);
+  if(focal>=300) return 1/600;   // 0.1秒
+  if(focal>=100) return 1/60;    // 1秒
+  return 1;                      // 1分
+}
+function syncTimeSliderStep(){
+  const step=timeStepMinutes();
+  const text=step>=1?"1":step.toFixed(6);
+  if(el.timeSlider.step!==text) el.timeSlider.step=text;
 }
 function renderTickRow(){
   el.tickRow.innerHTML="";
   const range=getTimeDisplayRange();
-  const step=is15hMode?60:180; // 15時間モードは1時間毎、30時間モードは3時間毎
+  const step=timeRangeMode==="fine"?1:(timeRangeMode==="15h"?60:180); // 微調整は1分毎
   // 目盛りマーク(.slider-tick-marks)と同じ7pxインセットを使い、数字がマークの真下に来るよう揃える
   const trackWidth=Math.max(0,(el.tickRow.clientWidth||el.tickRow.offsetWidth||0)-14);
   for(let m=range.start; m<=range.end; m+=step){
     const span=document.createElement("span");
-    span.textContent=String(Math.floor(m/60)%24);
+    span.textContent=timeRangeMode==="fine"
+      ?`${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(Math.round(m)%60).padStart(2,"0")}`
+      :String(Math.floor(m/60)%24);
     const frac=(m-range.start)/(range.end-range.start);
     span.style.left=`${7+trackWidth*frac}px`;
     el.tickRow.appendChild(span);
@@ -4600,10 +4638,11 @@ function renderSliderTickMarks(){
   el.sliderTickMarks.innerHTML="";
   const range=getTimeDisplayRange();
   const totalSpan=range.end-range.start;
-  for(let m=range.start; m<=range.end; m+=60){ // 1時間毎に目盛りマークを表示
+  const markStep=timeRangeMode==="fine"?1:60;
+  for(let m=range.start; m<=range.end; m+=markStep){ // 1時間毎(微調整は1分毎)に目盛りマーク
     const tick=document.createElement("span");
     const hourOfDay=Math.floor(m/60)%24;
-    if(hourOfDay%3===0) tick.className="major"; // 3時間毎(0,3,6...)は少し大きめの目盛りに
+    if(timeRangeMode==="fine"?false:hourOfDay%3===0) tick.className="major"; // 3時間毎は少し大きめに
     tick.style.left=`${(m-range.start)/totalSpan*100}%`;
     el.sliderTickMarks.appendChild(tick);
   }
@@ -4613,10 +4652,17 @@ function updateRangeHint(){
   const startH=Math.floor(range.start/60)%24;
   const endDayLabel = range.end>=1440 ? "翌 " : "";
   const endH=Math.floor(range.end/60)%24;
-  const modeLabel = is15hMode ? "現在15時間モード" : "現在30時間モード";
+  if(timeRangeMode==="fine"){
+    const step=timeStepMinutes();
+    const unit=step>=1?"1分":(step>=1/60?"1秒":"0.1秒");
+    el.rangeHint.textContent=`現在微調整モード　前後${fineTimeHalfMin()}分を${unit}刻みで合わせられます`;
+    return;
+  }
+  const modeLabel = timeRangeMode==="15h" ? "現在15時間モード" : "現在30時間モード";
   el.rangeHint.textContent = `${modeLabel}　${String(startH).padStart(2,"0")}:00 〜 ${endDayLabel}${String(endH).padStart(2,"0")}:00 まで(日をまたいで指定できます)`;
 }
 function applyTimeRangeMode(){
+  syncTimeSliderStep();
   const range=getTimeDisplayRange();
   el.timeSlider.min=range.start;
   el.timeSlider.max=range.end;
@@ -4624,13 +4670,22 @@ function applyTimeRangeMode(){
   renderTickRow();
   renderSliderTickMarks();
   updateRangeHint();
-  el.timeRangeModeBtn.textContent = is15hMode ? "30時間モード" : "15時間モード";
+  el.timeRangeModeBtn.textContent =
+    timeRangeMode==="30h" ? "15時間モード" :
+    timeRangeMode==="15h" ? "微調整モード" : "30時間モード";
 }
 el.timeRangeModeBtn.addEventListener("click",()=>{
-  is15hMode=!is15hMode;
+  /* 30時間 → 15時間 → 微調整 → 30時間 と循環する。
+     微調整へ入るときは、その時点の時刻を中心にする。 */
+  if(timeRangeMode==="30h") timeRangeMode="15h";
+  else if(timeRangeMode==="15h"){ timeRangeMode="fine"; fineTimeCenter=+el.timeSlider.value||0; }
+  else timeRangeMode="30h";
   applyTimeRangeMode();
   update();
 });
+/* 焦点距離を変えたら時刻の刻みも合わせ直す。 */
+if(el.focalLength) el.focalLength.addEventListener("input",()=>{ syncTimeSliderStep(); updateRangeHint(); });
+syncTimeSliderStep();
 renderTickRow();
 renderSliderTickMarks();
 updateRangeHint();
@@ -4778,6 +4833,18 @@ el.bestTimeBar.addEventListener("click",(e)=>{
 
 [el.focalLength,el.facingAz,el.facingAlt]
   .forEach(inp=>inp.addEventListener("input",scheduleCameraViewUpdate));
+/* ツマを動かしたら、位置をmmへ直して隠し入力へ入れ、
+   従来どおり el.focalLength の input を発火させる。 */
+el.focalRange.addEventListener("input",()=>{
+  const mm=focalPositionToMm(el.focalRange.value);
+  if(String(mm)===String(el.focalLength.value)) return;
+  el.focalLength.value=String(mm);
+  if(mobileLensMode==="fisheye") fisheyeLensFocalLength=mm; else normalLensFocalLength=mm;
+  syncAimStepControls();
+  el.focalLength.dispatchEvent(new Event("input",{bubbles:true}));
+});
+/* センサーを変えても画角が変わるので、そこでも合わせ直す。 */
+el.sensor.addEventListener("input",syncAimStepControls);
 [el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp]
   .forEach(inp=>inp.addEventListener("input",scheduleUpdate));
 
@@ -4942,6 +5009,43 @@ el.mobileSkySearchSelect.addEventListener("change",()=>handleSkySearchSelection(
 let mobileLensMode="normal";
 let normalLensFocalLength=+el.focalLength.value||24;
 let fisheyeLensFocalLength=15;
+/* =========================================================
+   焦点距離のスライダー（v610）
+
+   600mmまで伸ばすにあたり、目盛りを変えた。
+   8〜600をそのまま並べると、天の川で一番使う 8〜50mm が
+   ツマの移動量の7%しか無くなり、実用にならない。
+     左半分 … 8〜50mm を1mm刻み
+     右半分 … 50〜600mm を10mm刻み
+   つまみの真ん中がちょうど 50mm。
+
+   仕組み。見えている range は「位置(0〜100)」で、
+   実際のmmは隠し入力 el.focalLength が持つ。
+   コード内の18か所が el.focalLength.value をmmとして読み書きしているので、
+   そちらは一切変えずに済む。魚眼(8〜16mm)のときは目盛りを均等に戻す。
+   ========================================================= */
+const FOCAL_MID_MM=50;
+function focalRangeIsFisheye(){ return mobileLensMode==="fisheye"; }
+function focalPositionToMm(position){
+  const pos=clamp(Math.round(+position||0),0,100);
+  if(focalRangeIsFisheye()) return clamp(Math.round(8+pos/100*8),8,16);
+  if(pos<=50) return clamp(8+Math.round(pos/50*42),8,FOCAL_MID_MM);
+  return clamp(FOCAL_MID_MM+Math.round((pos-50)/50*55)*10,FOCAL_MID_MM,600);
+}
+function focalMmToPosition(mm){
+  const value=clamp(Math.round(+mm||24),8,600);
+  if(focalRangeIsFisheye()) return clamp(Math.round((clamp(value,8,16)-8)/8*100),0,100);
+  if(value<=FOCAL_MID_MM) return clamp(Math.round((value-8)/42*50),0,50);
+  return clamp(50+Math.round((value-FOCAL_MID_MM)/10*(50/55)),50,100);
+}
+/* 隠し入力のmmから、ツマの位置を合わせ直す。
+   コード側が el.focalLength.value を書き換えたときに呼ぶ。 */
+function syncFocalRangeFromValue(){
+  if(!el.focalRange) return;
+  el.focalRange.value=String(focalMmToPosition(+el.focalLength.value||24));
+  // 焦点距離が変わったら、方位・仰角の刻みも画角に合わせ直す。
+  if(typeof syncAimStepControls==="function") syncAimStepControls();
+}
 function applyMobileLensFocalRange(){
   const fisheyeAvailable=mobileLensMode==="fisheye";
   if(fisheyeAvailable){
@@ -4951,10 +5055,73 @@ function applyMobileLensFocalRange(){
     el.focalLength.value=String(clamp(Math.round(fisheyeLensFocalLength),8,16));
   } else {
     el.focalLength.min="8";
-    el.focalLength.max="50";
+    el.focalLength.max="600";
     el.focalLength.step="1";
-    el.focalLength.value=String(clamp(Math.round(normalLensFocalLength),8,50));
+    el.focalLength.value=String(clamp(Math.round(normalLensFocalLength),8,600));
   }
+  syncFocalRangeFromValue();
+}
+/* =========================================================
+   方位・仰角の刻みを画角に合わせる（v611）
+
+   刻みはずっと1°固定だった。広角なら問題ないが、
+   600mmは水平画角が3.4°しか無いので、1°動かすと画面の29%も飛ぶ。
+   月と建物を重ねるような合わせ方ができなかった。
+
+   画面の横幅をおよそ70〜170等分する刻みにする。
+   広角側では従来どおり1°のままになるよう目盛りを選んである。
+     24mm  … 水平画角73.7° → 刻み 1°（従来どおり）
+     50mm  … 39.6° → 0.5°
+     100mm … 20.4° → 0.2°
+     300mm … 6.9°  → 0.05°
+     600mm … 3.4°  → 0.02°（画面横幅で172段階）
+   ========================================================= */
+function aimStepForFov(fovDeg){
+  const fov=Number.isFinite(fovDeg)&&fovDeg>0?fovDeg:60;
+  /* 画角5°以下（およそ400mm以上）は一番細かい0.01°。
+     600mmなら画面の横幅で344段階になる。 */
+  if(fov<=5) return .01;
+  const raw=fov/70;
+  // だらだらした値にならないよう、見慧えの良い刻みへ丸める。
+  const ladder=[1,.5,.2,.1,.05,.02,.01];
+  for(const step of ladder){ if(raw>=step) return step; }
+  return ladder[ladder.length-1];
+}
+function currentAimStep(){
+  /* 画角は state が持っているが、初回描画前は無いので焦点距離から直接求める。 */
+  const focal=Math.max(1,+el.focalLength.value||24);
+  const crop=(state&&state.sensor&&state.sensor.crop)?state.sensor.crop:1;
+  const widthMm=36/crop;
+  const fov=2*Math.atan(widthMm/(2*focal))*R2D;
+  return aimStepForFov(fov);
+}
+function syncAimStepControls(){
+  const step=currentAimStep();
+  const azStep=String(step),altStep=String(step);
+  if(el.facingAz.step!==azStep){
+    el.facingAz.step=azStep;
+    // 刻みを細かくしても、今の値が新しい目盛りに乗っていないとツマが動かない。
+    el.facingAz.value=String(Math.round((+el.facingAz.value||0)/step)*step);
+  }
+  if(el.facingAlt.step!==altStep){
+    el.facingAlt.step=altStep;
+    el.facingAlt.value=String(Math.round((+el.facingAlt.value||0)/step)*step);
+  }
+}
+/* 今の刻みへ丸める。畫面を指で動かす経路やスティックの旋回は、
+   これまで Math.round で必ず1°単位に丸めていた。
+   スライダーの刻みを細かくしても、ここが1°のままだと
+   実際の合わせ込みは何も変わらない（実際に変わらなかった）。 */
+function roundToAimStep(value){
+  const step=currentAimStep();
+  if(!Number.isFinite(value)) return value;
+  return +(Math.round(value/step)*step).toFixed(4);
+}
+/* 小数以下を、刻みに応じて必要な桁だけ出す。 */
+function formatAimDeg(value){
+  const step=currentAimStep();
+  const digits=step>=1?0:(step>=.1?1:2);
+  return (Number.isFinite(value)?value:0).toFixed(digits);
 }
 function syncMobileLensModeButton(){
   const fisheye=mobileLensMode==="fisheye";
@@ -4968,7 +5135,7 @@ el.mobileLensModeBtn.addEventListener("click",()=>{
     fisheyeLensFocalLength=clamp(+el.focalLength.value||15,8,16);
     mobileLensMode="normal";
   } else {
-    normalLensFocalLength=clamp(+el.focalLength.value||24,8,50);
+    normalLensFocalLength=clamp(+el.focalLength.value||24,8,600);
     mobileLensMode="fisheye";
   }
   applyMobileLensFocalRange();
@@ -4984,6 +5151,7 @@ function setFramingFocalLength(value){
   const min=+el.focalLength.min, max=+el.focalLength.max;
   const focal=clamp(Math.round(value),min,max);
   el.focalLength.value=String(focal);
+  syncFocalRangeFromValue();
   if(mobileLensMode==="fisheye") fisheyeLensFocalLength=focal;
   else normalLensFocalLength=focal;
 }
@@ -5203,7 +5371,7 @@ function syncSimulationClockVisibility(){
   el.mobileClockToggleBtn.setAttribute("aria-label",label);
   el.mobileClockToggleBtn.title=label;
 }
-function updateSimulationClock(minutes){
+function updateSimulationClock(minutes,seconds){
   const [baseY,baseMo,baseDa]=el.dateInput.value.split("-").map(Number);
   if(!baseY||!baseMo||!baseDa) return;
   const wholeMinutes=Math.max(0,Math.floor(minutes));
@@ -5212,7 +5380,8 @@ function updateSimulationClock(minutes){
   const d=new Date(Date.UTC(baseY,baseMo-1,baseDa+dayOffset));
   const weekdays=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"];
   el.simulationClockDate.textContent=`${d.getUTCFullYear()}.${String(d.getUTCMonth()+1).padStart(2,"0")}.${String(d.getUTCDate()).padStart(2,"0")}${weekdays[d.getUTCDay()]}`;
-  el.simulationClockTime.textContent=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  el.simulationClockTime.textContent=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
+    +(Number.isFinite(seconds)?`:${String(seconds).padStart(2,"0")}`:"");
 }
 syncSimulationClockVisibility();
 el.mobileClockToggleBtn.addEventListener("click",()=>{
@@ -6353,12 +6522,30 @@ function composeJapaneseAddress(address){
    ほとんどが覚えた文字の出し直しになる。 */
 const SIM_ADDRESS_WALK_INTERVAL_MS=2000;
 let simAddressWalkAt=0;
+/* 問い合わせ中の区画と、失敗した区画の記録。
+   Nominatimの公開サーバーは規約が厳しい（毎秒1回まで・大量利用不可）ので、
+   同じ場所へ何度も投げないことが大事。 */
+const simAddressPending=new Set();
+const simAddressFailedAt=new Map();
+const SIM_ADDRESS_RETRY_MS=60000;   // 失敗した区画を問い直すまでの間
 async function updateSimAddress(lat,lon){
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  /* 地名を出していないなら問い合わせない。
+     ここを通る経路は歩行中だけではなく、地点を選んだときや
+     設定を復元したときにも呼ばれるので、入口で止めるのが確実。 */
+  if(!placeNameVisible) return;
   // 約100m四方でまとめる。歩いても飛んでも問い合わせが増え続けないようにする。
   const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
   if(simAddressCache.has(key)){ setSimAddressLabel(simAddressCache.get(key)); return; }
+  /* 同じ区画への問い合わせが飛んでいる途中なら重ねない。
+     止まっている間は何度呼ばれてもここで戻る。 */
+  if(simAddressPending.has(key)) return;
+  /* 失敗した区画はしばらく問い直さない。
+     以前は失敗すると何も覚えないので、呼ばれるたび再送していた。 */
+  const failedAt=simAddressFailedAt.get(key);
+  if(failedAt&&performance.now()-failedAt<SIM_ADDRESS_RETRY_MS) return;
   const mySeq=++simAddressSeq;
+  simAddressPending.add(key);
   try{
     // zoom=18まで下げないと町名(大字・丁目)が返ってこない。
     const url=`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=ja&lat=${lat}&lon=${lon}`;
@@ -6368,12 +6555,16 @@ async function updateSimAddress(lat,lon){
     const text=composeJapaneseAddress(data&&data.address);
     if(!text) throw new Error("no address");
     simAddressCache.set(key,text);
+    simAddressFailedAt.delete(key);
     if(mySeq===simAddressSeq) setSimAddressLabel(text);
   }catch(error){
+    simAddressFailedAt.set(key,performance.now());
     // 取得できないときは、既に表示している市区町村までの名前で代用する。
     if(mySeq!==simAddressSeq) return;
     const fallback=(el.observedPlaceName&&el.observedPlaceName.textContent||"").trim();
     setSimAddressLabel(/取得|エラー/.test(fallback)?"":fallback);
+  }finally{
+    simAddressPending.delete(key);
   }
 }
 el.tripodHeight.addEventListener("input",()=>{
@@ -6881,15 +7072,70 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
 function updatePlaybackClockLabel(minutes){
   const rounded=Math.floor(minutes);
   const dayOffset=Math.floor(rounded/1440), hh=Math.floor(rounded/60)%24, mm=rounded%60;
-  el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")+`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
-  updateSimulationClock(minutes);
+  /* 低速では秒まで出す。分だけだと、1倍速のときに
+     時計が1分に1回しか動かず、止まって見える。 */
+  const speedX=clamp(parseFloat(el.animationSpeedSelect.value)||20,1,ANIM_SPEED_MAX);
+  const showSeconds=speedX<=10;
+  const ss=Math.floor((minutes-rounded)*60);
+  el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")
+    +`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
+    +(showSeconds?`:${String(ss).padStart(2,"0")}`:"");
+  updateSimulationClock(minutes,showSeconds?ss:null);
+}
+/* =========================================================
+   再生速度の目盛り（v618）
+
+   等倍（実時間）で秒単位の追い込みもしたいし、
+   一晚を流し見もしたい。幅が1倍〜1800倍と広すぎるので、
+   焦点距離や雲海の高さと同じように目盛りを変える。
+     左半分 … 1〜60倍を1刻み（月と建物の重なりを秒単位で見る）
+     右半分 … 60〜1800倍（一晚を流し見る。最速なら30時間を1分）
+   つまみの真ん中がちょうど60倍。 */
+const ANIM_SPEED_MID=60, ANIM_SPEED_MAX=1800;
+function animSpeedPositionToX(position){
+  const pos=clamp(Math.round(+position||0),0,100);
+  if(pos<=50) return clamp(1+Math.round(pos/50*59),1,ANIM_SPEED_MID);
+  /* 右半分は倍率を対数で伸ばす。目盛りが上へ行くほど粗くなるので、
+     60〜200のあたりも実用的に選べる。 */
+  const t=(pos-50)/50;
+  const value=ANIM_SPEED_MID*Math.pow(ANIM_SPEED_MAX/ANIM_SPEED_MID,t);
+  const step=value<120?5:(value<300?10:(value<600?25:100));
+  return clamp(Math.round(value/step)*step,ANIM_SPEED_MID,ANIM_SPEED_MAX);
+}
+function animSpeedXToPosition(speedX){
+  const x=clamp(Math.round(+speedX||20),1,ANIM_SPEED_MAX);
+  if(x<=ANIM_SPEED_MID) return clamp(Math.round((x-1)/59*50),0,50);
+  const t=Math.log(x/ANIM_SPEED_MID)/Math.log(ANIM_SPEED_MAX/ANIM_SPEED_MID);
+  return clamp(50+Math.round(t*50),50,100);
+}
+function syncAnimationSpeedRangeFromValue(){
+  if(!el.animationSpeedRange) return;
+  el.animationSpeedRange.value=String(animSpeedXToPosition(+el.animationSpeedSelect.value||20));
+}
+function syncAnimationSpeedLabel(){
+  if(!el.animationSpeedVal) return;
+  const speed=clamp(Math.round(+el.animationSpeedSelect.value||20),1,ANIM_SPEED_MAX);
+  el.animationSpeedVal.textContent=speed===1?"等倍（実時間）":`${speed}倍速`;
+}
+if(el.animationSpeedRange){
+  el.animationSpeedRange.addEventListener("input",()=>{
+    el.animationSpeedSelect.value=String(animSpeedPositionToX(el.animationSpeedRange.value));
+    syncAnimationSpeedLabel();
+    scheduleSaveSettings();
+  });
+  syncAnimationSpeedRangeFromValue();
+  syncAnimationSpeedLabel();
 }
 function playbackTick(now){
   if(!playbackTimer) return;
   // バックグラウンド復帰時に巨大な時間ジャンプが起きないよう、1フレームの経過を上限0.1秒にする。
   const dtSec=Math.min(0.1,(now-playbackLastTime)/1000);
   playbackLastTime=now;
-  const speed=parseFloat(el.animationSpeedSelect.value)||20; // 分/秒
+  /* 倍速の意味を変えた（v617）。
+     以前は「1秒で進む分数」だったので、1倍でも1分/秒（実時間の60倍）。
+     今は素直に「実時間の何倍か」。1倍なら1秒を1秒で見る。 */
+  const speedX=clamp(parseFloat(el.animationSpeedSelect.value)||20,1,ANIM_SPEED_MAX);
+  const speed=speedX/60;   // 分/秒へ直す
   playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,1800);
   const finished=playbackVisualMinutes>=1800;
 
@@ -6966,8 +7212,8 @@ function photoDragMove(pos){
   // 水平・垂直を独立に角度へ変換(ピクセル移動量に画角を比例配分)。ドラッグした分だけ画面内容が追従する向き
   const newAz = norm360(photoDragStartView.az - deltaX/el.photoCanvas.width*photoDragFovH);
   const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -30, 85);
-  el.facingAz.value=Math.round(newAz);
-  el.facingAlt.value=Math.round(newAlt);
+  el.facingAz.value=roundToAimStep(newAz);
+  el.facingAlt.value=roundToAimStep(newAlt);
   scheduleCameraViewUpdate();
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
@@ -7030,6 +7276,7 @@ el.photoCanvas.addEventListener("wheel",(e)=>{
   const dir = e.deltaY<0 ? 1 : -1;
   const newFocal = clamp((+el.focalLength.value)+dir, +el.focalLength.min, +el.focalLength.max);
   el.focalLength.value = newFocal;
+  syncFocalRangeFromValue();
   updateCameraViewOnly();
 },{passive:false});
 
@@ -7054,6 +7301,7 @@ el.photoCanvas.addEventListener("touchmove",(e)=>{
   const ratio=dist/photoPinchStartDist;
   const newFocal=clamp(Math.round(photoPinchStartFocal*ratio), +el.focalLength.min, +el.focalLength.max);
   el.focalLength.value=newFocal;
+  syncFocalRangeFromValue();
   scheduleCameraViewUpdate();
   e.preventDefault();
 },{passive:false});
@@ -7894,6 +8142,7 @@ function collectPersistedSettings(){
     cloudSeaGapPct:cloudSeaGapPct,
     railLinesVisible:railLinesVisible,
     placeNameVisible:placeNameVisible,
+    animationSpeed:el.animationSpeedSelect?el.animationSpeedSelect.value:20,
     seaDiagVisible:seaDiagVisible,
     terrainRendererWorld:TERRAIN_RENDERER==="world",
     droneModeOn:droneModeOn,
@@ -7933,7 +8182,7 @@ async function loadPersistedSettings(){
     if(s.lon!==undefined) el.lon.value=s.lon;
     if(s.tz!==undefined) el.tz.value=s.tz;
     if(s.citySelect!==undefined) el.citySelect.value=s.citySelect;
-    if(s.focalLength!==undefined) el.focalLength.value=s.focalLength;
+    if(s.focalLength!==undefined){ el.focalLength.value=s.focalLength; syncFocalRangeFromValue(); }
     if(s.aperture!==undefined) el.aperture.value=s.aperture;
     if(s.isoSlider!==undefined) el.isoSlider.value=s.isoSlider;
     if(s.shutter!==undefined) el.shutter.value=s.shutter;
@@ -8008,6 +8257,11 @@ async function loadPersistedSettings(){
     if(Number.isFinite(+s.cloudSeaGapPct)) cloudSeaGapPct=clamp(Math.round(+s.cloudSeaGapPct),0,60);
     railLinesVisible=!!s.railLinesVisible;
     placeNameVisible=s.placeNameVisible!==false;
+    if(el.animationSpeedSelect&&Number.isFinite(+s.animationSpeed)){
+      el.animationSpeedSelect.value=String(clamp(Math.round(+s.animationSpeed),1,ANIM_SPEED_MAX));
+      syncAnimationSpeedRangeFromValue();
+      syncAnimationSpeedLabel();
+    }
     seaDiagVisible=s.seaDiagVisible===true;
     // 設定の読み込みは初回描画より後なので、ONなら一度描き直して数値を埋める。
     if(seaDiagVisible&&typeof drawPhoto==="function") drawPhoto._terrainRenderKey=null;
@@ -8624,7 +8878,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     id:duplicate?duplicate.id:`loc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
     title,placeName,prefecture:classification.prefecture,city:classification.city,
     lat,lon,tz:Number.isFinite(tz)?tz:Math.round(lon/15),
-    date:el.dateInput.value,timeMinutes:+el.timeSlider.value,is15hMode:is15hMode,
+    date:el.dateInput.value,timeMinutes:+el.timeSlider.value,is15hMode:timeRangeMode==="15h",
     focalLength:+el.focalLength.value,lensMode:mobileLensMode,
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
     kmzBuilding:captureKmzBuildingForPlan(),
@@ -8647,13 +8901,13 @@ async function applySavedObservingPlan(location){
   el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
   // v152以前に登録した「場所だけ」のデータには無い項目なので、存在する値だけを復元する。
   if(location.date) el.dateInput.value=location.date;
-  if(typeof location.is15hMode==="boolean"){is15hMode=location.is15hMode;applyTimeRangeMode();}
+  if(typeof location.is15hMode==="boolean"){timeRangeMode=location.is15hMode?"15h":"30h";applyTimeRangeMode();}
   if(Number.isFinite(+location.timeMinutes)) el.timeSlider.value=clamp(+location.timeMinutes,+el.timeSlider.min,+el.timeSlider.max);
   if(location.lensMode==="normal"||location.lensMode==="fisheye") mobileLensMode=location.lensMode;
   if(Number.isFinite(+location.focalLength)){
     const focal=+location.focalLength;
     if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focal,8,16); else normalLensFocalLength=clamp(focal,8,50);
-    applyMobileLensFocalRange();el.focalLength.value=clamp(focal,+el.focalLength.min,+el.focalLength.max);syncMobileLensModeButton();
+    applyMobileLensFocalRange();el.focalLength.value=clamp(focal,+el.focalLength.min,+el.focalLength.max);syncFocalRangeFromValue();syncMobileLensModeButton();
   }
   if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
   if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
@@ -9068,10 +9322,21 @@ function computeState(){
   const lat=parseFloat(el.lat.value), lon=parseFloat(el.lon.value), tz=parseFloat(el.tz.value);
   const [y,mo,da]=el.dateInput.value.split("-").map(Number);
   const minutes=+el.timeSlider.value; // 0〜1800 (選択日 00:00 からの分数。1440以上は翌日)
-  const dayOffset=Math.floor(minutes/1440);
-  const hh=Math.floor(minutes/60), mm=minutes%60; // hhは24以上になり得る(Date.UTCが自動繰り上げ処理)
+  /* 0.1秒単位へ先に丸めてから分・秒へ分ける。
+     分を先に切り出すと、59.9999…秒が「60.0」と表示される。 */
+  const totalTenthSec=Math.round(minutes*600);
+  const dayOffset=Math.floor(totalTenthSec/(1440*600));
+  const wholeMin=Math.floor(totalTenthSec/600);
+  const hh=Math.floor(wholeMin/60), mm=wholeMin%60; // hhは24以上になり得る
   const dispHH=hh%24;
-  el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  /* 刻みが分未満のときは秒まで出す。出さないと、動かしても
+     数字が変わらず「動いていない」と見える。 */
+  const timeStep=(typeof timeStepMinutes==="function")?timeStepMinutes():1;
+  const secondsPart=(totalTenthSec-wholeMin*600)/10;
+  const secondsText=timeStep>=1?""
+    :(timeStep>=1/60?`:${String(Math.floor(secondsPart)).padStart(2,"0")}`
+                    :`:${secondsPart.toFixed(1).padStart(4,"0")}`);
+  el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}${secondsText}`;
   const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
   const timeWeekdayCircled=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"][dispDateObj.getUTCDay()];
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}${timeWeekdayCircled}`;
@@ -9133,8 +9398,8 @@ function computeState(){
   el.apVal.textContent=`F${aperture.toFixed(1)}`;
   el.isoVal.textContent=`ISO ${iso}`;
   el.ssVal.textContent=`${shutter} 秒`;
-  el.azVal.textContent=`${Math.round(facingAz)}°`;
-  el.altValLabel.textContent=`${facingAlt}°`;
+  el.azVal.textContent=`${formatAimDeg(facingAz)}°`;
+  el.altValLabel.textContent=`${formatAimDeg(facingAlt)}°`;
 
   const maxShutter500 = 500/(focalLength*sensor.crop);
   const trailRatio = shutter/maxShutter500;
@@ -9386,7 +9651,16 @@ const TERRAIN_DISTANCES_KM=(()=>{
   for(let m=5;m<=200;m+=5) out.push(m/1000);
   for(let m=210;m<=500;m+=10) out.push(m/1000);
   for(let m=525;m<=1000;m+=25) out.push(m/1000);
-  out.push(1.5,2,3,4.5,6,8,11,15,20,28,38,52,70,90);
+  /* 1kmより先。以前は 1.5 / 2 / 3 / 4.5 / 6 / 8 / 11… と飛んでいたため、
+     2〜3kmの間には一点も無く、その間にある丘は丸ごと見落とされていた。
+     実例: 唐梅角(標高137m)は距離2,424m。前後の標本は2,000mと3,000mで、
+     丘そのものが地形データに入っていなかった。
+     建物だけが浮くのも、近づくと山が上がったり下がったりするのも、
+     丘が目盛りに乗ったり外れたりするため。
+
+     見かけの大きさは距離に反比例するので、目盛りも距離に比例させる。
+     9%ずつ伸ばすと、2.4kmでの間隔は約216m（従来の1,000mから4.6倍細かい）。 */
+  for(let km=1.05;km<=90;km*=1.09) out.push(+km.toFixed(3));
   return out;
 })();
 const TERRAIN_DISTANCE_BANDS=[
@@ -9402,8 +9676,21 @@ const TERRAIN_DISTANCE_BANDS=[
    v2: レイマーチ用の rayGrid を追加。欠損もnullで詰めて添字=距離番号に揃えた。
    v3: rayGrid へ富士山の高密度点と既知の山頂標高を距離順に差し込むようにした。
        方位ごとに点数が変わるため、方位間の補間は距離で対応付ける。 */
-const TERRAIN_CACHE_FORMAT=4; // v541: 海岸線データを保存対象へ加えた
-function terrainCacheId(key){ return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}`; }
+const TERRAIN_CACHE_FORMAT=7; // v616: KMZ建物の周りを高密度で取るようにした
+/* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
+   保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
+function kmzTerrainSignature(){
+  try{
+    if(!kmzBuildingModel) return "";
+    const kmzLat=+el.kmzBuildingLat.value,kmzLon=+el.kmzBuildingLon.value;
+    if(!Number.isFinite(kmzLat)||!Number.isFinite(kmzLon)) return "";
+    return `${kmzLat.toFixed(5)},${kmzLon.toFixed(5)}`;
+  }catch(e){ return ""; }
+}
+function terrainCacheId(key){
+  const kmz=kmzTerrainSignature();
+  return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}${kmz?`|kmz${kmz}`:""}`;
+}
 function terrainDestination(lat,lon,bearingDeg,distanceKm){
   const R=6371,br=bearingDeg*D2R,p1=lat*D2R,l1=lon*D2R,d=distanceKm/R;
   const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(br));
@@ -11011,15 +11298,43 @@ async function buildRealTerrainProfile(lat,lon,token){
   const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
   const samples=[];
   const tilesByKey=new Map(observerRefs.map(t=>[t.key,t]));
+  /* 目盛りの間の最高点を拾う（v614）。
+
+     稜線は「その方向で一番高いもの」で決まるので、目盛りの上を
+     1点だけ拾うと、その間にある頂を見落とす。
+     v613で目盛り自体は細かくしたが、2.4kmではまだ216m間隔あり、
+     頂がその間に入ると最大100m前後ずれた位置の高さになる。
+
+     目盛りごとに、直前の目盛りとの間を2点下見して、
+     一番高い値を稜線用の高さとして使う。
+
+     水面の判定には使わない。沖の点が少し内陸の陸を拾って
+     水際が外へずれるのを避けるためで、そちらは従来どおり
+     目盛り上の1点だけを見る。 */
+  const PEAK_SUBSAMPLES=2;
   for(let az=0;az<360;az++){
     const ray=[];
+    let previousKm=0;
     for(const distanceKm of TERRAIN_DISTANCES_KM){
       const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
       const primaryZoom=distanceKm<=3?14:distanceKm<=15?12:10;
       const zooms=primaryZoom===14?[14,12,10]:primaryZoom===12?[12,10]:[10];
       const refs=zooms.map(z=>terrainTilePoint(pLat,pLon,z));
       refs.forEach(t=>tilesByKey.set(t.key,t));
-      ray.push({distanceKm,refs,lat:pLat,lon:pLon});
+      /* 間隔が広い遠方だけ下見する。足元(1km以内)は元々細かいので不要。 */
+      const gapKm=distanceKm-previousKm;
+      const peakRefs=[];
+      if(distanceKm>1.2&&gapKm>.05){
+        for(let k=1;k<=PEAK_SUBSAMPLES;k++){
+          const subKm=distanceKm-gapKm*k/(PEAK_SUBSAMPLES+1);
+          const [sLat,sLon]=terrainDestination(lat,lon,az,subKm);
+          const sub=zooms.map(z=>terrainTilePoint(sLat,sLon,z));
+          sub.forEach(t=>tilesByKey.set(t.key,t));
+          peakRefs.push(sub);
+        }
+      }
+      ray.push({distanceKm,refs,peakRefs,lat:pLat,lon:pLon});
+      previousKm=distanceKm;
     }
     samples.push(ray);
   }
@@ -11045,6 +11360,42 @@ async function buildRealTerrainProfile(lat,lon,token){
         const refs=[terrainTilePoint(pLat,pLon,12),terrainTilePoint(pLat,pLon,10)];
         refs.forEach(tile=>tilesByKey.set(tile.key,tile));
         fujiDetailRays[az].push({distanceKm,refs});
+      }
+    }
+  }
+  /* KMZ建物の足元だけを高密度で取る（v616）。
+
+     通常の目盛りは距離に比例して粗くなるので、2.4km先だと216m間隔。
+     v614で目盛りの間も下見するようにしたが、それでも
+     「たまたま頂に当たるか」に依存している。
+
+     建物を置いた場所は合わせ込みの要なので、そこを狙って
+     半径400m・25m間隔で地形を拾う。富士山にもとから入っている
+     仕組みと同じで、レイが円を横切る区間を実距離で刻む。
+     方位の目盛り（1°）にも縛られない。
+
+     範囲が狭いので、増える取得はわずか。 */
+  const kmzSignatureNow=kmzTerrainSignature();
+  const kmzInfo=kmzSignatureNow
+    ? terrainDistanceAndBearing(lat,lon,+el.kmzBuildingLat.value,+el.kmzBuildingLon.value) : null;
+  const kmzDetailRays=Array.from({length:360},()=>[]);
+  const useKmzDetail=!!kmzInfo&&Number.isFinite(kmzInfo.distanceKm)
+    &&kmzInfo.distanceKm>=.05&&kmzInfo.distanceKm<=60;
+  if(useKmzDetail){
+    const detailRadiusKm=.4, stepKm=.025;
+    for(let az=0;az<360;az++){
+      const offsetDeg=((az-kmzInfo.bearing+540)%360)-180;
+      const offsetRad=offsetDeg*D2R;
+      const lateralKm=Math.abs(kmzInfo.distanceKm*Math.sin(offsetRad));
+      if(lateralKm>detailRadiusKm) continue;
+      const alongCenterKm=kmzInfo.distanceKm*Math.cos(offsetRad);
+      const halfChordKm=Math.sqrt(Math.max(0,detailRadiusKm*detailRadiusKm-lateralKm*lateralKm));
+      const startKm=Math.max(.02,alongCenterKm-halfChordKm),endKm=alongCenterKm+halfChordKm;
+      for(let distanceKm=startKm;distanceKm<=endKm+1e-6;distanceKm+=stepKm){
+        const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
+        const refs=[terrainTilePoint(pLat,pLon,14),terrainTilePoint(pLat,pLon,12)];
+        refs.forEach(tile=>tilesByKey.set(tile.key,tile));
+        kmzDetailRays[az].push({distanceKm,refs});
       }
     }
   }
@@ -11080,15 +11431,25 @@ async function buildRealTerrainProfile(lat,lon,token){
   // (2巡目で近傍セルどうしを比較し、海だけでなく湖沼のような「平らな水面」も検出するため)
   const nDist=TERRAIN_DISTANCES_KM.length;
   const elevGrid=new Array(360);
+  const peakGrid=new Array(360);   // 目盛りの間も含めた最高点（稜線用）
   let validCount=0;
   for(let az=0;az<360;az++){
     const row=new Array(nDist);
+    const peaks=new Array(nDist);
     for(let d=0;d<nDist;d++){
-      const elevation=await elevationFromRefs(samples[az][d].refs);
+      const sample=samples[az][d];
+      const elevation=await elevationFromRefs(sample.refs);
       row[d]=elevation; // 数値、または標高データなし(海など)ならnull
       if(Number.isFinite(elevation)) validCount++;
+      let peak=Number.isFinite(elevation)?elevation:null;
+      for(const sub of (sample.peakRefs||[])){
+        const value=await elevationFromRefs(sub);
+        if(Number.isFinite(value)&&(peak===null||value>peak)) peak=value;
+      }
+      peaks[d]=peak;
     }
     elevGrid[az]=row;
+    peakGrid[az]=peaks;
   }
   // 海岸・海上では標高を持つ陸地サンプルが少なくても正常。
   // DEMタイルの大半が取得できている場合に限り、nodataを海として地形生成を継続する。
@@ -11149,6 +11510,9 @@ async function buildRealTerrainProfile(lat,lon,token){
       const distanceKm=TERRAIN_DISTANCES_KM[d];
       const sample=samples[az][d];
       const elevation=elevGrid[az][d];
+      /* 見かけの高さに使う標高。目盛りの間の頂を含む。
+         水か陸かの判定はこれまでどおり elevation だけを見る。 */
+      const ridgeElevation=Number.isFinite(peakGrid[az][d])?peakGrid[az][d]:elevation;
       const isNoDataRaw=!Number.isFinite(elevation);
       // 標高タイルの読み込みが1点だけたまたま失敗した場合も「標高データなし」になり得るため、
       // それだけで「海」と判定してしまうと、実際には山などの陸地なのに、その1点のせいで
@@ -11187,7 +11551,7 @@ async function buildRealTerrainProfile(lat,lon,token){
       if(!isNoDataRaw){
         // 標準的な大気差を含む7/6地球半径モデルで、遠方地形の沈み込みを補正する。
         const curvatureDrop=metres*metres/(2*6371000*(7/6));
-        apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
+        apparentAlt=Math.atan2(ridgeElevation-eyeElevation-curvatureDrop,metres)*R2D;
       }
       /* 1km以内だけをメッシュ用に保持する。
          全距離を1枚のメッシュへ統一する改修を試したが、一部のロケーションで
@@ -11197,7 +11561,7 @@ async function buildRealTerrainProfile(lat,lon,token){
         const meshAlt=Number.isFinite(apparentAlt)?apparentAlt:(isSeaNoData?-Math.atan2(1.6,metres)*R2D:null);
         const point=Number.isFinite(meshAlt)?{
           distanceKm,lat:sample.lat,lon:sample.lon,alt:meshAlt,water,baseNoData:isSeaNoData,baseKnown:isKnown,
-          baseElevation:Number.isFinite(elevation)?elevation:null
+          baseElevation:Number.isFinite(ridgeElevation)?ridgeElevation:null
         }:null;
         // 既存経路は従来どおり1km以内だけ。レイマーチ用は全距離を保持する。
         // rayGridは欠損もnullのまま詰めて、添字が必ず TERRAIN_DISTANCES_KM の距離番号と
@@ -11210,6 +11574,27 @@ async function buildRealTerrainProfile(lat,lon,token){
       if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]){
         layerHighest[layerIndex]=apparentAlt;
         layerHighestSources[layerIndex]={lat:sample.lat,lon:sample.lon,distanceKm,elevation,alt:apparentAlt};
+      }
+    }
+
+    /* KMZ建物の足元の高密度点。富士山と全く同じ扱いで稜線へ入れる。 */
+    const kmzRayPoints=[];
+    if(useKmzDetail){
+      for(const detail of kmzDetailRays[az]){
+        const elevation=await elevationFromRefs(detail.refs);
+        if(!Number.isFinite(elevation)) continue;
+        const metres=detail.distanceKm*1000;
+        const curvatureDrop=metres*metres/(2*6371000*(7/6));
+        const apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
+        kmzRayPoints.push({distanceKm:detail.distanceKm,alt:apparentAlt,water:false,
+          baseElevation:elevation,baseNoData:false,baseKnown:false});
+        const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>detail.distanceKm>=band.min&&detail.distanceKm<band.max);
+        if(apparentAlt>highest) highest=apparentAlt;
+        if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]){
+          const [detailLat,detailLon]=terrainDestination(lat,lon,az,detail.distanceKm);
+          layerHighest[layerIndex]=apparentAlt;
+          layerHighestSources[layerIndex]={lat:detailLat,lon:detailLon,distanceKm:detail.distanceKm,elevation,alt:apparentAlt};
+        }
       }
     }
 
@@ -11256,8 +11641,8 @@ async function buildRealTerrainProfile(lat,lon,token){
     /* 富士山の高密度点を通常サンプルへ距離順に差し込む。
        レイマーチは手前から奥へ歩くため、距離で昇順に並んでいる必要がある。
        方位ごとに点数が変わるので、方位間の補間は添字ではなく距離で対応付ける。 */
-    if(fujiRayPoints.length){
-      rayGrid[az]=rayGrid[az].concat(fujiRayPoints)
+    if(fujiRayPoints.length||kmzRayPoints.length){
+      rayGrid[az]=rayGrid[az].concat(fujiRayPoints,kmzRayPoints)
         .filter(Boolean)
         .sort((a,b)=>a.distanceKm-b.distanceKm);
     }
@@ -11294,7 +11679,8 @@ async function buildRealTerrainProfile(lat,lon,token){
     profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
-    waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid
+    waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
+    _kmzSignature:kmzSignatureNow||""   // この地形を作ったときの建物位置
   };
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
@@ -11490,7 +11876,12 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if(realTerrainState.key===key&&realTerrainState.profile){setExternalDataStatus("elevation","ready");setExternalDataStatus("fuji","ready","専用情報準備済み");return;}
+  /* 建物の位置が変わると、その周りを高密度で取り直す必要がある。
+     地点が同じでも、印が違えば作り直す。 */
+  const kmzSignature=kmzTerrainSignature();
+  const sameSpot=realTerrainState.key===key&&realTerrainState.profile
+    &&(realTerrainState._kmzSignature||"")===kmzSignature;
+  if(sameSpot){setExternalDataStatus("elevation","ready");setExternalDataStatus("fuji","ready","専用情報準備済み");return;}
   if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
   if(cached){
@@ -16503,7 +16894,11 @@ function drawPhoto(ctx,s){
         if(!rayGrid||!rayGrid.length) return false;
         const bottomAlt=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
         // 方位の刻み。画面上で約5画素ごとに頂点を打てば輪郭は十分滑らかになる。
-        const stepDeg=clamp(5/(W/Math.max(1,s.fovH)),.15,1.5);
+        /* 方位の刻み。画面上で約5画素ごとに頂点を打てば輪郭は十分滞らかになる。
+           下限は0.15°だったが、600mm（水平画角3.4°）だと画面全体でわずか23本になり、
+           稜線がガクガクに見える。望遠側だけ下限を下げる。
+           広角側はこの式が0.15を上回るので本数は変わらず、重くならない。 */
+        const stepDeg=clamp(5/(W/Math.max(1,s.fovH)),.03,1.5);
         const cornerHalf=rayHalfSpanDeg();
         const startAz=s.facingAz-cornerHalf-stepDeg;
         const endAz=s.facingAz+cornerHalf+stepDeg;
@@ -18110,8 +18505,8 @@ function updateCameraViewOnly(){
   el.focalBadge.innerHTML=showFisheyeBadge
     ?`<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
     :`${focalLength}<span class="focal-badge-unit">mm</span>`;
-  el.azVal.textContent=`${Math.round(facingAz)}°`;
-  el.altValLabel.textContent=`${facingAlt}°`;
+  el.azVal.textContent=`${formatAimDeg(facingAz)}°`;
+  el.altValLabel.textContent=`${formatAimDeg(facingAlt)}°`;
 
   const halfW=orientation==="portrait"?12:18,halfH=orientation==="portrait"?18:12;
   const fisheyeProjectionActive=mobileLensMode==="fisheye"&&!arActive;
@@ -18496,14 +18891,14 @@ function applyViewKeys(dt,fast){
   let viewChanged=false;
   if(walkTurn!==0){
     const next=norm360((+el.facingAz.value||0)+walkTurn*TURN_DEG_PER_SEC*(fast?4:1)*dt);
-    el.facingAz.value=Math.round(next);
+    el.facingAz.value=roundToAimStep(next);
     el.facingAz.dispatchEvent(new Event("input",{bubbles:true}));
     viewChanged=true;
   }
   if(walkPitch!==0){
     const min=+el.facingAlt.min,max=+el.facingAlt.max;
     const next=clamp((+el.facingAlt.value||0)+walkPitch*PITCH_DEG_PER_SEC*(fast?3:1)*dt,min,max);
-    el.facingAlt.value=Math.round(next);
+    el.facingAlt.value=roundToAimStep(next);
     el.facingAlt.dispatchEvent(new Event("input",{bubbles:true}));
     viewChanged=true;
   }
