@@ -2163,6 +2163,7 @@
     font:600 12px/1.3 'IBM Plex Mono',monospace;
   }
   .shot-plan-panel select{flex:0 0 62px;}
+  .shot-plan-unit{flex:0 0 62px;font-size:10px;color:var(--dim);}
   .shot-plan-fixed{
     flex:1;font:600 12px/1.3 'IBM Plex Mono',monospace;color:var(--star-white);
   }
@@ -2205,6 +2206,34 @@
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
   }
   .shot-plan-resultbar button.primary{background:var(--core-amber);color:#1c1120;border-color:var(--core-amber);}
+  /* 記録中の表示。撮っている最中は、これと合成中の1枚だけを見せる。 */
+  .shot-plan-recording{
+    display:none;
+    position:absolute;
+    left:50%;transform:translateX(-50%);
+    top:calc(var(--sim-inset-y) + 12px);
+    z-index:1246;
+    align-items:center;gap:9px;
+    padding:6px 8px 6px 12px;
+    border-radius:20px;
+    border:1px solid rgba(232,120,120,.55);
+    background:rgba(10,12,28,.86);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    color:var(--star-white);
+    font:700 11px/1.2 'IBM Plex Mono',monospace;letter-spacing:.04em;
+  }
+  .shot-plan-recording.show{display:flex;}
+  .shot-plan-rec-dot{
+    width:8px;height:8px;border-radius:50%;background:#e05252;
+    animation:shotPlanRecBlink 1.1s ease-in-out infinite;
+  }
+  @keyframes shotPlanRecBlink{0%,100%{opacity:1;}50%{opacity:.25;}}
+  .shot-plan-recording button{
+    width:auto;margin:0;padding:4px 10px;border-radius:12px;
+    border:1px solid rgba(255,255,255,.32);
+    background:rgba(255,255,255,.1);color:var(--star-white);
+    font:700 10px/1.2 'Inter',sans-serif;cursor:pointer;
+  }
   /* =========================================================
      オープニング（v668）
 
@@ -3729,6 +3758,11 @@
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
               <canvas id="shotPlanResult" class="shot-plan-result"></canvas>
+              <div class="shot-plan-recording" id="shotPlanRecording">
+                <span class="shot-plan-rec-dot" aria-hidden="true"></span>
+                <span id="shotPlanRecText">記録中</span>
+                <button type="button" id="shotPlanStopBtn">中止</button>
+              </div>
               <div class="shot-plan-resultbar" id="shotPlanResultBar">
                 <button type="button" id="shotPlanSaveBtn" class="primary">画像を保存</button>
                 <button type="button" id="shotPlanBackBtn">閉じる</button>
@@ -3741,7 +3775,12 @@
                 </div>
                 <div class="shot-plan-row"><span>開始</span><span class="shot-plan-fixed" id="shotPlanStart">—</span></div>
                 <div class="shot-plan-row"><span>終了</span><input type="time" id="shotPlanEnd"></div>
+                <div class="shot-plan-row"><span>速さ</span>
+                  <input type="number" id="shotPlanSpeed" min="1" max="10" step="1" value="5">
+                  <span class="shot-plan-unit">分 ／ 秒</span>
+                </div>
                 <label class="shot-plan-check"><input type="checkbox" id="shotPlanLabels" checked>時刻を表示する</label>
+                <label class="shot-plan-check"><input type="checkbox" id="shotPlanContacts" checked>食の時刻を表示する</label>
                 <div class="shot-plan-actions">
                   <button type="button" id="shotPlanRunBtn" class="primary">合成する</button>
                   <button type="button" id="shotPlanCloseBtn">閉じる</button>
@@ -4139,7 +4178,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="674-shot-plan";
+const APP_VERSION="675-shot-plan-live";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5080,7 +5119,9 @@ const el={
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
   shotPlanEnd:$("shotPlanEnd"), shotPlanLabels:$("shotPlanLabels"), shotPlanRunBtn:$("shotPlanRunBtn"),
   shotPlanCloseBtn:$("shotPlanCloseBtn"), shotPlanStatus:$("shotPlanStatus"), shotPlanResult:$("shotPlanResult"),
-  shotPlanResultBar:$("shotPlanResultBar"), shotPlanSaveBtn:$("shotPlanSaveBtn"), shotPlanBackBtn:$("shotPlanBackBtn"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
+  shotPlanResultBar:$("shotPlanResultBar"), shotPlanSaveBtn:$("shotPlanSaveBtn"), shotPlanBackBtn:$("shotPlanBackBtn"),
+  shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
+  shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -20711,6 +20752,112 @@ function closeShotPlanPanel(){
   el.shotPlanPanel.setAttribute("aria-hidden","true");
 }
 
+/* 月食の接触時刻を探す（v675）。
+   1分きざみで「本影にどれだけ入っているか」を追い、0や1をまたいだ区間だけ
+   二分法で詰める。位置の計算だけなので絵は一切描かない（数百回でも一瞬）。 */
+function shotPlanEclipseContacts(fromMin,toMin){
+  const rawMag=(m)=>{
+    const jd=jdForSliderMinutes(m);
+    const e=lunarEclipseState(sunPosition(jd),moonPosition(jd));
+    if(!e) return -9;
+    return (e.umbra+e.moonRadius-e.sep)/(2*e.moonRadius);
+  };
+  const refine=(a,b,level)=>{
+    const above=rawMag(a)>=level;
+    let lo=a,hi=b;
+    for(let k=0;k<22;k++){
+      const mid=(lo+hi)/2;
+      if((rawMag(mid)>=level)===above) lo=mid; else hi=mid;
+    }
+    return (lo+hi)/2;
+  };
+  const out={partialStart:null,totalStart:null,maxAt:null,maxMag:-9,totalEnd:null,partialEnd:null};
+  let prev=rawMag(fromMin);
+  out.maxMag=prev; out.maxAt=fromMin;
+  for(let m=fromMin+1;m<=toMin;m+=1){
+    const v=rawMag(m);
+    if(v>out.maxMag){ out.maxMag=v; out.maxAt=m; }
+    if(prev<0&&v>=0&&out.partialStart===null) out.partialStart=refine(m-1,m,0);
+    if(prev<1&&v>=1&&out.totalStart===null)   out.totalStart=refine(m-1,m,1);
+    if(prev>=1&&v<1) out.totalEnd=refine(m-1,m,1);
+    if(prev>=0&&v<0) out.partialEnd=refine(m-1,m,0);
+    prev=v;
+  }
+  if(out.maxMag<0) return null;   // 本影にはかすりもしない
+  let best={m:out.maxAt,v:out.maxMag};
+  for(let d=-1.5;d<=1.5;d+=.05){
+    const m=out.maxAt+d, v=rawMag(m);
+    if(v>best.v) best={m,v};
+  }
+  out.maxAt=best.m; out.maxMag=best.v;
+  return out;
+}
+
+/* 時刻の文字。月の上に重ねると読みにくいので、月の並びの直角方向へ少し逃がし、
+   細い線で月とつなぐ（v675）。 */
+function shotPlanDrawLabels(acc,labels,W){
+  if(!labels.length) return;
+  const fontPx=Math.max(11,Math.round(W/62));
+  const first=labels[0], last=labels[labels.length-1];
+  let dx=last.mx-first.mx, dy=last.my-first.my;
+  const len=Math.hypot(dx,dy);
+  let px=1,py=0;
+  if(len>=1){
+    dx/=len; dy/=len;
+    px=-dy; py=dx;
+    if(px<0){ px=-px; py=-py; }   // 文字は右側へ揃える
+  }
+  const gap=Math.max(36,W*.055);
+  acc.save();
+  acc.font="600 "+fontPx+"px 'IBM Plex Mono',monospace";
+  acc.textBaseline="middle";
+  acc.textAlign="left";
+  acc.lineWidth=Math.max(1,W/1400);
+  for(const L of labels){
+    const sx=L.mx+px*L.r*1.3, sy=L.my+py*L.r*1.3;
+    const ex=L.mx+px*gap, ey=L.my+py*gap;
+    acc.strokeStyle="rgba(226,232,248,.32)";
+    acc.beginPath(); acc.moveTo(sx,sy); acc.lineTo(ex,ey); acc.stroke();
+    acc.shadowColor="rgba(0,0,0,.9)"; acc.shadowBlur=4;
+    acc.fillStyle="rgba(255,255,255,.93)";
+    acc.fillText(L.text,ex+6,ey);
+    acc.shadowBlur=0;
+  }
+  acc.restore();
+}
+
+/* 食の時刻の一覧。左上にまとめて置く。 */
+function shotPlanDrawContacts(acc,c,W,H){
+  if(!c) return 0;
+  const rows=[];
+  if(c.partialStart!==null) rows.push([shotPlanClockLabel(c.partialStart),"部分食の始まり"]);
+  if(c.totalStart!==null)   rows.push([shotPlanClockLabel(c.totalStart),"皆既食の始まり"]);
+  if(c.maxAt!==null)        rows.push([shotPlanClockLabel(c.maxAt),"食の最大（食分 "+c.maxMag.toFixed(2)+"）"]);
+  if(c.totalEnd!==null)     rows.push([shotPlanClockLabel(c.totalEnd),"皆既食の終わり"]);
+  if(c.partialEnd!==null)   rows.push([shotPlanClockLabel(c.partialEnd),"部分食の終わり"]);
+  if(!rows.length) return 0;
+  const fontPx=Math.max(12,Math.round(W/54));
+  const lh=Math.round(fontPx*1.7);
+  const x=Math.round(W*.05);
+  let y=Math.round(H*.035);
+  acc.save();
+  acc.textBaseline="top";
+  acc.shadowColor="rgba(0,0,0,.92)"; acc.shadowBlur=5;
+  for(const row of rows){
+    acc.font="700 "+fontPx+"px 'IBM Plex Mono',monospace";
+    acc.fillStyle="rgba(255,255,255,.95)";
+    acc.fillText(row[0],x,y);
+    acc.font="600 "+Math.round(fontPx*.9)+"px 'Inter',sans-serif";
+    acc.fillStyle="rgba(226,232,248,.84)";
+    acc.fillText(row[1],x+fontPx*3.5,y+Math.round(fontPx*.08));
+    y+=lh;
+  }
+  acc.restore();
+  return rows.length;
+}
+
+let shotPlanAbort=false;
+
 async function runShotPlan(){
   if(shotPlanRunning) return;
   const slider=el.timeSlider;
@@ -20731,8 +20878,12 @@ async function runShotPlan(){
     el.shotPlanStatus.textContent="コマ数が多すぎます（"+frames+"枚）。間隔を広げてください（上限"+SHOT_PLAN_MAX_FRAMES+"枚）。";
     return;
   }
+  /* 速さ＝実時間1秒あたり、何分ぶん進めるか。
+     1コマぶん進むのにかかる時間＝間隔÷速さ。 */
+  const speed=Math.min(10,Math.max(1,Math.round(+el.shotPlanSpeed.value||5)));
+  const frameDelayMs=Math.max(0,Math.round(stepMin/speed*1000));
 
-  shotPlanRunning=true;
+  shotPlanRunning=true; shotPlanAbort=false;
   el.shotPlanRunBtn.disabled=true;
   const savedValue=slider.value, savedStep=slider.step;
   slider.step="any";   // 秒きざみのときは分が小数になる
@@ -20743,16 +20894,23 @@ async function runShotPlan(){
   const acc=out.getContext("2d");
   acc.clearRect(0,0,W,H);
 
+  /* 撮っている間はパネルを引っ込め、できていく1枚だけを見せる。 */
+  closeShotPlanPanel();
+  el.shotPlanResultBar.classList.remove("show");
+  out.classList.add("show");
+  el.shotPlanRecording.classList.add("show");
+
   const labels=[];
   let drawn=0;
   try{
     for(let i=0;i<frames;i++){
+      if(shotPlanAbort) break;
       const m=startM+stepMin*i;
       slider.value=String(m);
       const st=computeState();
       drawPhoto(photoCtx,st);
       if(i===0) acc.drawImage(el.photoCanvas,0,0);   // 最初の1枚を土台にする
-      /* 月が地平線より上にあるコマだけ重ねる。沈んでいる月を重ねると
+      /* 月が地平線より上のコマだけ重ねる。沈んでいる月を重ねると
          地面の明るいところが混ざって、軌跡ではなく汚れになる。 */
       if(st.moonAltAz && st.moonAltAz.alt>0){
         const p=projectToPhotoXY(st.moonAltAz.az,st.moonAltAz.alt,st,W,H);
@@ -20769,42 +20927,38 @@ async function runShotPlan(){
             acc.drawImage(el.photoCanvas,0,0);
             acc.restore();
           }
-          labels.push({x:p[0]+rMoon*1.35,y:p[1]+rMoon*1.6,text:shotPlanClockLabel(m)});
+          labels.push({mx:p[0],my:p[1],r:rMoon,text:shotPlanClockLabel(m)});
           drawn++;
         }
       }
-      if(i%4===0){
-        el.shotPlanStatus.textContent="合成中… "+(i+1)+" / "+frames;
-        await new Promise(r=>setTimeout(r,0));
-      }
+      el.shotPlanRecText.textContent="記録中 "+shotPlanClockLabel(m)+"（"+(i+1)+"/"+frames+"）";
+      await new Promise(r=>setTimeout(r,frameDelayMs));
     }
     /* 文字は最後にまとめて、普通の重ね方で書く。
        比較明で書くと、明るい月の上では文字が消えてしまう。 */
-    if(el.shotPlanLabels.checked){
-      const fontPx=Math.max(11,Math.round(W/62));
-      acc.save();
-      acc.font="600 "+fontPx+"px 'IBM Plex Mono',monospace";
-      acc.textBaseline="top";
-      acc.shadowColor="rgba(0,0,0,.9)";
-      acc.shadowBlur=4;
-      acc.fillStyle="rgba(255,255,255,.92)";
-      for(const L of labels) acc.fillText(L.text,L.x,L.y);
-      acc.restore();
+    if(el.shotPlanLabels.checked) shotPlanDrawLabels(acc,labels,W);
+    let contactRows=0;
+    if(el.shotPlanContacts.checked){
+      const c=shotPlanEclipseContacts(Math.round(startM)-240,Math.round(endM)+240);
+      contactRows=shotPlanDrawContacts(acc,c,W,H);
     }
     el.shotPlanStatus.textContent=drawn>0
-      ? "できました（"+drawn+"コマ）"
+      ? (shotPlanAbort?"中止しました（":"できました（")+drawn+"コマ"+(contactRows?"／食の時刻あり":"")+"）"
       : "この時間帯は月が地平線より下でした。";
   }finally{
     slider.value=savedValue;
     slider.step=savedStep;
     shotPlanRunning=false;
     el.shotPlanRunBtn.disabled=false;
+    el.shotPlanRecording.classList.remove("show");
     update();   // 時刻を元へ戻して描き直す
   }
   if(drawn>0){
-    closeShotPlanPanel();
-    el.shotPlanResult.classList.add("show");
+    out.classList.add("show");
     el.shotPlanResultBar.classList.add("show");
+  }else{
+    hideShotPlanResult();
+    openShotPlanPanel();
   }
 }
 
@@ -20814,6 +20968,7 @@ if(el.shotPlanBtn) el.shotPlanBtn.addEventListener("click",()=>{
 if(el.shotPlanCloseBtn) el.shotPlanCloseBtn.addEventListener("click",closeShotPlanPanel);
 if(el.shotPlanRunBtn) el.shotPlanRunBtn.addEventListener("click",runShotPlan);
 if(el.shotPlanBackBtn) el.shotPlanBackBtn.addEventListener("click",hideShotPlanResult);
+if(el.shotPlanStopBtn) el.shotPlanStopBtn.addEventListener("click",()=>{ shotPlanAbort=true; });
 if(el.shotPlanSaveBtn) el.shotPlanSaveBtn.addEventListener("click",()=>{
   el.shotPlanResult.toBlob(blob=>{
     if(!blob) return;
