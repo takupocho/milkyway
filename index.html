@@ -1121,6 +1121,16 @@
     pointer-events:none;
   }
   body.ar-active .ar-debug-overlay.show{display:block;}
+  /* 【v665】うまくいかなかったときの「再試行」「✕ 閉じる」。
+     以前は閉じる手立てが無く、許可を断ると出したまま戻れなくなっていた。 */
+  .ar-status-actions{
+    display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;
+  }
+  .ar-status-message .ar-status-close-btn{
+    background:rgba(255,255,255,.14);
+    color:var(--star-white);
+    border:1px solid rgba(255,255,255,.3);
+  }
   .ar-status-message button{
     margin-top:10px;
     padding:8px 18px;
@@ -3785,7 +3795,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="663-map-actions";
+const APP_VERSION="665-ar-permission";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -7951,6 +7961,12 @@ let orientationSpin=null;
    これまでどおり即座に切り替わる。 */
 function beginOrientationSpin(){
   if(arActive||orientationSpin) return null;
+  /* 【v664】地図を開いている間は回さない。
+     この演出は「写真のcanvasを一枚控えて、それを回る窓で切り抜く」仕組みで、
+     地図はLeafletが並べたタイル画像とSVGの集まり（canvasではない）なので、
+     同じやり方では控えられない。
+     そのままだと、地図の上へ「地図の裏にいる景色」が出てきて回ってしまう。 */
+  if(osmMapScreenOpen) return null;
   const canvas=el.photoCanvas, wrap=el.photoCanvasWrap;
   if(!canvas.width||!canvas.height) return null;
   const wr=wrap.getBoundingClientRect(), cr=canvas.getBoundingClientRect();
@@ -8173,6 +8189,21 @@ function hideArStatus(){
   el.arStatusMessage.classList.remove("show");
   el.arStatusMessage.innerHTML="";
 }
+/* ARを始められなかったときの案内（v665）。
+   必ず「✕ 閉じる」を付けて、閉じられなくなる行き止まりを作らない。
+   retry:true のときは「再試行」も出し、押すと許可の要求からやり直す。
+   一度断られた許可は、ブラウザが覚えていると再要求しても画面が出ないことがあるので、
+   そのときの戻し方を本文に書いておく。 */
+function showArError(html,options){
+  const retry=!options||options.retry!==false;
+  const buttons=(retry?'<button type="button" id="arRetryBtn">再試行</button>':"")
+    +'<button type="button" id="arErrorCloseBtn" class="ar-status-close-btn">✕ 閉じる</button>';
+  showArStatus(html+'<div class="ar-status-actions">'+buttons+'</div>');
+  const retryBtn=el.arStatusMessage.querySelector("#arRetryBtn");
+  if(retryBtn) retryBtn.addEventListener("click",()=>{ hideArStatus(); startArMode(); });
+  const closeBtn=el.arStatusMessage.querySelector("#arErrorCloseBtn");
+  if(closeBtn) closeBtn.addEventListener("click",stopArMode);
+}
 
 /* 検証用: センサーの生データと計算結果を画面に表示する(原因調査のための一時的な機能) */
 function renderArDebugOverlay(){
@@ -8289,11 +8320,11 @@ function isAzimuthTrustworthy(current,target,outlierThresholdDeg,requiredStreak)
 
 async function startArMode(){
   if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    showArStatus("この端末・ブラウザではカメラを利用できません。");
+    showArError("この端末・ブラウザではカメラを利用できません。",{retry:false});
     return;
   }
   if(!window.DeviceOrientationEvent){
-    showArStatus("この端末では方位センサーを利用できません。");
+    showArError("この端末では方位センサーを利用できません。",{retry:false});
     return;
   }
   showArStatus("カメラ・方位・モーションセンサーの利用を許可してください…");
@@ -8303,19 +8334,18 @@ async function startArMode(){
     if(typeof DeviceOrientationEvent.requestPermission==="function"){
       const res=await DeviceOrientationEvent.requestPermission();
       if(res!=="granted"){
-        showArStatus("方位センサーの利用が許可されませんでした。<br>設定アプリからこのサイトの「モーションと画面の向き」を許可してください。<button type=\"button\" id=\"arRetryBtn\">再試行</button>");
-        el.arStatusMessage.querySelector("#arRetryBtn")?.addEventListener("click",startArMode);
+        showArError("方位センサーの利用が許可されませんでした。<br>「再試行」で許可を求め直します。出てこないときは、設定アプリからこのサイトの「モーションと画面の向き」を許可してください。");
         return;
       }
     }
   }catch(err){
-    showArStatus("方位センサーの許可取得に失敗しました。");
+    showArError("方位センサーの許可取得に失敗しました。<br>「再試行」でもう一度求め直せます。");
     return;
   }
   try{
     arCameraStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
   }catch(err){
-    showArStatus("カメラの利用が許可されませんでした。<br>設定アプリからこのサイトのカメラアクセスを許可してください。");
+    showArError("カメラの利用が許可されませんでした。<br>「再試行」で許可を求め直します。出てこないときは、ブラウザの設定でこのサイトのカメラを許可してください。");
     return;
   }
 
