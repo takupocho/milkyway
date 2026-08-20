@@ -2166,7 +2166,14 @@
      余白などの上書きが効かなくなっていた。そのため、ベースルールの後に改めて上書きする。
      (文字サイズは以前のサイズのままにしたいので、ここでは変更しない) */
   @media (max-width:760px){
-    .best-time-bar{padding:5px 6px;margin-top:2px;column-gap:4px;row-gap:1px;flex-wrap:wrap;}
+    /* v662: 一番下に来るので、ほかの行と見分けがつくよう背景を明るめにする。 */
+    .best-time-bar{
+      padding:7px 8px;margin-top:2px;column-gap:4px;row-gap:1px;flex-wrap:wrap;
+      background:rgba(236,240,255,.12);
+      border-top:1px solid rgba(236,240,255,.22);
+      border-bottom:1px solid rgba(236,240,255,.22);
+      border-radius:10px;
+    }
     .best-time-text{row-gap:1px;}
     .best-time-top-row{
       display:flex;
@@ -2238,7 +2245,26 @@
      同じプロパティを指定するとCSSの詳細度が同じ場合は後に書かれたこちらが勝ってしまい、
      余白の上書きが効かなくなっていた。そのため、ベースルールの後に改めて上書きする。 */
   @media (max-width:760px){
-    .datetime-row{margin-top:-8px;padding-top:2px;gap:14px;border-top:none;}
+    /* 【v662】スマホの並び順。項目そのものは動かさず、flexのorderだけで順番を作る。
+       .dt-col を display:contents にして、中の項目を .datetime-row の直接の子として扱う。
+
+         1 日付ナビ → 2 時刻ラベル → 3 スライダー → 4 目盛り → 5 説明文
+         → 6 月 → 7 太陽 → 8 天の川 → 9 ベストタイムの帯（一番下） */
+    .datetime-row{
+      display:flex;flex-direction:column;
+      margin-top:-8px;padding-top:2px;gap:8px;border-top:none;
+    }
+    .dt-col{display:contents;}
+    #bestTimeDateNav{order:1;}
+    .dt-col label.dt-time-label{order:2;margin-bottom:0;}
+    #sliderTimelineRow{order:3;}
+    #tickTimelineRow{order:4;}
+    #rangeHint{order:5;}
+    #moonTimelineRow{order:6;}
+    #sunTimelineRow{order:7;}
+    #mwTimelineRow{order:8;}
+    #bestTimeBar{order:9;margin-top:6px;}
+    .date-picker-group{order:10;}
   }
   @media (max-width:640px){
     .datetime-row{grid-template-columns:1fr;}
@@ -3623,18 +3649,19 @@
                   </div>
                   <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
                 </div>
-                <div class="best-time-date-nav" id="bestTimeDateNav">
-                  <span class="date-nav-btn-wrap">
-                    <span class="date-nav-btn" id="mobileDateDisplay">—</span>
-                    <input type="date" id="mobileDateInputVisible" class="date-nav-input-overlay" tabindex="-1">
-                  </span>
-                  <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
-                  <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
-                  <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
-                  <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
-                  <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
-                </div>
                 <button id="jumpBestTimeBtn" type="button" class="jump-besttime-btn">開始<br>時間</button>
+              </div>
+              <!-- v662: 日付ナビはベストタイムの帯の外へ出し、スマホでは上のほうへ並べ替える。 -->
+                            <div class="best-time-date-nav" id="bestTimeDateNav">
+                <span class="date-nav-btn-wrap">
+                  <span class="date-nav-btn" id="mobileDateDisplay">—</span>
+                  <input type="date" id="mobileDateInputVisible" class="date-nav-input-overlay" tabindex="-1">
+                </span>
+                <button id="mobileNowBtn" type="button" class="date-nav-btn">現在</button>
+                <button id="mobilePrevMonthBtn" type="button" class="date-nav-btn">＜前月</button>
+                <button id="mobilePrevDayBtn" type="button" class="date-nav-btn">＜前日</button>
+                <button id="mobileNextDayBtn" type="button" class="date-nav-btn">翌日＞</button>
+                <button id="mobileNextMonthBtn" type="button" class="date-nav-btn">翌月＞</button>
               </div>
               <div class="date-picker-group">
                 <button type="button" class="date-collapse-toggle" id="dateCollapseToggle">
@@ -3657,11 +3684,11 @@
             </div>
             <div class="dt-col">
               <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
-              <div class="timeline-row">
+              <div class="timeline-row" id="moonTimelineRow">
                 <span class="timeline-icon">🌙</span>
                 <canvas class="timeline-bar-canvas" id="moonTimelineBar" width="760" height="44"></canvas>
               </div>
-              <div class="timeline-row">
+              <div class="timeline-row" id="sunTimelineRow">
                 <span class="timeline-icon">☀️</span>
                 <canvas class="timeline-bar-canvas" id="sunTimelineBar" width="760" height="44"></canvas>
               </div>
@@ -3671,14 +3698,14 @@
                 <canvas class="timeline-bar-canvas" id="mwTimelineBar" width="760" height="44"></canvas>
                 <span class="mw-end-time" id="mwEndTimeLabel"></span>
               </div>
-              <div class="timeline-row slider-row">
+              <div class="timeline-row slider-row" id="sliderTimelineRow">
                 <button type="button" id="playPauseBtn" class="play-pause-btn" aria-label="再生">▶</button>
                 <div class="slider-wrap">
                   <div class="slider-tick-marks" id="sliderTickMarks"></div>
                   <input type="range" id="timeSlider" min="0" max="1800" step="1">
                 </div>
               </div>
-              <div class="timeline-row">
+              <div class="timeline-row" id="tickTimelineRow">
                 <span class="timeline-icon" aria-hidden="true"></span>
                 <div class="tick-row" id="tickRow"></div>
               </div>
@@ -3739,7 +3766,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="661-full-bleed";
+const APP_VERSION="662-mobile-order";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
