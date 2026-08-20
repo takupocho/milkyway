@@ -1267,18 +1267,15 @@
   /* コントローラーはドローンモードONのときだけ。構図(縦・横)には連動させない。 */
   .drone-sticks{display:none;}
   body.drone-mode .drone-sticks{display:block;}
-  @media (min-width:761px) and (hover:hover) and (pointer:fine){
-    body.drone-mode .drone-sticks{display:none;} /* PCはキーボードで操作するため出さない */
-  }
+  /* v652: PCでも同じ位置に出す（マウスでもつまめる）。 */
   body.ar-active .drone-sticks{display:none!important;}
   /* ステータスと外部データ再読込は右端の同じ並びのまま、右スティックの上へ逃がす。 */
   body.drone-mode .external-data-monitor{bottom:190px;}
-  @media (min-width:761px) and (hover:hover) and (pointer:fine){
-    body.drone-mode .external-data-monitor{bottom:34px;}
-  }
   .drone-stick{
-    /* 左スティックの下に仰角ボタンを置くぶんを空ける(仰角は下から40〜72px)。 */
-    position:absolute;bottom:82px;width:96px;height:96px;border-radius:50%;z-index:14;
+    /* v652で仰角ボタンをやめたので、その空きぶんスティックを下げる。
+       器の下端＝縦構図の画像の下端なので、縦構図でも横構図でも同じ位置に出る。
+       下から38pxまでにある水際診断・バージョン表記・地形クレジットは避ける。 */
+    position:absolute;bottom:40px;width:96px;height:96px;border-radius:50%;z-index:14;
     background:radial-gradient(circle at 50% 42%,rgba(30,38,66,.44),rgba(8,12,26,.6));
     border:1.5px solid rgba(150,170,220,.5);
     box-shadow:0 3px 12px rgba(0,0,0,.42);
@@ -1286,6 +1283,13 @@
   }
   .drone-stick.left{left:6px;}
   .drone-stick.right{right:6px;}
+  /* スティックは器の下端に固定、出典類は画像の下端に沿うので、
+     横構図だと出典が上へ上がってスティックに重なる。
+     ドローンモードの間だけ、出典類も器の下端（スティックの下）へ逃がす。 */
+  body.drone-mode .terrain-credit,
+  body.drone-mode .app-version-badge,
+  body.drone-mode .sea-diag-panel,
+  body.drone-mode .real-mw-credit{--sim-inset-y:0px;}
   /* v651で器の高さが構図によらず一定になったので、
      横構図だけスティックを下げていた補正は要らなくなった。 */
   /* 中心の十字。中立位置が分かるようにする。 */
@@ -1306,17 +1310,6 @@
     font:700 9px/1 'Inter',sans-serif;letter-spacing:.04em;color:rgba(202,215,245,.78);
     text-shadow:0 1px 3px rgba(0,0,0,.9);
   }
-  /* 左スティックの真下。バージョン表記・地形クレジット(下から36pxまで)は避ける。 */
-  .drone-gimbal{
-    position:absolute;left:6px;bottom:40px;z-index:14;display:flex;flex-direction:row;align-items:center;gap:5px;
-  }
-  .drone-gimbal-btn{
-    width:40px;height:32px;padding:0;border-radius:9px;
-    border:1px solid rgba(150,170,220,.5);background:rgba(10,14,30,.6);color:rgba(214,226,252,.9);
-    font:700 13px/1 'Inter',sans-serif;touch-action:none;-webkit-user-select:none;user-select:none;
-  }
-  .drone-gimbal-btn.active{border-color:var(--core-amber);color:var(--core-amber);}
-  .drone-gimbal-label{font:700 8px/1 'Inter',sans-serif;color:rgba(202,215,245,.7);text-shadow:0 1px 3px rgba(0,0,0,.9);}
   /* 画面上部中央の情報の並び。上から「ドローン高度」「住所」。
      時計はこの高さぶんだけ下へ逃がす(高さはJSで測って設定する)。 */
   .sim-top-stack{
@@ -3298,11 +3291,6 @@
               </div>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
-                <div class="drone-gimbal" aria-label="カメラの仰角">
-                  <button type="button" class="drone-gimbal-btn" data-pitch="1" aria-label="カメラを上へ向ける">▲</button>
-                  <span class="drone-gimbal-label">仰角</span>
-                  <button type="button" class="drone-gimbal-btn" data-pitch="-1" aria-label="カメラを下へ向ける">▼</button>
-                </div>
                 <div class="drone-stick left" id="droneStickLeft" aria-label="上昇下降と旋回">
                   <span class="drone-stick-label">上昇・旋回</span>
                   <span class="drone-stick-knob"></span>
@@ -3653,7 +3641,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="651-fixed-frame";
+const APP_VERSION="652-drone-sticks";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -19995,23 +19983,8 @@ bindDroneStick(el.droneStickLeft,
 bindDroneStick(el.droneStickRight,
   (x,y)=>{walkStrafe=x;walkForward=y;},
   ()=>{walkStrafe=0;walkForward=0;});
-if(el.droneSticks){
-  el.droneSticks.querySelectorAll(".drone-gimbal-btn").forEach(button=>{
-    const direction=+button.dataset.pitch;
-    const press=event=>{
-      if(arActive) return;
-      event.preventDefault();event.stopPropagation();
-      button.classList.add("active");
-      walkPitch=direction;
-      startWalkLoop();
-    };
-    const lift=()=>{ button.classList.remove("active"); walkPitch=0; };
-    button.addEventListener("pointerdown",press);
-    button.addEventListener("pointerup",lift);
-    button.addEventListener("pointercancel",lift);
-    button.addEventListener("pointerleave",lift);
-  });
-}
+/* 仰角の上下ボタンはv652で外した。仰角はスライダーとW/Sキーで変えられる
+   （walkPitch はそちらが使うので残してある）。 */
 
 {
   const badge=document.getElementById("appVersionBadge");
