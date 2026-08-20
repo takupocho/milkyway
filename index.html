@@ -1904,8 +1904,11 @@
   /* 【v653】出典はシミュレーション画面の中から外し、画面の下の1か所へまとめた。
      .source-credits を参照。body の real-mw-credit-visible / real-terrain-visible は
      「今それを使っているか」の目印として他でも使えるよう、そのまま残してある。 */
-  /* 動作中のバージョンを常に確認できるようにする。地形データの有無に関わらず表示する。 */
+  /* 版番号の確認用。撮影の役には立たないので画面には出さず、
+     ?hddebug=1 を付けたときだけ出す（v655）。
+     引き継ぎメモの「ファイル名とAPP_VERSIONとバッジが一致すること」の確認はこれで続けられる。 */
   .app-version-badge{
+    display:none;
     position:absolute;left:calc(var(--sim-inset-x) + 7px);bottom:calc(var(--sim-inset-y) + 22px);z-index:7;
     padding:2px 5px;border-radius:4px;background:rgba(3,5,14,.52);
     color:rgba(235,238,248,.62);font:600 8px/1.25 'IBM Plex Mono',monospace;
@@ -1920,6 +1923,7 @@
   }
   body.sea-diag-on .sea-diag-panel{display:block;}
   body.ar-active .sea-diag-panel{display:none;}
+  body.hd-debug:not(.ar-active) .app-version-badge{display:block;}
   body.ar-active .app-version-badge{display:none;}
   /* 出典・ライセンス。使っている素材の条件を満たすための表示（v653）。
      ESOのCC BY 4.0、国土地理院コンテンツ利用規約、OSMのODbL、Esriの利用条件は
@@ -1996,22 +2000,33 @@
     border-radius:8px;
     pointer-events:none;
   }
+  /* 【v655】方位バーはシミュレーション画面の外ではなく、画像の下端へ重ねる。
+     背景は塗らず、目盛りと文字だけが景色の上に乗る（塗りはdrawCompassStripから外した）。
+     幅と位置は画像に合わせたいので、--sim-inset-x / --sim-inset-y をそのまま使う。
+     ドローンのスティック(z-index:14)より下に置き、スティックの操作を邪魔しない。 */
   #compassStrip{
-    width:100%;
+    position:absolute;
+    left:var(--sim-inset-x);
+    bottom:var(--sim-inset-y);
+    /* canvasは置換要素なので、leftとrightを両方指定しても伸びない
+       （width:auto は元の width 属性の値になる）。幅は自分で計算する。 */
+    width:calc(100% - var(--sim-inset-x) - var(--sim-inset-x));
     height:42px;
-    display:block;
-    margin-top:2px;
+    display:none;
+    margin:0;
     border-radius:0 0 8px 8px;
-    background:#0a0c1c;
+    background:transparent;
+    z-index:11;
     cursor:ew-resize;
     touch-action:none;
     user-select:none;
     -webkit-user-select:none;
   }
+  body.compass-bar-visible #compassStrip{display:block;}
   #compassStrip.dragging{cursor:grabbing;}
   /* ベースルールの直後に置くことで、詳細度が同じでも正しく上書きされるようにする */
   @media (max-width:760px){
-    #compassStrip{height:30px;margin-top:0;}
+    #compassStrip{height:30px;}
   }
   .drag-hint{
     margin-top:8px;
@@ -3269,6 +3284,7 @@
                   <span class="display-popup-slider-value" id="cloudSeaOpacityVal">90%</span>
                 </div>
                 <button id="popupPixelWalkerBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">キャラクター</button>
+                <button id="popupCompassBarBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">方位バー</button>
                 <div class="display-popup-section-title">アニメーション</div>
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
@@ -3282,6 +3298,7 @@
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
+              <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div class="sim-top-stack" id="simTopStack">
                 <div id="droneBadge" class="drone-badge" hidden></div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
@@ -3499,7 +3516,6 @@
                 </button>
               </div>
             </div>
-            <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
             <div id="droneMapPanel" class="drone-map-panel" aria-label="ドローンの現在地と撮影方位">
               <div id="droneMap" class="drone-map"></div>
               <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="衛星画像に切り替える" title="地図／衛星画像切替"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg></button>
@@ -3644,7 +3660,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="654-sticks-bottom";
+const APP_VERSION="655-compass-overlay";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4524,7 +4540,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -6349,6 +6365,8 @@ let roadLinesVisible=false; // 通信を伴うので既定はOFF
      左右 → 横向き（右は左向きを反転して使い回す）
    ========================================================= */
 let pixelWalkerVisible=true;
+/* 方位バーを画像の下端に重ねて出すかどうか（v655）。既定は出す。 */
+let compassBarVisible=true;
 const PIXEL_WALKER_PALETTE={
   K:"#312d2b",   // 輪郭・カメラ
   h:"#844b3a",   // 髪・靴
@@ -7230,6 +7248,9 @@ function syncDisplayPopupControls(){
   el.popupContourBtn.setAttribute("aria-pressed",String(contourLinesVisible));
   el.popupPixelWalkerBtn.classList.toggle("active",pixelWalkerVisible);
   el.popupPixelWalkerBtn.setAttribute("aria-pressed",String(pixelWalkerVisible));
+  el.popupCompassBarBtn.classList.toggle("active",compassBarVisible);
+  el.popupCompassBarBtn.setAttribute("aria-pressed",String(compassBarVisible));
+  document.body.classList.toggle("compass-bar-visible",compassBarVisible);
   el.popupCloudSeaBtn.classList.toggle("active",cloudSeaVisible);
   el.popupCloudSeaBtn.setAttribute("aria-pressed",String(cloudSeaVisible));
   el.cloudSeaRow.classList.toggle("show",cloudSeaVisible);
@@ -7341,6 +7362,11 @@ el.popupRailBtn.addEventListener("click",()=>{
 });
 el.popupPixelWalkerBtn.addEventListener("click",()=>{
   pixelWalkerVisible=!pixelWalkerVisible;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupCompassBarBtn.addEventListener("click",()=>{
+  compassBarVisible=!compassBarVisible;
+  /* 出し入れで横幅が変わるので、表示を切り替えてから描き直す。 */
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
 el.popupCloudSeaBtn.addEventListener("click",()=>{
@@ -8713,6 +8739,7 @@ function collectPersistedSettings(){
     roadLinesVisible:roadLinesVisible,
     cloudSeaVisible:cloudSeaVisible,
     pixelWalkerVisible:pixelWalkerVisible,
+    compassBarVisible:compassBarVisible,
     cloudSeaElevationM:cloudSeaElevationM,
     cloudSeaOpacity:cloudSeaOpacity,
     cloudSeaWindDeg:cloudSeaWindDeg,
@@ -8828,6 +8855,7 @@ async function loadPersistedSettings(){
     roadLinesVisible=!!s.roadLinesVisible;
     cloudSeaVisible=s.cloudSeaVisible===true;
     pixelWalkerVisible=s.pixelWalkerVisible!==false;
+    compassBarVisible=s.compassBarVisible!==false;
     // 保存値はスライダーの目盛りへ寄せておく（ツマの位置と数値がずれないように）。
     if(Number.isFinite(+s.cloudSeaElevationM)) cloudSeaElevationM=cloudSeaSliderToM(cloudSeaMToSlider(+s.cloudSeaElevationM));
     if(Number.isFinite(+s.cloudSeaOpacity)) cloudSeaOpacity=clamp(+s.cloudSeaOpacity,.2,1);
@@ -11128,6 +11156,7 @@ function highDetailBaseElevation(azDeg,distanceKm){
 /* 検証用の覚書き。?hddebug=1 の時だけ外から中身を見られるようにする。 */
 try{
   if(new URLSearchParams(location.search).has("hddebug")){
+    document.body.classList.add("hd-debug");   // 版番号バッジなど、確認用の表示を出す
     window.__hd={
       elevationAt:highDetailElevationAt,tiles:highDetailTiles,
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
@@ -18586,7 +18615,10 @@ function drawCompassStrip(ctx,s){
 
   const W=ctx.canvas.width, H=ctx.canvas.height;
   ctx.clearRect(0,0,W,H);
-  ctx.fillStyle="#0a0c1c"; ctx.fillRect(0,0,W,H);
+  /* v655で背景を塗るのをやめた。景色の明るいところでも目盛りが読めるよう、
+     かわりに文字と線へ薄い影を敷く。 */
+  ctx.shadowColor="rgba(0,0,0,.85)";
+  ctx.shadowBlur=3;
 
   const fovH=s.fovH, centerAz=s.facingAz;
   canvas.setAttribute("aria-valuenow",String(Math.round(norm360(centerAz))));
@@ -18648,6 +18680,7 @@ function drawCompassStrip(ctx,s){
   ctx.fillStyle="#e8a659";
   ctx.fillText(`${Math.round(centerAz)}°`, cx+10, baseY);
   ctx.textAlign="left";
+  ctx.shadowBlur=0;
 }
 
 /* 方位バーを直接左右へスライドして撮影方位を変更する。
@@ -19149,7 +19182,6 @@ function applyCanvasSize(){
   el.photoCanvas.style.aspectRatio=targetAspect;
   el.photoCanvasWrap.classList.toggle("portrait",isPortrait);
   document.body.classList.toggle("sim-portrait",isPortrait); // 構図でCSSを切り替えるため
-  if(el.compassStrip.width!==targetW) el.compassStrip.width=targetW;
   if(el.meteorCanvas.width!==targetW) el.meteorCanvas.width=targetW;
   if(el.meteorCanvas.height!==targetH) el.meteorCanvas.height=targetH;
   if(el.walkerFxCanvas.width!==targetW) el.walkerFxCanvas.width=targetW;
