@@ -2149,28 +2149,88 @@
     transition:opacity .7s ease,visibility .7s;
   }
   .opening.done{opacity:0;visibility:hidden;pointer-events:none;}
-  /* 星。位置を%で置いてあるので、画面の大きさが変わっても散らばり方は変わらない。 */
+  /* 星（v670）。手前と奥の2層に分け、違う速さでゆっくり流す。
+     速さが違うと奥行きが出る（遠い星ほど動きが遅く見える）。
+     枠より一回り大きく取ってあるので、動かしても縁が見えることはない。
+     位置は%なので、画面の大きさが変わっても散らばり方は変わらない。 */
   .opening-stars{
-    position:absolute;inset:0;
+    position:absolute;inset:-16%;
     opacity:0;
     background-image:
       radial-gradient(1.5px 1.5px at 12% 22%,rgba(255,255,255,.95),transparent 60%),
-      radial-gradient(1.2px 1.2px at 27% 68%,rgba(255,255,255,.62),transparent 60%),
       radial-gradient(1.6px 1.6px at 41% 14%,rgba(255,255,255,.85),transparent 60%),
-      radial-gradient(1.1px 1.1px at 55% 82%,rgba(255,255,255,.55),transparent 60%),
       radial-gradient(1.4px 1.4px at 69% 31%,rgba(255,255,255,.8),transparent 60%),
-      radial-gradient(1.2px 1.2px at 83% 61%,rgba(255,255,255,.66),transparent 60%),
       radial-gradient(1.7px 1.7px at 91% 17%,rgba(255,255,255,.9),transparent 60%),
-      radial-gradient(1.1px 1.1px at 8% 79%,rgba(255,255,255,.5),transparent 60%),
-      radial-gradient(1.3px 1.3px at 34% 45%,rgba(255,255,255,.6),transparent 60%),
-      radial-gradient(1.2px 1.2px at 62% 57%,rgba(255,255,255,.52),transparent 60%),
       radial-gradient(1.5px 1.5px at 76% 88%,rgba(255,255,255,.72),transparent 60%),
-      radial-gradient(1.3px 1.3px at 19% 8%,rgba(255,255,255,.7),transparent 60%);
-    animation:openingStars 2.4s ease .1s forwards;
+      radial-gradient(1.3px 1.3px at 19% 8%,rgba(255,255,255,.7),transparent 60%),
+      radial-gradient(1.4px 1.4px at 52% 71%,rgba(255,255,255,.78),transparent 60%);
+    animation:openingStars 2.4s ease .1s forwards,
+              openingDriftNear 96s linear infinite;
+  }
+  /* 奥の層。細くて暗い星をゆっくりめに。 */
+  .opening-stars::before{
+    content:"";
+    position:absolute;inset:0;
+    background-image:
+      radial-gradient(1.2px 1.2px at 27% 68%,rgba(255,255,255,.58),transparent 60%),
+      radial-gradient(1.1px 1.1px at 55% 82%,rgba(255,255,255,.5),transparent 60%),
+      radial-gradient(1.2px 1.2px at 83% 61%,rgba(255,255,255,.6),transparent 60%),
+      radial-gradient(1.1px 1.1px at 8% 79%,rgba(255,255,255,.46),transparent 60%),
+      radial-gradient(1.3px 1.3px at 34% 45%,rgba(255,255,255,.54),transparent 60%),
+      radial-gradient(1.2px 1.2px at 62% 57%,rgba(255,255,255,.48),transparent 60%),
+      radial-gradient(1.1px 1.1px at 46% 33%,rgba(255,255,255,.44),transparent 60%),
+      radial-gradient(1.2px 1.2px at 88% 42%,rgba(255,255,255,.5),transparent 60%);
+    animation:openingDriftFar 168s linear infinite;
   }
   @keyframes openingStars{
-    from{opacity:0;transform:scale(1.08);}
-    to{opacity:1;transform:scale(1);}
+    from{opacity:0;}
+    to{opacity:1;}
+  }
+  @keyframes openingDriftNear{
+    0%{transform:translate3d(0,0,0);}
+    50%{transform:translate3d(-2.4%,-1.6%,0);}
+    100%{transform:translate3d(0,0,0);}
+  }
+  @keyframes openingDriftFar{
+    0%{transform:translate3d(0,0,0);}
+    50%{transform:translate3d(1.4%,-.9%,0);}
+    100%{transform:translate3d(0,0,0);}
+  }
+  /* 流れ星（v670）。3本を別々の周期で回し、光っているのは1周のうち1秒足らず。
+     周期をそろえない（17/26/41秒）ので、繰り返しの型が見えにくい。
+     光っているのはどれも約0.9秒。 */
+  .opening-meteor{
+    position:absolute;
+    width:96px;height:1.5px;
+    border-radius:1px;
+    background:linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(198,218,255,.5) 62%,
+      rgba(255,255,255,.95) 100%);
+    transform-origin:0 50%;
+    opacity:0;
+    pointer-events:none;
+  }
+  .opening-meteor.m1{top:16%;left:-14%;animation:openingMeteor1 17s ease-in 3.4s infinite;}
+  .opening-meteor.m2{top:4%;left:26%;animation:openingMeteor2 26s ease-in 9.5s infinite;}
+  .opening-meteor.m3{top:34%;left:-8%;animation:openingMeteor3 41s ease-in 21s infinite;}
+  @keyframes openingMeteor1{
+    0%{opacity:0;transform:rotate(27deg) translateX(0) scaleX(.25);}
+    1.1%{opacity:.95;}
+    5.4%{opacity:0;transform:rotate(27deg) translateX(340px) scaleX(1);}
+    100%{opacity:0;transform:rotate(27deg) translateX(340px) scaleX(1);}
+  }
+  @keyframes openingMeteor2{
+    0%{opacity:0;transform:rotate(38deg) translateX(0) scaleX(.25);}
+    .8%{opacity:.8;}
+    3.5%{opacity:0;transform:rotate(38deg) translateX(300px) scaleX(1);}
+    100%{opacity:0;transform:rotate(38deg) translateX(300px) scaleX(1);}
+  }
+  @keyframes openingMeteor3{
+    0%{opacity:0;transform:rotate(19deg) translateX(0) scaleX(.25);}
+    .5%{opacity:.9;}
+    2.2%{opacity:0;transform:rotate(19deg) translateX(400px) scaleX(1);}
+    100%{opacity:0;transform:rotate(19deg) translateX(400px) scaleX(1);}
   }
   .opening-inner{position:relative;text-align:center;padding:0 16px;}
   .opening-title{
@@ -3576,6 +3636,9 @@
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
               <div class="opening" id="openingOverlay" aria-hidden="true">
                 <div class="opening-stars"></div>
+                <div class="opening-meteor m1"></div>
+                <div class="opening-meteor m2"></div>
+                <div class="opening-meteor m3"></div>
                 <div class="opening-inner">
                   <h2 class="opening-title">Starchase</h2>
                   <div class="opening-rule"></div>
@@ -3956,7 +4019,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="669-opening-hold";
+const APP_VERSION="670-opening-sky";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
