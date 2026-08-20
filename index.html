@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>天の川撮影シミュレーター</title>
+<title>Starchase - Astro Photo Simulator</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -136,10 +136,30 @@
   .masthead h1{
     font-family:'Fraunces',serif;
     font-weight:600;
-    font-size:clamp(20px,2.2vw,25px);
-    margin:0 0 8px;
+    font-size:clamp(22px,2.4vw,28px);
+    margin:0 0 5px;
     letter-spacing:-0.01em;
     white-space:nowrap;
+  }
+  /* 名前の下に敷く説明。名前を主役にしたいので、字は小さく色は控えめに。 */
+  .masthead-tagline{
+    display:block;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10px;
+    font-weight:600;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+    color:var(--dim);
+    margin-top:3px;
+  }
+  /* 日本語の名前。英語名のすぐ下に置き、その下の説明文とは役割が違うことが
+     大きさと色で分かるようにする。 */
+  .masthead-jp{
+    margin:0 0 9px;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.04em;
+    color:var(--star-white);
   }
   .masthead .sub{
     color:var(--dim);
@@ -2099,6 +2119,114 @@
     border-radius:8px;
     pointer-events:none;
   }
+  /* =========================================================
+     オープニング（v668）
+
+     起動したとき一度だけ、シミュレーション画面の中でタイトルを出す。
+     写真とぴったり同じ場所に重ねたいので、位置は --sim-inset-x / --sim-inset-y
+     に合わせてある（縦構図でも横構図でも写真の枠に収まる）。
+
+     動きは3つだけに絞った。足すほど安っぽくなる。
+       ・字間が詰まりながら名前が浮かび上がる
+       ・その下で琥珀色の細い線が中央から伸びる
+       ・最後に全体がすっと引く
+     どこかに触れば途中でも飛ばせる。
+     ========================================================= */
+  .opening{
+    position:absolute;
+    left:var(--sim-inset-x);
+    right:var(--sim-inset-x);
+    top:var(--sim-inset-y);
+    bottom:var(--sim-inset-y);
+    z-index:1250;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:8px;
+    overflow:hidden;
+    cursor:pointer;
+    background:radial-gradient(ellipse at 50% 40%,#161c3d 0%,#090b1c 58%,#05060f 100%);
+    transition:opacity .7s ease,visibility .7s;
+  }
+  .opening.done{opacity:0;visibility:hidden;pointer-events:none;}
+  /* 星。位置を%で置いてあるので、画面の大きさが変わっても散らばり方は変わらない。 */
+  .opening-stars{
+    position:absolute;inset:0;
+    opacity:0;
+    background-image:
+      radial-gradient(1.5px 1.5px at 12% 22%,rgba(255,255,255,.95),transparent 60%),
+      radial-gradient(1.2px 1.2px at 27% 68%,rgba(255,255,255,.62),transparent 60%),
+      radial-gradient(1.6px 1.6px at 41% 14%,rgba(255,255,255,.85),transparent 60%),
+      radial-gradient(1.1px 1.1px at 55% 82%,rgba(255,255,255,.55),transparent 60%),
+      radial-gradient(1.4px 1.4px at 69% 31%,rgba(255,255,255,.8),transparent 60%),
+      radial-gradient(1.2px 1.2px at 83% 61%,rgba(255,255,255,.66),transparent 60%),
+      radial-gradient(1.7px 1.7px at 91% 17%,rgba(255,255,255,.9),transparent 60%),
+      radial-gradient(1.1px 1.1px at 8% 79%,rgba(255,255,255,.5),transparent 60%),
+      radial-gradient(1.3px 1.3px at 34% 45%,rgba(255,255,255,.6),transparent 60%),
+      radial-gradient(1.2px 1.2px at 62% 57%,rgba(255,255,255,.52),transparent 60%),
+      radial-gradient(1.5px 1.5px at 76% 88%,rgba(255,255,255,.72),transparent 60%),
+      radial-gradient(1.3px 1.3px at 19% 8%,rgba(255,255,255,.7),transparent 60%);
+    animation:openingStars 2.4s ease .1s forwards;
+  }
+  @keyframes openingStars{
+    from{opacity:0;transform:scale(1.08);}
+    to{opacity:1;transform:scale(1);}
+  }
+  .opening-inner{position:relative;text-align:center;padding:0 16px;}
+  .opening-title{
+    margin:0;
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:clamp(26px,7.4vw,46px);
+    line-height:1.15;
+    color:#f2f5ff;
+    /* 字間を広げると右にずれるので、同じ量を text-indent で戻す。 */
+    letter-spacing:.42em;
+    text-indent:.42em;
+    opacity:0;
+    animation:openingTitle 1.35s cubic-bezier(.22,.61,.36,1) .3s forwards;
+  }
+  @keyframes openingTitle{
+    from{opacity:0;letter-spacing:.42em;text-indent:.42em;filter:blur(4px);}
+    to{opacity:1;letter-spacing:.1em;text-indent:.1em;filter:blur(0);}
+  }
+  .opening-rule{
+    width:min(190px,64%);
+    height:1px;
+    margin:13px auto 11px;
+    background:linear-gradient(90deg,transparent,var(--core-amber),transparent);
+    transform:scaleX(0);
+    animation:openingRule .85s cubic-bezier(.22,.61,.36,1) .95s forwards;
+  }
+  @keyframes openingRule{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+  .opening-tagline{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:clamp(8px,1.8vw,11px);
+    font-weight:600;
+    letter-spacing:.34em;
+    text-indent:.34em;
+    text-transform:uppercase;
+    color:var(--core-amber);
+    opacity:0;
+    animation:openingFadeUp .75s ease 1.2s forwards;
+  }
+  .opening-jp{
+    margin-top:9px;
+    font-size:clamp(9px,2vw,12px);
+    font-weight:600;
+    letter-spacing:.16em;
+    color:rgba(226,232,248,.6);
+    opacity:0;
+    animation:openingFadeUp .75s ease 1.45s forwards;
+  }
+  @keyframes openingFadeUp{
+    from{opacity:0;transform:translateY(7px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  /* 動きを抑える設定の端末では、演出せずに文字だけ置く。 */
+  @media (prefers-reduced-motion:reduce){
+    .opening *{animation-duration:.01ms !important;animation-delay:0ms !important;}
+  }
   /* 【v655】方位バーはシミュレーション画面の外ではなく、画像の下端へ重ねる。
      背景は塗らず、目盛りと文字だけが景色の上に乗る（塗りはdrawCompassStripから外した）。
      幅と位置は画像に合わせたいので、--sim-inset-x / --sim-inset-y をそのまま使う。
@@ -2943,8 +3071,9 @@
     <div class="left-column">
       <header class="masthead">
         <div class="eyebrow">Astro Almanac ·<br>Night Sky Instrument</div>
-        <h1>天の川撮影シミュレーター</h1>
-        <p class="sub">日時・場所・カメラ設定を入力すると、天の川の位置と写り方を天文計算に基づいて再現します。撮影計画に役立ててください。</p>
+        <h1>Starchase<span class="masthead-tagline">Astro Photo Simulator</span></h1>
+        <p class="masthead-jp">星と月の撮影シミュレーター</p>
+        <p class="sub">日時・場所・カメラ設定を入力すると、天の川・月・太陽の位置と写り方を天文計算に基づいて再現します。撮影計画に役立ててください。</p>
       </header>
     <aside class="control-panel">
       <button id="closeSettingsBtn" type="button" class="close-settings-btn">✕ 閉じる(シミュレーション画面へ戻る)</button>
@@ -3423,6 +3552,15 @@
               <canvas id="photoCanvas" width="1200" height="800"></canvas>
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
+              <div class="opening" id="openingOverlay" aria-hidden="true">
+                <div class="opening-stars"></div>
+                <div class="opening-inner">
+                  <h2 class="opening-title">Starchase</h2>
+                  <div class="opening-rule"></div>
+                  <div class="opening-tagline">Astro Photo Simulator</div>
+                  <div class="opening-jp">星と月の撮影シミュレーター</div>
+                </div>
+              </div>
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div class="sim-top-stack" id="simTopStack">
                 <div id="droneBadge" class="drone-badge" hidden></div>
@@ -3795,7 +3933,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="665-ar-permission";
+const APP_VERSION="668-opening";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -20198,6 +20336,26 @@ bindDroneStick(el.droneStickRight,
 {
   const badge=document.getElementById("appVersionBadge");
   if(badge) syncAppVersionBadge();
+}
+
+/* オープニングの引き際（v668）。
+   出したままにはせず、必ず自分で消える。触れば途中でも飛ばせる。
+   消えたあとはDOMからも外して、以後の描画やタップの邪魔をしない。 */
+{
+  const overlay=document.getElementById("openingOverlay");
+  if(overlay){
+    let closed=false;
+    const close=()=>{
+      if(closed) return;
+      closed=true;
+      overlay.classList.add("done");
+      setTimeout(()=>{ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); },800);
+    };
+    /* 動きを抑える設定のときは長く見せても仕方がないので、すぐ引く。 */
+    const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion:reduce)").matches;
+    const timer=setTimeout(close,reduce?600:2500);
+    overlay.addEventListener("pointerdown",()=>{ clearTimeout(timer); close(); });
+  }
 }
 update();
 if(monthTableVisible) renderMonthTable();
