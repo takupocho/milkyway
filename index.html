@@ -4019,7 +4019,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="670-opening-sky";
+const APP_VERSION="673-lunar-eclipse";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -4107,6 +4107,57 @@ function sunPosition(jd){
   return {ra,dec,lambda,eps,g,angularRadiusDeg};
 }
 
+
+/* =========================================================
+   月食（v673）
+
+   月食は「月が地球の影に入る」現象なので、太陽のちょうど正反対の点（対日点）を
+   影の中心として、そこから月の中心がどれだけ離れているかを測れば決まる。
+
+     本影の半径 = 1.02 × (月の地平視差×0.99834 + 太陽の視差) − 1.02 × 太陽の視半径
+     半影の半径 = 1.02 × (月の地平視差×0.99834 + 太陽の視差) + 1.02 × 太陽の視半径
+
+   1.02 は地球の大気で影がひとまわり膨らむぶん（ダンジョンの補正）、
+   0.99834 は地球が真球ではないぶんの補正。
+
+   食分は「月の直径のうち何割が本影に入っているか」。1以上で皆既。
+   ========================================================= */
+function lunarEclipseState(sun,moon){
+  if(!sun||!moon) return null;
+  const distanceER=moon.distanceER;
+  if(!Number.isFinite(distanceER)||distanceER<=1) return null;
+  const shadowRa=norm360(sun.ra+180), shadowDec=-sun.dec;
+  // 月の中心と影の中心の離角
+  const cosSep=sin(moon.dec)*sin(shadowDec)+cos(moon.dec)*cos(shadowDec)*cos(moon.ra-shadowRa);
+  const sep=Math.acos(clamp(cosSep,-1,1))*R2D;
+  const moonParallax=Math.asin(1/distanceER)*R2D;   // 月の地平視差
+  const SUN_PARALLAX_DEG=8.794/3600;
+  const sunRadius=sun.angularRadiusDeg;
+  const base=1.02*(0.99834*moonParallax+SUN_PARALLAX_DEG);
+  const umbra=base-1.02*sunRadius;
+  const penumbra=base+1.02*sunRadius;
+  const moonRadius=moon.angularRadiusDeg;
+  if(!(sep<penumbra+moonRadius)) return null;   // 影にかすりもしない
+  const umbralMag=(umbra+moonRadius-sep)/(2*moonRadius);
+  const penumbralMag=(penumbra+moonRadius-sep)/(2*moonRadius);
+  return {
+    kind: umbralMag>=1?"total":(umbralMag>0?"partial":"penumbral"),
+    sep, umbra, penumbra, moonRadius,
+    umbralMag:Math.max(0,umbralMag),
+    penumbralMag:clamp(penumbralMag,0,1),
+    shadowRa, shadowDec
+  };
+}
+/* 食のあいだ月明かりがどれだけ弱まるか。
+   皆既中の月は満月の1万分の1ほどまで暗くなるので、
+   地上の明るさの計算では「月は出ていない」に近い扱いになる。 */
+function lunarEclipseLightFactor(eclipse){
+  if(!eclipse) return 1;
+  if(eclipse.umbralMag>=1) return .002;
+  if(eclipse.umbralMag>0) return Math.max(.002,Math.pow(1-eclipse.umbralMag,1.6));
+  return 1-.28*clamp(eclipse.penumbralMag,0,1);
+}
+
 // 月の輝面(明るく照らされている側)が、実際にその時刻・その場所からどの向きに
 // 傾いて見えるかを計算する。
 // (1) brightLimbPositionAngle: 天の北極を基準に輝面中心がどちらを向いているか(標準的な位置角)
@@ -4182,10 +4233,16 @@ function moonPosition(jd){
   const illum=(1-cos(Dd))/2;
   // 実際の距離(地球半径単位)から見かけの角半径を求める。これをレンズ投影に通すことで、
   // 広角レンズで画面の端に月が来た時に、実際のカメラと同じように楕円状に歪んで見えるようにする。
+  /* 【v672】距離にも主な摂動を入れる。
+     これまで補正していたのは経度と緯度だけで、地球からの距離は2体問題のままだった。
+     そのため近地点・遠地点の振れ幅が実際より小さく出ていて、
+     スーパームーンが本来ほど大きくならなかった。
+     太陽の引きで軌道が伸び縮みする分（Schlyterの主要2項、地球半径単位）を足す。 */
+  const rPerturbed = r - 0.58*cos(M-2*Dd) - 0.46*cos(2*Dd);
   const MOON_RADIUS_KM=1737.4, EARTH_RADIUS_KM=6378.14;
-  const angularRadiusDeg=Math.asin(MOON_RADIUS_KM/(r*EARTH_RADIUS_KM))*R2D;
+  const angularRadiusDeg=Math.asin(MOON_RADIUS_KM/(rPerturbed*EARTH_RADIUS_KM))*R2D;
 
-  return {ra,dec,illum,elong:Dd,angularRadiusDeg};
+  return {ra,dec,illum,elong:Dd,angularRadiusDeg,distanceER:rPerturbed};
 }
 
 const RA_NGP=192.85948, DEC_NGP=27.12825, L_NCP=122.93192;
@@ -5181,7 +5238,10 @@ el.geoBtn.addEventListener("click",()=>{
 
 /* 「観測地点：〇〇県〇〇市」のテキスト自体をタップ/クリックしても現在地取得を実行できるようにする */
 el.observedPlaceName.addEventListener("click",()=>{ el.geoBtn.click(); });
-el.todayDatePlace.addEventListener("click",()=>{ el.geoBtn.click(); });
+/* 画面右上の地名を押したときは、現在地といっしょに現在時刻へも合わせる（v671）。
+   先に時刻を合わせるのは、位置情報の取得は後から返ってくる上に、
+   断られることもあるため。こうしておけば、位置が取れなくても時刻だけは合う。 */
+el.todayDatePlace.addEventListener("click",()=>{ el.nowBtn.click(); el.geoBtn.click(); });
 
 el.dateInput.addEventListener("input",scheduleUpdate);
 el.timeSlider.addEventListener("input",scheduleUpdate);
@@ -7901,7 +7961,9 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
   }
   state.starsNow=playbackStarsNow;
   state.twilight=state.sunAltAz.alt>=0 ? 1 : (state.sunAltAz.alt<=-18 ? 0 : (state.sunAltAz.alt+18)/18);
-  state.moonContribution=state.moonAltAz.alt>0 ? moon.illum*(state.moonAltAz.alt/90)*0.7 : 0;
+  moon.eclipse=lunarEclipseState(sun,moon);
+  state.moonContribution=state.moonAltAz.alt>0
+    ? moon.illum*(state.moonAltAz.alt/90)*0.7*lunarEclipseLightFactor(moon.eclipse) : 0;
   state.skyBrightness=clamp(state.lp.base+state.twilight+state.moonContribution*0.55,0,1);
   if(lockAzToGc){
     state.facingAz=newAz;
@@ -10425,7 +10487,10 @@ function computeState(){
   const grainAmount=clamp(Math.log2(iso/100)/Math.log2(51200/100),0,1);
 
   const twilight = sunAltAz.alt>=0 ? 1 : (sunAltAz.alt<=-18 ? 0 : (sunAltAz.alt+18)/18);
-  const moonContribution = moonAltAz.alt>0 ? moon.illum*(moonAltAz.alt/90)*0.7 : 0;
+  /* 月食のあいだは月明かりが落ちる。皆既中は星と天の川が見えるようになる。 */
+  moon.eclipse=lunarEclipseState(sun,moon);
+  const moonContribution = moonAltAz.alt>0
+    ? moon.illum*(moonAltAz.alt/90)*0.7*lunarEclipseLightFactor(moon.eclipse) : 0;
   const skyBrightness = clamp(lp.base + twilight*1.0 + moonContribution*0.55, 0, 1);
 
   /* 構図(横位置=センサー長辺が水平/縦位置=センサー短辺が水平) */
@@ -14028,7 +14093,13 @@ function drawPhoto(ctx,s){
         vAzX=m.a; vAzY=m.b; vAltX=m.c; vAltY=m.d;
         // 超広角では実際の見た目通りだと数px程度まで小さくなり視認しづらいため、
         // 歪み(縦横比)は保ったまま、最低限の大きさは確保する。
-        const minR=9*(W/1200)*celestialScale;
+        /* 【v672】底上げの大きさ自体を、その日の月の大きさに比例させる。
+           固定値で底上げすると、広角では近地点も遠地点も同じ大きさに揃ってしまい、
+           スーパームーンの差が消えていた。平均の視半径を基準に比を掛けることで、
+           見やすさは保ったまま「その日は大きい/小さい」が広角でも残る。 */
+        const MOON_MEAN_ANGULAR_RADIUS=0.2590;
+        const moonSizeRatio=(s.moon.angularRadiusDeg||MOON_MEAN_ANGULAR_RADIUS)/MOON_MEAN_ANGULAR_RADIUS;
+        const minR=9*(W/1200)*celestialScale*moonSizeRatio;
         const approxR=Math.hypot(vAzX,vAzY);
         if(approxR>0 && approxR<minR){
           const boost=minR/approxR;
@@ -14044,9 +14115,12 @@ function drawPhoto(ctx,s){
       const moonAtmosphereRGB=atmosphericCelestialRGB(s.moonAltAz.alt,"moon");
       const moonAtmosphereColor=moonAtmosphereRGB.join(",");
       const moonExtinction=lerp(.72,1,clamp((s.moonAltAz.alt+1)/11,0,1));
+      /* 月食のあいだは月そのものが暗いので、まわりの光暈も一緒に引く。
+         皆既中は満月の1万分の1ほどまで落ちるため、ほとんど消える（v673）。 */
+      const moonGlowFade=Math.sqrt(lunarEclipseLightFactor(s.moon.eclipse));
       const glowR=rForLabel*(2.1+s.moon.illum*1.2);
       const g=ctx.createRadialGradient(x,y,0,x,y,glowR);
-      g.addColorStop(0,`rgba(${moonAtmosphereColor},${(0.35+s.moon.illum*0.25)*moonExtinction})`);
+      g.addColorStop(0,`rgba(${moonAtmosphereColor},${(0.35+s.moon.illum*0.25)*moonExtinction*moonGlowFade})`);
       g.addColorStop(1,`rgba(${moonAtmosphereColor},0)`);
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
 
@@ -14072,6 +14146,51 @@ function drawPhoto(ctx,s){
       ctx.rotate(moonRotationRad);
       drawMoonPhaseShape(ctx,0,0,angR,s.moon.elong,`rgb(${moonAtmosphereColor})`,"#3d4058");
       ctx.restore();
+
+      /* 月食（v673）。地球の影を、実際の向き・大きさで月に重ねる。
+         影の向きだけを投影から取り、影までの距離と本影の大きさは「月の半径を1」とした
+         角度の比で置く。こうすると、広角で月を見やすく底上げしていても、
+         影は月と同じ比率で付いてくる。 */
+      const eclipse=s.moon.eclipse;
+      if(eclipse&&realSunMoonEnabled){
+        const shadowAltAz=raDecToAltAz(eclipse.shadowRa,eclipse.shadowDec,s.jd,s.lat,s.lon);
+        const pShadow=toXY(shadowAltAz.az,shadowAltAz.alt);
+        let ux=0,uy=-1;   // 向きが取れないときの逃げ道
+        if(pShadow){
+          const screenDx=pShadow[0]-x,screenDy=pShadow[1]-y;
+          const determinant=vAzX*vAltY-vAltX*vAzY;
+          if(Math.abs(determinant)>1e-8){
+            const localX=(vAltY*screenDx-vAltX*screenDy)/determinant;
+            const localY=(-vAzY*screenDx+vAzX*screenDy)/determinant;
+            const len=Math.hypot(localX,localY);
+            if(len>1e-6){ ux=localX/len; uy=localY/len; }
+          }
+        }
+        const unit=Math.max(1e-6,eclipse.moonRadius);
+        const sepLocal=eclipse.sep/unit*angR;
+        const umbraLocal=eclipse.umbra/unit*angR;
+        ctx.save();
+        ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
+        ctx.beginPath(); ctx.arc(0,0,angR,0,Math.PI*2); ctx.clip();
+        // 半影のぶんの減光。実際もはっきりとは分からない程度なので控えめに。
+        if(eclipse.penumbralMag>0){
+          ctx.fillStyle="rgba(10,9,16,"+(0.18*eclipse.penumbralMag).toFixed(3)+")";
+          ctx.fillRect(-angR,-angR,angR*2,angR*2);
+        }
+        // 本影。縁は明るい橙、奥ほど暗い赤黒。これが皆既中の赤銅色になる。
+        if(umbraLocal>0){
+          const ucx=ux*sepLocal, ucy=uy*sepLocal;
+          const grad=ctx.createRadialGradient(ucx,ucy,0,ucx,ucy,umbraLocal);
+          grad.addColorStop(0,"rgba(48,15,10,1)");
+          grad.addColorStop(.55,"rgba(104,33,19,1)");
+          grad.addColorStop(.88,"rgba(168,74,38,1)");
+          grad.addColorStop(.96,"rgba(198,110,58,.98)");
+          grad.addColorStop(1,"rgba(214,134,76,.5)");   // 影の縁はぼんやりしている
+          ctx.beginPath(); ctx.arc(ucx,ucy,umbraLocal,0,Math.PI*2);
+          ctx.fillStyle=grad; ctx.fill();
+        }
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
@@ -14105,7 +14224,11 @@ function drawPhoto(ctx,s){
       if(realSunMoonEnabled){
         const m=lensStretchAxes(x,y,s.sun.angularRadiusDeg||0.267);
         sVAzX=m.a; sVAzY=m.b; sVAltX=m.c; sVAltY=m.d;
-        const minR=13*(W/1200)*celestialScale;
+        /* 月と同じで、底上げの大きさもその日の太陽の大きさに比例させる。
+           太陽の振れ幅は±1.7%と小さいが、扱いは揃えておく。 */
+        const SUN_MEAN_ANGULAR_RADIUS=0.26656;
+        const sunSizeRatio=(s.sun.angularRadiusDeg||SUN_MEAN_ANGULAR_RADIUS)/SUN_MEAN_ANGULAR_RADIUS;
+        const minR=13*(W/1200)*celestialScale*sunSizeRatio;
         const approxR=Math.hypot(sVAzX,sVAzY);
         if(approxR>0 && approxR<minR){
           const boost=minR/approxR;
