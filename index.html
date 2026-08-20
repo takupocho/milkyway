@@ -1316,26 +1316,34 @@
     display:flex;flex-direction:column;align-items:center;gap:6px;
     pointer-events:none;
   }
-  /* ドローンモードの2Dマップ。幅はシミュレーション画面(縦構図)と同じ66.6667%で中央寄せ。
+  /* 小地図（v657）。シミュレーション画面の中の左下にある「小地図」ボタンで出し入れする。
 
-     【v656】これまでドローンモード中はずっと出したままだったが、既定ではしまっておき、
-     つまみを押したときだけ出す。
-     器の高さを0から210pxへ伸ばしながら、同時に中の地図を上から下へ滑らせるので、
-     シミュレーション画面の真下からせり出してくるように見える。
-     しまうときは逆に、画面の下へ吸い込まれていく。 */
-  .drone-map-panel{display:none;}
-  body.drone-mode .drone-map-panel{
-    display:block;width:66.6667%;margin:0 auto;
-    border:0 solid rgba(154,164,210,.5);border-radius:8px;overflow:hidden;
-    background:rgba(10,12,28,0);
+     ドローンモードに限らずいつでも使える。画面の真下からせり出し、
+     下に続く出典やベストタイムの「上へ重なる」ので、後ろの表示は動かない。
+
+     器の高さを0から210pxへ伸ばしながら、同時に中の地図を上から下へ滑らせる。
+     地図の下端が常に器の下端へ張り付いたまま上端だけが降りてくるので、
+     シミュレーション画面の裏から引き出されるように見える。
+     上端に影を落として、画面の下へもぐり込んでいるように見せる。 */
+  .drone-map-panel{
+    position:absolute;
+    left:50%;
+    top:calc(100% - var(--sim-inset-y));   /* 画像の下端。横構図では上下の余白ぶん上がる */
+    transform:translateX(-50%);
+    width:66.6667%;
+    z-index:900;
     height:0;
+    border:0 solid rgba(154,164,210,.5);
+    border-radius:0 0 10px 10px;
+    overflow:hidden;
+    background:rgba(10,12,28,0);
+    box-shadow:0 14px 30px rgba(0,0,0,.5);
     transition:height .34s cubic-bezier(.22,.61,.36,1),
-               margin-top .34s cubic-bezier(.22,.61,.36,1),
                background-color .34s linear;
   }
-  body.drone-mode.drone-map-open .drone-map-panel{
-    height:210px;margin-top:6px;
-    border-width:1px;   /* 太さは動かさない。しまっている間は0にして高さを完全に0にする */
+  body.drone-map-open .drone-map-panel{
+    height:210px;
+    border-width:0 1px 1px;   /* 上辺は画面に潜っているので引かない */
     background:rgba(10,12,28,.6);
   }
   .drone-map{
@@ -1344,24 +1352,39 @@
     transition:transform .34s cubic-bezier(.22,.61,.36,1);
   }
   body.drone-map-open .drone-map{transform:translateY(0);}
-  /* 出し入れのつまみ。シミュレーション画面の真下の中央、地図が出てくる場所に置く。 */
-  .drone-map-tab-row{display:none;}
-  body.drone-mode .drone-map-tab-row{display:flex;justify-content:center;}
-  .drone-map-tab{
-    display:inline-flex;align-items:center;gap:6px;
-    margin:0;padding:3px 13px 4px;
-    border:1px solid rgba(154,164,210,.5);border-top:0;
-    border-radius:0 0 9px 9px;
-    background:rgba(10,12,28,.72);
-    color:rgba(226,232,248,.85);
-    font:700 10px/1.4 'Inter',sans-serif;letter-spacing:.05em;
-    cursor:pointer;
+  /* シミュレーション画面が地図に落とす影。Leafletの目印(z-index 600)より上、
+     操作ボタン(1000)より下に置く。 */
+  .drone-map-panel::after{
+    content:"";position:absolute;left:0;right:0;top:0;height:18px;
+    background:linear-gradient(to bottom,rgba(0,0,0,.55),rgba(0,0,0,0));
+    z-index:690;pointer-events:none;
   }
-  .drone-map-tab:hover,.drone-map-tab:focus-visible{color:var(--core-amber);border-color:var(--core-amber);}
-  .drone-map-tab-chev{display:inline-block;font-size:9px;transition:transform .34s cubic-bezier(.22,.61,.36,1);}
-  body.drone-map-open .drone-map-tab-chev{transform:rotate(180deg);}
+  /* 出し入れのボタン。画面の中の左下、方位バーの左端に重ねて置く。 */
+  .mini-map-tab{
+    position:absolute;
+    left:calc(var(--sim-inset-x) + 6px);
+    bottom:calc(var(--sim-inset-y) + 6px);
+    z-index:13;
+    display:inline-flex;align-items:center;gap:5px;
+    width:auto;   /* 共通の button{width:100%} に引っ張られないように */
+    padding:4px 9px;
+    border:1px solid rgba(154,164,210,.55);
+    border-radius:8px;
+    background:rgba(10,12,28,.72);
+    color:rgba(230,235,250,.9);
+    font:700 10px/1.2 'Inter',sans-serif;letter-spacing:.04em;
+    cursor:pointer;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  .mini-map-tab:hover,.mini-map-tab:focus-visible{color:var(--core-amber);border-color:var(--core-amber);}
+  .mini-map-tab-chev{display:inline-block;font-size:9px;transition:transform .34s cubic-bezier(.22,.61,.36,1);}
+  body.drone-map-open .mini-map-tab-chev{transform:rotate(180deg);}
+  /* ARと、画面いっぱいの観測地点マップを開いている間は引っ込める。 */
+  body.ar-active .mini-map-tab,
+  body.ar-active .drone-map-panel,
+  .photo-canvas-wrap.osm-map-open .mini-map-tab,
+  .photo-canvas-wrap.osm-map-open .drone-map-panel{display:none;}
   /* 地図の上に重ねる小さなボタン。Leafletの操作面より上へ出す。 */
-  .drone-map-panel{position:relative;}
   .drone-map-btn{
     position:absolute;z-index:600;
     width:30px;height:30px;padding:4px;border-radius:8px;
@@ -3548,16 +3571,17 @@
                   </svg>
                 </button>
               </div>
-            </div>
-            <div class="drone-map-tab-row">
-              <button id="droneMapTabBtn" type="button" class="drone-map-tab" aria-expanded="false" aria-controls="droneMapPanel" title="地図を出す">
-                <span>地図</span><span class="drone-map-tab-chev" aria-hidden="true">▼</span>
+              <!-- 小地図。画面の左下のボタンで、画面の真下からせり出す。
+                   下に続く出典やベストタイムの上へ重なるので、後ろの表示は動かない。 -->
+              <button id="droneMapTabBtn" type="button" class="mini-map-tab" aria-expanded="false" aria-controls="droneMapPanel" title="小地図を出す">
+                <span>小地図</span><span class="mini-map-tab-chev" aria-hidden="true">▼</span>
               </button>
+              <div id="droneMapPanel" class="drone-map-panel" aria-label="現在地と撮影方位の小地図">
+                <div id="droneMap" class="drone-map"></div>
+                <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="衛星画像に切り替える" title="地図／衛星画像切替"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg></button>
+              </div>
             </div>
-            <div id="droneMapPanel" class="drone-map-panel" aria-label="ドローンの現在地と撮影方位">
-              <div id="droneMap" class="drone-map"></div>
-              <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="衛星画像に切り替える" title="地図／衛星画像切替"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg></button>
-            </div>
+
           </div>
           <!-- 使っている素材の出典。以前はシミュレーション画面の中に地形と天の川の2件だけ
                出していたが、道路・線路に使っているOSMの表記が抜けていた。
@@ -3698,7 +3722,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="656-drone-map-slide";
+const APP_VERSION="657-mini-map";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5409,7 +5433,7 @@ function ensureDroneMap(){
   return droneMapInstance;
 }
 function syncDroneMap(currentState=state){
-  if(!droneModeOn||!droneMapOpen||!el.droneMapPanel) return;   // しまってある間は触らない
+  if(!droneMapOpen||!el.droneMapPanel) return;   // しまってある間は触らない
   const map=ensureDroneMap();
   if(!map||!currentState) return;
   const lat=+el.lat.value, lon=+el.lon.value;
@@ -5473,19 +5497,18 @@ if(el.droneMapLayerBtn) el.droneMapLayerBtn.addEventListener("click",()=>{
    せり出しの途中で測ると、まだ縮んでいる高さでタイルを並べてしまうので、
    出すときは動きが終わるのを待ってから測り直す。 */
 function refreshDroneMapSize(delayMs=60){
-  if(!droneModeOn||!droneMapOpen) return;
+  if(!droneMapOpen) return;
   const map=ensureDroneMap();
   if(!map) return;
   setTimeout(()=>{ map.invalidateSize(false); droneMapKey=""; syncDroneMap(); },delayMs);
 }
-/* 地図の出し入れ（v656）。ドローンモードに入っただけでは出さない。 */
+/* 小地図の出し入れ（v657）。ドローンモードとは切り離し、いつでも使える。 */
 let droneMapOpen=false;
 function syncDroneMapPanel(){
-  const open=droneMapOpen&&droneModeOn;
-  document.body.classList.toggle("drone-map-open",open);
+  document.body.classList.toggle("drone-map-open",droneMapOpen);
   if(!el.droneMapTabBtn) return;
-  el.droneMapTabBtn.setAttribute("aria-expanded",String(open));
-  el.droneMapTabBtn.title=open?"地図をしまう":"地図を出す";
+  el.droneMapTabBtn.setAttribute("aria-expanded",String(droneMapOpen));
+  el.droneMapTabBtn.title=droneMapOpen?"小地図をしまう":"小地図を出す";
 }
 if(el.droneMapTabBtn) el.droneMapTabBtn.addEventListener("click",()=>{
   droneMapOpen=!droneMapOpen;
