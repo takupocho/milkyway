@@ -1328,6 +1328,10 @@
      シミュレーション画面の裏から引き出されるように見える。
      上端に影を落として、画面の下へもぐり込んでいるように見せる。 */
   .drone-map-panel{
+    /* v659: 器の高さと地図の高さは必ず揃える。
+       狭い画面だけ地図を180pxにしていたのに器は210pxのままだったので、
+       地図の下に30pxの空の枠がはみ出していた。 */
+    --mini-map-h:210px;
     position:absolute;
     left:50%;
     top:calc(100% - var(--sim-inset-y));   /* 画像の下端。横構図では上下の余白ぶん上がる */
@@ -1344,12 +1348,12 @@
                background-color .34s linear;
   }
   body.drone-map-open .drone-map-panel{
-    height:210px;
+    height:calc(var(--mini-map-h) + 1px);   /* border-boxなので下辺の1pxを足す */
     border-width:0 1px 1px;   /* 上辺は画面に潜っているので引かない */
     background:rgba(10,12,28,.6);
   }
   .drone-map{
-    width:100%;height:210px;
+    width:100%;height:var(--mini-map-h);
     transform:translateY(-100%);
     transition:transform .34s cubic-bezier(.22,.61,.36,1);
   }
@@ -1555,7 +1559,7 @@
     box-shadow:0 3px 10px rgba(4,8,20,.3);
   }
   .drone-map-btn.active{background:var(--core-amber)!important;color:#1c1120!important;border-color:var(--core-amber)!important;}
-  @media (max-width:760px){ .drone-map{height:180px;} }
+  @media (max-width:760px){ .drone-map-panel{--mini-map-h:180px;} }
   /* 拡大縮小以外は触らせない。中心が動くと今どこを飛んでいるか分からなくなるため。 */
   .drone-map .leaflet-control-attribution{font-size:8px;padding:0 3px;}
   .drone-map .leaflet-control-zoom a{width:26px;height:26px;line-height:26px;font-size:16px;}
@@ -3724,7 +3728,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="658-stick-over-map";
+const APP_VERSION="659-map-frame-fit";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
