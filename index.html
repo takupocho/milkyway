@@ -4433,7 +4433,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="692-stick-fade";
+const APP_VERSION="693-compass-live";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -20619,14 +20619,13 @@ let compassDragFov=60;
 let compassDragPendingAz=null;
 let compassDragRaf=0;
 function previewCompassAzimuth(azimuth){
-  const az=norm360(azimuth);
-  el.facingAz.value=az.toFixed(2);
-  if(state){
-    state.facingAz=az;
-    el.azVal.textContent=`${Math.round(az)}°`;
-    drawCompassStrip(compassCtx,state);
-    updateOsmFovOverlay(state);
-  }
+  el.facingAz.value=norm360(azimuth).toFixed(2);
+  /* 【v693】方位バーを動かしているあいだも、写真をその場で描き直す。
+     以前は方位バーだけを動かして、手を離してから写真を描いていた。
+     写真を指でずらすときと同じ「カメラの値だけ」の更新を使うので、
+     日時の計算やタイムラインの描き直しは起きない。
+     呼び出しは queueCompassAzimuth() が1コマに1回へ間引いている。 */
+  updateCameraViewOnly();
 }
 function queueCompassAzimuth(azimuth){
   compassDragPendingAz=azimuth;
