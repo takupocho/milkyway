@@ -3605,6 +3605,57 @@
       box-shadow:inset 0 1px 0 var(--plate-top);
     }
   }
+
+  /* =========================================================
+     【v702】基板の模様と、ボタンの立体感
+     模様は240pxのタイル。左右・上下の出入りの高さをそろえてあるので、
+     並べても線が途切れない。
+     ボタンは「上に光、下に影」で押し出す。押した瞬間だけ沈める。
+     ========================================================= */
+  :root{
+    --circuit-frame:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><g fill='none' stroke='rgba(150,185,245,0.16)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M0 44 H92 L112 64 H160 L180 44 H240'/><path d='M0 150 H60 L80 130 H140 L160 150 H240'/><path d='M0 196 H240'/><path d='M60 0 V80 L40 100 V140 L60 160 V240'/><path d='M196 0 V60 L216 80 V170 L196 190 V240'/><path d='M30 44 V70'/><path d='M120 64 V100'/><path d='M216 120 H206'/><path d='M170 150 V176'/></g><g fill='rgba(150,185,245,0.20)'><circle cx='30' cy='70' r='4.6'/><circle cx='120' cy='100' r='4.6'/><circle cx='202' cy='120' r='4.6'/><circle cx='170' cy='176' r='4.6'/><circle cx='92' cy='44' r='3.4'/><circle cx='60' cy='160' r='3.4'/></g><g fill='rgba(0,0,0,0.34)'><circle cx='30' cy='70' r='1.7'/><circle cx='120' cy='100' r='1.7'/><circle cx='202' cy='120' r='1.7'/><circle cx='170' cy='176' r='1.7'/></g></svg>");
+    --circuit-page:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240'><g fill='none' stroke='rgba(150,185,245,0.075)' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M0 44 H92 L112 64 H160 L180 44 H240'/><path d='M0 150 H60 L80 130 H140 L160 150 H240'/><path d='M0 196 H240'/><path d='M60 0 V80 L40 100 V140 L60 160 V240'/><path d='M196 0 V60 L216 80 V170 L196 190 V240'/><path d='M30 44 V70'/><path d='M120 64 V100'/><path d='M216 120 H206'/><path d='M170 150 V176'/></g><g fill='rgba(150,185,245,0.095)'><circle cx='30' cy='70' r='4.6'/><circle cx='120' cy='100' r='4.6'/><circle cx='202' cy='120' r='4.6'/><circle cx='170' cy='176' r='4.6'/><circle cx='92' cy='44' r='3.4'/><circle cx='60' cy='160' r='3.4'/></g><g fill='rgba(0,0,0,0.20)'><circle cx='30' cy='70' r='1.7'/><circle cx='120' cy='100' r='1.7'/><circle cx='202' cy='120' r='1.7'/><circle cx='170' cy='176' r='1.7'/></g></svg>");
+  }
+  /* シミュレーション画面のまわり（器の余白）に基板を敷く。 */
+  .photo-canvas-wrap{
+    background-image:var(--circuit-frame);
+    background-size:240px 240px;
+    background-position:center center;
+  }
+  /* ページの地にも、うんと薄く同じ模様を続ける。 */
+  body{
+    background-image:
+      var(--circuit-page),
+      radial-gradient(ellipse at 50% -12%, rgba(var(--brass),.085) 0%, transparent 58%),
+      radial-gradient(ellipse at 20% -10%, #171c3d 0%, transparent 55%),
+      radial-gradient(ellipse at 90% 10%, #1a1430 0%, transparent 50%),
+      repeating-linear-gradient(102deg,
+        rgba(var(--brass),.022) 0px, rgba(var(--brass),.022) 1px,
+        transparent 1px, transparent 8px);
+    background-size:240px 240px,auto,auto,auto,auto;
+  }
+  /* ボタンの立体感。上の縁に光、下に影、内側の下に沈み。 */
+  button:not(.external-data-lamp),
+  .mobile-sky-search-control{
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.13),
+      inset 0 -2px 4px rgba(0,0,0,.30),
+      0 2px 3px rgba(0,0,0,.42),
+      0 6px 14px rgba(0,0,0,.34);
+  }
+  button:not(.external-data-lamp):active,
+  .mobile-sky-search-control:active{
+    transform:translateY(1px);
+    box-shadow:
+      inset 0 2px 5px rgba(0,0,0,.46),
+      0 1px 2px rgba(0,0,0,.30);
+  }
+  /* 押せない・光っていないボタンは、影も控えめにする。 */
+  button:disabled:not(.external-data-lamp){
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.06),
+      0 1px 2px rgba(0,0,0,.30);
+  }
 </style>
 </head>
 <body>
@@ -4586,7 +4637,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="701-steampunk";
+const APP_VERSION="702-circuit";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
