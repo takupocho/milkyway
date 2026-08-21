@@ -3771,6 +3771,25 @@
   /* オープニングで、回路の線が上から下へ光って走る層。
      暗幕より前・器の写真より後ろ。写真の上には出ないよう、
      画像のところだけ切り抜いてある（clip-path）。 */
+  /* 【v713】シミュレーション画面にかける幕。
+     オープニングと同じ場所・同じ大きさに置き、明かりが下りるのに合わせて上から抜く。
+     オープニング（z-index:1250）のすぐ下なので、題字は最後まで暗くならない。 */
+  .power-screen-veil{
+    position:absolute;
+    left:var(--sim-inset-x);
+    right:var(--sim-inset-x);
+    top:var(--sim-inset-y);
+    bottom:var(--sim-inset-y);
+    z-index:1249;
+    border-radius:8px;
+    background:#04060f;
+    pointer-events:none;
+    opacity:0;
+    will-change:opacity,-webkit-mask-image,mask-image;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .power-screen-veil{display:none !important;}
+  }
   .power-circuit{
     position:fixed;inset:0;z-index:1249;pointer-events:none;opacity:0;
     background-image:var(--circuit-glow);
@@ -4336,6 +4355,7 @@
               <div class="power-curtain" id="powerCurtain" aria-hidden="true">
                 <div class="power-curtain-hole" id="powerCurtainHole"></div>
               </div>
+              <div class="power-screen-veil" id="powerScreenVeil" aria-hidden="true"></div>
               <div class="opening" id="openingOverlay" aria-hidden="true">
                 <div class="opening-stars"></div>
                 <div class="opening-meteor m1"></div>
@@ -4770,7 +4790,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="712-plan-title";
+const APP_VERSION="713-screen-wake";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -22983,6 +23003,7 @@ update();
   const curtain=document.getElementById("powerCurtain");
   const hole=document.getElementById("powerCurtainHole");
   const glow=document.getElementById("powerCircuit");
+  const veil=document.getElementById("powerScreenVeil");
   /* 【v698】電源が入る演出。
      幕（画面いっぱい）を上から切り取っていくと、明かりが下りてくるように見える。
      切り取りの縁に光の帯を重ね、通り過ぎたボタンや文字をその場で一瞬光らせる。
@@ -23085,6 +23106,24 @@ update();
       curtain.style.webkitMaskRepeat="no-repeat";
       curtain.style.maskRepeat="no-repeat";
     }
+    /* 【v713】シミュレーション画面も、明かりが下りた分だけ明るくする。
+       幕は画面と同じ場所にあるので、画面の上端からの距離でマスクを作る。 */
+    if(veil){
+      const rect=veil.getBoundingClientRect();
+      if(rect.height){
+        const local=y-rect.top;
+        const top=Math.round(local-blur*.15),bottom=Math.round(local+blur*.85);
+        const mask=`linear-gradient(to bottom,rgba(0,0,0,0) ${top}px,rgba(0,0,0,1) ${bottom}px,rgba(0,0,0,1) 100%)`;
+        veil.style.webkitMaskImage=mask;
+        veil.style.maskImage=mask;
+        veil.style.webkitMaskRepeat="no-repeat";
+        veil.style.maskRepeat="no-repeat";
+        /* 画面が長くて明かりが下端まで届かないことがある（PCでは画像が画面の外まで続く）。
+           終わりぎわは、残っている暗さをそのまま溶かして消す。 */
+        const tail=p>.75?Math.max(0,(1-p)/.25):1;
+        veil.style.opacity=(local>rect.height+blur?0:tail).toFixed(3);
+      }
+    }
     /* 回路の線は、光の帯が通ったところだけ光らせる。 */
     if(glow){
       /* 【v709】帯は以前の1/4の厱さにし、明るさもごく控えめにする。 */
@@ -23115,6 +23154,11 @@ update();
     if(powerRaf){cancelAnimationFrame(powerRaf);powerRaf=0;}
     if(curtain&&curtain.parentNode) curtain.parentNode.removeChild(curtain);
     if(glow&&glow.parentNode) glow.parentNode.removeChild(glow);
+    if(veil){
+      veil.style.opacity="0";
+      veil.setAttribute("aria-hidden","true");
+      if(veil.parentNode) veil.parentNode.removeChild(veil);
+    }
     setTimeout(()=>{
       powerTargets.forEach(item=>{
         item.el.classList.remove("power-lit");
@@ -23136,6 +23180,11 @@ update();
     if(reduce){ powerTargets=[]; finishPowerOn(); powerDone=true; return; }
     /* まずすべて消しておく。ここから上のものより順に点いていく。 */
     powerTargets.forEach(item=>item.el.classList.add("power-dark"));
+    /* シミュレーション画面も暗いところから始める（v713）。 */
+    if(veil){
+      veil.style.opacity="1";
+      veil.setAttribute("aria-hidden","false");
+    }
     powerStartedAt=performance.now();
     powerFrame(0);
     const loop=(now)=>{
@@ -23176,6 +23225,7 @@ update();
   }else{
     if(curtain&&curtain.parentNode) curtain.parentNode.removeChild(curtain);
     if(glow&&glow.parentNode) glow.parentNode.removeChild(glow);
+    if(veil&&veil.parentNode) veil.parentNode.removeChild(veil);
   }
   /* 検証用。動きを手で送れるようにしておく。 */
   window.__powerOn={
@@ -23185,6 +23235,8 @@ update();
     state:()=>({
       幕:!!(curtain&&curtain.isConnected),
       光る回路:!!(glow&&glow.isConnected),
+      画面の幕:veil&&veil.isConnected?veil.style.opacity:"なし",
+      画面のマスク:veil?(veil.style.maskImage||veil.style.webkitMaskImage||"").slice(0,58):"",
       回路のマスク:glow?(glow.style.maskImage||glow.style.webkitMaskImage||"").slice(0,60):"",
       マスク:curtain?(curtain.style.maskImage||curtain.style.webkitMaskImage||""):"",
       光った数:powerLitIndex,
