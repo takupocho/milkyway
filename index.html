@@ -2949,6 +2949,33 @@
     line-height:1;
   }
   .play-pause-btn:hover{background:var(--violet-dim);}
+  /* 長押しで速度を出すので、長押ししたときの選択・吹き出しを止める（v695）。 */
+  .play-pause-btn{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation;}
+  /* 【v695】再生ボタンの長押しで出る、再生速度の小窓。 */
+  .play-speed-popup{
+    display:none;position:fixed;z-index:1400;
+    width:min(272px,calc(100vw - 16px));
+    padding:10px 12px 11px;box-sizing:border-box;
+    border-radius:12px;border:1px solid rgba(154,164,210,.45);
+    background:rgba(12,16,34,.97);
+    box-shadow:0 12px 34px rgba(0,0,0,.6);
+    color:var(--star-white);font:600 11px/1.3 'Inter',sans-serif;
+  }
+  .play-speed-popup.show{display:block;}
+  .play-speed-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:7px;}
+  .play-speed-head .play-speed-value{color:var(--core-amber);font:700 14px/1.2 'IBM Plex Mono',monospace;}
+  .play-speed-popup input[type=range]{width:100%;margin:0;accent-color:var(--core-amber);}
+  .play-speed-presets{display:flex;gap:5px;margin-top:9px;}
+  .play-speed-presets button{
+    flex:1;width:auto;min-width:0;min-height:29px;padding:4px 2px;margin:0;
+    border:1px solid var(--line);border-radius:8px;
+    background:var(--panel-raised);color:var(--dim);
+    font:700 10px/1.2 'Inter',sans-serif;
+  }
+  .play-speed-presets button.active{
+    border-color:var(--core-amber);color:var(--core-amber);background:rgba(232,166,89,.17);
+  }
+  .play-speed-hint{margin:8px 0 0;color:var(--dim-2);font:600 9px/1.45 'Inter',sans-serif;}
   .play-pause-btn.playing{background:var(--core-amber);color:#1c1120;}
   .timeline-bar-canvas{
     flex:1;
@@ -4254,6 +4281,18 @@
                   </div>
                 </div>
               </div>
+              <div id="playSpeedPopup" class="play-speed-popup" aria-hidden="true" role="dialog" aria-label="再生速度">
+                <div class="play-speed-head"><span>再生速度</span><span id="playSpeedValue" class="play-speed-value">20倍速</span></div>
+                <input type="range" id="playSpeedRange" min="0" max="100" step="1" value="33" aria-label="再生速度">
+                <div class="play-speed-presets">
+                  <button type="button" data-speed="1">等倍</button>
+                  <button type="button" data-speed="20">20倍</button>
+                  <button type="button" data-speed="60">60倍</button>
+                  <button type="button" data-speed="300">300倍</button>
+                  <button type="button" data-speed="1800">最速</button>
+                </div>
+                <p class="play-speed-hint">再生ボタンを長押しすると、いつでもここを開けます。</p>
+              </div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
@@ -4446,7 +4485,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="694-cloud-step";
+const APP_VERSION="695-play-speed";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5521,7 +5560,7 @@ const el={
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
-  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), animationSpeedRange:$("animationSpeedRange"), animationSpeedVal:$("animationSpeedVal"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
+  snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), animationSpeedRange:$("animationSpeedRange"), animationSpeedVal:$("animationSpeedVal"), playSpeedPopup:$("playSpeedPopup"), playSpeedRange:$("playSpeedRange"), playSpeedValue:$("playSpeedValue"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileDroneModeBtn:$("mobileDroneModeBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
@@ -8778,14 +8817,27 @@ function animSpeedXToPosition(speedX){
   const t=Math.log(x/ANIM_SPEED_MID)/Math.log(ANIM_SPEED_MAX/ANIM_SPEED_MID);
   return clamp(50+Math.round(t*50),50,100);
 }
+function currentAnimationSpeed(){
+  return clamp(Math.round(+el.animationSpeedSelect.value||20),1,ANIM_SPEED_MAX);
+}
+function animationSpeedText(speed){
+  return speed===1?"等倍（実時間）":`${speed}倍速`;
+}
 function syncAnimationSpeedRangeFromValue(){
-  if(!el.animationSpeedRange) return;
-  el.animationSpeedRange.value=String(animSpeedXToPosition(+el.animationSpeedSelect.value||20));
+  const position=String(animSpeedXToPosition(currentAnimationSpeed()));
+  if(el.animationSpeedRange) el.animationSpeedRange.value=position;
+  /* 【v695】長押しで出る小窓のつまみも同じ値にしておく。 */
+  if(el.playSpeedRange) el.playSpeedRange.value=position;
 }
 function syncAnimationSpeedLabel(){
-  if(!el.animationSpeedVal) return;
-  const speed=clamp(Math.round(+el.animationSpeedSelect.value||20),1,ANIM_SPEED_MAX);
-  el.animationSpeedVal.textContent=speed===1?"等倍（実時間）":`${speed}倍速`;
+  const speed=currentAnimationSpeed(),text=animationSpeedText(speed);
+  if(el.animationSpeedVal) el.animationSpeedVal.textContent=text;
+  if(el.playSpeedValue) el.playSpeedValue.textContent=text;
+  if(el.playSpeedPopup){
+    [...el.playSpeedPopup.querySelectorAll(".play-speed-presets button")].forEach(b=>
+      b.classList.toggle("active",+b.dataset.speed===speed));
+  }
+  if(el.playPauseBtn) el.playPauseBtn.title=`${text}で再生（長押しで速度を変えられます）`;
 }
 if(el.animationSpeedRange){
   el.animationSpeedRange.addEventListener("input",()=>{
@@ -8858,6 +8910,91 @@ function stopPlayback(commit=true){
 el.playPauseBtn.addEventListener("click",()=>{
   if(playbackTimer) stopPlayback(); else startPlayback();
 });
+/* 【v695】再生ボタンの長押しで、再生速度の小窓を出す。
+   短く押したときは今までどおり再生・一時停止。
+   長押しが成立したときだけ、そのあとのクリックを捨てる。 */
+const PLAY_LONG_PRESS_MS=450;
+let playLongPressTimer=0,playLongPressAt=0;
+function playSpeedPopupOpen(){ return !!(el.playSpeedPopup&&el.playSpeedPopup.classList.contains("show")); }
+function positionPlaySpeedPopup(){
+  if(!playSpeedPopupOpen()) return;
+  const button=el.playPauseBtn.getBoundingClientRect();
+  const pop=el.playSpeedPopup;
+  const width=pop.offsetWidth||240,height=pop.offsetHeight||120;
+  const left=clamp(button.left+button.width/2-width/2,8,Math.max(8,window.innerWidth-width-8));
+  let top=button.top-height-10;
+  if(top<8) top=Math.min(Math.max(8,window.innerHeight-height-8),button.bottom+10);
+  pop.style.left=`${Math.round(left)}px`;
+  pop.style.top=`${Math.round(top)}px`;
+}
+function openPlaySpeedPopup(){
+  if(!el.playSpeedPopup) return;
+  syncAnimationSpeedRangeFromValue();syncAnimationSpeedLabel();
+  el.playSpeedPopup.classList.add("show");
+  el.playSpeedPopup.setAttribute("aria-hidden","false");
+  positionPlaySpeedPopup();
+}
+function closePlaySpeedPopup(){
+  if(!el.playSpeedPopup) return;
+  el.playSpeedPopup.classList.remove("show");
+  el.playSpeedPopup.setAttribute("aria-hidden","true");
+}
+function cancelPlayLongPress(){
+  if(playLongPressTimer){clearTimeout(playLongPressTimer);playLongPressTimer=0;}
+}
+el.playPauseBtn.addEventListener("pointerdown",(e)=>{
+  if(e.pointerType==="mouse"&&e.button!==0) return;
+  playLongPressAt=0;
+  cancelPlayLongPress();
+  playLongPressTimer=setTimeout(()=>{
+    playLongPressTimer=0;playLongPressAt=performance.now();
+    openPlaySpeedPopup();
+  },PLAY_LONG_PRESS_MS);
+});
+["pointerup","pointercancel","pointerleave"].forEach(type=>
+  el.playPauseBtn.addEventListener(type,cancelPlayLongPress));
+el.playPauseBtn.addEventListener("contextmenu",(e)=>e.preventDefault());
+/* 長押しのあとのクリックは、ここ（つかまえる側）で先に捨てる。
+   同じ要素へあとから足した listener は、再生の listener より先には走らないため。 */
+document.addEventListener("click",(e)=>{
+  if(!playLongPressAt) return;
+  /* 長押しのあとに来る1回だけを捨てる。
+     指が少し動いてクリックが来なかったときに印が残らないよう、
+     時間でも見切りをつけている（v695）。 */
+  if(performance.now()-playLongPressAt>800){ playLongPressAt=0; return; }
+  if(e.target.closest&&e.target.closest("#playPauseBtn")){
+    playLongPressAt=0;
+    e.stopPropagation();e.preventDefault();
+  }
+},true);
+if(el.playSpeedRange){
+  el.playSpeedRange.addEventListener("input",()=>{
+    el.animationSpeedSelect.value=String(animSpeedPositionToX(el.playSpeedRange.value));
+    if(el.animationSpeedRange) el.animationSpeedRange.value=el.playSpeedRange.value;
+    syncAnimationSpeedLabel();
+    scheduleSaveSettings();
+  });
+}
+if(el.playSpeedPopup){
+  el.playSpeedPopup.addEventListener("click",(e)=>{
+    const preset=e.target.closest(".play-speed-presets button");
+    if(!preset) return;
+    el.animationSpeedSelect.value=String(clamp(Math.round(+preset.dataset.speed||20),1,ANIM_SPEED_MAX));
+    syncAnimationSpeedRangeFromValue();syncAnimationSpeedLabel();
+    scheduleSaveSettings();
+  });
+}
+/* 外を触ったら閉じる。画面が動いたら位置を合わせ直す。 */
+document.addEventListener("pointerdown",(e)=>{
+  if(!playSpeedPopupOpen()) return;
+  if(e.target.closest&&(e.target.closest("#playSpeedPopup")||e.target.closest("#playPauseBtn"))) return;
+  closePlaySpeedPopup();
+},true);
+document.addEventListener("keydown",(e)=>{
+  if(e.key==="Escape"&&playSpeedPopupOpen()) closePlaySpeedPopup();
+});
+window.addEventListener("scroll",positionPlaySpeedPopup,{passive:true});
+window.addEventListener("resize",positionPlaySpeedPopup);
 // ユーザーがスライダーを直接動かしたら再生を止める(手動操作を優先)
 el.timeSlider.addEventListener("pointerdown",()=>{ if(playbackTimer) stopPlayback(); });
 
@@ -11531,6 +11668,7 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
 document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay,el.slideshowOverlay);
+if(el.playSpeedPopup) document.body.appendChild(el.playSpeedPopup);   // v695
 el.quickSavePlanBtn.addEventListener("click",()=>{
   // 「編集」でシミュレーションへ戻っている間は同じ計画を更新する。
   // 通常の保存操作では従来どおり新規保存として開始する。
