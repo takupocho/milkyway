@@ -3405,6 +3405,10 @@
        日時の表示が2行に折り返すと下のものがすべてずれるので、
        必ず1行に収まるだけの幅を残す。 */
     .dt-time-label-left{ gap:6px; }
+    /* 【v690】スマホでは再生ボタンを少し大きくする。
+       上下の余白を同じだけ引いて、行の高さは元のままにしてある。
+       こうしないと、下の目盛りの数字がずれてしまう。 */
+    .play-pause-btn{ width:28px; height:28px; font-size:11.5px; margin:-2px 0; }
     .time-range-mode-btn{ padding:3px 7px; font-size:10.5px; }
     .time-range-mode-btn .mode-suffix{ display:none; }
   }
@@ -4407,7 +4411,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="689-fine-time";
+const APP_VERSION="690-fine-ticks";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5689,13 +5693,23 @@ function syncTimeSliderStep(){
   const text=step>=1?"1":step.toFixed(6);
   if(el.timeSlider.step!==text) el.timeSlider.step=text;
 }
+/* 微調整のときの目盛りの間隔（分）。
+   スマホの幅では5分ごとだと数字がぶつかって読めないので、10分ごとにする（v690）。
+   この関数は起動直後にも呼ばれるので、
+   あとの行で作っているmatchMediaは使わずに幅を直接見る。 */
+function fineTickLabelStepMin(){
+  return (typeof window!=="undefined"&&window.innerWidth<=760)?10:5;
+}
 function renderTickRow(){
   el.tickRow.innerHTML="";
   const range=getTimeDisplayRange();
-  const step=fineTimeOn?5:(timeRangeMode==="15h"?60:180); // 微調整は5分毎
+  const step=fineTimeOn?fineTickLabelStepMin():(timeRangeMode==="15h"?60:180);
   // 目盛りマーク(.slider-tick-marks)と同じ7pxインセットを使い、数字がマークの真下に来るよう揃える
   const trackWidth=Math.max(0,(el.tickRow.clientWidth||el.tickRow.offsetWidth||0)-14);
-  for(let m=range.start; m<=range.end; m+=step){
+  /* 微調整のときは 16:20、16:30 のような切りのよい時刻に数字を出す（v690）。
+     目盛りのマークも同じところが大きめになるので、数字と線が揃う。 */
+  const firstMark=fineTimeOn?Math.ceil(range.start/step)*step:range.start;
+  for(let m=firstMark; m<=range.end; m+=step){
     const span=document.createElement("span");
     span.textContent=fineTimeOn
       ?`${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(Math.round(m)%60).padStart(2,"0")}`
@@ -5703,6 +5717,16 @@ function renderTickRow(){
     const frac=(m-range.start)/(range.end-range.start);
     span.style.left=`${7+trackWidth*frac}px`;
     el.tickRow.appendChild(span);
+  }
+  /* 微調整の数字は「16:20」のように長いので、
+     両端では枠からはみ出さないよう内側へ寄せる（v690）。
+     普段の目盛りは1〜2文字なので、ここでは動かない。 */
+  if(fineTimeOn){
+    [...el.tickRow.children].forEach(span=>{
+      const half=(span.offsetWidth||0)/2;
+      const x=parseFloat(span.style.left)||0;
+      span.style.left=`${clamp(x,half,trackWidth+14-half)}px`;
+    });
   }
 }
 function renderSliderTickMarks(){
@@ -5713,8 +5737,8 @@ function renderSliderTickMarks(){
   for(let m=range.start; m<=range.end; m+=markStep){ // 1時間毎(微調整は1分毎)に目盛りマーク
     const tick=document.createElement("span");
     const hourOfDay=Math.floor(m/60)%24;
-    /* 微調整では5分ごとを大きめにして、数字の位置と揃える。 */
-    if(fineTimeOn?Math.round(m)%5===0:hourOfDay%3===0) tick.className="major";
+    /* 微調整では、数字を出す間隔と同じところを大きめにする。 */
+    if(fineTimeOn?Math.round(m)%fineTickLabelStepMin()===0:hourOfDay%3===0) tick.className="major";
     tick.style.left=`${(m-range.start)/totalSpan*100}%`;
     el.sliderTickMarks.appendChild(tick);
   }
