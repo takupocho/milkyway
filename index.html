@@ -1894,6 +1894,37 @@
   .photo-viewer-exif{display:none;max-width:min(760px,calc(100% - 24px));padding:8px 11px;border:1px solid rgba(154,164,210,.32);border-radius:9px;background:rgba(12,16,34,.82);color:#d9efff;font:600 10px/1.55 'IBM Plex Mono',monospace;flex-wrap:wrap;justify-content:center;gap:3px 14px;box-sizing:border-box;flex:none;}
   .photo-viewer-exif.show{display:flex;}
   .photo-viewer-exif span{white-space:nowrap;}
+  /* 【v712】撮影計画を読み込んだときに出る題名。
+     スライドショーの見せ方に合わせて、少し下から浮き上がり、
+     2秒ほど見せてから静かに消える。 */
+  .plan-title-card{
+    position:absolute;left:50%;top:38%;
+    width:min(86%,720px);
+    transform:translate(-50%,-50%);
+    text-align:center;pointer-events:none;opacity:0;z-index:1230;
+    will-change:opacity,transform;
+  }
+  .plan-title-card-name{
+    margin:0;color:#fff;
+    font:700 clamp(17px,3.8vw,30px)/1.35 'Inter',sans-serif;letter-spacing:.14em;
+    text-shadow:0 2px 24px rgba(0,0,0,.85),0 0 56px rgba(0,0,0,.6);
+  }
+  .plan-title-card-rule{
+    width:54px;height:1px;margin:11px auto 9px;
+    background:linear-gradient(90deg,rgba(232,166,89,0),rgba(232,166,89,.9),rgba(232,166,89,0));
+  }
+  .plan-title-card-place{
+    margin:0;color:#ffd9a8;
+    font:600 clamp(9px,2.1vw,12px)/1.5 'Inter',sans-serif;letter-spacing:.24em;
+    text-shadow:0 2px 16px rgba(0,0,0,.85);
+  }
+  .plan-title-card-genre{
+    display:block;margin-top:5px;color:rgba(217,239,255,.72);
+    font:600 10px/1.5 'Inter',sans-serif;letter-spacing:.16em;
+  }
+  @media (prefers-reduced-motion:reduce){
+    .plan-title-card{transition:none;}
+  }
   /* 【v685】読み込み画面のスライドショー。登録した写真を順に大きく見せる。 */
   .plan-slideshow-launch{margin:-3px 0 11px;}
   .plan-slideshow-launch button{display:flex;align-items:center;justify-content:center;gap:9px;
@@ -4318,6 +4349,11 @@
                 </div>
                 <div class="opening-hint">タップして始める</div>
               </div>
+              <div class="plan-title-card" id="planTitleCard" aria-hidden="true">
+                <p class="plan-title-card-name" id="planTitleCardName"></p>
+                <div class="plan-title-card-rule"></div>
+                <p class="plan-title-card-place"><span id="planTitleCardPlace"></span><span class="plan-title-card-genre" id="planTitleCardGenre"></span></p>
+              </div>
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div class="sim-top-stack" id="simTopStack">
                 <div id="droneBadge" class="drone-badge" hidden></div>
@@ -4734,7 +4770,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="711-lit-fade";
+const APP_VERSION="712-plan-title";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5781,6 +5817,8 @@ const el={
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
   planExportBtn:$("planExportBtn"), planImportBtn:$("planImportBtn"), planImportInput:$("planImportInput"),
   planLoadMap:$("planLoadMap"), planLoadMapWrap:$("planLoadMapWrap"), planBrowseSeg:$("planBrowseSeg"),
+  planTitleCard:$("planTitleCard"), planTitleCardName:$("planTitleCardName"),
+  planTitleCardPlace:$("planTitleCardPlace"), planTitleCardGenre:$("planTitleCardGenre"),
   planSaveGenreRow:$("planSaveGenreRow"), planFilterGenreRow:$("planFilterGenreRow"),
   planSlideshowBtn:$("planSlideshowBtn"), planSlideshowCount:$("planSlideshowCount"),
   slideshowOverlay:$("slideshowOverlay"), slideshowStage:$("slideshowStage"), slideshowCaption:$("slideshowCaption"),
@@ -8189,6 +8227,18 @@ let cloudSeaWindDeg=270;
    ただし、雲海のある方位と無い方位ができるので、
    入り江のような形になって現実の雲海らしくなる。 */
 let cloudSeaGapPct=0;
+/* 【v712】再生しているあいだだけ、雲海を横へ流す。
+   `cloudSeaDriftM` は流れた距離(m)、`cloudSeaDriftDirDeg` はその向き（方位）。
+   向きは再生を始めた時点の「画面の右」に固定する。毎コマ取り直すと、
+   再生中に振り向いたときに雲が渦を巻いてしまうため。 */
+let cloudSeaDriftM=0,cloudSeaDriftDirDeg=90;
+const CLOUD_SEA_DRIFT_MPS=45;   // 実時間1秒あたりに流れる距離(m)。上げるほど描き直しも増える
+/* 雲は地形と同じ絵に描き込んであるので、動かすたびに重い描き直しが起きる。
+   そこで位置をこの幅で丸め、変わったときだけ描き直す。
+   45m/s なら 1秒に9回。一番細かいうねり(215m)の2%なので、目には滞らかに見える。 */
+const CLOUD_SEA_DRIFT_STEP_M=5;
+let cloudSeaDriftStep=0;
+function cloudSeaDriftQuantM(){ return cloudSeaDriftStep*CLOUD_SEA_DRIFT_STEP_M; }
 const CLOUD_SEA_STRETCH=3.6;          // 風に沿う向きへ伸ばす倍率
 const CLOUD_SEA_MAX_KM=25;            // これより遠い雲面は描かない
 const CLOUD_SEA_DECK_M=140;           // 雲層の厚み
@@ -8276,7 +8326,10 @@ function cloudSeaReliefM(){
    風の向きへ座標を回してから、風に沿う軸だけ伸ばす。
    こうすると、丸い塩の集まりではなく、風に直交した畝になる。 */
 function cloudSeaWaveAt(lat,lon){
-  const y=lat*111320, x=lon*111320*Math.cos(lat*D2R);
+  /* 流れた分だけ見る場所をずらす。引くと、模様は流れる向きへ動いて見える。 */
+  const driftRad=cloudSeaDriftDirDeg*D2R,drift=cloudSeaDriftQuantM();
+  const y=lat*111320-drift*Math.cos(driftRad);
+  const x=lon*111320*Math.cos(lat*D2R)-drift*Math.sin(driftRad);
   const rad=cloudSeaWindDeg*D2R,sinW=Math.sin(rad),cosW=Math.cos(rad);
   const along=x*sinW+y*cosW;          // 風に沿う方向
   const across=x*cosW-y*sinW;         // 風に直交する方向
@@ -8936,6 +8989,9 @@ function jdForSliderMinutes(minutes){
 let starTrailDelayTimer=null;
 function startPlayback(){
   if(playbackTimer) return;
+  /* 【v712】雲海を流す向きを、始めた時点の「画面の右」に合わせる。
+     方位に90度足した向きが画面の右なので、雲は左から右へ流れる。 */
+  cloudSeaDriftDirDeg=norm360((+el.facingAz.value||0)+90);
   playbackVisualMinutes=+el.timeSlider.value;
   playbackLastTime=performance.now();
   playbackLastUiTime=playbackLastTime;
@@ -9111,6 +9167,13 @@ function playbackTick(now){
   // バックグラウンド復帰時に巨大な時間ジャンプが起きないよう、1フレームの経過を上限0.1秒にする。
   const dtSec=Math.min(0.1,(now-playbackLastTime)/1000);
   playbackLastTime=now;
+  /* 【v712】雲海が出ているあいだは、再生中だけ横へ流す。
+     雲の位置は地形と同じ絵に描き込まれているので、描き直しの合図も出す。 */
+  if(cloudSeaVisible){
+    cloudSeaDriftM+=CLOUD_SEA_DRIFT_MPS*dtSec;
+    const stepped=Math.round(cloudSeaDriftM/CLOUD_SEA_DRIFT_STEP_M);
+    if(stepped!==cloudSeaDriftStep){ cloudSeaDriftStep=stepped; drawPhoto._terrainRenderKey=null; }
+  }
   /* 倍速の意味を変えた（v617）。
      以前は「1秒で進む分数」だったので、1倍でも1分/秒（実時間の60倍）。
      今は素直に「実時間の何倍か」。1倍なら1秒を1秒で見る。 */
@@ -11211,6 +11274,61 @@ function cometsSummaryText(comets){
   if(Number.isFinite(+comets.tailScale)) parts.push(`尾 ${Math.round(+comets.tailScale*100)}%`);
   return parts.join("・");
 }
+/* 【v712】読み込んだ計画の題名を、スライドショーと同じ調子で見せる。
+   0.15秒待ってから0.6秒で浮かび上がり、2秒見せて、0.6秒で消える。
+   動きは1本のrequestAnimationFrameから時刻で決める（途中の絵を手で出せるように）。 */
+const PLAN_TITLE_IN=.6,PLAN_TITLE_HOLD=2,PLAN_TITLE_OUT=.6,PLAN_TITLE_DELAY=.15;
+const PLAN_TITLE_TOTAL=PLAN_TITLE_DELAY+PLAN_TITLE_IN+PLAN_TITLE_HOLD+PLAN_TITLE_OUT;
+let planTitleRaf=0,planTitleStartedAt=0;
+function planTitleFrame(seconds){
+  const card=el.planTitleCard;
+  if(!card) return;
+  const t=Math.max(0,seconds);
+  let opacity=0,shift=18,spacing=.30;
+  const inEnd=PLAN_TITLE_DELAY+PLAN_TITLE_IN;
+  const holdEnd=inEnd+PLAN_TITLE_HOLD;
+  const outEnd=holdEnd+PLAN_TITLE_OUT;
+  if(t>=PLAN_TITLE_DELAY){
+    if(t<inEnd){
+      const p=1-Math.pow(1-(t-PLAN_TITLE_DELAY)/PLAN_TITLE_IN,3);
+      opacity=p;shift=18*(1-p);spacing=.30-.16*p;
+    }else if(t<holdEnd){
+      opacity=1;shift=0;spacing=.14;
+    }else if(t<outEnd){
+      const p=Math.pow((t-holdEnd)/PLAN_TITLE_OUT,3);
+      opacity=1-p;shift=-10*p;spacing=.14+.07*p;
+    }else{opacity=0;shift=-10;spacing=.21;}
+  }
+  card.style.opacity=opacity.toFixed(3);
+  card.style.transform=`translate(-50%,calc(-50% + ${shift.toFixed(1)}px))`;
+  if(el.planTitleCardName) el.planTitleCardName.style.letterSpacing=`${spacing.toFixed(3)}em`;
+}
+function stopPlanTitleCard(){
+  if(planTitleRaf){cancelAnimationFrame(planTitleRaf);planTitleRaf=0;}
+  if(el.planTitleCard){
+    el.planTitleCard.style.opacity="0";
+    el.planTitleCard.setAttribute("aria-hidden","true");
+  }
+}
+function showPlanTitleCard(location){
+  const card=el.planTitleCard;
+  if(!card||!location) return;
+  el.planTitleCardName.textContent=location.title||"";
+  el.planTitleCardPlace.textContent=[location.prefecture,location.city].filter(Boolean).join(" ")
+    ||location.placeName||"";
+  el.planTitleCardGenre.textContent=planGenreLabels(planGenresOf(location));
+  card.setAttribute("aria-hidden","false");
+  planTitleStartedAt=performance.now();
+  planTitleFrame(0);
+  if(planTitleRaf) cancelAnimationFrame(planTitleRaf);
+  const loop=(now)=>{
+    const seconds=(now-planTitleStartedAt)/1000;
+    planTitleFrame(seconds);
+    if(seconds>=PLAN_TITLE_TOTAL){ planTitleRaf=0; stopPlanTitleCard(); return; }
+    planTitleRaf=requestAnimationFrame(loop);
+  };
+  planTitleRaf=requestAnimationFrame(loop);
+}
 async function applySavedObservingPlan(location){
   if(!location) return false;
   activeLoadedPlanId=location.id;
@@ -11241,6 +11359,7 @@ async function applySavedObservingPlan(location){
   await restoreKmzBuildingFromPlan(location.kmzBuilding||null);
   await applyLocalDetailDescriptor(location.localDetailTerrain||null,true);
   scheduleSaveSettings();
+  showPlanTitleCard(location);   // v712: 題名を見せる
   return true;
 }
 async function removeSavedObservingPlan(location){
@@ -13421,6 +13540,17 @@ try{
           front:slideshowFront,intervalMs:slideshowIntervalMs,cache:slideshowPhotoCache.size,
           title:el.slideshowTitle?el.slideshowTitle.textContent:""})
       },
+      planTitle:{
+        show:showPlanTitleCard,step:(sec)=>{planTitleFrame(sec);return sec;},
+        state:()=>({
+          出ている:!!(el.planTitleCard&&el.planTitleCard.getAttribute("aria-hidden")==="false"),
+          濃さ:el.planTitleCard?el.planTitleCard.style.opacity:"",
+          題名:el.planTitleCardName?el.planTitleCardName.textContent:"",
+          場所:el.planTitleCardPlace?el.planTitleCardPlace.textContent:"",
+          ジャンル:el.planTitleCardGenre?el.planTitleCardGenre.textContent:""
+        })
+      },
+      drift:()=>({距離:cloudSeaDriftM,丸めた距離:cloudSeaDriftQuantM(),向き:cloudSeaDriftDirDeg}),
       cloud:()=>({on:cloudSeaVisible,elev:cloudSeaElevationM,obs:realTerrainState.observerElevation,eye:eyeHeightAboveGroundM(),swapped:cloudSwapCount}),
       prof:()=>({...cloudProf}),
       profReset:()=>{Object.keys(cloudProf).forEach(k=>cloudProf[k]=0);},
@@ -16369,7 +16499,7 @@ function drawPhoto(ctx,s){
         localDetailMeshStepValue(),
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
-        cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}`:"cloud-off",
+        cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
         (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
