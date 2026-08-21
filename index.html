@@ -1851,6 +1851,72 @@
   .photo-viewer-exif{display:none;max-width:min(760px,calc(100% - 24px));padding:8px 11px;border:1px solid rgba(154,164,210,.32);border-radius:9px;background:rgba(12,16,34,.82);color:#d9efff;font:600 10px/1.55 'IBM Plex Mono',monospace;flex-wrap:wrap;justify-content:center;gap:3px 14px;box-sizing:border-box;flex:none;}
   .photo-viewer-exif.show{display:flex;}
   .photo-viewer-exif span{white-space:nowrap;}
+  /* 【v685】読み込み画面のスライドショー。登録した写真を順に大きく見せる。 */
+  .plan-slideshow-launch{margin:-3px 0 11px;}
+  .plan-slideshow-launch button{display:flex;align-items:center;justify-content:center;gap:9px;
+    width:100%;min-height:38px;padding:7px 12px;
+    border-color:rgba(232,166,89,.5);
+    background:linear-gradient(118deg,rgba(232,166,89,.17),rgba(127,200,255,.13));
+    color:#ffe6c6;font:700 11px/1.3 'Inter',sans-serif;letter-spacing:.08em;}
+  .plan-slideshow-launch button:disabled{opacity:.4;}
+  .plan-slideshow-count{padding:1px 7px;border-radius:999px;background:rgba(0,0,0,.34);
+    color:#ffd9a8;font:700 9px/1.6 'IBM Plex Mono',monospace;letter-spacing:0;}
+  .slideshow-overlay{display:none;position:fixed;inset:0;z-index:10060;
+    flex-direction:column;background:#04060f;}
+  .slideshow-overlay.show{display:flex;}
+  .slideshow-stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;}
+  .slideshow-layer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    opacity:0;will-change:opacity;}
+  /* 後ろに同じ写真をぼかして敷く。縦横どちらの写真でも左右が黒く抜けない。 */
+  .slideshow-blur{position:absolute;inset:-6%;width:112%;height:112%;
+    object-fit:cover;filter:blur(34px) saturate(1.15) brightness(.42);}
+  .slideshow-photo{position:relative;max-width:100%;max-height:100%;width:auto;height:auto;
+    object-fit:contain;will-change:transform;
+    box-shadow:0 18px 60px rgba(0,0,0,.66);}
+  .slideshow-vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(circle at 50% 46%,rgba(0,0,0,0) 42%,rgba(0,0,0,.55) 100%);}
+  .slideshow-caption{position:absolute;left:50%;top:38%;width:min(86%,720px);
+    transform:translate(-50%,-50%);text-align:center;pointer-events:none;opacity:0;
+    will-change:opacity,transform;}
+  .slideshow-caption-title{margin:0;color:#fff;
+    font:700 clamp(19px,4.4vw,34px)/1.35 'Inter',sans-serif;letter-spacing:.14em;
+    text-shadow:0 2px 26px rgba(0,0,0,.85),0 0 60px rgba(0,0,0,.6);}
+  .slideshow-caption-rule{width:54px;height:1px;margin:11px auto 9px;
+    background:linear-gradient(90deg,rgba(232,166,89,0),rgba(232,166,89,.9),rgba(232,166,89,0));}
+  .slideshow-caption-place{margin:0;color:#ffd9a8;
+    font:600 clamp(10px,2.2vw,13px)/1.5 'Inter',sans-serif;letter-spacing:.24em;
+    text-shadow:0 2px 16px rgba(0,0,0,.85);}
+  .slideshow-caption-genre{display:block;margin-top:5px;color:rgba(217,239,255,.72);
+    font:600 10px/1.5 'Inter',sans-serif;letter-spacing:.16em;}
+  .slideshow-close{position:absolute;top:max(8px,env(safe-area-inset-top));
+    right:max(8px,env(safe-area-inset-right));z-index:3;
+    width:42px;height:42px;min-height:0;padding:0;border-radius:50%;
+    background:rgba(8,12,26,.72);color:#fff;font-size:21px;}
+  .slideshow-bottom{flex:none;padding:9px 13px calc(9px + env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,rgba(4,6,15,0),rgba(4,6,15,.94) 26%);}
+  .slideshow-exif{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 14px;
+    min-height:17px;color:#d9efff;font:600 10px/1.6 'IBM Plex Mono',monospace;}
+  .slideshow-exif span{white-space:nowrap;}
+  .slideshow-exif strong{color:rgba(255,255,255,.5);font-weight:700;}
+  .slideshow-progress{height:2px;margin:8px 0 9px;border-radius:2px;
+    background:rgba(255,255,255,.13);overflow:hidden;}
+  .slideshow-progress span{display:block;width:0;height:100%;
+    background:linear-gradient(90deg,#7fc8ff,#e8a659);}
+  .slideshow-bar{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap;}
+  .slideshow-bar button{width:auto;min-width:44px;min-height:34px;padding:5px 12px;
+    font:700 12px/1 'Inter',sans-serif;}
+  .slideshow-bar .slideshow-play{min-width:52px;border-color:#7fc8ff;color:#d9efff;}
+  .slideshow-interval{display:flex;align-items:center;gap:5px;
+    color:var(--dim);font:600 10px/1.3 'Inter',sans-serif;}
+  .slideshow-interval select{min-height:32px;padding:4px 6px;font-size:11px;}
+  .slideshow-index{min-width:56px;text-align:center;color:rgba(255,255,255,.62);
+    font:700 10px/1.3 'IBM Plex Mono',monospace;}
+  @media(max-width:760px){
+    .slideshow-bottom{padding-left:9px;padding-right:9px;}
+    .slideshow-bar{gap:5px;}
+    .slideshow-bar button{min-width:40px;padding:5px 9px;}
+    .slideshow-index{min-width:48px;}
+  }
   @media(max-width:760px){
     .plan-quick-actions{top:7px;right:7px;gap:6px;}
     .plan-quick-actions button{width:39px;height:39px;border-radius:11px;}
@@ -4059,6 +4125,9 @@
                     <button type="button" class="seg-btn" data-browse="map">地図</button>
                   </div>
                   <input id="planLoadSearch" class="plan-search" type="text" inputmode="search" placeholder="撮影地名・都道府県・市区町村を検索">
+                  <div class="plan-slideshow-launch">
+                    <button id="planSlideshowBtn" type="button">▶ 写真のスライドショー<span id="planSlideshowCount" class="plan-slideshow-count">0枚</span></button>
+                  </div>
                   <div class="plan-data-tools"><button id="planExportBtn" class="export" type="button">データをエクスポート</button><button id="planImportBtn" class="import" type="button">データをインポート</button></div>
                   <input id="planImportInput" type="file" accept="application/json,.json" hidden>
                   <div class="plan-load-map-wrap" id="planLoadMapWrap">
@@ -4077,6 +4146,30 @@
                   <img id="photoViewerImage" class="photo-viewer-image" alt="登録した実写真">
                   <div id="photoViewerCaption" class="photo-viewer-caption"></div>
                   <div id="photoViewerExif" class="photo-viewer-exif" aria-label="写真のExif撮影データ"></div>
+                </div>
+              </div>
+              <div id="slideshowOverlay" class="slideshow-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-label="登録写真のスライドショー">
+                <div id="slideshowStage" class="slideshow-stage">
+                  <div class="slideshow-layer" data-layer="0"><img class="slideshow-blur" alt="" aria-hidden="true"><img class="slideshow-photo" alt=""></div>
+                  <div class="slideshow-layer" data-layer="1"><img class="slideshow-blur" alt="" aria-hidden="true"><img class="slideshow-photo" alt=""></div>
+                  <div class="slideshow-vignette"></div>
+                  <div id="slideshowCaption" class="slideshow-caption">
+                    <p id="slideshowTitle" class="slideshow-caption-title"></p>
+                    <div class="slideshow-caption-rule"></div>
+                    <p id="slideshowPlace" class="slideshow-caption-place"><span id="slideshowPlaceText"></span><span id="slideshowGenre" class="slideshow-caption-genre"></span></p>
+                  </div>
+                  <button id="slideshowCloseBtn" class="slideshow-close" type="button" aria-label="スライドショーを閉じる">×</button>
+                </div>
+                <div class="slideshow-bottom">
+                  <div id="slideshowExif" class="slideshow-exif" aria-label="写真のExif撮影データ"></div>
+                  <div class="slideshow-progress"><span id="slideshowProgressBar"></span></div>
+                  <div class="slideshow-bar">
+                    <button id="slideshowPrevBtn" type="button" aria-label="前の写真">‹</button>
+                    <button id="slideshowPlayBtn" class="slideshow-play" type="button" aria-label="一時停止">❚❚</button>
+                    <button id="slideshowNextBtn" type="button" aria-label="次の写真">›</button>
+                    <span id="slideshowIndex" class="slideshow-index">0 / 0</span>
+                    <label class="slideshow-interval">間隔<select id="slideshowInterval"><option value="4">4秒</option><option value="6" selected>6秒</option><option value="8">8秒</option><option value="10">10秒</option><option value="15">15秒</option></select></label>
+                  </div>
                 </div>
               </div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
@@ -4271,7 +4364,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="684-genre-multi";
+const APP_VERSION="685-slideshow";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5318,7 +5411,13 @@ const el={
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
   planExportBtn:$("planExportBtn"), planImportBtn:$("planImportBtn"), planImportInput:$("planImportInput"),
   planLoadMap:$("planLoadMap"), planLoadMapWrap:$("planLoadMapWrap"), planBrowseSeg:$("planBrowseSeg"),
-  planSaveGenreRow:$("planSaveGenreRow"), planFilterGenreRow:$("planFilterGenreRow"), planLoadMapResetBtn:$("planLoadMapResetBtn"), planLoadMapZoomInBtn:$("planLoadMapZoomInBtn"), planLoadMapZoomOutBtn:$("planLoadMapZoomOutBtn"), planLoadMapScale:$("planLoadMapScale"),
+  planSaveGenreRow:$("planSaveGenreRow"), planFilterGenreRow:$("planFilterGenreRow"),
+  planSlideshowBtn:$("planSlideshowBtn"), planSlideshowCount:$("planSlideshowCount"),
+  slideshowOverlay:$("slideshowOverlay"), slideshowStage:$("slideshowStage"), slideshowCaption:$("slideshowCaption"),
+  slideshowTitle:$("slideshowTitle"), slideshowPlaceText:$("slideshowPlaceText"), slideshowGenre:$("slideshowGenre"),
+  slideshowExif:$("slideshowExif"), slideshowProgressBar:$("slideshowProgressBar"), slideshowIndex:$("slideshowIndex"),
+  slideshowPrevBtn:$("slideshowPrevBtn"), slideshowPlayBtn:$("slideshowPlayBtn"), slideshowNextBtn:$("slideshowNextBtn"),
+  slideshowInterval:$("slideshowInterval"), slideshowCloseBtn:$("slideshowCloseBtn"), planLoadMapResetBtn:$("planLoadMapResetBtn"), planLoadMapZoomInBtn:$("planLoadMapZoomInBtn"), planLoadMapZoomOutBtn:$("planLoadMapZoomOutBtn"), planLoadMapScale:$("planLoadMapScale"),
   planMapSelection:$("planMapSelection"), planMapSelectionText:$("planMapSelectionText"), planMapSelectionLoadBtn:$("planMapSelectionLoadBtn"),
   photoViewerOverlay:$("photoViewerOverlay"), photoViewerCloseBtn:$("photoViewerCloseBtn"), photoViewerImage:$("photoViewerImage"), photoViewerCaption:$("photoViewerCaption"), photoViewerExif:$("photoViewerExif"),
   mapToggleBtn:$("mapToggleBtn"), mapToggleState:$("mapToggleState"), mapCard:$("mapCard"), mapCanvas:$("mapCanvas"),
@@ -10773,6 +10872,7 @@ function renderSavedPlansList(query=""){
     return [location.title,location.placeName,location.prefecture,location.city].join(" ").toLocaleLowerCase("ja").includes(normalized);
   });
   planLoadMapVisibleLocations=locations;
+  syncSlideshowLaunch(locations);
   if(planMapSelectedLocation&&!locations.some(location=>location.id===planMapSelectedLocation.id))selectPlanMapLocation(null);
   if(planBrowseMode==="map") renderPlanLoadMapMarkers(locations);
   else planLoadMapVisibleLocations=locations;
@@ -10899,8 +10999,9 @@ function formatExifExposure(value){
   if(value>=1)return `${Number(value.toFixed(2))}秒`;
   const denominator=Math.round(1/value);return Math.abs(value-1/denominator)<.015?`1/${denominator}秒`:`${Number(value.toFixed(3))}秒`;
 }
-function renderPhotoExif(exif){
-  el.photoViewerExif.textContent="";const fields=[];
+/* Exifを「見出しと値」の並びにして返す。拡大表示とスライドショーで共用する（v685）。 */
+function photoExifFields(exif){
+  const fields=[];
   if(exif){
     const date=String(exif.dateTime||"").replace(/^(\d{4}):(\d{2}):(\d{2})/,"$1/$2/$3");
     const camera=[exif.make,exif.model].filter(Boolean).join(" ").replace(/\s+/g," ").trim();
@@ -10909,8 +11010,226 @@ function renderPhotoExif(exif){
     if(Number.isFinite(+exif.fNumber))fields.push(["絞り",`F${Number((+exif.fNumber).toFixed(1))}`]);
     const exposure=formatExifExposure(exif.exposure);if(exposure)fields.push(["SS",exposure]);if(Number.isFinite(+exif.iso))fields.push(["ISO",String(Math.round(+exif.iso))]);
   }
-  fields.forEach(([label,value])=>{const span=document.createElement("span");const strong=document.createElement("strong");strong.textContent=`${label} `;span.append(strong,document.createTextNode(value));el.photoViewerExif.appendChild(span);});
+  return fields;
+}
+function appendExifFields(target,fields){
+  target.textContent="";
+  fields.forEach(([label,value])=>{const span=document.createElement("span");const strong=document.createElement("strong");strong.textContent=`${label} `;span.append(strong,document.createTextNode(value));target.appendChild(span);});
+}
+function renderPhotoExif(exif){
+  const fields=photoExifFields(exif);
+  appendExifFields(el.photoViewerExif,fields);
   el.photoViewerExif.classList.toggle("show",fields.length>0);
+}
+/* ================= 【v685】スライドショー =================
+   読み込み画面で今絞り込んでいる計画のうち、写真が付いているものを順に見せる。
+   動きはすべて1本のrequestAnimationFrameから時刻で決める。
+   CSSのアニメーションを使わないのは、写真ごとに始め直す必要があるのと、
+   途中で止めたり間隔を変えたりしたいため。 */
+const SLIDESHOW_INTERVAL_KEY="starchase-slideshow-interval";
+const SLIDESHOW_CACHE_MAX=6;
+let slideshowItems=[];            // 表示する計画（写真つき）
+let slideshowIndex=-1;
+let slideshowPlaying=false;
+let slideshowRafId=0;
+let slideshowSlideStart=0;        // この写真を出した時刻
+let slideshowLastNow=0;
+let slideshowIntervalMs=6000;
+let slideshowToken=0;             // 連打したときに古い読み込みを捨てる印
+let slideshowFront=1;             // 今おもてに出ている層
+let slideshowLayers=[];
+const slideshowPhotoCache=new Map();
+const easeOutCubic=(p)=>1-Math.pow(1-p,3);
+const easeInCubic=(p)=>p*p*p;
+function slideshowCollectLayers(){
+  if(slideshowLayers.length||!el.slideshowStage) return slideshowLayers;
+  slideshowLayers=[...el.slideshowStage.querySelectorAll(".slideshow-layer")].map(wrap=>({
+    wrap,img:wrap.querySelector(".slideshow-photo"),blur:wrap.querySelector(".slideshow-blur")
+  }));
+  return slideshowLayers;
+}
+/* 今の一覧（絞り込み済み）のうち、写真のあるものを数えて入口のボタンに出す。 */
+function syncSlideshowLaunch(locations){
+  if(!el.planSlideshowBtn) return;
+  const count=(locations||[]).filter(locationHasPhoto).length;
+  el.planSlideshowCount.textContent=`${count}枚`;
+  el.planSlideshowBtn.disabled=count===0;
+  el.planSlideshowBtn.title=count?`${count}枚の写真をスライドショーで表示`:"写真を登録した撮影計画がありません";
+}
+async function slideshowPhotoData(location){
+  const key=location.id;
+  if(slideshowPhotoCache.has(key)) return slideshowPhotoCache.get(key);
+  const record=await planPhotoForLocation(location);
+  if(!record) return null;
+  let url="",revoke=false;
+  if(record.fullDataUrl) url=record.fullDataUrl;
+  else{
+    const blob=planPhotoBlob(record,true);
+    if(!blob) return null;
+    url=URL.createObjectURL(blob);revoke=true;
+  }
+  const data={url,revoke,exif:record.exif||null};
+  slideshowPhotoCache.set(key,data);
+  slideshowTrimPhotoCache();
+  return data;
+}
+/* 覚えておくのは数枚だけ。ただし今出している前後は捨てない。 */
+function slideshowTrimPhotoCache(){
+  if(slideshowPhotoCache.size<=SLIDESHOW_CACHE_MAX) return;
+  const keep=new Set();
+  const n=slideshowItems.length;
+  if(n) for(const d of [-1,0,1]){
+    const item=slideshowItems[((slideshowIndex+d)%n+n)%n];
+    if(item) keep.add(item.id);
+  }
+  for(const key of [...slideshowPhotoCache.keys()]){
+    if(slideshowPhotoCache.size<=SLIDESHOW_CACHE_MAX) break;
+    if(keep.has(key)) continue;
+    const old=slideshowPhotoCache.get(key);
+    if(old&&old.revoke) revokeObjectUrl(old.url);
+    slideshowPhotoCache.delete(key);
+  }
+}
+function slideshowPreload(index){
+  const n=slideshowItems.length;if(!n) return;
+  const item=slideshowItems[((index%n)+n)%n];
+  if(!item||slideshowPhotoCache.has(item.id)) return;
+  slideshowPhotoData(item).then(data=>{ if(data){const im=new Image();im.src=data.url;} }).catch(()=>{});
+}
+/* 1枚あたりの時間割り。間隔を短くしても題名が窮屈にならないよう縮める。 */
+function slideshowTiming(){
+  const T=slideshowIntervalMs/1000;
+  const fade=Math.min(.75,T*.16);          // 写真の入れ替わり
+  const titleFade=Math.min(.6,T*.13);      // 題名の出入り
+  const titleStart=fade*.6;
+  const hold=Math.max(.5,Math.min(2,T-titleStart-titleFade*2-.45));
+  return {T,fade,titleStart,titleFade,hold};
+}
+function slideshowFrame(now){
+  if(slideshowIndex<0||!slideshowLayers.length) return;
+  const {T,fade,titleStart,titleFade,hold}=slideshowTiming();
+  const t=Math.max(0,(now-slideshowSlideStart)/1000);
+  const appear=easeOutCubic(fade>0?clamp(t/fade,0,1):1);
+  slideshowLayers.forEach((layer,i)=>{
+    layer.wrap.style.opacity=(i===slideshowFront?appear:Math.max(0,1-appear)).toFixed(3);
+  });
+  /* ゆっくり寄る。1.0を超えないので、写真が切れることはない。 */
+  const k=clamp(t/T,0,1);
+  const front=slideshowLayers[slideshowFront];
+  if(front&&front.img) front.img.style.transform=`scale(${(0.97+0.03*easeOutCubic(k)).toFixed(4)})`;
+  /* 題名は、少し下から浮き上がって2秒ほど見せ、静かに消える。 */
+  let opacity=0,shift=18,spacing=.30;
+  if(t>=titleStart){
+    if(t<titleStart+titleFade){
+      const p=easeOutCubic((t-titleStart)/titleFade);
+      opacity=p;shift=18*(1-p);spacing=.30-.16*p;
+    }else if(t<titleStart+titleFade+hold){
+      opacity=1;shift=0;spacing=.14;
+    }else if(t<titleStart+titleFade*2+hold){
+      const p=easeInCubic((t-(titleStart+titleFade+hold))/titleFade);
+      opacity=1-p;shift=-10*p;spacing=.14+.07*p;
+    }else{opacity=0;shift=-10;spacing=.21;}
+  }
+  if(el.slideshowCaption){
+    el.slideshowCaption.style.opacity=opacity.toFixed(3);
+    el.slideshowCaption.style.transform=`translate(-50%,calc(-50% + ${shift.toFixed(1)}px))`;
+  }
+  if(el.slideshowTitle) el.slideshowTitle.style.letterSpacing=`${spacing.toFixed(3)}em`;
+  if(el.slideshowExif) el.slideshowExif.style.opacity=appear.toFixed(3);
+  if(el.slideshowProgressBar) el.slideshowProgressBar.style.width=`${(k*100).toFixed(2)}%`;
+  if(slideshowPlaying&&t>=T) slideshowGo(1);
+}
+function slideshowLoop(now){
+  slideshowRafId=requestAnimationFrame(slideshowLoop);
+  /* 止めているあいだは時計を進めない。再開すると続きから動く。 */
+  if(!slideshowPlaying&&slideshowLastNow) slideshowSlideStart+=now-slideshowLastNow;
+  slideshowLastNow=now;
+  slideshowFrame(now);
+}
+async function slideshowShow(index,tries=0){
+  const n=slideshowItems.length;
+  if(!n) return;
+  const i=((index%n)+n)%n;
+  const token=++slideshowToken;
+  const location=slideshowItems[i];
+  let data=null;
+  try{ data=await slideshowPhotoData(location); }catch(e){ data=null; }
+  if(token!==slideshowToken) return;
+  if(!data){
+    /* 読めない写真は飛ばす。全部読めないときは諦めて閉じる。 */
+    if(tries+1>=n){ closeSlideshow(); alert("写真データを読み込めませんでした。"); return; }
+    return slideshowShow(i+1,tries+1);
+  }
+  slideshowIndex=i;
+  slideshowFront=slideshowFront===0?1:0;
+  const layer=slideshowLayers[slideshowFront];
+  if(layer){
+    layer.img.style.transform="scale(0.97)";
+    layer.img.onload=()=>{ if(token===slideshowToken) slideshowSlideStart=performance.now(); };
+    layer.img.src=data.url;
+    if(layer.blur) layer.blur.src=data.url;
+  }
+  slideshowSlideStart=performance.now();
+  renderSlideshowMeta(location,data.exif);
+  slideshowTrimPhotoCache();
+  slideshowPreload(i+1);
+  slideshowFrame(performance.now());
+}
+function slideshowGo(delta){
+  if(!slideshowItems.length) return;
+  slideshowShow(slideshowIndex+delta);
+}
+function renderSlideshowMeta(location,exif){
+  if(el.slideshowTitle) el.slideshowTitle.textContent=location.title||"";
+  const place=[location.prefecture,location.city].filter(Boolean).join(" ")||location.placeName||"";
+  if(el.slideshowPlaceText) el.slideshowPlaceText.textContent=place;
+  if(el.slideshowGenre) el.slideshowGenre.textContent=planGenreLabels(planGenresOf(location));
+  let fields=photoExifFields(exif);
+  if(!fields.length){
+    /* Exifが残っていない写真もある。そのときは計画の中身で埋める。 */
+    fields=[["撮影日時",savedPlanDateTime(location)]];
+    if(Number.isFinite(+location.focalLength))fields.push(["レンズ",`${Math.round(+location.focalLength)}mm ${location.lensMode==="fisheye"?"魚眼":"通常"}`]);
+    if(Number.isFinite(+location.facingAz))fields.push(["方位",`${Math.round(+location.facingAz)}°`]);
+  }
+  if(el.slideshowExif) appendExifFields(el.slideshowExif,fields);
+  if(el.slideshowIndex) el.slideshowIndex.textContent=`${slideshowIndex+1} / ${slideshowItems.length}`;
+}
+function syncSlideshowPlayButton(){
+  if(!el.slideshowPlayBtn) return;
+  el.slideshowPlayBtn.textContent=slideshowPlaying?"❚❚":"▶";
+  el.slideshowPlayBtn.setAttribute("aria-label",slideshowPlaying?"一時停止":"再生");
+}
+function setSlideshowPlaying(playing){
+  slideshowPlaying=playing;
+  syncSlideshowPlayButton();
+}
+function openSlideshow(){
+  const list=(planLoadMapVisibleLocations||[]).filter(locationHasPhoto);
+  if(!list.length){alert("表示できる写真がありません。撮影計画に写真を登録すると、ここでスライドショーにできます。");return;}
+  slideshowCollectLayers();
+  slideshowItems=list;
+  slideshowIndex=-1;slideshowFront=1;slideshowLastNow=0;
+  slideshowLayers.forEach(layer=>{layer.wrap.style.opacity="0";});
+  el.slideshowOverlay.classList.add("show");
+  el.slideshowOverlay.setAttribute("aria-hidden","false");
+  setSlideshowPlaying(true);
+  slideshowShow(0);
+  if(!slideshowRafId) slideshowRafId=requestAnimationFrame(slideshowLoop);
+}
+function closeSlideshow(){
+  if(!el.slideshowOverlay) return;
+  el.slideshowOverlay.classList.remove("show");
+  el.slideshowOverlay.setAttribute("aria-hidden","true");
+  slideshowPlaying=false;slideshowToken++;
+  if(slideshowRafId){cancelAnimationFrame(slideshowRafId);slideshowRafId=0;}
+  slideshowLayers.forEach(layer=>{
+    layer.wrap.style.opacity="0";
+    layer.img.removeAttribute("src");
+    if(layer.blur) layer.blur.removeAttribute("src");
+  });
+  slideshowPhotoCache.forEach(data=>{if(data.revoke)revokeObjectUrl(data.url);});
+  slideshowPhotoCache.clear();
+  slideshowItems=[];slideshowIndex=-1;slideshowLastNow=0;
 }
 function closePlanPhotoViewer(){
   el.photoViewerOverlay.classList.remove("show");el.photoViewerOverlay.setAttribute("aria-hidden","true");el.photoViewerImage.removeAttribute("src");el.photoViewerExif.textContent="";el.photoViewerExif.classList.remove("show");revokeObjectUrl(photoViewerObjectUrl);photoViewerObjectUrl="";
@@ -10928,7 +11247,7 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
   if(!location){alert("削除する観測地を選択してください。");return;}removeSavedObservingPlan(location);
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
-document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay);
+document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay,el.slideshowOverlay);
 el.quickSavePlanBtn.addEventListener("click",()=>{
   // 「編集」でシミュレーションへ戻っている間は同じ計画を更新する。
   // 通常の保存操作では従来どおり新規保存として開始する。
@@ -10962,6 +11281,47 @@ if(el.planBrowseSeg) el.planBrowseSeg.addEventListener("click",(e)=>{
   if(!btn||!btn.dataset.browse) return;
   setPlanBrowseMode(btn.dataset.browse);
 });
+if(el.planSlideshowBtn) el.planSlideshowBtn.addEventListener("click",openSlideshow);
+if(el.slideshowCloseBtn) el.slideshowCloseBtn.addEventListener("click",closeSlideshow);
+if(el.slideshowPrevBtn) el.slideshowPrevBtn.addEventListener("click",()=>slideshowGo(-1));
+if(el.slideshowNextBtn) el.slideshowNextBtn.addEventListener("click",()=>slideshowGo(1));
+if(el.slideshowPlayBtn) el.slideshowPlayBtn.addEventListener("click",()=>setSlideshowPlaying(!slideshowPlaying));
+if(el.slideshowInterval){
+  /* 前に選んだ間隔を覚えておく。 */
+  try{
+    const saved=localStorage.getItem(SLIDESHOW_INTERVAL_KEY);
+    if(saved&&[...el.slideshowInterval.options].some(o=>o.value===saved)){
+      el.slideshowInterval.value=saved;slideshowIntervalMs=+saved*1000;
+    }
+  }catch(e){}
+  el.slideshowInterval.addEventListener("change",()=>{
+    const seconds=+el.slideshowInterval.value;
+    if(Number.isFinite(seconds)&&seconds>0){
+      slideshowIntervalMs=seconds*1000;
+      try{localStorage.setItem(SLIDESHOW_INTERVAL_KEY,String(seconds));}catch(e){}
+      slideshowSlideStart=performance.now();   // 今の写真から新しい間隔で数え直す
+    }
+  });
+}
+/* 写真をタップすると止まる／また動く。左右に払うと前後の写真へ。 */
+if(el.slideshowStage){
+  let slideshowTouchX=0,slideshowTouchY=0,slideshowTouchMoved=false;
+  el.slideshowStage.addEventListener("click",e=>{
+    if(e.target.closest("button")) return;
+    setSlideshowPlaying(!slideshowPlaying);
+  });
+  el.slideshowStage.addEventListener("touchstart",e=>{
+    if(e.touches.length!==1) return;
+    slideshowTouchX=e.touches[0].clientX;slideshowTouchY=e.touches[0].clientY;slideshowTouchMoved=false;
+  },{passive:true});
+  el.slideshowStage.addEventListener("touchend",e=>{
+    const touch=e.changedTouches&&e.changedTouches[0];if(!touch)return;
+    const dx=touch.clientX-slideshowTouchX,dy=touch.clientY-slideshowTouchY;
+    if(Math.abs(dx)>44&&Math.abs(dx)>Math.abs(dy)){
+      slideshowTouchMoved=true;e.preventDefault();slideshowGo(dx<0?1:-1);
+    }
+  },{passive:false});
+}
 el.planExportBtn.addEventListener("click",exportSavedPlans);
 el.planImportBtn.addEventListener("click",()=>el.planImportInput.click());
 el.planImportInput.addEventListener("change",()=>importSavedPlansFile(el.planImportInput.files?.[0]));
@@ -11012,6 +11372,13 @@ el.planSaveRunBtn.addEventListener("click",async()=>{
   finally{el.planSaveRunBtn.disabled=false;syncPlanSaveModalMode();}
 });
 document.addEventListener("keydown",e=>{
+  /* スライドショー中は左右で送り、空白で止める。 */
+  if(el.slideshowOverlay&&el.slideshowOverlay.classList.contains("show")){
+    if(e.key==="Escape"){closeSlideshow();return;}
+    if(e.key==="ArrowRight"){e.preventDefault();slideshowGo(1);return;}
+    if(e.key==="ArrowLeft"){e.preventDefault();slideshowGo(-1);return;}
+    if(e.key===" "||e.key==="Spacebar"){e.preventDefault();setSlideshowPlaying(!slideshowPlaying);return;}
+  }
   if(e.key!=="Escape") return;
   if(el.planSaveOverlay.classList.contains("show")) setPlanModalOpen("save",false);
   if(el.planLoadOverlay.classList.contains("show")) setPlanModalOpen("load",false);
@@ -12358,6 +12725,16 @@ try{
         el.kmzBuildingScale.value=1;el.kmzBuildingOpacity.value=100;
         drawPhoto._terrainRenderKey=null;update();
         return true;
+      },
+      /* スライドショーは動きが時刻で決まるので、手でコマを送って確かめられるようにする。 */
+      slideshow:{
+        open:openSlideshow,close:closeSlideshow,go:slideshowGo,
+        step:(seconds)=>{slideshowFrame(slideshowSlideStart+seconds*1000);return seconds;},
+        setPlaying:setSlideshowPlaying,
+        timing:slideshowTiming,
+        state:()=>({index:slideshowIndex,count:slideshowItems.length,playing:slideshowPlaying,
+          front:slideshowFront,intervalMs:slideshowIntervalMs,cache:slideshowPhotoCache.size,
+          title:el.slideshowTitle?el.slideshowTitle.textContent:""})
       },
       cloud:()=>({on:cloudSeaVisible,elev:cloudSeaElevationM,obs:realTerrainState.observerElevation,eye:eyeHeightAboveGroundM(),swapped:cloudSwapCount}),
       prof:()=>({...cloudProf}),
