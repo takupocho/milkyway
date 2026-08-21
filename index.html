@@ -828,6 +828,16 @@
   }
   .focal-quick-value{font-family:'IBM Plex Mono',monospace;font-size:15px;color:var(--core-amber);}
   .focal-quick input[type=range]{width:100%;accent-color:var(--core-amber);}
+  /* 【v696】画面左の魚眼アイコンをやめ、焦点距離のつまみの下へ移した。 */
+  .focal-quick-lens-btn{
+    width:100%;min-height:32px;margin:9px 0 0;padding:6px 10px;
+    border:1px solid rgba(255,255,255,.34);border-radius:9px;
+    background:rgba(255,255,255,.10);color:var(--star-white);
+    font:700 11px/1.2 'Inter',sans-serif;letter-spacing:.04em;
+  }
+  .focal-quick-lens-btn[aria-pressed="true"]{
+    border-color:var(--core-amber);color:var(--core-amber);background:rgba(232,166,89,.18);
+  }
   .focal-badge.fisheye-mode{
     display:inline-flex;
     flex-direction:column;
@@ -1614,7 +1624,7 @@
      地図を開いている間は上側の4ボタンが隠れるので、その位置が空く。 */
   .mobile-measure-btn{display:none;}
   .photo-canvas-wrap.osm-map-open .mobile-measure-btn{
-    display:flex;position:absolute;top:141px;left:9px;z-index:12;
+    display:flex;position:absolute;top:97px;left:9px;z-index:12;
     width:36px;height:36px;padding:0;align-items:center;justify-content:center;
     border:1px solid var(--line);border-radius:50%;
     background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
@@ -1997,12 +2007,12 @@
       background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
       box-shadow:0 2px 8px rgba(0,0,0,.28);
     }
+    /* 【v696】魚眼・ドローン・時計のアイコンをやめたので、残りを詰める。
+       地図だけは右の「外部情報読み直し」と同じ高さへ下げる。 */
     .mobile-sky-search-control{top:9px;}
-    .mobile-lens-mode-btn{top:53px;}
-    .mobile-drone-btn{top:97px;}
-    .mobile-clock-toggle-btn{top:141px;}
-    .mobile-map-toggle-btn{top:185px;}
-    .mobile-shot-plan-btn{top:229px;}
+    .mobile-shot-plan-btn{top:53px;}
+    .mobile-map-toggle-btn{top:auto;bottom:53px;}
+    body.drone-mode .mobile-map-toggle-btn{bottom:127px;}
     .mobile-sky-search-control svg{width:20px;height:20px;pointer-events:none;}
     #mobileSkySearchSelect{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;font-size:16px;}
     .mobile-lens-mode-btn.active,.mobile-drone-btn.active,.mobile-clock-toggle-btn.active{
@@ -3418,7 +3428,8 @@
     .mobile-map-toggle-btn{
       display:flex;
       position:absolute;
-      top:185px;
+      top:auto;
+      bottom:44px;
       left:9px;
       z-index:12;
       width:36px;
@@ -3435,10 +3446,11 @@
     }
     .mobile-map-toggle-btn.active{color:var(--core-amber);border-color:var(--core-amber);opacity:.92;}
     .mobile-map-toggle-btn svg{width:21px;height:21px;pointer-events:none;}
+    body.drone-mode .mobile-map-toggle-btn{bottom:124px;}
     body.ar-active .mobile-map-toggle-btn{display:none;}
     /* 撮影計画（v674）。スマホでも地図のひとつ下に同じ大きさで並べる。 */
     .mobile-shot-plan-btn{
-      display:flex;position:absolute;top:229px;left:9px;z-index:12;
+      display:flex;position:absolute;top:53px;left:9px;z-index:12;
       width:36px;height:36px;padding:0;align-items:center;justify-content:center;
       border:1px solid var(--line);border-radius:50%;
       background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
@@ -3921,6 +3933,7 @@
               <div class="focal-quick" id="focalQuick" aria-hidden="true">
                 <div class="focal-quick-head"><span>焦点距離</span><span class="focal-quick-value" id="focalQuickVal">24mm</span></div>
                 <input type="range" id="focalQuickRange" min="0" max="100" step="1" value="27" aria-label="焦点距離">
+                <button id="focalQuickLensBtn" type="button" class="focal-quick-lens-btn" aria-pressed="false">魚眼レンズ</button>
               </div>
               <div class="display-options-popup" id="displayOptionsPopup">
                 <button id="constellationToggleBtn" type="button" class="constellation-toggle-btn active">星座</button>
@@ -3973,6 +3986,8 @@
                 </div>
                 <button id="popupPixelWalkerBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">キャラクター</button>
                 <button id="popupCompassBarBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">方位バー</button>
+                <button id="popupControllerBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">コントローラー</button>
+                <button id="popupClockBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">時計</button>
                 <button id="popupCometBtn" type="button" class="constellation-toggle-btn display-control-btn">彗星</button>
                 <div class="display-popup-slider" id="cometMagRow">
                   <label for="cometMagSlider">明るさ</label>
@@ -4107,26 +4122,6 @@
                 </svg>
                 <select id="mobileSkySearchSelect" aria-label="星空検索"></select>
               </div>
-              <button id="mobileLensModeBtn" type="button" class="mobile-lens-mode-btn icon-help-target sim-left-help" data-help="魚眼モードを切り替える" aria-label="通常レンズから対角魚眼へ切り替える" title="通常レンズ">
-                <span class="mobile-lens-mode-icon" aria-hidden="true"></span>
-              </button>
-              <button id="mobileDroneModeBtn" type="button" class="mobile-drone-btn icon-help-target sim-left-help" data-help="ドローンモード。上空から構図を探せます" aria-label="ドローンモード" title="ドローンモード" aria-pressed="false">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="5" cy="5.5" r="2.6" stroke="currentColor" stroke-width="1.5"/>
-                  <circle cx="19" cy="5.5" r="2.6" stroke="currentColor" stroke-width="1.5"/>
-                  <circle cx="5" cy="18.5" r="2.6" stroke="currentColor" stroke-width="1.5"/>
-                  <circle cx="19" cy="18.5" r="2.6" stroke="currentColor" stroke-width="1.5"/>
-                  <path d="M7 7.4L10 10.4M17 7.4L14 10.4M7 16.6L10 13.6M17 16.6L14 13.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <rect x="9.6" y="9.6" width="4.8" height="4.8" rx="1.3" stroke="currentColor" stroke-width="1.6"/>
-                </svg>
-              </button>
-              <button id="mobileClockToggleBtn" type="button" class="mobile-clock-toggle-btn active icon-help-target sim-left-help" data-help="時計表示を切り替える" aria-label="日時表示を隠す" title="日時表示を隠す">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/>
-                  <path d="M12 7.5V12L15.5 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                  <path class="clock-hidden-slash" d="M5 5L19 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                </svg>
-              </button>
               <button id="mapMeasureBtn" type="button" class="mobile-measure-btn icon-help-target sim-left-help map-help" aria-pressed="false" data-help="地図上の2点間の距離を測る" aria-label="距離を測る" title="距離を測る"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="8.5" width="20" height="7" rx="1.2" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 8.5v3.4M10 8.5v2.2M13.5 8.5v3.4M17.5 8.5v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
               <button id="mobileMapToggleBtn" type="button" class="mobile-map-toggle-btn icon-help-target sim-left-help map-help" data-help="地図モードを切り替える" aria-label="観測地点マップを表示する" title="観測地点マップ">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -4485,7 +4480,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="695-play-speed";
+const APP_VERSION="696-ui-tidy";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5548,7 +5543,7 @@ const el={
   jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), fineTimeBtn:$("fineTimeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   mwStartTimeLabel:$("mwStartTimeLabel"), mwEndTimeLabel:$("mwEndTimeLabel"),
-  focalLength:$("focalLength"), focalRange:$("focalRange"), focalQuick:$("focalQuick"), focalQuickRange:$("focalQuickRange"), focalQuickVal:$("focalQuickVal"), flVal:$("flVal"), focalBadge:$("focalBadge"),
+  focalLength:$("focalLength"), focalRange:$("focalRange"), focalQuick:$("focalQuick"), focalQuickRange:$("focalQuickRange"), focalQuickVal:$("focalQuickVal"), focalQuickLensBtn:$("focalQuickLensBtn"), flVal:$("flVal"), focalBadge:$("focalBadge"),
   aperture:$("aperture"), apVal:$("apVal"),
   isoSlider:$("isoSlider"), isoVal:$("isoVal"),
   shutter:$("shutter"), ssVal:$("ssVal"),
@@ -5561,7 +5556,7 @@ const el={
   facingAz:$("facingAz"), azVal:$("azVal"),
   facingAlt:$("facingAlt"), altValLabel:$("altValLabel"),
   snapBtn:$("snapBtn"), playPauseBtn:$("playPauseBtn"), animationSpeedSelect:$("animationSpeedSelect"), animationSpeedRange:$("animationSpeedRange"), animationSpeedVal:$("animationSpeedVal"), playSpeedPopup:$("playSpeedPopup"), playSpeedRange:$("playSpeedRange"), playSpeedValue:$("playSpeedValue"), starTrailStartDelaySelect:$("starTrailStartDelaySelect"),
-  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileLensModeBtn:$("mobileLensModeBtn"), mobileDroneModeBtn:$("mobileDroneModeBtn"), mobileClockToggleBtn:$("mobileClockToggleBtn"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
+  skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"),
@@ -5610,7 +5605,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -6403,14 +6398,18 @@ function formatAimDeg(value){
   const digits=step>=1?0:(step>=.1?1:2);
   return (Number.isFinite(value)?value:0).toFixed(digits);
 }
+/* 【v696】魚眼の切り替えは、焦点距離のつまみの下のボタンで行う。
+   画面左のアイコンは廃止した。 */
 function syncMobileLensModeButton(){
   const fisheye=mobileLensMode==="fisheye";
-  el.mobileLensModeBtn.classList.toggle("active",fisheye);
-  el.mobileLensModeBtn.setAttribute("aria-label",fisheye ? "対角魚眼から通常レンズへ切り替える" : "通常レンズから対角魚眼へ切り替える");
-  el.mobileLensModeBtn.title=fisheye ? "対角魚眼" : "通常レンズ";
+  if(!el.focalQuickLensBtn) return;
+  el.focalQuickLensBtn.classList.toggle("active",fisheye);
+  el.focalQuickLensBtn.setAttribute("aria-pressed",String(fisheye));
+  el.focalQuickLensBtn.textContent=fisheye?"魚眼レンズ（ON）":"魚眼レンズ";
+  el.focalQuickLensBtn.setAttribute("aria-label",fisheye?"対角魚眼から通常レンズへ切り替える":"通常レンズから対角魚眼へ切り替える");
 }
 syncMobileLensModeButton();
-el.mobileLensModeBtn.addEventListener("click",()=>{
+function toggleMobileLensMode(){
   if(mobileLensMode==="fisheye"){
     fisheyeLensFocalLength=clamp(+el.focalLength.value||15,8,16);
     mobileLensMode="normal";
@@ -6422,7 +6421,8 @@ el.mobileLensModeBtn.addEventListener("click",()=>{
   syncMobileLensModeButton();
   showSkySearchPopup(mobileLensMode==="fisheye" ? "対角魚眼モード" : "通常レンズモード");
   update();
-});
+}
+if(el.focalQuickLensBtn) el.focalQuickLensBtn.addEventListener("click",toggleMobileLensMode);
 
 /* PC・スマホ共通: 天の川の自動構図を「中心→アーチ全体→地景込み」の順に切り替える。 */
 const MW_FRAMING_MODES=["core","arch","landscape"];
@@ -6611,7 +6611,7 @@ let placeNameVisible=true; // 画面内の地名表示
 /* 水際の判定がどの層で決まっているかを画面に出す。原因の切り分け用。
    既定は非表示で、描画にも触らない（数え上げだけ）。 */
 let seaDiagVisible=false;
-let droneModeOn=false;
+let droneModeOn=true;   // 【v696】コントローラーは既定で出す
 /* ドローンモード。ONの間だけ画面内コントローラーを出す。
    構図(縦・横)には連動させない。OFFにしたら着地させる——
    コントローラーが消えたあとに上空へ取り残されると降りられなくなるため。 */
@@ -6619,9 +6619,11 @@ function syncDroneModeButton(){
   document.body.classList.toggle("drone-mode",droneModeOn);
   markStickOverlapDirty();syncStickOverlapVars();   // v692: 境目を測り直す
   syncDroneMapPanel();
-  el.mobileDroneModeBtn.classList.toggle("active",droneModeOn);
-  el.mobileDroneModeBtn.setAttribute("aria-pressed",String(droneModeOn));
-  el.mobileDroneModeBtn.title=droneModeOn?"ドローンモード ON":"ドローンモード";
+  /* 【v696】入り切りは「表示」のコントローラーのボタンで行う。 */
+  if(el.popupControllerBtn){
+    el.popupControllerBtn.classList.toggle("active",droneModeOn);
+    el.popupControllerBtn.setAttribute("aria-pressed",String(droneModeOn));
+  }
 }
 /* ドローンモードをOFFにしたときの降下。
    これまでは即座に0mへ戻していたので、景色が一瞬で入れ替わっていた。
@@ -6648,26 +6650,28 @@ function startDroneDescent(){
   };
   droneDescentRaf=requestAnimationFrame(tick);
 }
-el.mobileDroneModeBtn.addEventListener("click",()=>{
+function toggleControllerVisible(){
   droneModeOn=!droneModeOn;
   if(droneModeOn) stopDroneDescent();
-  else if(cameraRiseM>0) startDroneDescent();
+  else if(cameraRiseM>0) startDroneDescent();   // しまうときは地上へ降ろす
   syncDroneModeButton();
   update();
   refreshDroneMapSize();
   scheduleSaveSettings();
-  showSkySearchPopup(droneModeOn?"ドローンモード ON":"ドローンモード OFF");
-});
+  showSkySearchPopup(droneModeOn?"コントローラー ON":"コントローラー OFF");
+}
+if(el.popupControllerBtn) el.popupControllerBtn.addEventListener("click",toggleControllerVisible);
 syncDroneModeButton();
 
 /* シミュレーション日時の画面内表示。スマホの時計アイコンで表示/非表示を切り替える。 */
 let simulationClockVisible=true;
 function syncSimulationClockVisibility(){
   el.simulationClockOverlay.classList.toggle("hidden",!simulationClockVisible);
-  el.mobileClockToggleBtn.classList.toggle("active",simulationClockVisible);
-  const label=simulationClockVisible ? "日時表示を隠す" : "日時表示を表示する";
-  el.mobileClockToggleBtn.setAttribute("aria-label",label);
-  el.mobileClockToggleBtn.title=label;
+  /* 【v696】入り切りは「表示」の時計のボタンで行う。 */
+  if(el.popupClockBtn){
+    el.popupClockBtn.classList.toggle("active",simulationClockVisible);
+    el.popupClockBtn.setAttribute("aria-pressed",String(simulationClockVisible));
+  }
 }
 function updateSimulationClock(minutes,seconds){
   const [baseY,baseMo,baseDa]=el.dateInput.value.split("-").map(Number);
@@ -6682,7 +6686,7 @@ function updateSimulationClock(minutes,seconds){
     +(Number.isFinite(seconds)?`<span class="clock-sec">:${String(Math.floor(seconds)).padStart(2,"0")}</span>`:"");
 }
 syncSimulationClockVisibility();
-el.mobileClockToggleBtn.addEventListener("click",()=>{
+if(el.popupClockBtn) el.popupClockBtn.addEventListener("click",()=>{
   simulationClockVisible=!simulationClockVisible;
   syncSimulationClockVisibility();
   scheduleSaveSettings();
@@ -10105,6 +10109,7 @@ function collectPersistedSettings(){
     animationSpeed:el.animationSpeedSelect?el.animationSpeedSelect.value:20,
     seaDiagVisible:seaDiagVisible,
     terrainRendererWorld:TERRAIN_RENDERER==="world",
+    controllerVisible:droneModeOn,   // v696: 旧droneModeOnと別の名前にして、既定ONへ切り替える
     droneModeOn:droneModeOn,
     droneMapOpen:droneMapOpen,
     skylineOpacity:el.skylineOpacitySlider.value,
@@ -10238,7 +10243,9 @@ async function loadPersistedSettings(){
       TERRAIN_RENDERER=s.terrainRendererWorld?"world":"layered";
       syncAppVersionBadge();
     }
-    droneModeOn=!!s.droneModeOn;
+    /* v696: 昔の保存には「ドローンモードOFF」が入っているが、
+       コントローラーは既定で出す方針に変えたので、新しい項目だけを見る。 */
+    droneModeOn=("controllerVisible" in s)?!!s.controllerVisible:true;
     droneMapOpen=!!s.droneMapOpen;
     if(typeof syncDroneModeButton==="function") syncDroneModeButton();
     if(typeof refreshDroneMapSize==="function") refreshDroneMapSize();
