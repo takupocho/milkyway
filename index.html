@@ -2168,6 +2168,7 @@
     font:600 12px/1.3 'IBM Plex Mono',monospace;
   }
   .shot-plan-panel select{flex:0 0 62px;}
+  .shot-plan-panel select#shotPlanTarget{flex:1;}
   .shot-plan-unit{flex:0 0 62px;font-size:10px;color:var(--dim);}
   .shot-plan-fixed{
     flex:1;font:600 12px/1.3 'IBM Plex Mono',monospace;color:var(--star-white);
@@ -3762,7 +3763,7 @@
                 </div>
                 <div class="display-popup-slider" id="cometTailRow">
                   <label for="cometTailSlider">尾の長さ</label>
-                  <input type="range" id="cometTailSlider" min="0" max="300" step="10" value="100" aria-label="彗星の尾の長さ">
+                  <input type="range" id="cometTailSlider" min="0" max="750" step="10" value="100" aria-label="彗星の尾の長さ">
                   <span class="display-popup-slider-value" id="cometTailVal">100%</span>
                 </div>
                 <div class="display-popup-section-title">アニメーション</div>
@@ -3796,6 +3797,13 @@
                 </div>
                 <div class="shot-plan-row"><span>開始</span><span class="shot-plan-fixed" id="shotPlanStart">—</span></div>
                 <div class="shot-plan-row"><span>終了</span><input type="time" id="shotPlanEnd"></div>
+                <div class="shot-plan-row"><span>記録</span>
+                  <select id="shotPlanTarget">
+                    <option value="moon">月だけ</option>
+                    <option value="objects">月・太陽・彗星</option>
+                    <option value="frame">画面全体（星も光跡）</option>
+                  </select>
+                </div>
                 <div class="shot-plan-row"><span>速さ</span>
                   <input type="number" id="shotPlanSpeed" min="1" max="10" step="1" value="5">
                   <span class="shot-plan-unit">分 ／ 秒</span>
@@ -4201,7 +4209,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="679-comets";
+const APP_VERSION="680-comet-trail";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5328,7 +5336,7 @@ const el={
   shotPlanResultBar:$("shotPlanResultBar"), shotPlanSaveBtn:$("shotPlanSaveBtn"), shotPlanBackBtn:$("shotPlanBackBtn"),
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
-  shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
+  shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -8368,6 +8376,12 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
   state.moonContribution=state.moonAltAz.alt>0
     ? moon.illum*(state.moonAltAz.alt/90)*0.7*lunarEclipseLightFactor(moon.eclipse) : 0;
   state.skyBrightness=clamp(state.lp.base+state.twilight+state.moonContribution*0.55,0,1);
+  /* 【v680】再生中も彗星を計算し直す。
+     ここを飛ばしていたので、再生では彗星だけ古い位置に残り、
+     コマ送りのようにカクカク動いていた。
+     さらに、尾の向きは「その時刻の太陽」と「古い彗星の位置」から
+     求まってしまうため、動かないまま尾だけが回って見えていた。 */
+  state.comets=visibleComets(jdPreview,state.lat,state.lon,sun);
   if(lockAzToGc){
     state.facingAz=newAz;
     el.facingAz.value=newAz;
@@ -9723,7 +9737,7 @@ async function loadPersistedSettings(){
     compassBarVisible=s.compassBarVisible!==false;
     cometsVisible=s.cometsVisible===true;
     if(Number.isFinite(+s.cometMagLimit)) cometMagLimit=clamp(+s.cometMagLimit,6,16);
-    if(Number.isFinite(+s.cometTailScale)) cometTailScale=clamp(+s.cometTailScale,0,3);
+    if(Number.isFinite(+s.cometTailScale)) cometTailScale=clamp(+s.cometTailScale,0,7.5);
     if(cometsVisible) loadCometElements().then(()=>update());
     // 保存値はスライダーの目盛りへ寄せておく（ツマの位置と数値がずれないように）。
     if(Number.isFinite(+s.cloudSeaElevationM)) cloudSeaElevationM=cloudSeaSliderToM(cloudSeaMToSlider(+s.cloudSeaElevationM));
@@ -21324,26 +21338,60 @@ async function runShotPlan(){
       const st=computeState();
       drawPhoto(photoCtx,st);
       if(i===0) acc.drawImage(el.photoCanvas,0,0);   // 最初の1枚を土台にする
-      /* 月が地平線より上のコマだけ重ねる。沈んでいる月を重ねると
-         地面の明るいところが混ざって、軌跡ではなく汚れになる。 */
-      if(st.moonAltAz && st.moonAltAz.alt>0){
-        const p=projectToPhotoXY(st.moonAltAz.az,st.moonAltAz.alt,st,W,H);
-        if(p&&Number.isFinite(p[0])&&Number.isFinite(p[1])
-           &&p[0]>-W*.2&&p[0]<W*1.2&&p[1]>-H*.2&&p[1]<H*1.2){
-          const scale=(W/2)/Math.tan(st.fovH/2*D2R);
-          const floorR=9*(W/1200)*((st.moon.angularRadiusDeg||.2590)/.2590);
-          const rMoon=Math.max(scale*D2R*(st.moon.angularRadiusDeg||.26),floorR);
-          const patchR=Math.max(16,rMoon*3.6);
-          if(i>0){
-            acc.save();
-            acc.globalCompositeOperation="lighten";
-            acc.beginPath(); acc.arc(p[0],p[1],patchR,0,Math.PI*2); acc.clip();
-            acc.drawImage(el.photoCanvas,0,0);
-            acc.restore();
-          }
-          labels.push({mx:p[0],my:p[1],r:rMoon,text:shotPlanClockLabel(m,el.shotPlanSeconds.checked)});
-          drawn++;
+      /* 【v680】何を取り込むかを選べるようにした。
+           moon    … 月のまわりだけ（月食の軌跡向き）
+           objects … 月・太陽・彗星のまわり
+           frame   … 画面まるごと（恒星も光跡になる、本来の比較明合成）
+         地平線より下のものは取り込まない。沈んでいるものを重ねると、
+         地面の明るいところが混ざって軌跡ではなく汚れになる。 */
+      const mode=el.shotPlanTarget?el.shotPlanTarget.value:"moon";
+      const scaleP=(W/2)/Math.tan(st.fovH/2*D2R);
+      const onScreen=p=>p&&Number.isFinite(p[0])&&Number.isFinite(p[1])
+        &&p[0]>-W*.2&&p[0]<W*1.2&&p[1]>-H*.2&&p[1]<H*1.2;
+      const project=aa=>(aa&&aa.alt>0)?projectToPhotoXY(aa.az,aa.alt,st,W,H):null;
+      const patches=[];
+      const floorR=9*(W/1200)*((st.moon.angularRadiusDeg||.2590)/.2590);
+      const rMoon=Math.max(scaleP*D2R*(st.moon.angularRadiusDeg||.26),floorR);
+      const pMoon=project(st.moonAltAz);
+      const pSun=project(st.sunAltAz);
+      /* 時刻の文字は主役の1つに付ける。月→太陽→いちばん明るい彗星の順。 */
+      let primary=onScreen(pMoon)?{p:pMoon,r:rMoon}:null;
+      if(mode!=="frame"&&onScreen(pMoon)) patches.push({p:pMoon,r:Math.max(16,rMoon*3.6)});
+      if(mode==="objects"){
+        const rSun=Math.max(scaleP*D2R*(st.sun.angularRadiusDeg||.267),13*(W/1200));
+        if(onScreen(pSun)){
+          patches.push({p:pSun,r:Math.max(18,rSun*3.6)});
+          if(!primary) primary={p:pSun,r:rSun};
         }
+        /* 彗星は尾があるぶん広く取り込む。尾の長さのつまみに合わせて広げる。 */
+        const rComet=Math.min(Math.min(W,H)*.45,Math.max(30,30*(W/1200)*(1+cometTailScale*1.2)));
+        for(const cm of (st.comets||[])){
+          const pc=project({alt:cm.alt,az:cm.az});
+          if(!onScreen(pc)) continue;
+          patches.push({p:pc,r:rComet});
+          if(!primary) primary={p:pc,r:12*(W/1200)};
+        }
+      }
+      if(i>0){
+        if(mode==="frame"){
+          acc.save();
+          acc.globalCompositeOperation="lighten";
+          acc.drawImage(el.photoCanvas,0,0);
+          acc.restore();
+        }else if(patches.length){
+          acc.save();
+          acc.globalCompositeOperation="lighten";
+          acc.beginPath();
+          for(const q of patches){ acc.moveTo(q.p[0]+q.r,q.p[1]); acc.arc(q.p[0],q.p[1],q.r,0,Math.PI*2); }
+          acc.clip();
+          acc.drawImage(el.photoCanvas,0,0);
+          acc.restore();
+        }
+      }
+      if(mode==="frame"||patches.length){
+        if(primary) labels.push({mx:primary.p[0],my:primary.p[1],r:primary.r,
+          text:shotPlanClockLabel(m,el.shotPlanSeconds.checked)});
+        drawn++;
       }
       el.shotPlanRecText.textContent="記録中 "+shotPlanClockLabel(m,el.shotPlanSeconds.checked)+"（"+(i+1)+"/"+frames+"）";
       await new Promise(r=>setTimeout(r,frameDelayMs));
@@ -21361,7 +21409,7 @@ async function runShotPlan(){
     }
     el.shotPlanStatus.textContent=drawn>0
       ? (shotPlanAbort?"中止しました（":"できました（")+drawn+"コマ"+(contactRows?"／食の時刻あり":"")+"）"
-      : "この時間帯は月が地平線より下でした。";
+      : "この時間帯は、記録するものが画面に入っていませんでした。";
   }finally{
     slider.value=savedValue;
     slider.step=savedStep;
