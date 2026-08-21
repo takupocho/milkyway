@@ -893,6 +893,17 @@
   .display-popup-slider.show{display:flex;}
   .display-popup-slider input[type=range]{flex:1;min-width:96px;accent-color:var(--core-amber);}
   .display-popup-slider .display-popup-slider-value{min-width:52px;text-align:right;color:var(--core-amber);}
+  /* 【v694】つまみの両端の微調整ボタン。10mずつ動かす。
+     つまみの目盛りは高いところで50m刻みなので、その間を埋めるため。 */
+  .slider-step-btn{
+    flex:none;width:22px;height:22px;min-height:0;padding:0;margin:0;
+    border-radius:50%;border:1px solid rgba(255,255,255,.34);
+    background:rgba(255,255,255,.12);color:var(--star-white);
+    font:700 13px/1 'Inter',sans-serif;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .slider-step-btn:hover{border-color:var(--core-amber);color:var(--core-amber);}
+  .slider-step-btn:disabled{opacity:.35;}
   @media (max-width:900px){
     /* 上のモバイル用ブロック(760px以下)の.constellation-toggle-btnはこのベースルールより
        前に書かれているため、詳細度が同じ場合は後に書かれたベースルールが勝ってしまい、
@@ -3913,7 +3924,9 @@
                 <button id="popupCloudSeaBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">雲海</button>
                 <div class="display-popup-slider" id="cloudSeaRow">
                   <label for="cloudSeaSlider">高度</label>
+                  <button type="button" id="cloudSeaDownBtn" class="slider-step-btn" aria-label="雲海の高さを10m下げる" title="10m下げる">−</button>
                   <input type="range" id="cloudSeaSlider" min="0" max="100" step="1" value="63" aria-label="雲海の高さ(標高)">
+                  <button type="button" id="cloudSeaUpBtn" class="slider-step-btn" aria-label="雲海の高さを10m上げる" title="10m上げる">＋</button>
                   <span class="display-popup-slider-value" id="cloudSeaVal">800m</span>
                 </div>
                 <div class="display-popup-slider" id="cloudSeaWindRow">
@@ -4433,7 +4446,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="693-compass-live";
+const APP_VERSION="694-cloud-step";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5567,7 +5580,7 @@ const el={
   shotPlanResultBar:$("shotPlanResultBar"), shotPlanSaveBtn:$("shotPlanSaveBtn"), shotPlanBackBtn:$("shotPlanBackBtn"),
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
-  shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
+  shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaDownBtn:$("cloudSeaDownBtn"), cloudSeaUpBtn:$("cloudSeaUpBtn"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
   popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
@@ -8394,6 +8407,7 @@ function syncDisplayPopupControls(){
   el.cloudSeaWindVal.textContent=cloudSeaWindLabel();
   el.cloudSeaSlider.value=cloudSeaMToSlider(cloudSeaElevationM);
   el.cloudSeaVal.textContent=`${cloudSeaElevationM}m`;
+  syncCloudSeaStepButtons();
   el.cloudSeaOpacitySlider.value=Math.round(cloudSeaOpacity*100);
   el.cloudSeaOpacityVal.textContent=`${Math.round(cloudSeaOpacity*100)}%`;
   el.popupRoadBtn.classList.toggle("active",roadLinesVisible);
@@ -8550,9 +8564,33 @@ el.cloudSeaOpacitySlider.addEventListener("input",()=>{
 el.cloudSeaSlider.addEventListener("input",()=>{
   cloudSeaElevationM=cloudSeaSliderToM(el.cloudSeaSlider.value);
   el.cloudSeaVal.textContent=`${cloudSeaElevationM}m`;
+  syncCloudSeaStepButtons();
   drawPhoto._terrainRenderKey=null;
   update();scheduleSaveSettings();
 });
+/* 【v694】高さの微調整。つまみの目盛りは200mを超えると50m刻みになるので、
+   このボタンで 10m ごとに合わせられるようにする。
+   常に「次の10mの区切り」へ寄せるので、505mなら ＋で510m、−で500mになる。 */
+const CLOUD_SEA_STEP_M=10;
+/* 上と下の端に来たら押せなくする。つまみで端まで動かしたときも同じ。 */
+function syncCloudSeaStepButtons(){
+  if(el.cloudSeaDownBtn) el.cloudSeaDownBtn.disabled=cloudSeaElevationM<=20;
+  if(el.cloudSeaUpBtn) el.cloudSeaUpBtn.disabled=cloudSeaElevationM>=2500;
+}
+function stepCloudSeaElevation(direction){
+  const now=clamp(+cloudSeaElevationM||0,20,2500);
+  const next=direction>0
+    ?(Math.floor(now/CLOUD_SEA_STEP_M)+1)*CLOUD_SEA_STEP_M
+    :(Math.ceil(now/CLOUD_SEA_STEP_M)-1)*CLOUD_SEA_STEP_M;
+  const value=clamp(Math.round(next),20,2500);
+  if(value===cloudSeaElevationM){ syncCloudSeaStepButtons(); return; }
+  cloudSeaElevationM=value;
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();
+  update();scheduleSaveSettings();
+}
+if(el.cloudSeaDownBtn) el.cloudSeaDownBtn.addEventListener("click",()=>stepCloudSeaElevation(-1));
+if(el.cloudSeaUpBtn) el.cloudSeaUpBtn.addEventListener("click",()=>stepCloudSeaElevation(1));
 el.popupRoadBtn.addEventListener("click",()=>{
   roadLinesVisible=!roadLinesVisible;
   // ONにした時点で取りに行く。OFFのままなら通信そのものが発生しない。
@@ -10043,7 +10081,8 @@ async function loadPersistedSettings(){
     if(Number.isFinite(+s.cometTailScale)) cometTailScale=clamp(+s.cometTailScale,0,7.5);
     if(cometsVisible) loadCometElements().then(()=>update());
     // 保存値はスライダーの目盛りへ寄せておく（ツマの位置と数値がずれないように）。
-    if(Number.isFinite(+s.cloudSeaElevationM)) cloudSeaElevationM=cloudSeaSliderToM(cloudSeaMToSlider(+s.cloudSeaElevationM));
+    /* v694: ボタンで合わせた10m単位の値を残すため、つまみの目盛りへは寄せない。 */
+    if(Number.isFinite(+s.cloudSeaElevationM)) cloudSeaElevationM=clamp(Math.round(+s.cloudSeaElevationM),20,2500);
     if(Number.isFinite(+s.cloudSeaOpacity)) cloudSeaOpacity=clamp(+s.cloudSeaOpacity,.2,1);
     if(Number.isFinite(+s.cloudSeaWindDeg)) cloudSeaWindDeg=clamp(Math.round(+s.cloudSeaWindDeg),0,350);
     if(Number.isFinite(+s.cloudSeaGapPct)) cloudSeaGapPct=clamp(Math.round(+s.cloudSeaGapPct),0,60);
@@ -10722,8 +10761,9 @@ function planHasCloudSea(location){
 function applyCloudSeaFromPlan(descriptor){
   const on=!!(descriptor&&descriptor.on!==false);
   if(on){
-    /* 保存値はスライダーの目盛りへ寄せる（つまみと数値がずれないように）。 */
-    if(Number.isFinite(+descriptor.elevationM)) cloudSeaElevationM=cloudSeaSliderToM(cloudSeaMToSlider(+descriptor.elevationM));
+    /* 保存値はそのまま戻す。つまみの位置は一番近い目盛りになるが、
+       数値は10m単位で合わせたものを保つ（v694）。 */
+    if(Number.isFinite(+descriptor.elevationM)) cloudSeaElevationM=clamp(Math.round(+descriptor.elevationM),20,2500);
     if(Number.isFinite(+descriptor.opacity)) cloudSeaOpacity=clamp(+descriptor.opacity,.2,1);
     if(Number.isFinite(+descriptor.windDeg)) cloudSeaWindDeg=clamp(Math.round(+descriptor.windDeg),0,350);
     if(Number.isFinite(+descriptor.gapPct)) cloudSeaGapPct=clamp(Math.round(+descriptor.gapPct),0,60);
