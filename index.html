@@ -3739,7 +3739,7 @@
     background-size:420px 420px;
     background-repeat:repeat;
     mix-blend-mode:screen;
-    filter:drop-shadow(0 0 5px rgba(150,210,255,.85));
+    filter:drop-shadow(0 0 3px rgba(150,210,255,.45));
     will-change:opacity,-webkit-mask-image,mask-image;
   }
   @media (prefers-reduced-motion:reduce){
@@ -4727,7 +4727,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="708-glass-circuit";
+const APP_VERSION="709-glow-soft";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -22853,6 +22853,7 @@ update();
   const powerBandPx=()=>Math.round(Math.min(220,Math.max(120,window.innerHeight*.22)));
   /* 光る層の模様を、器に敷いてある模様と同じ目に合わせる。
      器は「真ん中揃え」なので、器の中心から420pxごとの目になるよう原点をずらす。 */
+  let powerImageBottom=0;   /* シミュレーション画面の下端（v709） */
   function syncPowerGlow(){
     if(!glow||!glow.isConnected) return;
     const wrap=el.photoCanvasWrap?el.photoCanvasWrap.getBoundingClientRect():null;
@@ -22865,6 +22866,7 @@ update();
     if(overlay&&overlay.isConnected){
       const r=overlay.getBoundingClientRect();
       if(r.width&&r.height){
+        powerImageBottom=r.bottom;
         const L=Math.round(r.left),T=Math.round(r.top),R=Math.round(r.right),B=Math.round(r.bottom);
         glow.style.clipPath=`polygon(0px 0px,100% 0px,100% 100%,0px 100%,0px ${T}px,${L}px ${T}px,${L}px ${B}px,${R}px ${B}px,${R}px ${T}px,0px ${T}px)`;
       }
@@ -22926,14 +22928,19 @@ update();
     }
     /* 回路の線は、光の帯が通ったところだけ光らせる。 */
     if(glow){
-      const top=Math.round(y-blur*.95),bottom=Math.round(y+blur*.35);
-      const fade=Math.round(blur*.55);
+      /* 【v709】帯は以前の1/4の厱さにし、明るさもごく控えめにする。 */
+      const top=Math.round(y-blur*.24),bottom=Math.round(y+blur*.09);
+      const fade=Math.round(blur*.14);
       const mask=`linear-gradient(to bottom,rgba(0,0,0,0) ${top-fade}px,rgba(0,0,0,1) ${top}px,rgba(0,0,0,1) ${bottom}px,rgba(0,0,0,0) ${bottom+fade}px)`;
       glow.style.webkitMaskImage=mask;
       glow.style.maskImage=mask;
       glow.style.webkitMaskRepeat="no-repeat";
       glow.style.maskRepeat="no-repeat";
-      glow.style.opacity=(p<.05?p/.05:(p>.9?Math.max(0,(1-p)/.1):1)).toFixed(3);
+      let strength=(p<.05?p/.05:(p>.9?Math.max(0,(1-p)/.1):1));
+      /* シミュレーション画面を過ぎたら、さらに弱めて消していく。 */
+      const edge=powerImageBottom||window.innerHeight*.6;
+      if(y>edge) strength*=Math.max(0,1-(y-edge)/(blur*1.6));
+      glow.style.opacity=(strength*.28).toFixed(3);
     }
     /* ボタンや文字は、光が届いたところから順に灯す。
        同じ高さに並んでいるものは、ひとかたまりで一斉に点く。 */
