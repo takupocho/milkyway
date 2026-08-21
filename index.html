@@ -1325,6 +1325,28 @@
   }
   .drone-stick.left{left:6px;}
   .drone-stick.right{right:6px;}
+  /* 【v692】シミュレーション画面に重なっている側だけを半分の濃さにする。
+     縦構図は内側（画像側）、横構図は上半分が重なる。
+     マスクの色止めは要素自身の大きさに対する割合になってしまうので、
+     器を測って実寸を --stick-overlap-x / -y へ渡している。
+     上の見出し（-14px）も欠けないよう、マスクを上と18px分広げてある。 */
+  .drone-stick{
+    -webkit-mask-size:100% calc(100% + 18px);mask-size:100% calc(100% + 18px);
+    -webkit-mask-position:left bottom;mask-position:left bottom;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  }
+  body.sim-portrait .drone-stick.left{
+    -webkit-mask-image:linear-gradient(to right,#000,#000 var(--stick-overlap-x,100%),rgba(0,0,0,.5) var(--stick-overlap-x,100%),rgba(0,0,0,.5));
+            mask-image:linear-gradient(to right,#000,#000 var(--stick-overlap-x,100%),rgba(0,0,0,.5) var(--stick-overlap-x,100%),rgba(0,0,0,.5));
+  }
+  body.sim-portrait .drone-stick.right{
+    -webkit-mask-image:linear-gradient(to left,#000,#000 var(--stick-overlap-x,100%),rgba(0,0,0,.5) var(--stick-overlap-x,100%),rgba(0,0,0,.5));
+            mask-image:linear-gradient(to left,#000,#000 var(--stick-overlap-x,100%),rgba(0,0,0,.5) var(--stick-overlap-x,100%),rgba(0,0,0,.5));
+  }
+  body:not(.sim-portrait) .drone-stick{
+    -webkit-mask-image:linear-gradient(to top,#000,#000 var(--stick-overlap-y,100%),rgba(0,0,0,.5) var(--stick-overlap-y,100%),rgba(0,0,0,.5));
+            mask-image:linear-gradient(to top,#000,#000 var(--stick-overlap-y,100%),rgba(0,0,0,.5) var(--stick-overlap-y,100%),rgba(0,0,0,.5));
+  }
   /* ドローンモードではスティックが器の下端(下から6〜102px)を占める。
      バージョン表記・水際診断・ステータスは、その真上へ揃えて逃がす。
      構図によらず器の下端が基準になるよう --sim-inset-y は 0 にしておく。 */
@@ -4411,7 +4433,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="691-fine-span";
+const APP_VERSION="692-stick-fade";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6543,6 +6565,7 @@ let droneModeOn=false;
    コントローラーが消えたあとに上空へ取り残されると降りられなくなるため。 */
 function syncDroneModeButton(){
   document.body.classList.toggle("drone-mode",droneModeOn);
+  markStickOverlapDirty();syncStickOverlapVars();   // v692: 境目を測り直す
   syncDroneMapPanel();
   el.mobileDroneModeBtn.classList.toggle("active",droneModeOn);
   el.mobileDroneModeBtn.setAttribute("aria-pressed",String(droneModeOn));
@@ -21083,13 +21106,48 @@ function applyCanvasSize(){
   if(el.photoCanvas.width!==targetW) el.photoCanvas.width=targetW;
   if(el.photoCanvas.height!==targetH) el.photoCanvas.height=targetH;
   el.photoCanvas.style.aspectRatio=targetAspect;
+  if(el.photoCanvasWrap.classList.contains("portrait")!==isPortrait) markStickOverlapDirty();
   el.photoCanvasWrap.classList.toggle("portrait",isPortrait);
   document.body.classList.toggle("sim-portrait",isPortrait); // 構図でCSSを切り替えるため
+  syncStickOverlapVars();
   if(el.meteorCanvas.width!==targetW) el.meteorCanvas.width=targetW;
   if(el.meteorCanvas.height!==targetH) el.meteorCanvas.height=targetH;
   if(el.walkerFxCanvas.width!==targetW) el.walkerFxCanvas.width=targetW;
   if(el.walkerFxCanvas.height!==targetH) el.walkerFxCanvas.height=targetH;
 }
+
+/* 【v692】ジョイスティックが画像に重なる境目を測ってCSSへ渡す。
+   器は正方形なので、縦構図なら左右に幅の1/6、横構図なら上下に高さの1/6の余白がある。
+   スティックは縁から6pxのところにあるので、その分を引いた位置が境目になる。
+   毎回測ると重いので、大きさか構図が変わったときだけ測り直す。 */
+/* 定義より先に update() から呼ばれても壊れないよう var にしてある。 */
+var stickOverlapDirty=true;
+var stickOverlapKey="";
+function markStickOverlapDirty(){ stickOverlapDirty=true; }
+function syncStickOverlapVars(){
+  /* スティックが出ているあいだは毎回見る。
+     出ていないときは、大きさか構図が変わったときだけでよい。
+     （端末によっては幅の変化が通知されないことがあるための保険） */
+  const sticksOut=document.body.classList.contains("drone-mode");
+  if(!sticksOut&&stickOverlapDirty===false) return;
+  const wrap=el.photoCanvasWrap;
+  if(!wrap) return;
+  const width=wrap.clientWidth,height=wrap.clientHeight;
+  if(!width||!height) return;   // まだ布長が決まっていないときは次回へ
+  const portrait=wrap.classList.contains("portrait");
+  const key=`${width}|${height}|${portrait}`;
+  stickOverlapDirty=false;
+  if(key===stickOverlapKey) return;   // 変わっていなければ書き直さない
+  stickOverlapKey=key;
+  const insetX=portrait?width/6:0;
+  const insetY=portrait?0:height/6;
+  wrap.style.setProperty("--stick-overlap-x",`${Math.max(0,insetX-6).toFixed(2)}px`);
+  wrap.style.setProperty("--stick-overlap-y",`${Math.max(0,insetY-6).toFixed(2)}px`);
+}
+if(typeof ResizeObserver==="function"&&el.photoCanvasWrap){
+  new ResizeObserver(()=>{ markStickOverlapDirty(); syncStickOverlapVars(); }).observe(el.photoCanvasWrap);
+}
+window.addEventListener("resize",()=>{ markStickOverlapDirty(); syncStickOverlapVars(); });
 
 /* AR中の姿勢更新専用。
    通常のupdate()は月・太陽・ベストタイム・各タイムラインなど画面全体を更新するため重い。
