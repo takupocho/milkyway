@@ -4727,7 +4727,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="709-glow-soft";
+const APP_VERSION="710-portrait-start";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -10553,11 +10553,13 @@ async function loadPersistedSettings(){
     syncSimulationClockVisibility();
     applyMobileLensFocalRange();
     syncMobileLensModeButton();
-    if(s.orientation!==undefined){
-      orientation=s.orientation;
-      [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
-      el.mobileOrientationToggleBtn.classList.toggle("portrait", orientation==="portrait");
-    }
+    /* 【v710】構図は読み戻さない。
+       縦構図が既定なので、開き直したときは必ず縦から始める。
+       （オープニングも縦の果の中で流れる）
+       撮影計画を読み込んだときは、そちらの構図へ切り替わる。 */
+    orientation="portrait";
+    [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
+    el.mobileOrientationToggleBtn.classList.toggle("portrait", true);
     if(s.observedPlaceName){
       el.observedPlaceName.style.display="block";
       currentObservedPlaceLat=+el.lat.value;currentObservedPlaceLon=+el.lon.value;
