@@ -2453,17 +2453,18 @@
      こうしておくと、幕そのものを上から切り取るだけで「明かりが下りる」動きになる。 */
   .power-curtain{
     position:fixed;inset:0;z-index:1247;pointer-events:none;
-    clip-path:inset(0 0 0 0);
-    will-change:clip-path;
+    will-change:-webkit-mask-image,mask-image;
   }
   .power-curtain-hole{
     position:absolute;border-radius:8px;
     box-shadow:0 0 0 100vmax rgba(3,5,12,.93);
   }
   /* 明かりの帯。通り過ぎたところが灯る。 */
+  /* 帯は幕の外に置く。幕にはぼかしのマスクをかけるので、
+     中に入れたままだと帯まで薄くなってしまう（v699）。 */
   .power-sweep{
-    position:absolute;left:0;right:0;top:0;height:200px;opacity:0;
-    mix-blend-mode:screen;will-change:transform,opacity;
+    position:fixed;left:0;right:0;top:0;z-index:1252;height:200px;opacity:0;
+    pointer-events:none;mix-blend-mode:screen;will-change:transform,opacity;
     background:linear-gradient(to bottom,
       rgba(120,190,255,0) 0%,
       rgba(120,190,255,.10) 42%,
@@ -2485,7 +2486,7 @@
   }
   .power-lit{animation:powerLit .58s ease-out both;}
   @media (prefers-reduced-motion:reduce){
-    .power-sweep{display:none;}
+    .power-sweep{display:none !important;}
     .power-lit{animation:none;}
   }
   /* 星（v670）。手前と奥の2層に分け、違う速さでゆっくり流す。
@@ -4094,8 +4095,8 @@
               </div>
               <div class="power-curtain" id="powerCurtain" aria-hidden="true">
                 <div class="power-curtain-hole" id="powerCurtainHole"></div>
-                <div class="power-sweep" id="powerSweep"></div>
               </div>
+              <div class="power-sweep" id="powerSweep" aria-hidden="true"></div>
               <div class="opening" id="openingOverlay" aria-hidden="true">
                 <div class="opening-stars"></div>
                 <div class="opening-meteor m1"></div>
@@ -4525,7 +4526,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="698-power-on";
+const APP_VERSION="699-power-fade";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -22646,17 +22647,18 @@ update();
      幕（画面いっぱい）を上から切り取っていくと、明かりが下りてくるように見える。
      切り取りの縁に光の帯を重ね、通り過ぎたボタンや文字をその場で一瞬光らせる。
      動きは1本のrequestAnimationFrameから時刻で決める（途中の絵を手で出せるように）。 */
-  const POWER_ON_MS=1250;
+  const POWER_ON_MS=1875;   /* v699: 1.5倍ゆっくりに */
   let powerRaf=0,powerStartedAt=0,powerTargets=[],powerLitIndex=0,powerDone=false;
   const powerBandPx=()=>Math.round(Math.min(220,Math.max(120,window.innerHeight*.22)));
   function syncPowerHole(){
     if(!hole||!overlay||!overlay.isConnected) return;
     const r=overlay.getBoundingClientRect();
     if(!r.width||!r.height) return;
-    hole.style.left=`${Math.round(r.left)}px`;
-    hole.style.top=`${Math.round(r.top)}px`;
-    hole.style.width=`${Math.round(r.width)}px`;
-    hole.style.height=`${Math.round(r.height)}px`;
+    /* 画面の縁に暗い筋が残らないよう、穴をほんの少し外へ広げておく。 */
+    hole.style.left=`${(r.left-.5).toFixed(2)}px`;
+    hole.style.top=`${(r.top-.5).toFixed(2)}px`;
+    hole.style.width=`${(r.width+1).toFixed(2)}px`;
+    hole.style.height=`${(r.height+1).toFixed(2)}px`;
   }
   /* 明かりが当たったら光らせるもの。画面に出ているボタンと見出しだけを拾う。 */
   function collectPowerTargets(){
@@ -22679,13 +22681,26 @@ update();
     /* 出だしと終わりだけなめらかにし、途中はほぼ一定の速さで下りる。
        終わりを緩めすぎると、下のほうで止まって見える。 */
     const eased=p*p*(3-2*p);
-    const y=-band*.4+eased*(height+band*1.4);
-    if(curtain) curtain.style.clipPath=`inset(${Math.max(0,Math.round(y))}px 0 0 0)`;
+    /* 【v699】切り取りではなく、ぼかしたマスクで暗さを引く。
+       明るくなる境目が ぼかしの分だけ ゆっくり移り変わる。
+       始まりを -ぼかし幅 にしてあるので、動き出す前は画面全体が均一に暗い。 */
+    const blur=Math.round(band*.95);
+    const y=-blur+eased*(height+blur+band);
+    if(curtain){
+      const top=Math.round(y),bottom=Math.round(y+blur);
+      const mask=`linear-gradient(to bottom,rgba(0,0,0,0) ${top}px,rgba(0,0,0,1) ${bottom}px,rgba(0,0,0,1) 100%)`;
+      curtain.style.webkitMaskImage=mask;
+      curtain.style.maskImage=mask;
+      curtain.style.webkitMaskRepeat="no-repeat";
+      curtain.style.maskRepeat="no-repeat";
+    }
     if(sweep){
-      sweep.style.transform=`translateY(${Math.round(y-band)}px)`;
+      /* 明るい線が、暗さの引き際に重なるように置く。 */
+      sweep.style.transform=`translateY(${Math.round(y+blur*.3-band*.74)}px)`;
       sweep.style.opacity=(p<.05?p/.05:(p>.88?Math.max(0,(1-p)/.12):1)).toFixed(3);
     }
-    while(powerLitIndex<powerTargets.length&&powerTargets[powerLitIndex].y<=y){
+    /* 文字やボタンは、光が届いたところから順に灯す。 */
+    while(powerLitIndex<powerTargets.length&&powerTargets[powerLitIndex].y<=y+blur*.45){
       powerTargets[powerLitIndex].el.classList.add("power-lit");
       powerLitIndex++;
     }
@@ -22693,6 +22708,7 @@ update();
   function finishPowerOn(){
     if(powerRaf){cancelAnimationFrame(powerRaf);powerRaf=0;}
     if(curtain&&curtain.parentNode) curtain.parentNode.removeChild(curtain);
+    if(sweep&&sweep.parentNode) sweep.parentNode.removeChild(sweep);
     setTimeout(()=>{
       powerTargets.forEach(item=>item.el.classList.remove("power-lit"));
       powerTargets=[];
@@ -22720,6 +22736,7 @@ update();
     /* 幕は本体の直下へ移す。スマホでは器の親が重なりの文脈を作っていて、
        中に置いたままだとその高さまでしか前に出られないため。 */
     if(curtain&&curtain.parentNode!==document.body) document.body.appendChild(curtain);
+    if(sweep&&sweep.parentNode!==document.body) document.body.appendChild(sweep);
     syncPowerHole();
     /* 画面の大きさが変われば穴も合わせ直す。まだ幕がある間だけ見る。 */
     const holeWatch=()=>{ if(curtain&&curtain.isConnected) syncPowerHole(); };
@@ -22742,8 +22759,9 @@ update();
     };
     window.addEventListener("pointerdown",close,true);
     window.addEventListener("keydown",close,true);
-  }else if(curtain&&curtain.parentNode){
-    curtain.parentNode.removeChild(curtain);
+  }else{
+    if(curtain&&curtain.parentNode) curtain.parentNode.removeChild(curtain);
+    if(sweep&&sweep.parentNode) sweep.parentNode.removeChild(sweep);
   }
   /* 検証用。動きを手で送れるようにしておく。 */
   window.__powerOn={
@@ -22752,7 +22770,7 @@ update();
     prepare:()=>{powerTargets=collectPowerTargets();powerLitIndex=0;return powerTargets.length;},
     state:()=>({
       幕:!!(curtain&&curtain.isConnected),
-      切り取り:curtain?curtain.style.clipPath:"",
+      マスク:curtain?(curtain.style.maskImage||curtain.style.webkitMaskImage||""):"",
       光った数:powerLitIndex,
       対象:powerTargets.length,
       終わった:powerDone
