@@ -2829,6 +2829,23 @@
   }
   .time-range-mode-btn:hover{color:var(--star-white);border-color:var(--violet);}
   .besttime-autojump-btn{margin-left:4px;}
+  /* 【v689】時刻のつまみと再生ボタンだけを10px下げる。
+     見出し・日時表示・目盛りの数字は元の位置のままにしたいので、
+     余白ではなく内側の詰めで下げ、数字の行で同じだけ引き戻す。
+     こうすると画面のどの幅でも、上下のものが動かない。 */
+  #sliderTimelineRow{padding-top:10px;}
+  #tickTimelineRow{margin-top:-10px;}
+  /* 幅の狭い端末では、見出しの「時刻」だけを休ませる。
+     日付と秒まで出ているときでも、日時の表示を必ず1行に収めるため（v689）。 */
+  @media (max-width:400px){
+    .dt-time-label .dt-sub{display:none;}
+  }
+  /* 微調整のボタン。入っているあいだは色を変えて分かるようにする。 */
+  .fine-time-btn[aria-pressed="true"]{
+    background:rgba(232,166,89,0.18);
+    border-color:var(--core-amber);
+    color:var(--core-amber);
+  }
   .besttime-autojump-btn[aria-pressed="true"]{
     background:rgba(232,166,89,0.18);
     border-color:var(--core-amber);
@@ -3384,6 +3401,12 @@
     #mwTimelineRow{ margin-bottom:20px; }
     /* 従来の上余白10pxから-5pxへ変更し、時間バー以降を合計15px上へ詰める */
     .slider-row{ margin-top:-5px; }
+    /* 【v689】「微調整」が増えた分だけ、左側を詰める。
+       日時の表示が2行に折り返すと下のものがすべてずれるので、
+       必ず1行に収まるだけの幅を残す。 */
+    .dt-time-label-left{ gap:6px; }
+    .time-range-mode-btn{ padding:3px 7px; font-size:10.5px; }
+    .time-range-mode-btn .mode-suffix{ display:none; }
   }
   /* =========================================================
      「表示」ウインドウの見た目（v572）
@@ -4301,7 +4324,7 @@
               </div>
             </div>
             <div class="dt-col">
-              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
+              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button><button type="button" id="fineTimeBtn" class="time-range-mode-btn fine-time-btn" aria-pressed="false" title="今の時刻を中心に前後30分（合計1時間）だけを細かく合わせます">微調整</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
               <div class="timeline-row" id="moonTimelineRow">
                 <span class="timeline-icon">🌙</span>
                 <canvas class="timeline-bar-canvas" id="moonTimelineBar" width="760" height="44"></canvas>
@@ -4384,7 +4407,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="688-plan-comet";
+const APP_VERSION="689-fine-time";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5444,7 +5467,7 @@ const el={
   zoomInBtn:$("zoomInBtn"), zoomOutBtn:$("zoomOutBtn"), mapResetBtn:$("mapResetBtn"), mapScaleLabel:$("mapScaleLabel"),
   dateInput:$("dateInput"), timeSlider:$("timeSlider"), timeLabel:$("timeLabel"), timeDateLabel:$("timeDateLabel"), nowBtn:$("nowBtn"),
   prevMonthBtn:$("prevMonthBtn"), prevDayBtn:$("prevDayBtn"), nextDayBtn:$("nextDayBtn"), nextMonthBtn:$("nextMonthBtn"),
-  jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
+  jumpBestTimeBtn:$("jumpBestTimeBtn"), bestTimeAutoJumpBtn:$("bestTimeAutoJumpBtn"), tickRow:$("tickRow"), timeRangeModeBtn:$("timeRangeModeBtn"), fineTimeBtn:$("fineTimeBtn"), rangeHint:$("rangeHint"), sliderTickMarks:$("sliderTickMarks"),
   moonTimelineBar:$("moonTimelineBar"), sunTimelineBar:$("sunTimelineBar"), mwTimelineBar:$("mwTimelineBar"),
   mwStartTimeLabel:$("mwStartTimeLabel"), mwEndTimeLabel:$("mwEndTimeLabel"),
   focalLength:$("focalLength"), focalRange:$("focalRange"), focalQuick:$("focalQuick"), focalQuickRange:$("focalQuickRange"), focalQuickVal:$("focalQuickVal"), flVal:$("flVal"), focalBadge:$("focalBadge"),
@@ -5620,7 +5643,8 @@ el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzBuildingRestoreToken++;
 refreshKmzBuildingControls(false);
 
 /* 時刻スライダーの表示モード。
-   30時間(0:00〜翌6:00) / 15時間(16:00〜翌7:00) / 微調整(現在時刻の前後5分)
+   30時間(0:00〜翌6:00) / 15時間(16:00〜翌7:00) の2段階。
+   微調整は別のボタンで、今の時刻の前後30分だけを見る（v689）。
 
    微調整を追加した理由（v619）。
    600mmの水平画角は3.4°。空は1秒に約0.0042°動くので、
@@ -5629,20 +5653,26 @@ refreshKmzBuildingControls(false);
    1画素が約6分になるので、指では絶対に合わせられない。
    だから「範囲を狭める」モードを用意する。前後5分なら、
    スライダー全幅で600秒。300画素なら1画素＝2秒で、指で合わせられる。 */
-let timeRangeMode="30h";   // "30h" | "15h" | "fine"
-let fineTimeCenter=null;   // 微調整モードに入ったときの中心時刻(分)
+let timeRangeMode="30h";   // "30h" | "15h" の2段階（v689）
+let fineTimeOn=false;      // 微調整は別のボタンで入り切りする
+let fineTimeCenter=null;   // 微調整に入ったときの中心時刻(分)
 /* 微調整モードで見る幅。望遠ほど狭くする。
    スライダーの横幅が約300画素だとして、
      ±5分(600秒) → 1画素 2.0秒
      ±1分(120秒) → 1画素 0.4秒
    600mmでは空が1秒に約1.5画素動くので、±1分なら指で合わせられる。 */
 function fineTimeHalfMin(){
-  return 15;   // 前後15分（合計30分）
+  return 30;   // 前後30分（合計1時間）
 }
 function getTimeDisplayRange(){
-  if(timeRangeMode==="fine"){
+  if(fineTimeOn){
     const center=Number.isFinite(fineTimeCenter)?fineTimeCenter:+el.timeSlider.value||0;
-    return {start:Math.max(0,center-fineTimeHalfMin()),end:Math.min(1800,center+fineTimeHalfMin())};
+    const half=fineTimeHalfMin();
+    /* 端に寄っても幅は1時間のまま。窓ごとずらして狭くならないようにする。 */
+    let start=center-half,end=center+half;
+    if(start<0){end-=start;start=0;}
+    if(end>1800){start-=end-1800;end=1800;}
+    return {start:Math.max(0,start),end:Math.min(1800,end)};
   }
   return timeRangeMode==="15h" ? {start:16*60, end:31*60} : {start:0, end:30*60};
 }
@@ -5662,12 +5692,12 @@ function syncTimeSliderStep(){
 function renderTickRow(){
   el.tickRow.innerHTML="";
   const range=getTimeDisplayRange();
-  const step=timeRangeMode==="fine"?1:(timeRangeMode==="15h"?60:180); // 微調整は1分毎
+  const step=fineTimeOn?5:(timeRangeMode==="15h"?60:180); // 微調整は5分毎
   // 目盛りマーク(.slider-tick-marks)と同じ7pxインセットを使い、数字がマークの真下に来るよう揃える
   const trackWidth=Math.max(0,(el.tickRow.clientWidth||el.tickRow.offsetWidth||0)-14);
   for(let m=range.start; m<=range.end; m+=step){
     const span=document.createElement("span");
-    span.textContent=timeRangeMode==="fine"
+    span.textContent=fineTimeOn
       ?`${String(Math.floor(m/60)%24).padStart(2,"0")}:${String(Math.round(m)%60).padStart(2,"0")}`
       :String(Math.floor(m/60)%24);
     const frac=(m-range.start)/(range.end-range.start);
@@ -5679,11 +5709,12 @@ function renderSliderTickMarks(){
   el.sliderTickMarks.innerHTML="";
   const range=getTimeDisplayRange();
   const totalSpan=range.end-range.start;
-  const markStep=timeRangeMode==="fine"?1:60;
+  const markStep=fineTimeOn?1:60;
   for(let m=range.start; m<=range.end; m+=markStep){ // 1時間毎(微調整は1分毎)に目盛りマーク
     const tick=document.createElement("span");
     const hourOfDay=Math.floor(m/60)%24;
-    if(timeRangeMode==="fine"?false:hourOfDay%3===0) tick.className="major"; // 3時間毎は少し大きめに
+    /* 微調整では5分ごとを大きめにして、数字の位置と揃える。 */
+    if(fineTimeOn?Math.round(m)%5===0:hourOfDay%3===0) tick.className="major";
     tick.style.left=`${(m-range.start)/totalSpan*100}%`;
     el.sliderTickMarks.appendChild(tick);
   }
@@ -5693,10 +5724,12 @@ function updateRangeHint(){
   const startH=Math.floor(range.start/60)%24;
   const endDayLabel = range.end>=1440 ? "翌 " : "";
   const endH=Math.floor(range.end/60)%24;
-  if(timeRangeMode==="fine"){
+  if(fineTimeOn){
     const step=timeStepMinutes();
     const unit=step>=1?"1分":(step>=1/60?"1秒":"0.1秒");
-    el.rangeHint.textContent=`現在微調整モード　前後${fineTimeHalfMin()}分を${unit}刻みで合わせられます`;
+    const startText=`${String(startH).padStart(2,"0")}:${String(Math.round(range.start)%60).padStart(2,"0")}`;
+    const endText=`${endDayLabel}${String(endH).padStart(2,"0")}:${String(Math.round(range.end)%60).padStart(2,"0")}`;
+    el.rangeHint.textContent=`現在微調整　${startText} 〜 ${endText}（前後${fineTimeHalfMin()}分）を${unit}刻みで合わせられます`;
     return;
   }
   const modeLabel = timeRangeMode==="15h" ? "現在15時間モード" : "現在30時間モード";
@@ -5704,6 +5737,13 @@ function updateRangeHint(){
 }
 function applyTimeRangeMode(){
   syncTimeSliderStep();
+  /* 微調整の窓の外へ時刻が動いていたら、その時刻を中心に取り直す。
+     でないと、ベストタイムなどで飛んだ時刻が窓の端へ丸められてしまう。 */
+  if(fineTimeOn){
+    const now=+el.timeSlider.value;
+    const fineWindow=getTimeDisplayRange();
+    if(Number.isFinite(now)&&(now<fineWindow.start||now>fineWindow.end)) fineTimeCenter=now;
+  }
   const range=getTimeDisplayRange();
   el.timeSlider.min=range.start;
   el.timeSlider.max=range.end;
@@ -5712,16 +5752,25 @@ function applyTimeRangeMode(){
   renderSliderTickMarks();
   updateRangeHint();
   /* ボタンには「次に切り替わる先」ではなく「今のモード」を出す。 */
-  el.timeRangeModeBtn.textContent =
-    timeRangeMode==="30h" ? "30時間モード" :
-    timeRangeMode==="15h" ? "15時間モード" : "微調整モード";
+  /* スマホでは「モード」を隠して幅を稼ぐ（v689）。 */
+  el.timeRangeModeBtn.innerHTML = (timeRangeMode==="15h"?"15":"30")+"時間<span class=\"mode-suffix\">モード</span>";
+  if(el.fineTimeBtn){
+    el.fineTimeBtn.setAttribute("aria-pressed",String(fineTimeOn));
+    el.fineTimeBtn.classList.toggle("active",fineTimeOn);
+  }
 }
 el.timeRangeModeBtn.addEventListener("click",()=>{
-  /* 30時間 → 15時間 → 微調整 → 30時間 と循環する。
-     微調整へ入るときは、その時点の時刻を中心にする。 */
-  if(timeRangeMode==="30h") timeRangeMode="15h";
-  else if(timeRangeMode==="15h"){ timeRangeMode="fine"; fineTimeCenter=+el.timeSlider.value||0; }
-  else timeRangeMode="30h";
+  /* 30時間 ⇄ 15時間 の2段階（v689）。
+     微調整に入っているときは、まず微調整から抜けて元の幅へ戻す。 */
+  if(fineTimeOn) fineTimeOn=false;
+  else timeRangeMode = timeRangeMode==="30h" ? "15h" : "30h";
+  applyTimeRangeMode();
+  update();
+});
+if(el.fineTimeBtn) el.fineTimeBtn.addEventListener("click",()=>{
+  /* 入るときは、そのときの時刻を真ん中にする。 */
+  fineTimeOn=!fineTimeOn;
+  if(fineTimeOn) fineTimeCenter=+el.timeSlider.value||0;
   applyTimeRangeMode();
   update();
 });
@@ -10659,7 +10708,10 @@ async function applySavedObservingPlan(location){
   el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
   // v152以前に登録した「場所だけ」のデータには無い項目なので、存在する値だけを復元する。
   if(location.date) el.dateInput.value=location.date;
-  if(typeof location.is15hMode==="boolean"){timeRangeMode=location.is15hMode?"15h":"30h";applyTimeRangeMode();}
+  /* 計画の時刻を丸めないよう、まず微調整から出す（v689）。 */
+  fineTimeOn=false;
+  if(typeof location.is15hMode==="boolean") timeRangeMode=location.is15hMode?"15h":"30h";
+  applyTimeRangeMode();
   if(Number.isFinite(+location.timeMinutes)) el.timeSlider.value=clamp(+location.timeMinutes,+el.timeSlider.min,+el.timeSlider.max);
   if(location.lensMode==="normal"||location.lensMode==="fisheye") mobileLensMode=location.lensMode;
   if(Number.isFinite(+location.focalLength)){
