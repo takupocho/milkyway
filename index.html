@@ -3771,6 +3771,49 @@
   /* オープニングで、回路の線が上から下へ光って走る層。
      暗幕より前・器の写真より後ろ。写真の上には出ないよう、
      画像のところだけ切り抜いてある（clip-path）。 */
+  /* 【v717】ガイド役のひとこと。ドット絵の頭の上に出す。
+     置き場所は毎回JSで測って決めるので、ここでは見た目だけを決める。 */
+  .walker-bubble{
+    position:absolute;
+    z-index:1244;
+    max-width:min(76%,320px);
+    padding:8px 12px 9px;
+    border-radius:12px;
+    border:1px solid rgba(190,210,255,.42);
+    background:rgba(10,14,30,.86);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    box-shadow:0 6px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
+    color:#eef3ff;
+    font:600 12px/1.55 'Inter',sans-serif;
+    letter-spacing:.02em;
+    text-align:left;
+    white-space:normal;
+    pointer-events:none;
+    opacity:0;
+    visibility:hidden;
+    transform:translate(-50%,0);
+    transition:opacity .45s ease, visibility 0s linear .45s;
+  }
+  .walker-bubble.show{opacity:1;visibility:visible;transition:opacity .45s ease;}
+  /* しっぽ。下向きの三角を2枚重ねて、縁の線も見せる。 */
+  .walker-bubble::before,
+  .walker-bubble::after{
+    content:"";position:absolute;left:50%;top:100%;
+    width:0;height:0;
+    border:7px solid transparent;
+    transform:translateX(-50%);
+  }
+  .walker-bubble::before{border-top-color:rgba(190,210,255,.42);}
+  .walker-bubble::after{top:calc(100% - 1px);border-top-color:rgba(10,14,30,.86);}
+  .walker-bubble-caret{
+    display:inline-block;
+    color:var(--core-amber,#ffca7a);
+    animation:walkerCaret .68s steps(1) infinite;
+  }
+  @keyframes walkerCaret{0%,49%{opacity:1;}50%,100%{opacity:0;}}
+  @media (max-width:760px){
+    .walker-bubble{font-size:11.5px;padding:7px 10px 8px;}
+  }
   /* 【v713】シミュレーション画面にかける幕。
      オープニングと同じ場所・同じ大きさに置き、明かりが下りるのに合わせて上から抜く。
      オープニング（z-index:1250）のすぐ下なので、題字は最後まで暗くならない。 */
@@ -4355,6 +4398,7 @@
               <div class="power-curtain" id="powerCurtain" aria-hidden="true">
                 <div class="power-curtain-hole" id="powerCurtainHole"></div>
               </div>
+              <div class="walker-bubble" id="walkerBubble" aria-hidden="true"><span id="walkerBubbleText"></span><span class="walker-bubble-caret" id="walkerBubbleCaret">▍</span></div>
               <div class="power-screen-veil" id="powerScreenVeil" aria-hidden="true"></div>
               <div class="opening" id="openingOverlay" aria-hidden="true">
                 <div class="opening-stars"></div>
@@ -4790,7 +4834,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="715-place-fix";
+const APP_VERSION="717-opening-camera";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5837,6 +5881,7 @@ const el={
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
   planExportBtn:$("planExportBtn"), planImportBtn:$("planImportBtn"), planImportInput:$("planImportInput"),
   planLoadMap:$("planLoadMap"), planLoadMapWrap:$("planLoadMapWrap"), planBrowseSeg:$("planBrowseSeg"),
+  walkerBubble:$("walkerBubble"), walkerBubbleText:$("walkerBubbleText"), walkerBubbleCaret:$("walkerBubbleCaret"),
   planTitleCard:$("planTitleCard"), planTitleCardName:$("planTitleCardName"),
   planTitleCardPlace:$("planTitleCardPlace"), planTitleCardGenre:$("planTitleCardGenre"),
   planSaveGenreRow:$("planSaveGenreRow"), planFilterGenreRow:$("planFilterGenreRow"),
@@ -10494,7 +10539,7 @@ function scheduleSaveSettings(){
 async function loadPersistedSettings(){
   try{
     const stored=await persistentGet(SETTINGS_KEY);
-    if(!stored){ reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
+    if(!stored){ placeFollowReady=true; reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
     const s=JSON.parse(stored);
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
@@ -10665,6 +10710,7 @@ async function loadPersistedSettings(){
     orientation="portrait";
     [...el.orientationSeg.querySelectorAll(".seg-btn")].forEach(b=>b.classList.toggle("active", b.dataset.o===orientation));
     el.mobileOrientationToggleBtn.classList.toggle("portrait", true);
+    placeFollowReady=true;   // v716: ここから地名の追いかけを始める
     if(s.observedPlaceName){
       el.observedPlaceName.style.display="block";
       /* 【v715】地名は、それを取った座標と今の座標が同じときだけ引き継ぐ。
@@ -10856,6 +10902,27 @@ function mapSelectAt(px,py){
   reverseGeocodeAndShow(finalLat, finalLon);
 }
 
+/* 【v716】観測地点名を、今の緯度経度から必ず取り直すための見張り。
+   座標を変える経路は多い（手入力・地図・現在地・撮影計画・歩き・ドローン）。
+   経路ごとに呼び出しを足すと必ず抜けが出るので、
+   描き直しのたびに「地名を取った場所」と「今いる場所」を比べ、
+   100m以上ずれていたら取り直す。比べるだけなので普段は何もしない。 */
+let placeFollowReady=false;      // 設定の読み込みが終わるまでは動かさない
+let placeFollowLastAt=0;
+function refreshObservedPlaceIfMoved(){
+  if(!placeFollowReady) return;
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  if(Number.isFinite(currentObservedPlaceLat)&&Number.isFinite(currentObservedPlaceLon)){
+    /* 緯度0.0009度・経度0.0011度で、およそ100m。 */
+    if(Math.abs(currentObservedPlaceLat-lat)<=0.0009
+     &&Math.abs(currentObservedPlaceLon-lon)<=0.0011) return;
+  }
+  const now=performance.now();
+  if(now-placeFollowLastAt<2000) return;   // 続けて叩かない
+  placeFollowLastAt=now;
+  reverseGeocodeAndShow(lat,lon);
+}
 /* 国土地理院の逆ジオコーディングAPIを使い、選んだ地点の「都道府県+市区町村」を観測地点欄に表示する */
 let reverseGeocodeSeq=0;
 /* 観測地点名を、設定パネル内の表示とスマホの日付下のコンパクト表示の両方に反映する。
@@ -11377,6 +11444,71 @@ function showPlanTitleCard(location){
   };
   planTitleRaf=requestAnimationFrame(loop);
 }
+/* 【v717】ガイド役のひとこと。一文字ずつ置いていき、出しきったら少し置いて消える。
+   置き場所は、本人を描いたときの位置（pixelWalkerLastLayout）から毎回測り直す。
+   本人は仰角や高度で上下に動くので、書き出している間も追いかける必要がある。 */
+const WALKER_BUBBLE_CHAR_MS=62;     /* 1文字あたり */
+const WALKER_BUBBLE_HOLD_MS=3400;   /* 出しきってから消えるまで */
+let walkerBubbleRaf=0,walkerBubbleStartedAt=0,walkerBubbleFullText="",walkerBubbleDoneAt=0;
+function placeWalkerBubble(){
+  const bubble=el.walkerBubble,layout=pixelWalkerLastLayout;
+  if(!bubble||!layout||!el.photoCanvas||!el.photoCanvasWrap) return false;
+  const canvas=el.photoCanvas.getBoundingClientRect();
+  const wrap=el.photoCanvasWrap.getBoundingClientRect();
+  if(!canvas.width||!el.photoCanvas.width||!el.photoCanvas.height) return false;
+  /* キャンバスの中の座標を、器の中の座標へ直す。 */
+  const sx=canvas.width/el.photoCanvas.width, sy=canvas.height/el.photoCanvas.height;
+  const headX=(canvas.left-wrap.left)+(layout.x+layout.drawW/2)*sx;
+  const headY=(canvas.top-wrap.top)+layout.y*sy;
+  const height=bubble.offsetHeight||38;
+  /* 頭の上に、しっぽの分だけ空けて置く。画面の上へはみ出さないよう止める。 */
+  const topLimit=(canvas.top-wrap.top)+6;
+  bubble.style.left=Math.round(headX)+"px";
+  bubble.style.top=Math.round(Math.max(topLimit,headY-height-12))+"px";
+  return true;
+}
+function hideWalkerBubble(){
+  if(walkerBubbleRaf){cancelAnimationFrame(walkerBubbleRaf);walkerBubbleRaf=0;}
+  if(el.walkerBubble){
+    el.walkerBubble.classList.remove("show");
+    el.walkerBubble.setAttribute("aria-hidden","true");
+  }
+}
+function walkerBubbleFrame(seconds){
+  if(!el.walkerBubbleText) return true;
+  const total=walkerBubbleFullText.length;
+  const shown=clamp(Math.floor(seconds*1000/WALKER_BUBBLE_CHAR_MS),0,total);
+  el.walkerBubbleText.textContent=walkerBubbleFullText.slice(0,shown);
+  if(el.walkerBubbleCaret) el.walkerBubbleCaret.style.display=(shown>=total)?"none":"inline-block";
+  placeWalkerBubble();
+  return shown>=total;
+}
+function showWalkerBubble(text){
+  const bubble=el.walkerBubble;
+  if(!bubble) return false;
+  /* キャラクターを出していないとき、画面の外にいるときは黙っている。 */
+  if(!pixelWalkerVisible||arActive||!pixelWalkerLastLayout||pixelWalkerLastLayout.alpha<=.05){
+    hideWalkerBubble(); return false;
+  }
+  walkerBubbleFullText=String(text||"");
+  walkerBubbleStartedAt=performance.now();
+  walkerBubbleDoneAt=0;
+  if(walkerBubbleRaf){cancelAnimationFrame(walkerBubbleRaf);walkerBubbleRaf=0;}
+  bubble.setAttribute("aria-hidden","false");
+  walkerBubbleFrame(0);
+  bubble.classList.add("show");
+  placeWalkerBubble();
+  const loop=(now)=>{
+    const done=walkerBubbleFrame((now-walkerBubbleStartedAt)/1000);
+    if(done&&!walkerBubbleDoneAt) walkerBubbleDoneAt=now;
+    if(walkerBubbleDoneAt&&now-walkerBubbleDoneAt>=WALKER_BUBBLE_HOLD_MS){
+      walkerBubbleRaf=0; hideWalkerBubble(); return;
+    }
+    walkerBubbleRaf=requestAnimationFrame(loop);
+  };
+  walkerBubbleRaf=requestAnimationFrame(loop);
+  return true;
+}
 async function applySavedObservingPlan(location){
   if(!location) return false;
   activeLoadedPlanId=location.id;
@@ -11384,6 +11516,9 @@ async function applySavedObservingPlan(location){
   el.lat.value=Number(location.lat).toFixed(5);el.lon.value=Number(location.lon).toFixed(5);el.tz.value=location.tz;el.citySelect.value=0;
   currentObservedPlaceLat=Number(location.lat);currentObservedPlaceLon=Number(location.lon);
   el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
+  /* 【v716】記録に入っている地名は、古い版の取りこぼしで間違っていることがある。
+     読み込んだら実際の座標から確かめ直す（取れたときだけ書き換わる）。 */
+  reverseGeocodeAndShow(Number(location.lat),Number(location.lon));
   // v152以前に登録した「場所だけ」のデータには無い項目なので、存在する値だけを復元する。
   if(location.date) el.dateInput.value=location.date;
   /* 計画の時刻を丸めないよう、まず微調整から出す（v689）。 */
@@ -13599,6 +13734,25 @@ try{
         })
       },
       drift:()=>({距離:cloudSeaDriftM,丸めた距離:cloudSeaDriftQuantM(),向き:cloudSeaDriftDirDeg}),
+      bubble:{
+        show:(text)=>showWalkerBubble(text||"さぁ～今日も撮影シミュレーションをはじめよう♪"),
+        step:(sec)=>walkerBubbleFrame(sec),
+        hide:hideWalkerBubble,
+        state:()=>({
+          出ている:!!(el.walkerBubble&&el.walkerBubble.classList.contains("show")),
+          文:el.walkerBubbleText?el.walkerBubbleText.textContent:"",
+          位置:el.walkerBubble?[el.walkerBubble.style.left,el.walkerBubble.style.top]:null,
+          本人:pixelWalkerLastLayout,
+          向き:pixelWalkerFacing
+        })
+      },
+      place:()=>({
+        表示:el.observedPlaceName?el.observedPlaceName.textContent:"",
+        地名:currentObservedPlaceName,
+        地名の座標:[currentObservedPlaceLat,currentObservedPlaceLon],
+        いまの座標:[+el.lat.value,+el.lon.value],
+        追いかけ:placeFollowReady
+      }),
       cloud:()=>({on:cloudSeaVisible,elev:cloudSeaElevationM,obs:realTerrainState.observerElevation,eye:eyeHeightAboveGroundM(),swapped:cloudSwapCount}),
       prof:()=>({...cloudProf}),
       profReset:()=>{Object.keys(cloudProf).forEach(k=>cloudProf[k]=0);},
@@ -21827,6 +21981,7 @@ function updateCameraViewOnly(){
 }
 
 function update(){
+  refreshObservedPlaceIfMoved();   // v716: 今いる場所の地名を追いかける
   // ボタン操作などから即時update()が呼ばれた場合、待機中の同内容描画を重ねない。
   if(scheduledUpdateRaf){cancelAnimationFrame(scheduledUpdateRaf);scheduledUpdateRaf=0;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
@@ -23032,6 +23187,48 @@ update();
   const hole=document.getElementById("powerCurtainHole");
   const glow=document.getElementById("powerCircuit");
   const veil=document.getElementById("powerScreenVeil");
+  /* 【v717】オープニングの裏では、空を見上げた姿勢（仰角50°）で待つ。
+     タップして明かりが下りていくのに合わせて0°まで下ろし、
+     地平線の景色へゆっくり着地させる。
+     仰角は経過時間から毎回計算するので、重い端末では刻みが飛ぶだけで遅れは溜まらない。 */
+  const OPENING_ALT_START=50;
+  let openingCameraOn=false,openingAltShown=null;
+  /* 画面を描き直す手間は端末によってまるで違う。重い端末で毎コマ描き直すと、
+     同じ流れで動いている光の帯やボタンの点灯まで一緒に止まってしまう。
+     直前の描き直しにかかった時間を見て、遅いときだけ間引く。 */
+  let openingAltCost=0,openingAltNextAt=0;
+  function beginOpeningCamera(){
+    if(!overlay||!overlay.isConnected) return;
+    openingCameraOn=true;
+    openingAltShown=OPENING_ALT_START;
+    el.facingAlt.value=String(OPENING_ALT_START);
+    /* キャラクターがいるなら、こちらを向いて出迎えてもらう。 */
+    pixelWalkerFacing="front";
+    updateCameraViewOnly();
+  }
+  function stepOpeningCamera(p){
+    if(!openingCameraOn) return;
+    /* 明るさと同じ進み方（smoothstep）で下ろすと、
+       画面が明るくなりきるのと同時に0°へ着く。 */
+    const eased=p*p*(3-2*p);
+    const alt=Math.round(OPENING_ALT_START*(1-eased));
+    if(alt===openingAltShown) return;
+    const now=performance.now();
+    if(p<1&&openingAltCost>24&&now<openingAltNextAt) return;   /* 重い端末では1コマ休む */
+    openingAltShown=alt;
+    el.facingAlt.value=String(alt);
+    const t0=performance.now();
+    updateCameraViewOnly();
+    openingAltCost=performance.now()-t0;
+    openingAltNextAt=performance.now()+Math.min(openingAltCost,120);
+  }
+  function endOpeningCamera(){
+    if(!openingCameraOn) return;
+    openingCameraOn=false;
+    openingAltShown=0;
+    el.facingAlt.value="0";
+    updateCameraViewOnly();
+  }
   /* 【v698】電源が入る演出。
      幕（画面いっぱい）を上から切り取っていくと、明かりが下りてくるように見える。
      切り取りの縁に光の帯を重ね、通り過ぎたボタンや文字をその場で一瞬光らせる。
@@ -23136,6 +23333,7 @@ update();
     }
     /* 【v713】シミュレーション画面も、明かりが下りた分だけ明るくする。
        幕は画面と同じ場所にあるので、画面の上端からの距離でマスクを作る。 */
+    stepOpeningCamera(p);   /* v717: 仰角50°→0°へ下ろす */
     if(veil){
       /* 【v714】帯で抹くのではなく、画面全体がゆっくり明るくなる。
          光の帯が一番下まで来たとき（p=1）にちょうど明るさが最大になる。 */
@@ -23167,8 +23365,12 @@ update();
       powerLitIndex++;
     }
   }
+  const WALKER_GREETING="さぁ～今日も撮影シミュレーションをはじめよう♪";
   function finishPowerOn(){
     if(powerRaf){cancelAnimationFrame(powerRaf);powerRaf=0;}
+    endOpeningCamera();   /* v717: きっちり0°で着地させる */
+    /* v717: 明るくなりきってから、ガイド役がひとこと。 */
+    setTimeout(()=>{ showWalkerBubble(WALKER_GREETING); },320);
     if(curtain&&curtain.parentNode) curtain.parentNode.removeChild(curtain);
     if(glow&&glow.parentNode) glow.parentNode.removeChild(glow);
     if(veil){
@@ -23199,6 +23401,7 @@ update();
     powerTargets.forEach(item=>item.el.classList.add("power-dark"));
     /* 画面はすでに真っ黒（v714）。ここからゆっくり明るくする。 */
     if(veil) veil.style.opacity="1";
+    pixelWalkerFacing="front";   /* v717: ガイド役はこちらを向く */
     powerStartedAt=performance.now();
     powerFrame(0);
     const loop=(now)=>{
@@ -23224,6 +23427,7 @@ update();
     requestAnimationFrame(holeWatch);
     setTimeout(holeWatch,240);
     setTimeout(holeWatch,900);
+    beginOpeningCamera();   /* v717: オープニングの裏は仰角50°で待機 */
     let closed=false;
     const close=()=>{
       if(closed) return;
