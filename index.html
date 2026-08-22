@@ -4834,7 +4834,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="721-skip-duplicate-camera-frames";
+const APP_VERSION="723-single-settings-timer";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -10540,12 +10540,20 @@ function collectPersistedSettings(){
     localDetailTerrain:localDetailTerrainConfig(),
   };
 }
-let saveSettingsTimer=null;
+let saveSettingsTimer=null,saveSettingsRequestedAt=0;
 function scheduleSaveSettings(){
-  clearTimeout(saveSettingsTimer);
-  saveSettingsTimer=setTimeout(async ()=>{
+  /* 【v723】連続操作中は既存タイマーを毎フレーム解除・作成し直さず、
+     最終変更時刻だけを更新する。タイマーは常に1本で、従来どおり最後の変更から
+     400ms経過した時点の最新設定を保存する。 */
+  saveSettingsRequestedAt=Date.now();
+  if(saveSettingsTimer) return;
+  const flushSettings=async()=>{
+    const remaining=400-(Date.now()-saveSettingsRequestedAt);
+    if(remaining>0){saveSettingsTimer=setTimeout(flushSettings,remaining);return;}
+    saveSettingsTimer=null;
     await persistentSet(SETTINGS_KEY,JSON.stringify(collectPersistedSettings()));
-  },400);
+  };
+  saveSettingsTimer=setTimeout(flushSettings,400);
 }
 async function loadPersistedSettings(){
   try{
@@ -16902,15 +16910,18 @@ function drawPhoto(ctx,s){
         return confirmedWaterAz[i0]||confirmedWaterAz[i1];
       }
       function drawWaterReflections(){
+        /* 【v722】反射OFF・水域なし・雲海で地面が隠れている場合は、反射用Canvasの
+           確保と全画面clearRectより前に終了する。従来は何も表示しない場面でも
+           1200×800（縦は800×1200）の透明Canvasを毎回消去していた。 */
+        if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
+        if(cloudSeaCoversGround()) return false;
         const mainCtx=ctx;
         const reflectionCanvas=drawPhoto._waterReflectionCanvas||(drawPhoto._waterReflectionCanvas=document.createElement("canvas"));
         if(reflectionCanvas.width!==W||reflectionCanvas.height!==H){reflectionCanvas.width=W;reflectionCanvas.height=H;}
         const reflectionContext=reflectionCanvas.getContext("2d");reflectionContext.clearRect(0,0,W,H);
         return ((ctx)=>{
-        if(!waterReflectionEnabled||!confirmedWaterAz.some(Boolean)) return false;
         /* 雲海が足元を覚っている間は、水面は雲の下なので見えない。
            出すと、雲の上に星の反射が重なってしまう。 */
-        if(cloudSeaCoversGround()) return false;
         const reflectionCanvasScale=W/1200;
         const celestialReflectionRight=W+40,celestialReflectionBottom=H+40;
         const reflectionStep=Math.min(step,.28);
