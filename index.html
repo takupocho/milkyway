@@ -4834,7 +4834,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="717-opening-camera";
+const APP_VERSION="721-skip-duplicate-camera-frames";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -9260,7 +9260,11 @@ function playbackTick(now){
 
   // リアル天の川は30fps、従来表示は最大60fps。座標はどちらも小数時刻で連続的に進める。
   const targetFrameMs=realMilkyWayEnabled ? 1000/30 : 1000/60;
-  if(now-playbackLastRenderTime>=targetFrameMs-1){
+  /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
+     必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
+     再生中に周期的な負荷の山ができるため、その1回を省く。 */
+  const playbackUiUpdateDue=now-playbackLastUiTime>=250 || finished;
+  if(!playbackUiUpdateDue&&now-playbackLastRenderTime>=targetFrameMs-1){
     playbackLastRenderTime=now;
     const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
     const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
@@ -9273,8 +9277,9 @@ function playbackTick(now){
   }
 
   // DOM・タイムラインを含む重い全画面更新は4回/秒に抑え、その直後に小数時刻の星空を描き戻す。
-  if(now-playbackLastUiTime>=250 || finished){
+  if(playbackUiUpdateDue){
     playbackLastUiTime=now;
+    playbackLastRenderTime=now;
     el.timeSlider.value=Math.floor(playbackVisualMinutes);
     // update()内の1回目の写真描画は直後の小数時刻描画で必ず上書きされるため省略する。
     suppressPhotoDrawForUpdate=true;
@@ -9420,8 +9425,12 @@ function photoDragMove(pos){
   // 水平・垂直を独立に角度へ変換(ピクセル移動量に画角を比例配分)。ドラッグした分だけ画面内容が追従する向き
   const newAz = norm360(photoDragStartView.az - deltaX/el.photoCanvas.width*photoDragFovH);
   const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -30, 85);
-  el.facingAz.value=roundToAimStep(newAz);
-  el.facingAlt.value=roundToAimStep(newAlt);
+  const roundedAz=roundToAimStep(newAz),roundedAlt=roundToAimStep(newAlt);
+  /* 【v721】マウスは非常に細かな移動イベントを送るが、画角に応じた丸め後の
+     方位・仰角が変わらない場合は、完成画像も同じなので重い地形描画を要求しない。 */
+  if(+el.facingAz.value===roundedAz&&+el.facingAlt.value===roundedAlt) return;
+  el.facingAz.value=roundedAz;
+  el.facingAlt.value=roundedAlt;
   scheduleCameraViewUpdate();
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
@@ -9483,6 +9492,7 @@ el.photoCanvas.addEventListener("wheel",(e)=>{
   e.preventDefault();
   const dir = e.deltaY<0 ? 1 : -1;
   const newFocal = clamp((+el.focalLength.value)+dir, +el.focalLength.min, +el.focalLength.max);
+  if(newFocal===+el.focalLength.value) return;
   el.focalLength.value = newFocal;
   syncFocalRangeFromValue();
   updateCameraViewOnly();
@@ -9508,6 +9518,7 @@ el.photoCanvas.addEventListener("touchmove",(e)=>{
   const dist=photoTouchDist(e.touches);
   const ratio=dist/photoPinchStartDist;
   const newFocal=clamp(Math.round(photoPinchStartFocal*ratio), +el.focalLength.min, +el.focalLength.max);
+  if(newFocal===+el.focalLength.value){e.preventDefault();return;}
   el.focalLength.value=newFocal;
   syncFocalRangeFromValue();
   scheduleCameraViewUpdate();
@@ -21392,13 +21403,16 @@ let compassDragFov=60;
 let compassDragPendingAz=null;
 let compassDragRaf=0;
 function previewCompassAzimuth(azimuth){
-  el.facingAz.value=norm360(azimuth).toFixed(2);
+  const nextAz=norm360(azimuth).toFixed(2);
+  if(el.facingAz.value===nextAz) return false;
+  el.facingAz.value=nextAz;
   /* 【v693】方位バーを動かしているあいだも、写真をその場で描き直す。
      以前は方位バーだけを動かして、手を離してから写真を描いていた。
      写真を指でずらすときと同じ「カメラの値だけ」の更新を使うので、
      日時の計算やタイムラインの描き直しは起きない。
      呼び出しは queueCompassAzimuth() が1コマに1回へ間引いている。 */
   updateCameraViewOnly();
+  return true;
 }
 function queueCompassAzimuth(azimuth){
   compassDragPendingAz=azimuth;
@@ -21434,7 +21448,6 @@ function finishCompassDrag(e){
   if(compassDragPendingAz!==null) previewCompassAzimuth(compassDragPendingAz);
   compassDragPendingAz=null;
   if(compassDragRaf){cancelAnimationFrame(compassDragRaf);compassDragRaf=0;}
-  updateCameraViewOnly();
 }
 el.compassStrip.addEventListener("pointerup",finishCompassDrag);
 el.compassStrip.addEventListener("pointercancel",finishCompassDrag);
