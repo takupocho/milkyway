@@ -4790,7 +4790,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="714-screen-fade";
+const APP_VERSION="715-place-fix";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6259,6 +6259,17 @@ el.citySelect.addEventListener("change",()=>{
   if(!c.custom) reverseGeocodeAndShow(c.lat, c.lon); // プリセットを選んだ地点の県+市名を自動取得して表示する
 });
 [el.lat,el.lon,el.tz].forEach(inp=>inp.addEventListener("input",()=>{ el.citySelect.value=0; scheduleUpdate(); }));
+/* 【v715】緯度経度を打ち替えたら、その地点の地名を取り直す。
+   打っている途中で何度も問い合わせないよう、入力が終わってから（changeで）動かす。
+   ここを入れないと、前の土地の名前が表示にも保存にも残り続ける。 */
+[el.lat,el.lon].forEach(inp=>inp.addEventListener("change",()=>{
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
+  if(Number.isFinite(currentObservedPlaceLat)&&Number.isFinite(currentObservedPlaceLon)
+     &&Math.abs(currentObservedPlaceLat-lat)<=0.0001&&Math.abs(currentObservedPlaceLon-lon)<=0.0001) return;
+  currentObservedPlaceLat=null;currentObservedPlaceLon=null;currentObservedPlaceName="";
+  reverseGeocodeAndShow(lat,lon);
+}));
 
 el.geoBtn.addEventListener("click",()=>{
   if(!navigator.geolocation){ alert("この環境では位置情報を取得できません。"); return; }
@@ -10463,6 +10474,10 @@ function collectPersistedSettings(){
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
     observedPlaceName:currentObservedPlaceName,
+    /* 【v715】その地名がどの座標のものかも残す。
+       これが無いと、開き直したときに古い地名が今の座標へ結び付いてしまう。 */
+    observedPlaceLat:currentObservedPlaceLat,
+    observedPlaceLon:currentObservedPlaceLon,
     normalTerrainAzimuthStep:normalTerrainAzimuthStepValue(),
     localDetailMeshStepM:localDetailMeshStepValue(),
     localDetailTerrainEnabled:false,
@@ -10652,8 +10667,21 @@ async function loadPersistedSettings(){
     el.mobileOrientationToggleBtn.classList.toggle("portrait", true);
     if(s.observedPlaceName){
       el.observedPlaceName.style.display="block";
-      currentObservedPlaceLat=+el.lat.value;currentObservedPlaceLon=+el.lon.value;
-      setObservedPlaceDisplay(s.observedPlaceName, false);
+      /* 【v715】地名は、それを取った座標と今の座標が同じときだけ引き継ぐ。
+         以前はここで「今の座標＝保存されていた地名」と決めつけていたので、
+         緯度経度だけ打ち替えて開き直すと、前の土地の名前がそのまま貼り付いた。
+         （長野県松本市の座標なのに岐阜県高山市と保存される不具合） */
+      const savedLat=+s.observedPlaceLat,savedLon=+s.observedPlaceLon;
+      const sameSpot=Number.isFinite(savedLat)&&Number.isFinite(savedLon)
+        &&Math.abs(savedLat-(+el.lat.value))<=0.0001&&Math.abs(savedLon-(+el.lon.value))<=0.0001;
+      if(sameSpot){
+        currentObservedPlaceLat=savedLat;currentObservedPlaceLon=savedLon;
+        setObservedPlaceDisplay(s.observedPlaceName, false);
+      }else{
+        /* 合わないときは覚えている地名を捨て、その場で取り直す。 */
+        currentObservedPlaceLat=null;currentObservedPlaceLon=null;currentObservedPlaceName="";
+        reverseGeocodeAndShow(+el.lat.value,+el.lon.value);
+      }
     }
     update();
   }catch(e){ /* 保存データがない、または読み込めない場合は無視 */ }
