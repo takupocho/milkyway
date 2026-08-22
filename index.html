@@ -4834,7 +4834,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="723-single-settings-timer";
+const APP_VERSION="724-skip-unchanged-ui-markup";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -21769,13 +21769,17 @@ function renderReadout(s){
       sub:`焦点距離 ${s.focalLength}mm(35mm換算 ${Math.round(s.focalLength*s.sensor.crop)}mm)`,
     },
   ];
-  el.readout.innerHTML = items.map(it=>`
+  const readoutMarkup=items.map(it=>`
     <div class="ro-item">
       <div class="ro-label">${it.label}</div>
       <div class="ro-value ${it.value.length>8?'small':''}">${it.value}</div>
       <div class="ro-sub">${it.sub}</div>
     </div>
   `).join("");
+  if(renderReadout._lastMarkup!==readoutMarkup){
+    renderReadout._lastMarkup=readoutMarkup;
+    el.readout.innerHTML=readoutMarkup;
+  }
 }
 
 function renderMessages(s){
@@ -21807,11 +21811,15 @@ function renderMessages(s){
   if(msgs.length===0){
     msgs.push({t:"good",ic:"✅",text:"良好な条件です。この日時・設定であれば天の川がしっかり写る可能性が高いでしょう。"});
   }
-  el.messages.innerHTML = msgs.map(m=>`<div class="msg ${m.t}"><span class="ic">${m.ic}</span><span>${m.text}</span></div>`).join("");
+  const messagesMarkup=msgs.map(m=>`<div class="msg ${m.t}"><span class="ic">${m.ic}</span><span>${m.text}</span></div>`).join("");
+  if(renderMessages._lastMarkup!==messagesMarkup){
+    renderMessages._lastMarkup=messagesMarkup;
+    el.messages.innerHTML=messagesMarkup;
+  }
 }
 
 function renderExif(s){
-  el.exifText.innerHTML = `
+  const exifMarkup=`
     <span><b>方位</b> ${Math.round(s.facingAz)}°</span>
     <span><b>仰角</b> ${s.facingAlt}°</span>
     <span><b>焦点距離</b> ${s.focalLength}mm</span>
@@ -21820,6 +21828,10 @@ function renderExif(s){
     <span><b>SS</b> ${s.shutter}秒</span>
     <span><b>センサー</b> ${s.sensor.name}</span>
   `;
+  if(renderExif._lastMarkup!==exifMarkup){
+    renderExif._lastMarkup=exifMarkup;
+    el.exifText.innerHTML=exifMarkup;
+  }
 }
 
 function renderBestTime(s){
@@ -21970,14 +21982,20 @@ function updateCameraViewOnly(){
   else normalLensFocalLength=clamp(focalLength,8,50);
 
   // computeState()と同じカメラ表示値だけを同期する。
-  el.flVal.textContent=`${focalLength} mm`;
+  const focalText=`${focalLength} mm`;
+  if(el.flVal.textContent!==focalText) el.flVal.textContent=focalText;
   const showFisheyeBadge=mobileLensMode==="fisheye"&&!arActive;
-  el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
-  el.focalBadge.innerHTML=showFisheyeBadge
+  if(el.focalBadge.classList.contains("fisheye-mode")!==showFisheyeBadge) el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
+  const focalBadgeMarkup=showFisheyeBadge
     ?`<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
     :`${focalLength}<span class="focal-badge-unit">mm</span>`;
-  el.azVal.textContent=`${formatAimDeg(facingAz)}°`;
-  el.altValLabel.textContent=`${formatAimDeg(facingAlt)}°`;
+  if(updateCameraViewOnly._lastFocalBadgeMarkup!==focalBadgeMarkup){
+    updateCameraViewOnly._lastFocalBadgeMarkup=focalBadgeMarkup;
+    el.focalBadge.innerHTML=focalBadgeMarkup;
+  }
+  const azText=`${formatAimDeg(facingAz)}°`,altText=`${formatAimDeg(facingAlt)}°`;
+  if(el.azVal.textContent!==azText) el.azVal.textContent=azText;
+  if(el.altValLabel.textContent!==altText) el.altValLabel.textContent=altText;
 
   const halfW=orientation==="portrait"?12:18,halfH=orientation==="portrait"?18:12;
   const fisheyeProjectionActive=mobileLensMode==="fisheye"&&!arActive;
