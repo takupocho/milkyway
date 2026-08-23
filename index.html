@@ -4834,7 +4834,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="724-skip-unchanged-ui-markup";
+const APP_VERSION="728-skip-unchanged-exif-build";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -21327,6 +21327,9 @@ function moonPhaseLightSideOffsetRad(elongDeg){
   return D<180?0:Math.PI;
 }
 function drawCompassStrip(ctx,s){
+  /* 【v725】方位バーOFF時はCSSで隠すだけでなく、Canvasの全面消去・目盛り・文字の
+     描画も止める。ONへ戻すボタンはupdate()を呼ぶため、最新方位ですぐ描き直される。 */
+  if(!compassBarVisible) return;
   // 実際の表示サイズ(幅・高さとも)にキャンバスの内部解像度を同期させる(ズレていると文字が縦長/横長に歪むため)
   const canvas=ctx.canvas;
   const displayWidth=Math.round(canvas.clientWidth||canvas.width);
@@ -21335,6 +21338,11 @@ function drawCompassStrip(ctx,s){
   if(displayHeight>0 && Math.abs(canvas.height-displayHeight)>1) canvas.height=displayHeight;
 
   const W=ctx.canvas.width, H=ctx.canvas.height;
+  /* 【v727】方位バーは仰角や時刻では変わらない。内部サイズ・水平画角・方位角が
+     前回と同じなら、完成済みCanvasを再利用して全面消去以降を省く。 */
+  const compassDrawKey=[W,H,s.fovH.toFixed(4),norm360(s.facingAz).toFixed(4)].join("|");
+  if(drawCompassStrip._lastDrawKey===compassDrawKey) return;
+  drawCompassStrip._lastDrawKey=compassDrawKey;
   ctx.clearRect(0,0,W,H);
   /* v655で背景を塗るのをやめた。景色の明るいところでも目盛りが読めるよう、
      かわりに文字と線へ薄い影を敷く。 */
@@ -21819,6 +21827,11 @@ function renderMessages(s){
 }
 
 function renderExif(s){
+  /* 【v728】この欄に実際に表示する値が同じなら、HTML文字列の組み立て前に終了する。
+     方位は整数表示なので、1°未満の細かな横移動では完成表示をそのまま再利用できる。 */
+  const exifKey=[Math.round(s.facingAz),s.facingAlt,s.focalLength,s.aperture.toFixed(1),s.iso,s.shutter,s.sensor.name].join("|");
+  if(renderExif._lastDisplayKey===exifKey) return;
+  renderExif._lastDisplayKey=exifKey;
   const exifMarkup=`
     <span><b>方位</b> ${Math.round(s.facingAz)}°</span>
     <span><b>仰角</b> ${s.facingAlt}°</span>
@@ -22010,14 +22023,20 @@ function updateCameraViewOnly(){
   const maxShutter500=500/(focalLength*sensor.crop);
   state={...state,focalLength,facingAz,facingAlt,orientation,fovH,fovV,
     maxShutter500,trailRatio:state.shutter/maxShutter500};
+  /* 【v726】撮影条件一覧と警告文は方位・仰角には依存しない。
+     焦点距離・センサー・構図・画角が同じなら、文章の組み立て自体を省く。 */
+  const cameraInfoKey=[focalLength,sensor.crop,orientation,fovH.toFixed(4),fovV.toFixed(4)].join("|");
 
   updateOsmFovOverlay(state);
   syncDroneMap(state);
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
   // カメラ値に関係する小さな表示だけ更新し、日時系UIは触らない。
-  renderReadout(state);
-  renderMessages(state);
+  if(updateCameraViewOnly._lastCameraInfoKey!==cameraInfoKey){
+    updateCameraViewOnly._lastCameraInfoKey=cameraInfoKey;
+    renderReadout(state);
+    renderMessages(state);
+  }
   renderExif(state);
   scheduleSaveSettings();
 }
