@@ -4888,7 +4888,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="745-safe-targeted-dem-real-daruma";
+const APP_VERSION="746-physical-daruma-plan-water";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -11509,6 +11509,45 @@ async function restoreKmzBuildingFromPlan(saved){
     kmzBuildingModel=null;kmzBuildingSourceDataUrl="";setKmzBuildingStatus(`KMZ建物を復元できませんでした：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();return false;
   }
 }
+/* v746 撮影計画専用の水域スナップショット。
+   通常キャッシュの有無やHTMLの置き場所に依存せず、成功時の水域形状を計画へ結び付ける。 */
+function capturePlanWaterSnapshot(lat,lon){
+  const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if(!realTerrainState||realTerrainState.key!==terrainKey) return null;
+  const rings=realTerrainState._osmWaterRings,coastlineWays=realTerrainState._osmCoastlineWays;
+  if(!Array.isArray(rings)&&!Array.isArray(coastlineWays)) return null;
+  if(!(rings&&rings.length)&&!(coastlineWays&&coastlineWays.length)) return null;
+  return {
+    version:1,lat,lon,savedAt:Date.now(),
+    waterRadiusKm:OSM_WATER_RADIUS_KM,coastlineRadiusKm:OSM_COASTLINE_RADIUS_KM,
+    rings:Array.isArray(rings)?JSON.parse(JSON.stringify(rings)):[],
+    coastlineWays:Array.isArray(coastlineWays)?JSON.parse(JSON.stringify(coastlineWays)):[]
+  };
+}
+async function storePlanWaterSnapshot(planId,snapshot){
+  if(!planId||!snapshot) return null;
+  const key=`plan-water-v1:${planId}`;await externalGeoCacheSet(key,snapshot);return key;
+}
+async function restorePlanWaterSnapshot(location){
+  if(!location||!location.waterSnapshotKey) return false;
+  const snapshot=await externalGeoCacheGet(location.waterSnapshotKey);
+  if(!snapshot||!Number.isFinite(+snapshot.lat)||!Number.isFinite(+snapshot.lon)) return false;
+  const lat=+location.lat,lon=+location.lon;
+  if(Math.abs(+snapshot.lat-lat)>.001||Math.abs(+snapshot.lon-lon)>.001) return false;
+  const rings=Array.isArray(snapshot.rings)?snapshot.rings:[],ways=Array.isArray(snapshot.coastlineWays)?snapshot.coastlineWays:[];
+  const waterKey=`${lat.toFixed(2)},${lon.toFixed(2)},${snapshot.waterRadiusKm||OSM_WATER_RADIUS_KM}`;
+  const coastKey=`${lat.toFixed(2)},${lon.toFixed(2)},${snapshot.coastlineRadiusKm||OSM_COASTLINE_RADIUS_KM}`;
+  osmWaterCache.set(waterKey,Promise.resolve(rings));osmWaterCacheSources.set(waterKey,"plan");
+  osmCoastlineCache.set(coastKey,Promise.resolve(ways));osmCoastlineCacheSources.set(coastKey,"plan");
+  /* 通常キャッシュにも戻し、同じ地点を計画外から開いた場合にも利用できるようにする。 */
+  await externalGeoCacheSet(`water:${waterKey}`,rings);
+  await externalGeoCacheSet(`coastline-v1:${coastKey}`,ways);
+  const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  const target=realTerrainProfileCache.get(terrainKey)||(realTerrainState.key===terrainKey?realTerrainState:null);
+  if(target){target._osmRefinePending=false;target._osmRefineStatus="";refineTerrainWaterWithOsm(lat,lon,terrainKey,target);}
+  setExternalDataStatus("water","ready",`撮影計画の保存水域・${rings.length}形状`);
+  return true;
+}
 async function registerCurrentObservingPlan(customTitle=""){
   const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)){alert("観測地点の緯度・経度を設定してください。");return null;}
@@ -11538,6 +11577,9 @@ async function registerCurrentObservingPlan(customTitle=""){
     localDetailTerrain:captureLocalDetailForPlan(),
     updatedAt:Date.now()
   };
+  const waterSnapshot=capturePlanWaterSnapshot(lat,lon);
+  if(waterSnapshot) location.waterSnapshotKey=await storePlanWaterSnapshot(location.id,waterSnapshot);
+  else if(duplicate&&duplicate.waterSnapshotKey) location.waterSnapshotKey=duplicate.waterSnapshotKey;
   let savedLocation=location;
   if(duplicate){Object.assign(duplicate,location);savedLocation=duplicate;}else savedObservingLocations.push(location);
   await saveObservingLocations();
@@ -11741,6 +11783,8 @@ async function applySavedObservingPlan(location){
   activeLoadedPlanId=location.id;
   syncQuickPhotoButton(location);
   el.lat.value=Number(location.lat).toFixed(5);el.lon.value=Number(location.lon).toFixed(5);el.tz.value=location.tz;el.citySelect.value=0;
+  /* 通信や通常キャッシュ確認より先に、撮影計画へ封入した水域を復元する。 */
+  await restorePlanWaterSnapshot(location);
   currentObservedPlaceLat=Number(location.lat);currentObservedPlaceLon=Number(location.lon);
   el.savedLocationName.value=location.title;setObservedPlaceDisplay(location.placeName||location.title,false);
   /* 【v716】記録に入っている地名は、古い版の取りこぼしで間違っていることがある。
@@ -12120,6 +12164,10 @@ async function exportSavedPlans(){
   el.planExportBtn.disabled=true;el.planExportBtn.textContent="書き出し中…";
   try{
     const plans=JSON.parse(JSON.stringify(savedObservingLocations));
+    for(const plan of plans){
+      if(!plan.waterSnapshotKey) continue;
+      try{const snapshot=await externalGeoCacheGet(plan.waterSnapshotKey);if(snapshot)plan.waterSnapshot=snapshot;}catch(e){}
+    }
     const photos=[];
     for(const location of savedObservingLocations){
       if(!locationHasPhoto(location))continue;
@@ -12160,6 +12208,10 @@ async function importSavedPlansFile(file){
       location.prefecture=location.prefecture||classification.prefecture;
       location.city=location.city||classification.city;
       location.updatedAt=Number.isFinite(+location.updatedAt)?+location.updatedAt:Date.now();
+      if(location.waterSnapshot){
+        try{location.waterSnapshotKey=await storePlanWaterSnapshot(location.id,location.waterSnapshot);}catch(e){}
+        delete location.waterSnapshot;
+      }
       const existing=savedObservingLocations.find(item=>item.id===location.id);
       if(existing){Object.assign(existing,location);updated++;}else{savedObservingLocations.push(location);added++;}
     }
@@ -15367,7 +15419,8 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     }
     resultObj._osmRefineStatus="ready";
     const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`;
-    const savedLabel=osmWaterCacheSources.get(waterCacheKey)==="persistent"?"・保存済みキャッシュ":"";
+    const waterSource=osmWaterCacheSources.get(waterCacheKey);
+    const savedLabel=waterSource==="plan"?"・撮影計画の保存水域":(waterSource==="persistent"?"・保存済みキャッシュ":"");
     const coastLabel=Array.isArray(coastlineWays)&&coastlineWays.length?`・海岸線${coastlineWays.length}本`:"";
     resultObj._osmRefineDetail=(rings.length?`${rings.length}形状${savedLabel}`:`水域なし・正常応答${savedLabel}`)+coastLabel;
     externalGeoCacheSet(terrainCacheId(key),resultObj);
@@ -16761,37 +16814,42 @@ function drawPhoto(ctx,s){
         const seaVotes=[openSea[(sunAzIndex+359)%360],openSea[sunAzIndex],openSea[(sunAzIndex+1)%360]].filter(Boolean).length;
         const noDataSeaFar=realTerrainState.noDataWaterFarKm||[];
         const demSea=Number.isFinite(noDataSeaFar[(sunAzIndex+359)%360])||Number.isFinite(noDataSeaFar[sunAzIndex])||Number.isFinite(noDataSeaFar[(sunAzIndex+1)%360]);
-        /* 現在の水面描画が高度0°を接触線として使うため、演出判定も同じ線へ合わせる。 */
-        const seaHorizonAlt=0;
+        /* 下位蜃気楼の折り返し線は太陽と一緒に動かず、水平線の少し上に留まる。 */
+        const seaHorizonAlt=0,foldAlt=.045;
         const blockingAlt=Number(realTerrainState.profile[sunAzIndex])||0;
         const angularRadius=s.sun.angularRadiusDeg||.26656;
-        const contactCenterAlt=seaHorizonAlt+angularRadius*.92;
-        const contactStrength=1-clamp(Math.abs(s.sunAltAz.alt-contactCenterAlt)/.38,0,1);
+        const sequenceStart=foldAlt+angularRadius+.14,sequenceEnd=foldAlt-angularRadius-.08;
+        const inSequence=s.sunAltAz.alt<=sequenceStart&&s.sunAltAz.alt>=sequenceEnd;
         /* profileが海面より明確に高い方角は、島・岬・山の向こうなので演出しない。 */
         const unobstructed=blockingAlt<=seaHorizonAlt+.35;
-        if((seaVotes>=1||demSea)&&unobstructed&&contactStrength>.04){
+        if((seaVotes>=1||demSea)&&unobstructed&&inSequence){
           darumaSunActive=true;
-          darumaSunShape={strength:contactStrength};
+          const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,seaHorizonAlt);
+          if(foldPoint&&horizonPoint) darumaSunShape={foldY:foldPoint[1],horizonY:horizonPoint[1]};
         }
       }
 
       ctx.save();
-      ctx.transform(sVAzX,sVAzY,sVAltX,sVAltY,x,y);
-      ctx.beginPath();
       if(darumaSunShape){
-        const q=clamp(darumaSunShape.strength,0,1),r=sunAngR;
-        const joinY=.72*r,joinX=Math.sqrt(Math.max(0,r*r-joinY*joinY));
-        const neckX=lerp(joinX*.92,r*.20,q),bulgeX=lerp(joinX*.88,r*.72,q),bottomY=lerp(r,r*1.10,q);
-        /* 上側は通常の太陽円。下端だけ、細い首→左右の張り出し→丸い底へつなぐ。 */
-        ctx.arc(0,0,r,Math.asin(joinY/r),Math.PI-Math.asin(joinY/r),true);
-        ctx.bezierCurveTo(-joinX,joinY+r*.05,-neckX,joinY+r*.08,-neckX,joinY+r*.13);
-        ctx.bezierCurveTo(-bulgeX,joinY+r*.18,-bulgeX,joinY+r*.30,-r*.32,bottomY);
-        ctx.quadraticCurveTo(0,bottomY+r*.04,r*.32,bottomY);
-        ctx.bezierCurveTo(bulgeX,joinY+r*.30,bulgeX,joinY+r*.18,neckX,joinY+r*.13);
-        ctx.bezierCurveTo(neckX,joinY+r*.08,joinX,joinY+r*.05,joinX,joinY);
-        ctx.closePath();
-      }else ctx.arc(0,0,sunAngR,0,Math.PI*2);
-      ctx.fillStyle=`rgb(${sunAtmosphereColor})`; ctx.globalAlpha=sunExtinction;ctx.fill();
+        const r=Math.max(2,rForSunLabel),foldY=darumaSunShape.foldY;
+        const horizonY=Math.max(foldY+1,darumaSunShape.horizonY);
+        const invertedCenterY=2*foldY-y;
+        ctx.fillStyle=`rgb(${sunAtmosphereColor})`;ctx.globalAlpha=sunExtinction;
+        /* 正立像は折り返し線より上だけ。 */
+        ctx.save();ctx.beginPath();ctx.rect(x-r*1.5,y-r*1.5,r*3,foldY-(y-r*1.5));ctx.clip();
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.restore();
+        /* 反転像は同じ折り返し線より下で上下反転し、太陽の下降と逆向きに上昇する。
+           水平線より下へは出さないため、水中の丸い反射にはならない。 */
+        ctx.save();ctx.beginPath();ctx.rect(x-r*1.5,foldY,r*3,Math.max(1,horizonY-foldY+1));ctx.clip();
+        ctx.beginPath();ctx.arc(x,invertedCenterY,r,0,Math.PI*2);ctx.globalAlpha=sunExtinction*.94;ctx.fill();ctx.restore();
+        /* 折り返し線のごく近くをわずかに横へ伸ばし、壺→Ωの滑らかな足を作る。 */
+        ctx.save();ctx.beginPath();ctx.rect(x-r*1.25,foldY-r*.035,r*2.5,r*.07);ctx.clip();
+        ctx.beginPath();ctx.ellipse(x,foldY,r*1.08,r*.075,0,0,Math.PI*2);ctx.globalAlpha=sunExtinction*.88;ctx.fill();ctx.restore();
+      }else{
+        ctx.transform(sVAzX,sVAzY,sVAltX,sVAltY,x,y);
+        ctx.beginPath();ctx.arc(0,0,sunAngR,0,Math.PI*2);
+        ctx.fillStyle=`rgb(${sunAtmosphereColor})`;ctx.globalAlpha=sunExtinction;ctx.fill();
+      }
       ctx.restore();
 
       if(showSkyLabels){
