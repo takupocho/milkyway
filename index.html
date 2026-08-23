@@ -4888,7 +4888,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="746-physical-daruma-plan-water";
+const APP_VERSION="747-natural-sun-glitter";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -16842,9 +16842,6 @@ function drawPhoto(ctx,s){
            水平線より下へは出さないため、水中の丸い反射にはならない。 */
         ctx.save();ctx.beginPath();ctx.rect(x-r*1.5,foldY,r*3,Math.max(1,horizonY-foldY+1));ctx.clip();
         ctx.beginPath();ctx.arc(x,invertedCenterY,r,0,Math.PI*2);ctx.globalAlpha=sunExtinction*.94;ctx.fill();ctx.restore();
-        /* 折り返し線のごく近くをわずかに横へ伸ばし、壺→Ωの滑らかな足を作る。 */
-        ctx.save();ctx.beginPath();ctx.rect(x-r*1.25,foldY-r*.035,r*2.5,r*.07);ctx.clip();
-        ctx.beginPath();ctx.ellipse(x,foldY,r*1.08,r*.075,0,0,Math.PI*2);ctx.globalAlpha=sunExtinction*.88;ctx.fill();ctx.restore();
       }else{
         ctx.transform(sVAzX,sVAzY,sVAltX,sVAltY,x,y);
         ctx.beginPath();ctx.arc(0,0,sunAngR,0,Math.PI*2);
@@ -17696,8 +17693,9 @@ function drawPhoto(ctx,s){
         }
 
         // 月・金星・太陽専用の水面光路（ムーンロード／ビーナスロード／サンロード）。
-        // 低高度ほど手前へ長く、高度が上がるほど短くなる。細かな横光を重ねて波面らしく見せる。
-        // この反射Canvasには最後に水域マスクが掛かるため、岸や陸地へ光が漏れない。
+        // 波の一つ一つを小さな鏡として扱うサングリッターの見え方へ寄せる。
+        // 遠方は細く密、手前ほど横へ広くなる短い反射群で構成し、一本の縦線は描かない。
+        // この反射Canvasには最後に水域マスクが掛かるため、川の曲がり・中州・岸で自然に途切れる。
         function drawCelestialLightRoad(aa,strength,color="255,232,180",kind="moon",visibilityOverride=null){
           const isSun=kind==="sun",altitudeLimit=isSun?20:24;
           if(!aa||aa.alt<=0||aa.alt>=altitudeLimit||!isConfirmedWaterDirection(aa.az)) return;
@@ -17710,50 +17708,125 @@ function drawPhoto(ctx,s){
           if(!reflectedPoint||!horizonPoint||![...reflectedPoint,...horizonPoint].every(Number.isFinite)) return;
           const x=reflectedPoint[0];
           if(x<-80||x>W+80) return;
+          /* 今回の物理寄りサングリッターは太陽だけへ適用する。
+             月・金星の既存の光路は見た目を変えず、そのまま維持する。 */
+          if(!isSun){
+            const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),1.18);
+            const phasePower=clamp(strength,0,1);
+            const maxRoad=H*(kind==="moon"?.57:.43);
+            const roadLength=Math.max(8*reflectionCanvasScale,maxRoad*lowFactor*(.48+phasePower*.52));
+            const startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-2*reflectionCanvasScale);
+            const endY=Math.min(H+12,startY+roadLength);
+            if(endY-startY<5) return;
+            const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
+            const roadAlpha=clamp(roadVisibility*lowFactor*(kind==="moon"?.54:.39)*(.48+phasePower*.52),0,.66);
+            const baseWidth=(kind==="moon"?6.8:4.2)*reflectionCanvasScale;
+            const roadWidth=(kind==="moon"?50:31)*reflectionCanvasScale*(.55+lowFactor*.45);
+            const bands=Math.max(18,Math.round((endY-startY)/(kind==="moon"?4.4:5.6)));
+            ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+            const roadGlow=ctx.createLinearGradient(x,startY,x,endY);
+            roadGlow.addColorStop(0,`rgba(${color},${roadAlpha*.50})`);
+            roadGlow.addColorStop(.26,`rgba(${color},${roadAlpha*.30})`);
+            roadGlow.addColorStop(.72,`rgba(${color},${roadAlpha*.13})`);
+            roadGlow.addColorStop(1,`rgba(${color},0)`);
+            ctx.save();ctx.filter=`blur(${Math.max(2,(kind==="moon"?5:3.5)*reflectionCanvasScale)}px)`;
+            ctx.strokeStyle=roadGlow;ctx.lineWidth=(kind==="moon"?15:9)*reflectionCanvasScale;
+            ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
+            for(let band=0;band<bands;band++){
+              const seed=Math.sin((band+1)*12.9898+aa.az*78.233+aa.alt*19.17)*43758.5453;
+              const jitter=seed-Math.floor(seed);
+              const q=(band+jitter*.72)/Math.max(1,bands-1);
+              const y=lerp(startY,endY,q);
+              const envelope=Math.sin(Math.PI*clamp(q,0,1));
+              const halfWidth=(baseWidth+roadWidth*Math.pow(q,.72))*(.30+.70*jitter)*(.55+.45*envelope);
+              const xJitter=(jitter-.5)*halfWidth*.48;
+              const alpha=roadAlpha*(.32+.68*jitter)*(.42+.58*envelope)*(1-q*.22);
+              ctx.strokeStyle=`rgba(${color},${alpha})`;
+              ctx.lineWidth=Math.max(.7,(kind==="moon"?1.75:1.15)*reflectionCanvasScale*(.72+jitter*.72));
+              ctx.beginPath();ctx.moveTo(x+xJitter-halfWidth,y);ctx.lineTo(x+xJitter+halfWidth,y);ctx.stroke();
+            }
+            const glow=ctx.createLinearGradient(x,startY,x,endY);
+            glow.addColorStop(0,`rgba(${color},${roadAlpha*.72})`);
+            glow.addColorStop(.42,`rgba(${color},${roadAlpha*.34})`);
+            glow.addColorStop(.72,`rgba(${color},${roadAlpha*.14})`);
+            glow.addColorStop(1,`rgba(${color},0)`);
+            ctx.strokeStyle=glow;ctx.lineWidth=(kind==="moon"?4.8:2.8)*reflectionCanvasScale;
+            ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
+            return;
+          }
           const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),isSun?1.08:1.18);
           const phasePower=clamp(strength,0,1);
-          const maxRoad=H*(isSun?.72:(kind==="moon"?.57:.43));
+          const maxRoad=H*(isSun?.78:(kind==="moon"?.57:.43));
           const roadLength=Math.max(8*reflectionCanvasScale,maxRoad*lowFactor*(.48+phasePower*.52));
-          const startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-2*reflectionCanvasScale);
-          const endY=Math.min(H+12,startY+roadLength);
+          /* 鏡面反射の中心は太陽と同じ角度だけ水平線下へ来る。
+             その前後へ光点を分布させ、高高度・望遠時に不自然に水平線から光が始まるのを防ぐ。 */
+          const headShare=isSun?.52:.42;
+          let startY=Math.max(horizonPoint[1]+1,reflectedPoint[1]-roadLength*headShare);
+          const endY=Math.min(H+12,reflectedPoint[1]+roadLength*(1-headShare));
+          /* 日の出・日の入り直前は、必要な波面傾斜が得にくい遠方側から光の道が後退する。 */
+          const horizonRetreat=isSun?Math.pow(clamp((1.15-aa.alt)/1.15,0,1),1.45):0;
+          startY+=roadLength*.14*horizonRetreat;
           if(endY-startY<5) return;
           const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
-          const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.74:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.90:.66);
-          const baseWidth=(isSun?9.5:(kind==="moon"?6.8:4.2))*reflectionCanvasScale;
-          const roadWidth=(isSun?72:(kind==="moon"?50:31))*reflectionCanvasScale*(.55+lowFactor*.45);
-          const bands=Math.max(18,Math.round((endY-startY)/(isSun?3.8:(kind==="moon"?4.4:5.6))));
-          ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
-          // 横光の背後へ柔らかな金色の光量を置き、写真の長時間露光に近い明るい芯を作る。
-          const roadGlow=ctx.createLinearGradient(x,startY,x,endY);
-          roadGlow.addColorStop(0,`rgba(${color},${roadAlpha*.50})`);
-          roadGlow.addColorStop(.26,`rgba(${color},${roadAlpha*.30})`);
-          roadGlow.addColorStop(.72,`rgba(${color},${roadAlpha*.13})`);
-          roadGlow.addColorStop(1,`rgba(${color},0)`);
-          ctx.save();ctx.filter=`blur(${Math.max(2,(isSun?7:(kind==="moon"?5:3.5))*reflectionCanvasScale)}px)`;
-          ctx.strokeStyle=roadGlow;ctx.lineWidth=(isSun?21:(kind==="moon"?15:9))*reflectionCanvasScale;
-          ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
+          const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.88:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.96:.66);
+          const baseWidth=(isSun?5.5:(kind==="moon"?6.8:4.2))*reflectionCanvasScale;
+          const roadWidth=(isSun?84:(kind==="moon"?50:31))*reflectionCanvasScale*(.50+lowFactor*.50);
+          const bands=Math.min(isSun?104:84,Math.max(18,Math.round((endY-startY)/(isSun?4.8:(kind==="moon"?4.4:5.6)))));
+          const specularQ=clamp((reflectedPoint[1]-startY)/(endY-startY),.08,.92);
+          /* シミュレーション時刻に連動した滑らかな位相。静止画では固定され、時刻再生時だけ
+             各波面の反射が少しずつ入れ替わるため、常時requestAnimationFrameを増やさない。 */
+          const shimmerPeriodSec=isSun?13:(kind==="moon"?22:28);
+          const glitterClock=((((s.jd%1)+1)%1)*86400)/shimmerPeriodSec;
+          const glitterFrame=Math.floor(glitterClock),glitterBlendRaw=glitterClock-glitterFrame;
+          const glitterBlend=glitterBlendRaw*glitterBlendRaw*(3-2*glitterBlendRaw);
+          const hash=(index,salt,frame)=>{
+            const value=Math.sin((index+1)*12.9898+aa.az*78.233+aa.alt*19.17+salt*31.417+frame*7.193)*43758.5453;
+            return value-Math.floor(value);
+          };
+          const changingNoise=(index,salt=0)=>lerp(hash(index,salt,glitterFrame),hash(index,salt,glitterFrame+1),glitterBlend);
+          const glints=[];
           for(let band=0;band<bands;band++){
-            // 固定式の揺らぎを使い、時刻変更や再描画で光条がちらつかないようにする。
-            const seed=Math.sin((band+1)*12.9898+aa.az*78.233+aa.alt*19.17)*43758.5453;
-            const jitter=seed-Math.floor(seed);
-            const q=(band+jitter*.72)/Math.max(1,bands-1);
+            const jitter=changingNoise(band,1),density=changingNoise(band,2);
+            if(density<(isSun?.07:.13)) continue;
+            const q=clamp((band+jitter*.82)/Math.max(1,bands-1),0,1);
             const y=lerp(startY,endY,q);
-            const envelope=Math.sin(Math.PI*clamp(q,0,1));
-            const halfWidth=(baseWidth+roadWidth*Math.pow(q,.72))*(.30+.70*jitter)*(.55+.45*envelope);
-            const xJitter=(jitter-.5)*halfWidth*.48;
-            const alpha=roadAlpha*(.32+.68*jitter)*(.42+.58*envelope)*(1-q*.22);
-            ctx.strokeStyle=`rgba(${color},${alpha})`;
-            ctx.lineWidth=Math.max(.7,(isSun?2.15:(kind==="moon"?1.75:1.15))*reflectionCanvasScale*(.72+jitter*.72));
-            ctx.beginPath();ctx.moveTo(x+xJitter-halfWidth,y);ctx.lineTo(x+xJitter+halfWidth,y);ctx.stroke();
+            const farToNear=Math.pow(q,.76);
+            const availableHalfWidth=baseWidth+roadWidth*farToNear;
+            const specularDistance=Math.abs(q-specularQ);
+            const specularEnvelope=.36+.64*Math.exp(-Math.pow(specularDistance/(isSun?.30:.36),2));
+            const farFade=1-horizonRetreat*Math.pow(1-q,2.2)*.92;
+            const bandAlpha=roadAlpha*(.24+.76*density)*specularEnvelope*farFade*(1-q*.10);
+            const shardCount=1+(q>.24&&changingNoise(band,3)>.46?1:0)+(q>.58&&changingNoise(band,4)>.58?1:0);
+            for(let shard=0;shard<shardCount;shard++){
+              const shardNoise=changingNoise(band*4+shard,5),lengthNoise=changingNoise(band*4+shard,6);
+              const centerOffset=(shardNoise-.5)*availableHalfWidth*1.48;
+              const shardHalf=Math.max(.8*reflectionCanvasScale,availableHalfWidth*(.08+.29*lengthNoise)*(shardCount===1?1.35:1));
+              const lineWidth=Math.max(.55,(isSun?1.65:(kind==="moon"?1.45:1.0))*reflectionCanvasScale*(.62+lengthNoise*.92)*(1+q*.34));
+              glints.push({x1:x+centerOffset-shardHalf,x2:x+centerOffset+shardHalf,y:y+(shard-.5*(shardCount-1))*lineWidth*.72,alpha:bandAlpha*(.68+.32*lengthNoise),lineWidth,core:lengthNoise>.53});
+            }
           }
-          // 中央に非常に淡い縦の光を加え、横光の集合を一本の光路としてまとめる。
-          const glow=ctx.createLinearGradient(x,startY,x,endY);
-          glow.addColorStop(0,`rgba(${color},${roadAlpha*.72})`);
-          glow.addColorStop(.42,`rgba(${color},${roadAlpha*.34})`);
-          glow.addColorStop(.72,`rgba(${color},${roadAlpha*.14})`);
-          glow.addColorStop(1,`rgba(${color},0)`);
-          ctx.strokeStyle=glow;ctx.lineWidth=(isSun?6.8:(kind==="moon"?4.8:2.8))*reflectionCanvasScale;
-          ctx.beginPath();ctx.moveTo(x,startY);ctx.lineTo(x,endY);ctx.stroke();ctx.restore();
+          if(!glints.length) return;
+          ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+          // 同じ短い反射だけをぼかして下に敷く。縦線をぼかした光の柱にはしない。
+          ctx.save();ctx.filter=`blur(${Math.max(1.5,(isSun?4.6:(kind==="moon"?3.4:2.5))*reflectionCanvasScale)}px)`;
+          glints.forEach(glint=>{
+            ctx.strokeStyle=`rgba(${color},${glint.alpha*(isSun?.38:.30)})`;
+            ctx.lineWidth=glint.lineWidth*(isSun?3.4:2.8);
+            ctx.beginPath();ctx.moveTo(glint.x1,glint.y);ctx.lineTo(glint.x2,glint.y);ctx.stroke();
+          });
+          ctx.restore();
+          glints.forEach(glint=>{
+            ctx.strokeStyle=`rgba(${color},${glint.alpha})`;
+            ctx.lineWidth=glint.lineWidth;
+            ctx.beginPath();ctx.moveTo(glint.x1,glint.y);ctx.lineTo(glint.x2,glint.y);ctx.stroke();
+            if(isSun&&glint.core){
+              const coreMid=(glint.x1+glint.x2)*.5,coreHalf=(glint.x2-glint.x1)*.22;
+              ctx.strokeStyle=`rgba(255,246,214,${glint.alpha*.76})`;
+              ctx.lineWidth=Math.max(.5,glint.lineWidth*.54);
+              ctx.beginPath();ctx.moveTo(coreMid-coreHalf,glint.y);ctx.lineTo(coreMid+coreHalf,glint.y);ctx.stroke();
+            }
+          });
+          ctx.restore();
         }
 
         // 名前付き恒星の反射：明るい恒星ほど長く伸ばし、文字は反射させない。
@@ -17854,7 +17927,8 @@ function drawPhoto(ctx,s){
           ctx.save();ctx.globalCompositeOperation="lighter";
           /* 低い朝陽・夕陽は丸い鏡像を水中へ作らず、実写と同じく光条だけにする。 */
           if(!darumaSunActive&&s.sunAltAz.alt>=3) drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility);
-          drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
+          // 低い太陽は一本線の汎用反射を重ねず、水面の短い反射群だけで光の道を作る。
+          if(s.sunAltAz.alt>=20) drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
           drawCelestialLightRoad(s.sunAltAz,1,reflectedSunRGB,"sun",daylightSunVisibility);
           ctx.restore();
         }
