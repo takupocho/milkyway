@@ -1784,6 +1784,14 @@
   .plan-modal-actions{display:flex;justify-content:flex-end;gap:7px;}
   .plan-modal-actions button{min-height:34px;padding:7px 13px;}
   .plan-modal-actions .primary{border-color:var(--core-amber);color:var(--core-amber);}
+  .external-status-list{display:flex;flex-direction:column;gap:7px;margin:0 0 12px;}
+  .external-status-row{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:start;padding:10px;border:1px solid rgba(154,164,210,.25);border-radius:10px;background:rgba(255,255,255,.04);}
+  .external-status-dot{width:10px;height:10px;margin-top:3px;border-radius:50%;background:#dc3e4f;box-shadow:0 0 5px rgba(220,62,79,.48);}
+  .external-status-row.ready .external-status-dot{background:#16b968;box-shadow:0 0 6px rgba(22,185,104,.65);}
+  .external-status-row.loading .external-status-dot{animation:external-data-pulse .82s ease-in-out infinite alternate;}
+  .external-status-name{display:block;color:#edf5ff;font:700 12px/1.3 'Inter',sans-serif;}
+  .external-status-value{display:block;margin-top:3px;color:rgba(255,255,255,.72);font:500 10.5px/1.55 'Inter',sans-serif;white-space:pre-line;}
+  .external-status-guidance{margin:0 0 12px;padding:10px;border-left:3px solid var(--core-amber);border-radius:6px;background:rgba(232,166,89,.09);color:rgba(255,255,255,.8);font:500 10.5px/1.65 'Inter',sans-serif;}
   .terrain-topview-overlay{display:none;position:fixed;inset:0;z-index:10060;align-items:center;justify-content:center;padding:14px;background:rgba(2,5,14,.88);box-sizing:border-box;}
   .terrain-topview-overlay.show{display:flex;}
   .terrain-topview-panel{width:min(920px,96vw);max-height:94vh;overflow:auto;padding:15px;background:#10152b;border:1px solid #445073;border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.55);box-sizing:border-box;}
@@ -2295,7 +2303,8 @@
   .external-data-reload-btn{
     width:43px;height:43px;padding:0;border:1px solid rgba(154,164,210,.62);border-radius:50%;
     display:grid;place-items:center;background:rgba(18,21,43,.82);color:rgba(255,255,255,.92);
-    box-shadow:0 2px 9px rgba(0,0,0,.38);opacity:.72;cursor:pointer;
+    box-shadow:0 2px 9px rgba(0,0,0,.38);opacity:.72;cursor:pointer;position:relative;
+    touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;
   }
   @media (hover:hover){
     .external-data-reload-btn:hover{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
@@ -2305,7 +2314,13 @@
      選択枠やホバーの色が重なると、OFFなのにONに見えて紛らわしい。 */
   #highDetailBtn:focus{outline:none;}
   .external-data-reload-btn svg{width:24px;height:24px;pointer-events:none;}
-  #externalDataReloadBtn.loading svg{animation:external-data-spin 1.15s linear infinite;}
+  .external-data-reload-btn .reload-hold-ring{position:absolute;inset:-5px;width:53px;height:53px;overflow:visible;transform:rotate(-90deg);opacity:0;}
+  .external-data-reload-btn .reload-hold-ring circle{fill:none;stroke:var(--core-amber);stroke-width:3;stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;}
+  #externalDataReloadBtn.holding .reload-hold-ring{opacity:1;}
+  #externalDataReloadBtn.holding .reload-hold-ring circle{animation:external-reload-hold .7s linear forwards;}
+  #externalDataReloadBtn.hold-complete{border-color:var(--core-amber);color:var(--core-amber);opacity:1;}
+  @keyframes external-reload-hold{to{stroke-dashoffset:0;}}
+  #externalDataReloadBtn.loading > svg:not(.reload-hold-ring){animation:external-data-spin 1.15s linear infinite;}
   @keyframes external-data-spin{to{transform:rotate(360deg);}}
   .external-data-lamps{display:flex;align-items:center;justify-content:center;gap:3px;padding:2px 3px;border-radius:8px;background:rgba(3,5,14,.35);}
   .external-data-lamp{
@@ -4474,8 +4489,9 @@
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
                 <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" pathLength="140"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
-                <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="外部情報読み直し（標高・水域・山頂・天の川・富士山）" aria-label="外部データを現在地点から読み直す" title="外部データを読み直す">
+                <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="短押し：取得状況／長押し：外部情報を読み直す" aria-label="短く押すと外部データの取得状況を表示、長押しすると読み直す" title="短押し：取得状況／長押し：読み直し">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <svg class="reload-hold-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" pathLength="100"/></svg>
                 </button>
                 <div class="external-data-lamps" aria-label="左から標高、水域、山頂、天の川写真、富士山情報">
                   <button id="externalStatusElevation" class="external-data-lamp" type="button" aria-label="標高データ：未取得" title="標高データ：未取得"></button>
@@ -4566,6 +4582,15 @@
                     <div id="planPhotoStatus" class="plan-photo-status" aria-live="polite"></div>
                   </div>
                   <div class="plan-modal-actions"><button id="planSaveCancelBtn" type="button">キャンセル</button><button id="planSaveRunBtn" type="button" class="primary">この内容を保存</button></div>
+                </section>
+              </div>
+              <div id="externalStatusOverlay" class="plan-modal-overlay" aria-hidden="true">
+                <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="externalStatusTitle">
+                  <div class="plan-modal-header"><h3 id="externalStatusTitle" class="plan-modal-title">外部データの取得状況</h3><button id="externalStatusCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
+                  <p class="plan-modal-help">現在の取得状態と、最後に確認できた結果です。</p>
+                  <div id="externalStatusList" class="external-status-list" aria-live="polite"></div>
+                  <p id="externalStatusGuidance" class="external-status-guidance"></p>
+                  <div class="plan-modal-actions"><button id="externalStatusOkBtn" type="button" class="primary">閉じる</button></div>
                 </section>
               </div>
               <div id="terrainTopViewOverlay" class="terrain-topview-overlay" aria-hidden="true">
@@ -4850,7 +4875,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="733-water-cache-fallback";
+const APP_VERSION="738-smooth-far-mountain-ridges";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5303,13 +5328,17 @@ const EXTERNAL_DATA_STATUS_CONFIG={
   fuji:{id:"externalStatusFuji",label:"富士山情報"}
 };
 const externalDataStatuses=Object.fromEntries(Object.keys(EXTERNAL_DATA_STATUS_CONFIG).map(key=>[key,"idle"]));
+let externalDataStatusDetails=Object.fromEntries(Object.keys(EXTERNAL_DATA_STATUS_CONFIG).map(key=>[key,""]));
 function setExternalDataStatus(key,status,detail=""){
   const config=EXTERNAL_DATA_STATUS_CONFIG[key];if(!config) return;
   externalDataStatuses[key]=status;
+  externalDataStatusDetails[key]=detail;
   const lamp=document.getElementById(config.id);
   const stateText=status==="ready"?"読み込み完了":(status==="loading"?"読み込み中":"未取得・取得失敗");
-  const text=`${config.label}：${stateText}${detail?`（${detail}）`:""}`;
+  const history=key==="water"&&typeof waterAcquisitionHistoryText==="function"?waterAcquisitionHistoryText(status):"";
+  const text=`${config.label}：${stateText}${detail?`（${detail}）`:""}${history?`\n${history}`:""}`;
   if(lamp){lamp.classList.toggle("ready",status==="ready");lamp.classList.toggle("loading",status==="loading");lamp.title=text;lamp.setAttribute("aria-label",text);}
+  if(typeof renderExternalDataStatusDialog==="function") renderExternalDataStatusDialog();
   const reload=document.getElementById("externalDataReloadBtn");
   if(reload) reload.classList.toggle("loading",Object.values(externalDataStatuses).some(value=>value==="loading"));
 }
@@ -6431,9 +6460,9 @@ el.bestTimeBar.addEventListener("click",(e)=>{
 let aimControlDragging=false;
 [el.facingAz,el.facingAlt].forEach(inp=>{
   inp.addEventListener("pointerdown",()=>{aimControlDragging=true;});
-  inp.addEventListener("pointerup",()=>{aimControlDragging=false;});
-  inp.addEventListener("pointercancel",()=>{aimControlDragging=false;});
-  inp.addEventListener("change",()=>{aimControlDragging=false;});
+  inp.addEventListener("pointerup",()=>{aimControlDragging=false;scheduleCameraViewUpdate();});
+  inp.addEventListener("pointercancel",()=>{aimControlDragging=false;scheduleCameraViewUpdate();});
+  inp.addEventListener("change",()=>{aimControlDragging=false;scheduleCameraViewUpdate();});
 });
 [el.focalLength,el.facingAz,el.facingAlt]
   .forEach(inp=>inp.addEventListener("input",scheduleCameraViewUpdate));
@@ -9579,6 +9608,7 @@ function photoDragEnd(pos){
   photoDragging=false;
   el.photoCanvas.classList.remove("dragging");
   if(pos && photoDragMaxDist<6) handlePhotoTap(pos);
+  else if(photoDragMaxDist>=6) scheduleCameraViewUpdate(); // 保持レイヤーを外し、停止位置を正確な水面で確定する
 }
 el.photoCanvas.addEventListener("mousedown",(e)=>{ photoDragBegin(photoCanvasPos(e)); e.preventDefault(); });
 window.addEventListener("mousemove",(e)=>{ if(photoDragging) photoDragMove(photoCanvasPos(e)); });
@@ -13968,10 +13998,68 @@ async function loadTilesWithLimit(tiles,limit=6){
 // 従来の標高ベースの判定のみにフォールバックする。
 // =========================================================
 const OSM_WATER_ENDPOINTS=[
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://overpass.openstreetmap.ru/api/interpreter",
-  "https://overpass-api.de/api/interpreter"
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.openstreetmap.ru/api/interpreter"
 ];
+let lastOverpassFailure="";
+function overpassFailureLabel(){
+  return lastOverpassFailure==="429"?"取得制限（429）":lastOverpassFailure==="504"?"サーバー混雑（504）":lastOverpassFailure==="timeout"?"タイムアウト":"通信エラー";
+}
+function waterFailureStatusDetail(){
+  const reason=overpassFailureLabel();
+  return (waterAcquisitionHistory?.consecutiveFailures||0)>=2
+    ?`${reason}。取得先が一時的に混雑しているか、アクセスしにくい状態が続いています。しばらく時間を空けてから再度お試しください`
+    :reason;
+}
+const WATER_ACQUISITION_HISTORY_KEY="mwsim.waterAcquisitionHistory.v1";
+let waterAcquisitionHistory=(()=>{
+  try{return Object.assign({lastSuccessAt:0,lastFailureAt:0,lastFailureReason:"",consecutiveFailures:0},JSON.parse(localStorage.getItem(WATER_ACQUISITION_HISTORY_KEY))||{});}
+  catch(error){return {lastSuccessAt:0,lastFailureAt:0,lastFailureReason:"",consecutiveFailures:0};}
+})();
+function saveWaterAcquisitionHistory(){
+  try{localStorage.setItem(WATER_ACQUISITION_HISTORY_KEY,JSON.stringify(waterAcquisitionHistory));}catch(error){}
+}
+function waterElapsedText(timestamp){
+  if(!timestamp) return "";
+  const elapsed=Math.max(0,Date.now()-timestamp),minutes=Math.floor(elapsed/60000);
+  if(minutes<1) return "たった今";
+  if(minutes<60) return `${minutes}分前`;
+  const hours=Math.floor(minutes/60);
+  if(hours<24) return `${hours}時間前`;
+  return `${Math.floor(hours/24)}日前`;
+}
+function waterClockText(timestamp){
+  if(!timestamp) return "";
+  const date=new Date(timestamp),now=new Date();
+  const clock=date.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+  return date.toDateString()===now.toDateString()?clock:`${date.toLocaleDateString("ja-JP")} ${clock}`;
+}
+function waterAcquisitionHistoryText(status){
+  const h=waterAcquisitionHistory;
+  if(status==="error"&&h.lastFailureAt){
+    const count=h.consecutiveFailures>1?`・連続${h.consecutiveFailures}回失敗`:"";
+    return `最終取得失敗：${waterClockText(h.lastFailureAt)}（${waterElapsedText(h.lastFailureAt)}${count}）`;
+  }
+  if(status==="loading"&&h.lastFailureAt&&h.lastFailureAt>h.lastSuccessAt){
+    return `前回の取得失敗：${waterClockText(h.lastFailureAt)}（${waterElapsedText(h.lastFailureAt)}）`;
+  }
+  if(h.lastSuccessAt) return `最終取得成功：${waterClockText(h.lastSuccessAt)}（${waterElapsedText(h.lastSuccessAt)}）`;
+  if(h.lastFailureAt) return `最終取得失敗：${waterClockText(h.lastFailureAt)}（${waterElapsedText(h.lastFailureAt)}）`;
+  return "";
+}
+function recordWaterAcquisitionResult(success){
+  if(success){waterAcquisitionHistory.lastSuccessAt=Date.now();waterAcquisitionHistory.consecutiveFailures=0;}
+  else{
+    waterAcquisitionHistory.lastFailureAt=Date.now();
+    waterAcquisitionHistory.lastFailureReason=overpassFailureLabel();
+    waterAcquisitionHistory.consecutiveFailures=(waterAcquisitionHistory.consecutiveFailures||0)+1;
+  }
+  saveWaterAcquisitionHistory();
+}
+setInterval(()=>{
+  if(externalDataStatuses.water!=="idle") setExternalDataStatus("water",externalDataStatuses.water,externalDataStatusDetails.water||"");
+},60000);
 const osmWaterCache=new Map();
 const osmWaterCacheSources=new Map();
 const forcedWaterRefreshKeys=new Set();
@@ -14296,6 +14384,7 @@ function computeOsmWaterSegments(lat,lon,radiusKm,rings){
 async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),timeoutMs);
+  lastOverpassFailure="";
   try{
     const res=await fetch(url,{
       method:"POST",
@@ -14303,7 +14392,8 @@ async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
       body:"data="+encodeURIComponent(query),
       signal:controller.signal
     });
-    if(!res.ok) throw new Error(`overpass ${res.status}`);
+    if(!res.ok){lastOverpassFailure=String(res.status);throw new Error(`overpass ${res.status}`);}
+    lastOverpassFailure="";
     return await res.json();
   }finally{
     clearTimeout(timer);
@@ -14340,35 +14430,24 @@ function parseOsmWaterRings(data){
   return rings;
 }
 function delayPromise(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
-// 取得先を一斉に叩かず、2.5秒ずつ時間差で開始する。最初に成功した応答を採用し、
-// 全て失敗した場合だけrejectする。混雑した1サーバーを長時間待ち続けないためのヘッジ取得。
-function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=2500,timeoutMs=18000){
-  return new Promise((resolve,reject)=>{
-    let failed=0,settled=false,lastError=null;
-    endpoints.forEach((endpoint,index)=>{
-      (async()=>{
-        if(index) await delayPromise(index*staggerMs);
-        if(settled) return;
-        try{
-          const data=await fetchOsmWaterRingsOnce(endpoint,query,timeoutMs);
-          if(!settled){settled=true;resolve(data);}
-        }catch(error){
-          lastError=error;failed++;
-          if(failed===endpoints.length&&!settled) reject(lastError||new Error("water fetch failed"));
-        }
-      })();
-    });
-  });
+/* 【v735】公開Overpassへ同時送信しない。1サーバーずつ順番に試し、成功した時点で終了する。
+   429/504を受けた場合も同じ巡回を繰り返さず、次の自動更新または手動読み直しまで待つ。 */
+async function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=1800,timeoutMs=18000){
+  let lastError=null;
+  for(let index=0;index<endpoints.length;index++){
+    if(index) await delayPromise(staggerMs);
+    try{const result=await fetchOsmWaterRingsOnce(endpoints[index],query,timeoutMs);recordWaterAcquisitionResult(true);return result;}
+    catch(error){
+      lastError=error;
+      if(error&&error.name==="AbortError") lastOverpassFailure="timeout";
+      else if(!/^overpass \d+$/.test(String(error&&error.message||""))) lastOverpassFailure="network";
+    }
+  }
+  recordWaterAcquisitionResult(false);
+  throw lastError||new Error("water fetch failed");
 }
 async function fetchOsmWaterRingsNetwork(query){
-  try{
-    return parseOsmWaterRings(await firstSuccessfulWaterRequest(query));
-  }catch(firstError){
-    // 一時的な429・タイムアウトを想定し、少し休んで取得先の順番を変えてもう一巡する。
-    await delayPromise(2200);
-    const retryEndpoints=[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]];
-    return parseOsmWaterRings(await firstSuccessfulWaterRequest(query,retryEndpoints,3200));
-  }
+  return parseOsmWaterRings(await firstSuccessfulWaterRequest(query));
 }
 function fetchOsmWaterRings(lat,lon,radiusKm){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
@@ -14453,11 +14532,7 @@ function parseOsmRoadWays(data){
    道路・線路は表示を待たせても支障が無いので、待ち時間を長めに取る。 */
 const OSM_LINE_TIMEOUT_MS=40000;
 async function fetchOsmRoadWaysNetwork(query){
-  try{ return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS)); }
-  catch(firstError){
-    await delayPromise(2200);
-    return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200,OSM_LINE_TIMEOUT_MS));
-  }
+  return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS));
 }
 function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
@@ -14516,11 +14591,7 @@ function parseOsmRailWays(data){
   }).filter(way=>way.points.length>=2);
 }
 async function fetchOsmRailWaysNetwork(query){
-  try{ return parseOsmRailWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS)); }
-  catch(firstError){
-    await delayPromise(2200);
-    return parseOsmRailWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200,OSM_LINE_TIMEOUT_MS));
-  }
+  return parseOsmRailWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS));
 }
 function fetchOsmRailWays(lat,lon,radiusKm=OSM_RAIL_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
@@ -14601,11 +14672,7 @@ function createCoastlineSeaClassifier(originLat,originLon,ways){
   return {valid,originAtSea,nearestDistanceM:valid?Math.sqrt(nearestSq):null,segmentCount:segments.length,classify};
 }
 async function fetchOsmCoastlineWaysNetwork(query){
-  try{return parseOsmCoastlineWays(await firstSuccessfulWaterRequest(query));}
-  catch(firstError){
-    await delayPromise(2200);
-    return parseOsmCoastlineWays(await firstSuccessfulWaterRequest(query,[OSM_WATER_ENDPOINTS[2],OSM_WATER_ENDPOINTS[0],OSM_WATER_ENDPOINTS[1]],3200));
-  }
+  return parseOsmCoastlineWays(await firstSuccessfulWaterRequest(query));
 }
 function fetchOsmCoastlineWays(lat,lon,radiusKm=OSM_COASTLINE_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
@@ -15049,7 +15116,7 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
   fetchOsmWaterRings(lat,lon,OSM_WATER_RADIUS_KM).then(async rings=>{
     if(!rings||!resultObj.terrainLayers){
       resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
-      setExternalDataStatus("water","error","通信エラー");
+      setExternalDataStatus("water","error",waterFailureStatusDetail());
       return;
     } // nullは通信失敗。空配列は「水域なし」という有効な取得結果として処理する。
     const osmObserverWater=classifyObserverWaterNeighborhood(lat,lon,(pLat,pLon)=>pointInWaterRings(pLat,pLon,rings));
@@ -15221,7 +15288,7 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     setExternalDataStatus("water","ready",resultObj._osmRefineDetail);
   }).catch(()=>{
     resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
-    setExternalDataStatus("water","error","通信エラー");
+    setExternalDataStatus("water","error",waterFailureStatusDetail());
   });
 }
 function requestRealTerrainProfile(lat,lon){
@@ -15720,7 +15787,79 @@ function reloadCurrentExternalSimulationData(){
     requestMountainNames(lat,lon);
   }
 }
-document.getElementById("externalDataReloadBtn")?.addEventListener("click",reloadCurrentExternalSimulationData);
+function renderExternalDataStatusDialog(){
+  const overlay=document.getElementById("externalStatusOverlay");
+  const list=document.getElementById("externalStatusList");
+  const guidance=document.getElementById("externalStatusGuidance");
+  if(!overlay||!list||!guidance||!overlay.classList.contains("show")) return;
+  list.replaceChildren();
+  Object.entries(EXTERNAL_DATA_STATUS_CONFIG).forEach(([key,config])=>{
+    const status=externalDataStatuses[key]||"idle";
+    const row=document.createElement("div");row.className=`external-status-row ${status}`;
+    const dot=document.createElement("span");dot.className="external-status-dot";dot.setAttribute("aria-hidden","true");
+    const body=document.createElement("div");
+    const name=document.createElement("span");name.className="external-status-name";name.textContent=config.label;
+    const value=document.createElement("span");value.className="external-status-value";
+    const stateText=status==="ready"?"取得済み":status==="loading"?"取得中":"未取得・取得失敗";
+    const detail=externalDataStatusDetails[key]||"";
+    const history=key==="water"?waterAcquisitionHistoryText(status):"";
+    value.textContent=`${stateText}${detail?`：${detail}`:""}${history?`\n${history}`:""}`;
+    body.append(name,value);row.append(dot,body);list.append(row);
+  });
+  const waterStatus=externalDataStatuses.water;
+  if(waterStatus==="error"&&(waterAcquisitionHistory.consecutiveFailures||0)>=2){
+    guidance.textContent="水域データの取得先が一時的に混雑しているか、アクセスしにくい状態が続いています。経過時間を目安に、しばらく時間を空けてからお試しください。";
+  }else if(waterStatus==="loading"){
+    guidance.textContent="水域データを取得しています。取得先の状況によっては、完了まで1分程度かかる場合があります。";
+  }else{
+    guidance.textContent="外部データを更新するには、右側の読み直しボタンを約0.7秒間長押ししてください。";
+  }
+}
+function setExternalDataStatusDialogOpen(open){
+  const overlay=document.getElementById("externalStatusOverlay");
+  if(!overlay) return;
+  overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
+  if(open){renderExternalDataStatusDialog();document.getElementById("externalStatusCloseBtn")?.focus();}
+}
+const externalReloadBtn=document.getElementById("externalDataReloadBtn");
+const externalStatusOverlay=document.getElementById("externalStatusOverlay");
+if(externalStatusOverlay) document.body.append(externalStatusOverlay);
+document.getElementById("externalStatusCloseBtn")?.addEventListener("click",()=>setExternalDataStatusDialogOpen(false));
+document.getElementById("externalStatusOkBtn")?.addEventListener("click",()=>setExternalDataStatusDialogOpen(false));
+externalStatusOverlay?.addEventListener("click",event=>{if(event.target===externalStatusOverlay)setExternalDataStatusDialogOpen(false);});
+document.addEventListener("keydown",event=>{if(event.key==="Escape"&&externalStatusOverlay?.classList.contains("show"))setExternalDataStatusDialogOpen(false);});
+if(externalReloadBtn){
+  let holdTimer=0,suppressClick=false,startX=0,startY=0;
+  const cancelHold=()=>{
+    clearTimeout(holdTimer);holdTimer=0;externalReloadBtn.classList.remove("holding");
+  };
+  externalReloadBtn.addEventListener("pointerdown",event=>{
+    if(event.button!==undefined&&event.button!==0) return;
+    startX=event.clientX;startY=event.clientY;suppressClick=false;
+    externalReloadBtn.classList.remove("hold-complete");
+    externalReloadBtn.classList.add("holding");
+    try{externalReloadBtn.setPointerCapture(event.pointerId);}catch(error){}
+    holdTimer=setTimeout(()=>{
+      holdTimer=0;suppressClick=true;
+      externalReloadBtn.classList.remove("holding");externalReloadBtn.classList.add("hold-complete");
+      if(navigator.vibrate) navigator.vibrate(35);
+      reloadCurrentExternalSimulationData();
+      setExternalDataStatusDialogOpen(true);
+      setTimeout(()=>externalReloadBtn.classList.remove("hold-complete"),650);
+    },700);
+  });
+  externalReloadBtn.addEventListener("pointermove",event=>{
+    if(holdTimer&&Math.hypot(event.clientX-startX,event.clientY-startY)>14) cancelHold();
+  });
+  externalReloadBtn.addEventListener("pointerup",cancelHold);
+  externalReloadBtn.addEventListener("pointercancel",cancelHold);
+  externalReloadBtn.addEventListener("contextmenu",event=>event.preventDefault());
+  externalReloadBtn.addEventListener("click",event=>{
+    event.preventDefault();
+    if(suppressClick){suppressClick=false;return;}
+    setExternalDataStatusDialogOpen(true);
+  });
+}
 
 window.addEventListener("online",()=>{
   gsiDemTileCache.clear();
@@ -20506,6 +20645,49 @@ function drawPhoto(ctx,s){
           }
         }
 
+        /* 【v738】ポリゴン抜けを防ぐ「各距離層を画面下まで閉じて重ねる構造」はそのままに、
+           500m以遠の陸地層の上端だけを画面横方向にならす。
+           DEMの追加取得やレイの追加計算は行わず、既に求めたaltGridだけを使う。
+
+           単純な曲線補間は実測値を越える架空の峰や谷を作るため、左右2点ずつの加重平均を
+           元の近傍最小〜最大の範囲へ制限し、さらに1回あたり約1.6画素ぶんだけ動かす。
+           水・雲・500m以内・属性境界は一切動かさない。最後に距離方向の累積最高高度を
+           再保証するので、奥の層が手前の層より低くなって隙間を作ることもない。 */
+        const FAR_RIDGE_SMOOTH_MIN_KM=.5;
+        const smoothAltitudeLimitDeg=clamp(1.6*Math.max(1,s.fovH)/Math.max(1,W),.002,.10);
+        const smoothScratch=new Float64Array(columns.length);
+        for(let pass=0;pass<2;pass++){
+          for(let k=0;k<layerCount;k++){
+            if(layerKm[k]<FAR_RIDGE_SMOOTH_MIN_KM) continue;
+            for(let c=0;c<columns.length;c++) smoothScratch[c]=altGrid[c*layerCount+k];
+            for(let c=2;c<columns.length-2;c++){
+              const index=c*layerCount+k;
+              if(waterGrid[index]||cloudGrid[index]) continue;
+              let sameLand=true;
+              for(let offset=-2;offset<=2;offset++){
+                const neighbor=(c+offset)*layerCount+k;
+                if(waterGrid[neighbor]||cloudGrid[neighbor]){sameLand=false;break;}
+              }
+              if(!sameLand) continue;
+              const v0=smoothScratch[c-2],v1=smoothScratch[c-1],v2=smoothScratch[c],
+                    v3=smoothScratch[c+1],v4=smoothScratch[c+2];
+              const localMin=Math.min(v0,v1,v2,v3,v4),localMax=Math.max(v0,v1,v2,v3,v4);
+              const weighted=(v0+2*v1+4*v2+2*v3+v4)/10;
+              const bounded=clamp(weighted,localMin,localMax);
+              altGrid[index]=v2+clamp(bounded-v2,-smoothAltitudeLimitDeg,smoothAltitudeLimitDeg);
+            }
+          }
+        }
+        // 各列は「その距離までに見えた最高高度」なので、距離が増えるほど低くならないよう戻す。
+        for(let c=0;c<columns.length;c++){
+          let cumulative=altGrid[c*layerCount];
+          for(let k=1;k<layerCount;k++){
+            const index=c*layerCount+k;
+            if(altGrid[index]<cumulative) altGrid[index]=cumulative;
+            else cumulative=altGrid[index];
+          }
+        }
+
         const bottomY=H+4;
         /* 雲海の後処理用。列ごとに
              anyTopY  … 塗ったもの全体の上端（空との境目）
@@ -21082,6 +21264,40 @@ function drawPhoto(ctx,s){
       ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0);
       if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0);}
       ctx.restore();
+      /* 【v734】方位操作中に再投影した水面が一時的に陸へ覆われても消えないよう、
+         通常表示で完成した「実際の水面画素だけ」を別Canvasへ保持する。
+         操作中は方位・仰角の差だけ平行移動して重ね、停止後は通常描画へ戻す。 */
+      const aimWaterHoldActive=photoDragging||compassDragActive||aimControlDragging;
+      let aimWaterHoldCanvas=drawPhoto._aimWaterHoldCanvas;
+      if(!aimWaterHoldCanvas){
+        aimWaterHoldCanvas=document.createElement("canvas");
+        drawPhoto._aimWaterHoldCanvas=aimWaterHoldCanvas;
+      }
+      if(aimWaterHoldCanvas.width!==W||aimWaterHoldCanvas.height!==H){
+        aimWaterHoldCanvas.width=W;aimWaterHoldCanvas.height=H;
+        drawPhoto._aimWaterHoldState=null;
+      }
+      if(!aimWaterHoldActive){
+        const holdCtx=aimWaterHoldCanvas.getContext("2d");
+        holdCtx.clearRect(0,0,W,H);
+        holdCtx.globalAlpha=terrainDisplayAlpha;holdCtx.globalCompositeOperation="source-over";
+        holdCtx.drawImage(terrainCanvas,0,0);
+        if(dayFactor>0){holdCtx.globalAlpha=terrainDisplayAlpha*dayFactor;holdCtx.drawImage(dayTerrainCanvas,0,0);}
+        holdCtx.globalAlpha=1;holdCtx.globalCompositeOperation="destination-in";
+        holdCtx.drawImage(waterSurfaceMaskCanvas,0,0);
+        holdCtx.globalCompositeOperation="source-over";
+        drawPhoto._aimWaterHoldState={az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,fovV:s.fovV,terrainKey:realTerrainState.key};
+      }else{
+        const hold=drawPhoto._aimWaterHoldState;
+        if(hold&&hold.terrainKey===realTerrainState.key&&mobileLensMode!=="fisheye"){
+          const azDelta=((hold.az-s.facingAz+540)%360)-180;
+          const dx=azDelta/Math.max(1,hold.fovH)*W;
+          const dy=(s.facingAlt-hold.alt)/Math.max(1,hold.fovV)*H;
+          ctx.save();ctx.globalAlpha=terrainDisplayAlpha;
+          ctx.drawImage(aimWaterHoldCanvas,dx,dy);
+          ctx.restore();
+        }
+      }
       /* 地形を重ねたあとにKMZ建物を描く。建物より手前の地形だけで切り抜くので、
          手前の山には隠れ、奥の山には隠されない。 */
       // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
@@ -22125,10 +22341,6 @@ function updateCameraViewOnly(){
   if(scheduledUpdateRaf) return;
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(!state){update();return;}
-  /* 【v732】写真または方位バーをドラッグしている間は、通常更新が持つ地形・水域の
-     同期経路を通す。軽量更新だけでは池・川が操作中に一時的に消え、停止後に戻る
-     場合があった。地点データの再取得は既存キャッシュで抑えられる。 */
-  if(photoDragging||compassDragActive||aimControlDragging){update();return;}
   const focalLength=+el.focalLength.value;
   const facingAz=+el.facingAz.value,facingAlt=+el.facingAlt.value;
   const sensor=state.sensor;
