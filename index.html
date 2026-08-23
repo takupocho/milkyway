@@ -1682,6 +1682,16 @@
     text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:nowrap;
   }
   .sim-loading-label[hidden]{display:none;}
+  .high-detail-status-label{
+    padding:4px 10px;border-radius:9px;pointer-events:none;
+    border:1px solid rgba(124,205,255,.58);background:rgba(8,25,40,.78);
+    color:rgba(218,242,255,.98);font:700 10px/1.3 'Inter','Noto Sans JP',sans-serif;
+    text-shadow:0 1px 4px rgba(0,0,0,.85);white-space:normal;max-width:min(430px,90%);text-align:center;
+  }
+  .high-detail-status-label.error{
+    border-color:rgba(255,181,94,.75);background:rgba(45,24,8,.86);color:#ffe1ad;
+  }
+  .high-detail-status-label[hidden]{display:none;}
   body.ar-active .sim-top-stack{display:none;}
   @media (max-width:760px){
     .sim-top-stack{top:14px;gap:4px;}
@@ -4454,6 +4464,7 @@
                 </div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
                 <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
+                <div id="highDetailStatusLabel" class="high-detail-status-label" hidden aria-live="polite"></div>
               </div>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
@@ -4599,8 +4610,8 @@
                   <p class="plan-modal-help">高精細にしたい山・海岸などの中心地点をGoogleマップから貼り付けてください。観測地点からの距離と現在の画角を使い、必要な横幅は自動計算します。</p>
                   <textarea id="highDetailCoordinatePaste" class="osm-import-input" inputmode="url" placeholder="例：35.12345, 134.56789&#10;GoogleマップのURL・共有文も貼り付けできます"></textarea>
                   <div class="grid2" style="margin-top:10px;">
-                    <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="10" step="0.05" value="1"></div>
-                    <div class="field"><label class="top">中心より奥（km）</label><input id="highDetailBackKm" type="number" min="0.05" max="10" step="0.05" value="1"></div>
+                    <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
+                    <div class="field"><label class="top">中心より奥（km）</label><input id="highDetailBackKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
                   </div>
                   <p id="highDetailSettingsSummary" class="plan-modal-help" style="margin-top:10px;">中心地点を入力してください。</p>
                   <div class="plan-modal-actions"><button id="highDetailSettingsCancelBtn" type="button">キャンセル</button><button id="highDetailSettingsStartBtn" type="button" class="primary">この範囲を高精細スキャン</button></div>
@@ -4888,7 +4899,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="748-playback-celestial-visibility";
+const APP_VERSION="749-safe-high-detail-commit";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6020,7 +6031,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -8765,7 +8776,24 @@ syncTripodHeightControl();
 let highDetailOn=false;
 const HIGH_DETAIL_AZIMUTH_STEP=1, HIGH_DETAIL_LOCAL_MESH_M=1;
 let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+let highDetailStatusTimer=0,highDetailFallbackPending=false;
 function highDetailTargetIsReady(){return Number.isFinite(highDetailTarget.lat)&&Number.isFinite(highDetailTarget.lon);}
+function showHighDetailStatus(message,type="info",duration=5200){
+  const label=el.highDetailStatusLabel;
+  if(!label) return;
+  clearTimeout(highDetailStatusTimer);
+  label.textContent=message;
+  label.classList.toggle("error",type==="error");
+  label.hidden=false;
+  syncSimTopStack();
+  if(duration>0){
+    highDetailStatusTimer=setTimeout(()=>{label.hidden=true;syncSimTopStack();},duration);
+  }
+}
+function highDetailAppliedRangeText(){
+  if(!Number.isFinite(highDetailTarget.nearKm)||!Number.isFinite(highDetailTarget.farKm)) return "現在の画面範囲";
+  return `${highDetailTarget.nearKm.toFixed(2)}〜${highDetailTarget.farKm.toFixed(2)}km`;
+}
 function normalTerrainAzimuthStepValue(){
   if(highDetailOn) return HIGH_DETAIL_AZIMUTH_STEP;
   return clamp(Math.round(+el.normalTerrainAzimuthStepSlider.value||1),1,10);
@@ -8816,8 +8844,17 @@ function setHighDetail(on){
   if(on===highDetailOn) return;
   highDetailOn=on;
   renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
-  if(on) highDetailEnsureField(+el.lat.value,+el.lon.value);
-  else highDetailReleaseField();   // 降りるときに取った分を捨てる
+  if(on){
+    highDetailFallbackPending=false;
+    showHighDetailStatus(`高精細データを準備中… 走査距離 ${highDetailAppliedRangeText()}`,"info",0);
+    highDetailEnsureField(+el.lat.value,+el.lon.value);
+  }else{
+    highDetailReleaseField();   // 降りるときに取った分を捨てる
+    for(const key of ["_highDetailCandidateTerrain","_highDetailCandidateDayTerrain","_highDetailCandidateWaterMask"]){
+      const canvas=drawPhoto[key];
+      if(canvas){canvas.width=1;canvas.height=1;drawPhoto[key]=null;}
+    }
+  }
   document.body.classList.toggle("high-detail",on);
   /* 入るときは押された時点で残っている移動入力を捨て、
      抜けるときは止めていた間の入力を持ち越さないようにする。 */
@@ -8834,7 +8871,12 @@ function updateHighDetailSettingsSummary(){
   if(!coordinate){el.highDetailSettingsSummary.textContent="中心地点の緯度・経度を入力してください。";return null;}
   const observerLat=+el.lat.value,observerLon=+el.lon.value;
   const target=terrainDistanceAndBearing(observerLat,observerLon,coordinate.lat,coordinate.lon);
-  const front=clamp(+el.highDetailFrontKm.value||1,.05,10),back=clamp(+el.highDetailBackKm.value||1,.05,10);
+  const rawFront=+el.highDetailFrontKm.value,rawBack=+el.highDetailBackKm.value;
+  if(!Number.isFinite(rawFront)||!Number.isFinite(rawBack)||rawFront<.05||rawFront>20||rawBack<.05||rawBack>20){
+    el.highDetailSettingsSummary.textContent="手前・奥は、それぞれ0.05〜20kmの範囲で入力してください。";
+    return null;
+  }
+  const front=rawFront,back=rawBack;
   const near=Math.max(.01,target.distanceKm-front),far=target.distanceKm+back;
   const fov=state&&Number.isFinite(state.fovH)?state.fovH:20;
   const width=2*far*Math.tan(Math.min(35,fov/2+1)*D2R);
@@ -13882,6 +13924,7 @@ const HIGH_DETAIL_FIELD_RADIUS_M=1000;
 const HIGH_DETAIL_RING_SET=new Set(TERRAIN_DISTANCES_KM.map(km=>Math.round(km*1000)));
 const highDetailTiles=new Map();      // key: "x/y" -> Float32Array | null | "loading"
 let highDetailPending=0,highDetailReadyKey="",highDetailTileCount=0,highDetailUsedCells=0;
+let highDetailRequiredTileCount=0,highDetailQueuedTileCount=0;
 const highDetailOwnedTileKeys=new Set();  // 高精細が自分で取った分だけ
 /* 捨てたあとに遅れて届いたタイルを拾わないための世代番号。
    これが無いと、降りた直後に到着した分だけが残ってしまう。 */
@@ -13918,9 +13961,13 @@ function highDetailRequestTile(x,y){
     })
     .catch(()=>{ if(generation===highDetailGeneration) highDetailTiles.set(key,null); })
     .finally(()=>{
+      if(generation!==highDetailGeneration) return;
       highDetailPending--;
       if(highDetailPending<=0){
         drawPhoto._terrainRenderKey=null;
+        if(highDetailTileCount<=0){
+          showHighDetailStatus("高精細標高データを取得できませんでした。通常の景色を維持します。","error",8000);
+        }
         if(typeof update==="function") update();
       }
     });
@@ -13932,7 +13979,7 @@ function highDetailEnsureField(lat,lon){
   if(highDetailTargetIsReady()){
     const target=terrainDistanceAndBearing(lat,lon,highDetailTarget.lat,highDetailTarget.lon);
     const fov=state&&Number.isFinite(state.fovH)?state.fovH:20;
-    const front=clamp(+highDetailTarget.frontKm||1,.05,10),back=clamp(+highDetailTarget.backKm||1,.05,10);
+    const front=clamp(+highDetailTarget.frontKm||1,.05,20),back=clamp(+highDetailTarget.backKm||1,.05,20);
     const nearKm=Math.max(.01,target.distanceKm-front),farKm=target.distanceKm+back;
     const halfAngle=clamp(fov/2+1,1,35);
     Object.assign(highDetailTarget,{distanceKm:target.distanceKm,bearing:target.bearing,nearKm,farKm,halfAngleDeg:halfAngle});
@@ -13955,7 +14002,13 @@ function highDetailEnsureField(lat,lon){
   const requests=[];
   const center=terrainTilePoint(highDetailTargetIsReady()?highDetailTarget.lat:lat,highDetailTargetIsReady()?highDetailTarget.lon:lon,15);
   for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) requests.push({x,y,d:(x-center.x)**2+(y-center.y)**2});
-  requests.sort((p,q)=>p.d-q.d).slice(0,96).forEach(p=>highDetailRequestTile(p.x,p.y));
+  requests.sort((p,q)=>p.d-q.d);
+  highDetailRequiredTileCount=requests.length;
+  const queued=requests.slice(0,96);
+  highDetailQueuedTileCount=queued.length;
+  queued.forEach(p=>highDetailRequestTile(p.x,p.y));
+  const omitted=Math.max(0,highDetailRequiredTileCount-highDetailQueuedTileCount);
+  showHighDetailStatus(`高精細データを準備中… ${highDetailQueuedTileCount}枚${omitted?`（範囲が広いため${omitted}枚分は通常精度で補完）`:""}`,"info",0);
 }
 /* 高精細をやめるときに、取った5mメッシュを全部捨てる。
    一時的に綺麗に見るための機能なので、降りたあともタイルを持ち続ける理由がない。
@@ -13967,8 +14020,11 @@ function highDetailReleaseField(){
   for(const key of highDetailOwnedTileKeys) localDetailDemTileCache.delete(key);
   highDetailOwnedTileKeys.clear();
   highDetailReadyKey="";
+  highDetailPending=0;
   highDetailTileCount=0;
   highDetailUsedCells=0;
+  highDetailRequiredTileCount=0;
+  highDetailQueuedTileCount=0;
 }
 /* 双一次補間した5mメッシュの標高。無ければ NaN。 */
 function highDetailElevationAt(lat,lon){
@@ -17148,17 +17204,31 @@ function drawPhoto(ctx,s){
       const step=terrainAzimuthStep;
       const terrainCanvas=drawPhoto._terrainLayerCanvas||(drawPhoto._terrainLayerCanvas=document.createElement("canvas"));
       let terrainCanvasResized=false;
-      if(terrainCanvas.width!==W||terrainCanvas.height!==H){terrainCanvas.width=W;terrainCanvas.height=H;terrainCanvasResized=true;}
+      if(terrainCanvas.width!==W||terrainCanvas.height!==H){
+        terrainCanvasResized=true;
+        // 高精細中は、完成済みの通常地形を消さずに残す。新しい寸法への変更は
+        // 裏側で高精細版が最後まで完成してから行う。
+        if(!highDetailOn){terrainCanvas.width=W;terrainCanvas.height=H;}
+      }
       let tctx=terrainCanvas.getContext("2d");
       const dayTerrainCanvas=drawPhoto._dayTerrainLayerCanvas||(drawPhoto._dayTerrainLayerCanvas=document.createElement("canvas"));
       let dayTerrainCanvasResized=false;
-      if(dayTerrainCanvas.width!==W||dayTerrainCanvas.height!==H){dayTerrainCanvas.width=W;dayTerrainCanvas.height=H;dayTerrainCanvasResized=true;}
+      if(dayTerrainCanvas.width!==W||dayTerrainCanvas.height!==H){
+        dayTerrainCanvasResized=true;
+        if(!highDetailOn){dayTerrainCanvas.width=W;dayTerrainCanvas.height=H;}
+      }
       // 地形色とは別に「実際に水として描いた画素」だけを保持する反射マスク。
       // 水は白で追加し、後から重なる陸地はdestination-outで削る。
       const waterSurfaceMaskCanvas=drawPhoto._waterSurfaceMaskCanvas||(drawPhoto._waterSurfaceMaskCanvas=document.createElement("canvas"));
       let waterMaskResized=false;
-      if(waterSurfaceMaskCanvas.width!==W||waterSurfaceMaskCanvas.height!==H){waterSurfaceMaskCanvas.width=W;waterSurfaceMaskCanvas.height=H;waterMaskResized=true;}
+      if(waterSurfaceMaskCanvas.width!==W||waterSurfaceMaskCanvas.height!==H){
+        waterMaskResized=true;
+        if(!highDetailOn){waterSurfaceMaskCanvas.width=W;waterSurfaceMaskCanvas.height=H;}
+      }
       const realWaterMaskContext=waterSurfaceMaskCanvas.getContext("2d");
+      // 高精細描画時だけ、一時マスクへ差し替える。通常の水域マスクは完成まで保持する。
+      let renderWaterMaskCanvas=waterSurfaceMaskCanvas;
+      let renderWaterMaskContext=realWaterMaskContext;
       // 昼用地形では夜用で完成した同一形状の水域マスクを再利用する。
       // 地形描画コードの呼び出し順を変えず、昼側の重複したPath操作だけを受け流す軽量コンテキスト。
       const noOpMask=()=>{};
@@ -17169,7 +17239,7 @@ function drawPhoto(ctx,s){
         drawImage:noOpMask,setTransform:noOpMask,transform:noOpMask,translate:noOpMask,rotate:noOpMask,scale:noOpMask,
         globalCompositeOperation:"source-over",fillStyle:"#fff",strokeStyle:"#fff",lineWidth:1
       };
-      let wmctx=realWaterMaskContext;
+      let wmctx=renderWaterMaskContext;
       const atmosphere=clamp(s.twilight*.65+s.moonContribution*.5+s.lp.base*.2,0,1);
       let terrainDayFactor=dayFactor;
       let terrainAtmosphere=atmosphere;
@@ -17981,10 +18051,10 @@ function drawPhoto(ctx,s){
           const mountainCtx=mountainReflectionCanvas.getContext("2d");mountainCtx.clearRect(0,0,W,H);
           mountainCtx.save();mountainCtx.translate(0,mirrorHorizonY*2);mountainCtx.scale(1,-1);
           mountainCtx.globalAlpha=terrainDisplayAlpha*.96;
-          mountainCtx.drawImage(terrainCanvas,0,0);
+          mountainCtx.drawImage(terrainCanvas,0,0,W,H);
           if(dayFactor>0){
             mountainCtx.globalAlpha=terrainDisplayAlpha*.96*dayFactor;
-            mountainCtx.drawImage(dayTerrainCanvas,0,0);
+            mountainCtx.drawImage(dayTerrainCanvas,0,0,W,H);
           }
           mountainCtx.restore();
           // 完全な夜で約78%暗くし、薄明〜昼へ向かうほど補正を連続的に弱める。
@@ -18016,7 +18086,7 @@ function drawPhoto(ctx,s){
         ctx.restore();
         // 最終段階で、実際に水色として残った画素だけを通す。方位マスクの外形ではなく
         // 地形描画と共通の水域マスクなので、入り江・岸・手前の陸地へ反射が漏れない。
-        ctx.save();ctx.globalCompositeOperation="destination-in";ctx.drawImage(waterSurfaceMaskCanvas,0,0);ctx.restore();
+        ctx.save();ctx.globalCompositeOperation="destination-in";ctx.drawImage(waterSurfaceMaskCanvas,0,0,W,H);ctx.restore();
         // 水面反射だけへ薄い寒色補正を重ねる。source-atopにより既存リフレのある画素だけが対象となり、
         // 水面そのものや通常の空・山の色は変えない。
         ctx.save();ctx.globalCompositeOperation="source-atop";ctx.fillStyle="rgba(35,78,155,.12)";ctx.fillRect(0,0,W,H);ctx.restore();
@@ -19435,7 +19505,7 @@ function drawPhoto(ctx,s){
         gradient.addColorStop(1,`rgb(${nearRGB.join(",")})`);
         gctx.fillStyle=gradient;gctx.fillRect(0,topY,W,H-topY);
         gctx.globalCompositeOperation="destination-in";
-        gctx.drawImage(waterSurfaceMaskCanvas,0,0);
+        gctx.drawImage(renderWaterMaskCanvas,0,0,W,H);
         gctx.globalCompositeOperation="source-over";
         tctx.drawImage(gradeCanvas,0,0);
       }
@@ -21533,7 +21603,7 @@ function drawPhoto(ctx,s){
       function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
         tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
         // commands（夜）だけ実マスクと昼用描画命令を構築し、replay（昼）は完成済み結果を参照する。
-        wmctx=projectionPass==="replay"?sharedWaterMaskNoopContext:realWaterMaskContext;
+        wmctx=projectionPass==="replay"?sharedWaterMaskNoopContext:renderWaterMaskContext;
         if(projectionPass!=="replay") wmctx.clearRect(0,0,W,H);
         terrainDayFactor=targetDayFactor;terrainAtmosphere=targetAtmosphere;
         sharedTerrainProjectionPass=projectionPass;
@@ -21558,23 +21628,95 @@ function drawPhoto(ctx,s){
         unifyWaterSurfaceGradient();
         return variantMeshDrawn;
       }
+      function highDetailCanvasHasTerrain(sourceCanvas){
+        // 大きなCanvas全体をgetImageDataするとスマホのメモリを圧迫するため、24×16へ縮小して
+        // 地形画素が本当に完成したかだけを確認する。
+        const probe=drawPhoto._highDetailTerrainProbe||(drawPhoto._highDetailTerrainProbe=document.createElement("canvas"));
+        if(probe.width!==24||probe.height!==16){probe.width=24;probe.height=16;}
+        const pctx=probe.getContext("2d",{willReadFrequently:true});
+        pctx.clearRect(0,0,24,16);pctx.drawImage(sourceCanvas,0,0,24,16);
+        let pixels;
+        try{pixels=pctx.getImageData(0,0,24,16).data;}
+        catch(error){return null;} // 外部テクスチャで読取不可でも、描画完了自体は失敗扱いにしない
+        let visible=0;
+        for(let i=3;i<pixels.length;i+=4) if(pixels[i]>=24) visible++;
+        return visible>=3;
+      }
       if(terrainNeedsRender){
         // 地形形状が変わった時だけ、完全な夜と完全な昼の2枚を生成する。
         // 時刻再生中はこの高密度メッシュを作り直さず、下で2枚を合成するだけにする。
-        sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
-        meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
-        renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
-        wmctx=realWaterMaskContext;
-        sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
-        drawPhoto._terrainRenderKey=terrainRenderKey;
-        drawPhoto._terrainMeshDrawn=meshDrawn;
+        if(highDetailOn){
+          // v749: 完成済みの通常地形へ直接描かない。夜・昼・水域マスクを別Canvasで完成させ、
+          // 3枚とも正常と確認できた時だけ本番レイヤーへ交換する。
+          const candidateTerrain=drawPhoto._highDetailCandidateTerrain||(drawPhoto._highDetailCandidateTerrain=document.createElement("canvas"));
+          const candidateDayTerrain=drawPhoto._highDetailCandidateDayTerrain||(drawPhoto._highDetailCandidateDayTerrain=document.createElement("canvas"));
+          const candidateWaterMask=drawPhoto._highDetailCandidateWaterMask||(drawPhoto._highDetailCandidateWaterMask=document.createElement("canvas"));
+          if(candidateTerrain.width!==W||candidateTerrain.height!==H){candidateTerrain.width=W;candidateTerrain.height=H;}
+          if(candidateDayTerrain.width!==W||candidateDayTerrain.height!==H){candidateDayTerrain.width=W;candidateDayTerrain.height=H;}
+          if(candidateWaterMask.width!==W||candidateWaterMask.height!==H){candidateWaterMask.width=W;candidateWaterMask.height=H;}
+          renderWaterMaskCanvas=candidateWaterMask;
+          renderWaterMaskContext=candidateWaterMask.getContext("2d");
+          let candidateMeshDrawn=false,commitSucceeded=false,failureReason="";
+          try{
+            if(highDetailPending<=0&&highDetailQueuedTileCount>0&&highDetailTileCount<=0){
+              throw new Error("高精細標高タイルを取得できませんでした");
+            }
+            sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
+            candidateMeshDrawn=renderTerrainVariant(candidateTerrain,0,clamp(s.lp.base*.2,0,1),"commands");
+            renderTerrainVariant(candidateDayTerrain,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+            if(highDetailCanvasHasTerrain(candidateTerrain)===false||highDetailCanvasHasTerrain(candidateDayTerrain)===false){
+              throw new Error("高精細地形の描画結果が空になりました");
+            }
+            terrainCanvas.width=W;terrainCanvas.height=H;
+            terrainCanvas.getContext("2d").drawImage(candidateTerrain,0,0);
+            dayTerrainCanvas.width=W;dayTerrainCanvas.height=H;
+            dayTerrainCanvas.getContext("2d").drawImage(candidateDayTerrain,0,0);
+            waterSurfaceMaskCanvas.width=W;waterSurfaceMaskCanvas.height=H;
+            realWaterMaskContext.drawImage(candidateWaterMask,0,0);
+            meshDrawn=candidateMeshDrawn;
+            drawPhoto._terrainRenderKey=terrainRenderKey;
+            drawPhoto._terrainMeshDrawn=meshDrawn;
+            commitSucceeded=true;
+            const omitted=Math.max(0,highDetailRequiredTileCount-highDetailQueuedTileCount);
+            const tileText=highDetailPending>0
+              ?`標高タイル取得中 ${Math.max(0,highDetailQueuedTileCount-highDetailPending)}/${highDetailQueuedTileCount}`
+              :`標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}`;
+            showHighDetailStatus(`高精細表示：${highDetailAppliedRangeText()}・${tileText}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",highDetailPending>0?0:6200);
+          }catch(error){
+            failureReason=String(error&&error.message||"端末の描画処理を完了できませんでした");
+            // 本番レイヤーには一切触れていないため、直前の通常景色がそのまま残る。
+            drawPhoto._terrainRenderKey=terrainRenderKey;
+            showHighDetailStatus(`高精細描画を完了できませんでした（${failureReason}）。通常の景色に戻します。`,"error",9000);
+            if(el.highDetailSettingsSummary){
+              el.highDetailSettingsSummary.textContent=`前回の高精細描画：失敗（${failureReason}）。通常の景色は保持しました。`;
+            }
+            if(!highDetailFallbackPending){
+              highDetailFallbackPending=true;
+              setTimeout(()=>{if(highDetailOn)setHighDetail(false);highDetailFallbackPending=false;},0);
+            }
+          }finally{
+            wmctx=realWaterMaskContext;
+            renderWaterMaskCanvas=waterSurfaceMaskCanvas;
+            renderWaterMaskContext=realWaterMaskContext;
+            sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
+          }
+          if(!commitSucceeded){meshDrawn=drawPhoto._terrainMeshDrawn||false;}
+        }else{
+          sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
+          meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
+          renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+          wmctx=realWaterMaskContext;
+          sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
+          drawPhoto._terrainRenderKey=terrainRenderKey;
+          drawPhoto._terrainMeshDrawn=meshDrawn;
+        }
       }
       // 後続の境界抽出は夜・昼で同じアルファ形状を使うため、夜レイヤーを参照する。
       tctx=terrainCanvas.getContext("2d");terrainDayFactor=dayFactor;terrainAtmosphere=atmosphere;
       seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
       const terrainDisplayAlpha=showBelowHorizon?belowHorizonAlpha:1;
-      ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0);
-      if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0);}
+      ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0,W,H);
+      if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0,W,H);}
       ctx.restore();
       /* 【v734】方位操作中に再投影した水面が一時的に陸へ覆われても消えないよう、
          通常表示で完成した「実際の水面画素だけ」を別Canvasへ保持する。
@@ -21593,10 +21735,10 @@ function drawPhoto(ctx,s){
         const holdCtx=aimWaterHoldCanvas.getContext("2d");
         holdCtx.clearRect(0,0,W,H);
         holdCtx.globalAlpha=terrainDisplayAlpha;holdCtx.globalCompositeOperation="source-over";
-        holdCtx.drawImage(terrainCanvas,0,0);
-        if(dayFactor>0){holdCtx.globalAlpha=terrainDisplayAlpha*dayFactor;holdCtx.drawImage(dayTerrainCanvas,0,0);}
+        holdCtx.drawImage(terrainCanvas,0,0,W,H);
+        if(dayFactor>0){holdCtx.globalAlpha=terrainDisplayAlpha*dayFactor;holdCtx.drawImage(dayTerrainCanvas,0,0,W,H);}
         holdCtx.globalAlpha=1;holdCtx.globalCompositeOperation="destination-in";
-        holdCtx.drawImage(waterSurfaceMaskCanvas,0,0);
+        holdCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H);
         holdCtx.globalCompositeOperation="source-over";
         drawPhoto._aimWaterHoldState={az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,fovV:s.fovV,terrainKey:realTerrainState.key};
       }else{
