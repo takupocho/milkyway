@@ -1652,8 +1652,19 @@
     border:1px solid rgba(154,196,232,.55);background:rgba(12,20,38,.66);
     color:#cfe2ff;font:700 11px/1.25 'IBM Plex Mono',monospace;letter-spacing:.02em;
     text-shadow:0 1px 4px rgba(0,0,0,.9);white-space:nowrap;
+    pointer-events:auto;cursor:pointer;user-select:none;-webkit-user-select:none;touch-action:none;
   }
+  .drone-badge.auto-moving{border-color:var(--core-amber);color:#ffe0aa;}
   .drone-badge[hidden]{display:none;}
+  .drone-altitude-speed-panel{
+    width:min(270px,82%);padding:7px 10px 8px;border-radius:10px;
+    border:1px solid rgba(154,196,232,.55);background:rgba(8,15,31,.88);
+    color:#dceaff;pointer-events:auto;box-shadow:0 5px 18px rgba(0,0,0,.45);
+  }
+  .drone-altitude-speed-panel[hidden]{display:none;}
+  .drone-altitude-speed-title{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;font:700 10px/1.2 'Inter',sans-serif;}
+  .drone-altitude-speed-panel input{display:block;width:100%;margin:0;accent-color:var(--core-amber);}
+  .drone-altitude-speed-scale{display:flex;justify-content:space-between;margin-top:3px;color:rgba(210,225,250,.72);font:600 8px/1 'Inter',sans-serif;}
   .sim-address-label{
     padding:4px 10px;border-radius:9px;pointer-events:none;
     border:1px solid rgba(196,206,232,.4);background:rgba(12,16,30,.6);
@@ -4420,7 +4431,12 @@
               </div>
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div class="sim-top-stack" id="simTopStack">
-                <div id="droneBadge" class="drone-badge" hidden></div>
+                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと自動下降、長押しで上昇下降速度を調整"></div>
+                <div id="droneAltitudeSpeedPanel" class="drone-altitude-speed-panel" hidden>
+                  <div class="drone-altitude-speed-title"><span>上昇・下降速度</span><span id="droneAltitudeSpeedVal">下降 8m/秒</span></div>
+                  <input id="droneAltitudeSpeedSlider" type="range" min="-30" max="30" step="1" value="-8" aria-label="ドローンの上昇下降速度">
+                  <div class="drone-altitude-speed-scale"><span>下降 30</span><span>停止</span><span>上昇 30m/秒</span></div>
+                </div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
                 <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
               </div>
@@ -4834,7 +4850,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="728-skip-unchanged-exif-build";
+const APP_VERSION="733-water-cache-fallback";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5962,7 +5978,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -6412,6 +6428,13 @@ el.bestTimeBar.addEventListener("click",(e)=>{
   jumpToBestTimeStart();
 });
 
+let aimControlDragging=false;
+[el.facingAz,el.facingAlt].forEach(inp=>{
+  inp.addEventListener("pointerdown",()=>{aimControlDragging=true;});
+  inp.addEventListener("pointerup",()=>{aimControlDragging=false;});
+  inp.addEventListener("pointercancel",()=>{aimControlDragging=false;});
+  inp.addEventListener("change",()=>{aimControlDragging=false;});
+});
 [el.focalLength,el.facingAz,el.facingAlt]
   .forEach(inp=>inp.addEventListener("input",scheduleCameraViewUpdate));
 /* ツマを動かしたら、位置をmmへ直して隠し入力へ入れ、
@@ -7021,7 +7044,10 @@ function startDroneDescent(){
 function toggleControllerVisible(){
   droneModeOn=!droneModeOn;
   if(droneModeOn) stopDroneDescent();
-  else if(cameraRiseM>0) startDroneDescent();   // しまうときは地上へ降ろす
+  else{
+    if(typeof stopDroneAutoVertical==="function") stopDroneAutoVertical(false);
+    if(cameraRiseM>0) startDroneDescent();   // しまうときは地上へ降ろす
+  }
   syncDroneModeButton();
   update();
   refreshDroneMapSize();
@@ -8464,6 +8490,59 @@ function syncTripodHeightControl(){
     : base;
   syncDroneBadge();
 }
+/* 【v730】高度表示の短押し／長押しから使う自動上昇・下降。 */
+let droneAutoVerticalRaf=0,droneAutoVerticalSpeedMps=-8,droneAutoVerticalLastTime=0,droneAutoVerticalLastDraw=0;
+function droneAutoVerticalActive(){ return !!droneAutoVerticalRaf; }
+function syncDroneAltitudeSpeedLabel(){
+  if(!el.droneAltitudeSpeedVal) return;
+  const speed=Math.round(droneAutoVerticalSpeedMps);
+  el.droneAltitudeSpeedVal.textContent=speed>0?`上昇 ${speed}m/秒`:speed<0?`下降 ${Math.abs(speed)}m/秒`:"停止";
+}
+function stopDroneAutoVertical(syncAll=true){
+  const wasActive=!!droneAutoVerticalRaf;
+  if(droneAutoVerticalRaf) cancelAnimationFrame(droneAutoVerticalRaf);
+  droneAutoVerticalRaf=0;droneAutoVerticalLastTime=0;droneAutoVerticalLastDraw=0;
+  if(el.droneBadge) el.droneBadge.classList.remove("auto-moving");
+  syncDroneBadge();
+  /* 【v731】自動移動中は写真だけを更新し、停止した瞬間に全UIを1回同期する。 */
+  if(syncAll&&wasActive) update();
+}
+function startDroneAutoVertical(speedMps){
+  stopDroneAutoVertical(false);
+  droneAutoVerticalSpeedMps=clamp(Math.round(speedMps),-30,30);
+  if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.value=droneAutoVerticalSpeedMps;
+  syncDroneAltitudeSpeedLabel();
+  if(!droneAutoVerticalSpeedMps) return;
+  stopDroneDescent();
+  droneAutoVerticalLastTime=performance.now();droneAutoVerticalLastDraw=0;
+  const tick=now=>{
+    const dt=Math.min(.2,Math.max(0,(now-droneAutoVerticalLastTime)/1000));
+    droneAutoVerticalLastTime=now;
+    const next=clamp(cameraRiseM+droneAutoVerticalSpeedMps*dt,0,CAMERA_RISE_MAX_M);
+    if(next!==cameraRiseM){
+      cameraRiseM=next;
+      const ground=groundElevationM();
+      droneHoldElevation=(cameraRiseM>0&&ground!==null)?ground+cameraRiseM:null;
+      /* 自動飛行は約30fpsで描画する。高度計算だけで60fps描き直す必要はない。 */
+      if(!droneAutoVerticalLastDraw||now-droneAutoVerticalLastDraw>=32){
+        droneAutoVerticalLastDraw=now;
+        syncTripodHeightControl();drawPhoto._terrainRenderKey=null;
+        /* 高度以外は変化しないため、日時・天体・タイムラインの再計算を省く。 */
+        drawPhoto(photoCtx,state);
+      }
+    }
+    const reachedLimit=(droneAutoVerticalSpeedMps<0&&cameraRiseM<=0)||(droneAutoVerticalSpeedMps>0&&cameraRiseM>=CAMERA_RISE_MAX_M);
+    if(reachedLimit){
+      // 30fpsの描画間隔の途中で上限・地上へ着いても、最終位置だけは必ず反映する。
+      syncTripodHeightControl();drawPhoto._terrainRenderKey=null;update();
+      stopDroneAutoVertical(false);return;
+    }
+    droneAutoVerticalRaf=requestAnimationFrame(tick);
+  };
+  if(el.droneBadge) el.droneBadge.classList.add("auto-moving");
+  droneAutoVerticalRaf=requestAnimationFrame(tick);
+  syncDroneBadge();
+}
 /* 上昇中だけ高度を出す。DOMの重ね表示なので保存写真には写らない。 */
 function syncDroneBadge(){
   if(!el.droneBadge) return;
@@ -8471,12 +8550,47 @@ function syncDroneBadge(){
   el.droneBadge.hidden=!flying;
   if(flying){
     const ground=groundElevationM();
-    el.droneBadge.textContent=ground!==null
+    const auto=droneAutoVerticalActive()?` ${droneAutoVerticalSpeedMps>0?"▲":"▼"}${Math.abs(droneAutoVerticalSpeedMps)}m/秒`:"";
+    el.droneBadge.textContent=(ground!==null
       ? `ドローン 上空 ${Math.round(cameraRiseM)}m ／ 海抜 ${Math.round(ground+cameraRiseM)}m`
-      : `ドローン 上空 ${Math.round(cameraRiseM)}m`;
+      : `ドローン 上空 ${Math.round(cameraRiseM)}m`)+auto;
   }
   syncSimTopStack();
 }
+if(el.droneBadge){
+  let altitudeBadgePressTimer=0,altitudeBadgeLongPressed=false,altitudeBadgePointer=null;
+  const endAltitudeBadgePress=event=>{
+    if(altitudeBadgePointer===null||(event&&event.pointerId!==altitudeBadgePointer)) return;
+    clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;altitudeBadgePointer=null;
+    if(!altitudeBadgeLongPressed){
+      if(droneAutoVerticalActive()) stopDroneAutoVertical();
+      else startDroneAutoVertical(-Math.max(1,Math.abs(droneAutoVerticalSpeedMps)||8));
+    }
+  };
+  el.droneBadge.addEventListener("pointerdown",event=>{
+    if(arActive) return;
+    altitudeBadgePointer=event.pointerId;altitudeBadgeLongPressed=false;
+    altitudeBadgePressTimer=setTimeout(()=>{
+      altitudeBadgePressTimer=0;altitudeBadgeLongPressed=true;
+      el.droneAltitudeSpeedPanel.hidden=!el.droneAltitudeSpeedPanel.hidden;
+      syncDroneAltitudeSpeedLabel();syncSimTopStack();
+    },550);
+    event.preventDefault();event.stopPropagation();
+  });
+  el.droneBadge.addEventListener("pointerup",endAltitudeBadgePress);
+  el.droneBadge.addEventListener("pointercancel",event=>{clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;altitudeBadgePointer=null;});
+  el.droneBadge.addEventListener("contextmenu",event=>event.preventDefault());
+  el.droneBadge.addEventListener("keydown",event=>{
+    if(event.key!=="Enter"&&event.key!==" ") return;
+    event.preventDefault();
+    if(droneAutoVerticalActive()) stopDroneAutoVertical();
+    else startDroneAutoVertical(-Math.max(1,Math.abs(droneAutoVerticalSpeedMps)||8));
+  });
+}
+if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.addEventListener("input",()=>{
+  const speed=clamp(Math.round(+el.droneAltitudeSpeedSlider.value||0),-30,30);
+  if(speed) startDroneAutoVertical(speed);else{droneAutoVerticalSpeedMps=0;stopDroneAutoVertical();syncDroneAltitudeSpeedLabel();}
+});
 /* 上部の並びの高さを測って、時計をその下へ逃がす。
    高度表示・住所は出たり消えたりするので、固定値ではなく実際の高さで決める。 */
 function syncSimTopStack(){
@@ -10308,6 +10422,9 @@ function setMobileSettingsOpen(open){
   document.body.classList.toggle("mobile-settings-open",mobileSettingsOpen);
   el.mobileSettingsBtn.classList.toggle("active",mobileSettingsOpen);
   el.mobileSettingsBtn.setAttribute("aria-label",mobileSettingsOpen?"設定を閉じる":"設定を開く");
+  /* 【v729】スマホで設定を閉じている間は非表示の天球ダイヤルを描かない。
+     設定を開いた瞬間だけ、現在の状態で最新表示へ追いつかせる。 */
+  if(mobileSettingsOpen&&state) drawDial(dialCtx,state);
   window.scrollTo(0,0);
 }
 el.mobileSettingsBtn.addEventListener("click",()=>setMobileSettingsOpen(!mobileSettingsOpen));
@@ -12648,6 +12765,9 @@ function computeState(){
    6. 星空ダイヤル (アストロラーベ) 描画
    ========================================================= */
 function drawDial(ctx,s){
+  /* 【v729】900px以下では設定パネルごとdisplay:noneになるため、閉じている間の
+     ダイヤル描画は画面に一切現れない。特に時間再生中の毎フレーム描画を省く。 */
+  if(window.matchMedia("(max-width: 900px)").matches&&!document.body.classList.contains("mobile-settings-open")) return;
   const W=ctx.canvas.width, H=ctx.canvas.height;
   ctx.clearRect(0,0,W,H);
   const cx=W/2, cy=H/2, R=W*0.42;
@@ -13868,6 +13988,9 @@ const forcedTerrainRefreshKeys=new Set();
 // 超えやすいため、構造化データをそのまま保存できるIndexedDBを使用する。
 const EXTERNAL_GEO_CACHE_DB="milkywayExternalGeoCacheV1";
 const EXTERNAL_GEO_CACHE_STORE="entries";
+/* 【v733】版を替えたプレビューでIndexedDBの保存領域が分かれた場合に備え、
+   最後に取得成功した水域1地域だけは既存の共通保存経路にも二重保存する。 */
+const LAST_WATER_CACHE_FALLBACK_KEY="mwsim.lastWaterCache.v1";
 let externalGeoCacheDbPromise=null;
 function openExternalGeoCacheDb(){
   if(externalGeoCacheDbPromise) return externalGeoCacheDbPromise;
@@ -13936,10 +14059,20 @@ async function pruneExternalGeoCache(){
   }catch(error){ return 0; }
 }
 async function externalGeoCacheGet(id){
+  let indexedData=null;
   try{
     const db=await openExternalGeoCacheDb();
-    return await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>{if(req.result)touchCacheEntry(id);resolve(req.result?.data??null);};req.onerror=()=>reject(req.error);});
-  }catch(error){return null;}
+    indexedData=await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>{if(req.result)touchCacheEntry(id);resolve(req.result?.data??null);};req.onerror=()=>reject(req.error);});
+  }catch(error){}
+  if(indexedData!==null) return indexedData;
+  if(cacheKindOf(id)==="water"){
+    try{
+      const saved=await persistentGet(LAST_WATER_CACHE_FALLBACK_KEY);
+      const record=saved?JSON.parse(saved):null;
+      if(record&&record.id===id&&Array.isArray(record.data)) return record.data;
+    }catch(error){}
+  }
+  return null;
 }
 async function externalGeoCacheSet(id,data){
   try{
@@ -13948,6 +14081,10 @@ async function externalGeoCacheSet(id,data){
     const db=await openExternalGeoCacheDb();
     await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).put({id,data,savedAt:Date.now()});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
   }catch(error){}
+  if(cacheKindOf(id)==="water"&&Array.isArray(data)){
+    /* localStorageの容量超過はpersistentSet側で吸収し、利用可能ならwindow.storageへ残る。 */
+    await persistentSet(LAST_WATER_CACHE_FALLBACK_KEY,JSON.stringify({id,data,savedAt:Date.now()}));
+  }
 }
 function pointInPolygonLatLon(lat,lon,ring){
   let inside=false;
@@ -21988,6 +22125,10 @@ function updateCameraViewOnly(){
   if(scheduledUpdateRaf) return;
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(!state){update();return;}
+  /* 【v732】写真または方位バーをドラッグしている間は、通常更新が持つ地形・水域の
+     同期経路を通す。軽量更新だけでは池・川が操作中に一時的に消え、停止後に戻る
+     場合があった。地点データの再取得は既存キャッシュで抑えられる。 */
+  if(photoDragging||compassDragActive||aimControlDragging){update();return;}
   const focalLength=+el.focalLength.value;
   const facingAz=+el.facingAz.value,facingAlt=+el.facingAlt.value;
   const sensor=state.sensor;
@@ -22716,7 +22857,7 @@ window.addEventListener("keydown",event=>{
   if(direction.strafe!==undefined) walkStrafe=direction.strafe;
   if(direction.turn!==undefined) walkTurn=direction.turn;
   if(direction.pitch!==undefined) walkPitch=direction.pitch;
-  if(direction.rise!==undefined) walkRise=direction.rise;
+  if(direction.rise!==undefined){walkRise=direction.rise;stopDroneAutoVertical(false);}
   startWalkLoop();
 });
 window.addEventListener("keyup",event=>{
@@ -22808,7 +22949,7 @@ function bindDroneStick(base,onMove,onRelease){
   window.addEventListener("blur",()=>{ if(activePointer!==null) release(null); });
 }
 bindDroneStick(el.droneStickLeft,
-  (x,y)=>{walkTurn=x;walkRise=y;},
+  (x,y)=>{walkTurn=x;walkRise=y;if(y)stopDroneAutoVertical(false);},
   ()=>{walkTurn=0;walkRise=0;});
 bindDroneStick(el.droneStickRight,
   (x,y)=>{walkStrafe=x;walkForward=y;},
