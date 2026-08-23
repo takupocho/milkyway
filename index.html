@@ -4888,7 +4888,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="747-natural-sun-glitter";
+const APP_VERSION="748-playback-celestial-visibility";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -7639,12 +7639,15 @@ function setAzLockTarget(target){
   el.lockAzToMoonBtn.classList.toggle("active",lockAzToMoon);
   el.lockAzToMoonState.textContent = lockAzToMoon ? "ON" : "OFF";
   if(state){
-    let az=null;
+    let az=null,alt=null;
     if(lockAzToGc && state.gcAltAz && state.gcAltAz.alt>-90) az=state.gcAltAz.az;
-    else if(lockAzToSun && state.sunAltAz) az=state.sunAltAz.az;
-    else if(lockAzToMoon && state.moonAltAz) az=state.moonAltAz.az;
+    else if(lockAzToSun && state.sunAltAz){az=state.sunAltAz.az;alt=state.sunAltAz.alt;}
+    else if(lockAzToMoon && state.moonAltAz){az=state.moonAltAz.az;alt=state.moonAltAz.alt;}
     if(az!==null){
       el.facingAz.value=Math.round(norm360(az));
+      /* 太陽・月の「中心固定」は方位だけでなく仰角も追う。
+         望遠再生中に上下へ画面外へ抜ける現象を防ぎ、接地の連続した動きを確認できる。 */
+      if(alt!==null&&Number.isFinite(alt)) el.facingAlt.value=clamp(alt,-30,85);
       update();
     }
   }
@@ -9362,14 +9365,22 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     el.azVal.textContent=`${Math.round(newAz)}°`;
   }else if(lockAzToSun){
     const sunAz=norm360(state.sunAltAz.az);
+    const sunAlt=clamp(state.sunAltAz.alt,-30,85);
     state.facingAz=sunAz;
+    state.facingAlt=sunAlt;
     el.facingAz.value=sunAz;
+    el.facingAlt.value=sunAlt;
     el.azVal.textContent=`${Math.round(sunAz)}°`;
+    el.altValLabel.textContent=`${formatAimDeg(sunAlt)}°`;
   }else if(lockAzToMoon){
     const moonAz=norm360(state.moonAltAz.az);
+    const moonAlt=clamp(state.moonAltAz.alt,-30,85);
     state.facingAz=moonAz;
+    state.facingAlt=moonAlt;
     el.facingAz.value=moonAz;
+    el.facingAlt.value=moonAlt;
     el.azVal.textContent=`${Math.round(moonAz)}°`;
+    el.altValLabel.textContent=`${formatAimDeg(moonAlt)}°`;
   }
 }
 function updatePlaybackClockLabel(minutes){
@@ -16561,12 +16572,15 @@ function drawPhoto(ctx,s){
   }
 
   // 太陽・月の軌跡(表示範囲全体でたどる経路)
-  function drawCelestialPath(path,colorRGB){
+  function drawCelestialPath(path,colorRGB,kind){
     ctx.save();
     // ARモード中は、これまで目立たなかった軌跡線を太く・はっきり見えるようにする
     const pathScale = arActive ? arSizeScale*1.8*3 : 1;
-    ctx.strokeStyle=`rgba(${colorRGB},${arActive ? 0.7 : (0.4*vis+0.08)})`;
-    ctx.lineWidth=1.3*pathScale;
+    /* 明るい夕空では従来の最低不透明度0.08だと線がほぼ見えなかった。
+       太陽は0.30、月は0.23を下限にし、昼・薄明でも確認できる濃さを守る。 */
+    const pathAlpha=arActive?.7:Math.max(kind==="sun"?.30:.23,.4*vis+.08);
+    ctx.strokeStyle=`rgba(${colorRGB},${pathAlpha})`;
+    ctx.lineWidth=(kind==="sun"?1.55:1.4)*pathScale;
     if(!arActive) ctx.setLineDash([5,5]); // ARモード中は点線ではなく通常の実線にする
     ctx.beginPath();
     let drawing=false;
@@ -16575,7 +16589,9 @@ function drawPhoto(ctx,s){
        ともに枠内に入ることがほぼ無く、線が1本も引かれなかった（約282mm以上）。
        画面外の点も繋いでしまって、はみ出しはCanvasの切り抜きに任せる。
        線を切るのは、投影が反対側へ回り込んだときだけにする。 */
-    const jumpLimit=Math.max(W,H)*3;
+    /* 1200mm級では20分間隔の2点が3,000px以上離れる。
+       反対側への投影だけを除外し、画面外どうしを結ぶ線はCanvasの切り抜きへ任せる。 */
+    const jumpLimit=Math.max(W,H)*12;
     let lastX=NaN,lastY=NaN;
     path.forEach(p=>{
       if(p.alt<-3){ drawing=false; return; }
@@ -16627,8 +16643,8 @@ function drawPhoto(ctx,s){
     }
     ctx.restore();
   }
-  if(moonPathVisible) drawCelestialPath(s.moonPath,"205,208,228");
-  if(sunPathVisible) drawCelestialPath(s.sunPath,"242,180,90");
+  if(moonPathVisible) drawCelestialPath(s.moonPath,"205,208,228","moon");
+  if(sunPathVisible) drawCelestialPath(s.sunPath,"242,180,90","sun");
 
   // 月(月相の形を反映)
   if(showBelowHorizon || s.moonAltAz.alt>-1){
@@ -21597,7 +21613,10 @@ function drawPhoto(ctx,s){
       /* 地形を重ねたあとにKMZ建物を描く。建物より手前の地形だけで切り抜くので、
          手前の山には隠れ、奥の山には隠されない。 */
       // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
-      drawWaterReflections();
+      /* 反射演出側で端末依存のCanvasエラーが起きても、太陽・月・軌跡を含む
+         シミュレーション本体の描画は最後まで継続する。 */
+      try{drawWaterReflections();}
+      catch(reflectionError){console.warn("Water reflection drawing was skipped for this frame.",reflectionError);}
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
       drawSeasonalFujiSnow();
       /* KMZ建物は、地形だけでなく水面レイヤーよりも後に描く。
