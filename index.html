@@ -4875,7 +4875,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="741-natural-mountain-colors";
+const APP_VERSION="742-hybrid-smooth-common-skyline";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -15397,6 +15397,17 @@ function groundAltitudeAt(az){
 // 描かれるため、ここで求めた境目より下(地面側)に流れ星がかからないよう、
 // 流れ星の描画側でこの配列を参照してクリップする。
 let terrainSkylineYByX=null;
+function sampleCachedHybridSkylineAltitude(az,facingAz,terrainKey){
+  const cache=drawPhoto._hybridSkylineCache;
+  if(!cache||cache.terrainKey!==terrainKey||Math.abs(angDiff(cache.facingAz,facingAz))>.01||
+     !cache.samples||cache.samples.length<2) return null;
+  const target=facingAz+angDiff(facingAz,az),samples=cache.samples;
+  if(target<samples[0][0]||target>samples[samples.length-1][0]) return null;
+  let lo=0,hi=samples.length-1;
+  while(hi-lo>1){const mid=(lo+hi)>>1;if(samples[mid][0]<=target)lo=mid;else hi=mid;}
+  const a=samples[lo],b=samples[hi],span=b[0]-a[0];
+  return span>0?lerp(a[1],b[1],clamp((target-a[0])/span,0,1)):a[1];
+}
 // 流れ星の水面反射用。drawPhoto()が現在の水域・水平線・山リフレ形状から毎回更新し、
 // 別レイヤーのmeteorCanvasが同じ水面範囲だけをクリップして使う。
 let waterReflectionHorizonYByX=null;
@@ -17002,6 +17013,26 @@ function drawPhoto(ctx,s){
       ].join("|");
       const terrainRenderKey=terrainGeometryKey;
       const terrainNeedsRender=terrainCanvasResized||dayTerrainCanvasResized||waterMaskResized||drawPhoto._terrainRenderKey!==terrainRenderKey;
+      /* v742の共通稜線。地形本体が作った滑らかな最終上端を、輪郭線・反射・遮蔽でも共有する。
+         キャッシュがまだ無い初回や範囲外では、従来の360°プロファイルへ安全に戻る。 */
+      function rawTerrainProfileAltitudeAt(az){
+        const profile=realTerrainState.profile;
+        if(!profile) return 0;
+        const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+        return lerp(profile[i0]||0,profile[i1]||0,t);
+      }
+      function hybridSkylineAltitudeAt(az){
+        const cache=drawPhoto._hybridSkylineCache;
+        if(!cache||cache.key!==terrainGeometryKey||!cache.samples||cache.samples.length<2){
+          return rawTerrainProfileAltitudeAt(az);
+        }
+        const target=s.facingAz+angDiff(s.facingAz,az),samples=cache.samples;
+        if(target<samples[0][0]||target>samples[samples.length-1][0]) return rawTerrainProfileAltitudeAt(az);
+        let lo=0,hi=samples.length-1;
+        while(hi-lo>1){const mid=(lo+hi)>>1;if(samples[mid][0]<=target)lo=mid;else hi=mid;}
+        const a=samples[lo],b=samples[hi],span=b[0]-a[0];
+        return span>0?lerp(a[1],b[1],clamp((target-a[0])/span,0,1)):a[1];
+      }
       const bandStyles={
         immediate:{top:[4,5,7],bottom:[20,22,28],boost:4},
         near:{top:[8,10,15],bottom:[15,18,25],boost:5},
@@ -17244,8 +17275,7 @@ function drawPhoto(ctx,s){
           const reflectedRidgeRuns=[];
           runs.forEach(run=>{
             const reflected=run.map(item=>{
-              const wrapped=((item.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-              const ridgeAlt=Math.max(0,lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t));
+              const ridgeAlt=Math.max(0,hybridSkylineAltitudeAt(item.az));
               const sourcePoint=toXY(item.az,ridgeAlt);
               const point=sourcePoint&&[...sourcePoint].every(Number.isFinite)
                 ?[sourcePoint[0],mirrorHorizonY*2-sourcePoint[1]]:null;
@@ -20688,6 +20718,53 @@ function drawPhoto(ctx,s){
           }
         }
 
+        /* 【v742】現在方式の全距離層から決まった「最終稜線」だけを、v510に近い
+           滑らかな共通境界へ整える。線を上から重ねるのではなく、稜線を作った陸地層と
+           それより奥の累積層の上端を同じ高度へ合わせるため、山本体との隙間は生じない。
+           水・雲・80m以内は変更せず、周辺の実測範囲を越える峰や谷も作らない。 */
+        const finalSkyline=new Float64Array(columns.length);
+        const skylineOwner=new Int32Array(columns.length);skylineOwner.fill(-1);
+        const skylineEligible=new Uint8Array(columns.length);
+        for(let c=0;c<columns.length;c++){
+          const finalAlt=altGrid[c*layerCount+layerCount-1];
+          finalSkyline[c]=finalAlt;
+          let owner=-1;
+          for(let k=0;k<layerCount;k++){
+            if(altGrid[c*layerCount+k]>=finalAlt-1e-7){owner=k;break;}
+          }
+          skylineOwner[c]=owner;
+          if(owner>=0&&layerKm[owner]>=FAR_RIDGE_SMOOTH_MIN_KM&&
+             !waterGrid[c*layerCount+owner]&&!cloudGrid[c*layerCount+owner]) skylineEligible[c]=1;
+        }
+        const finalScratch=new Float64Array(columns.length);
+        const finalMoveLimitDeg=clamp(1.2*Math.max(1,s.fovH)/Math.max(1,W),.0015,.075);
+        for(let pass=0;pass<3;pass++){
+          finalScratch.set(finalSkyline);
+          for(let c=2;c<columns.length-2;c++){
+            if(!skylineEligible[c]||!skylineEligible[c-1]||!skylineEligible[c+1]||
+               !skylineEligible[c-2]||!skylineEligible[c+2]) continue;
+            const v0=finalScratch[c-2],v1=finalScratch[c-1],v2=finalScratch[c],
+                  v3=finalScratch[c+1],v4=finalScratch[c+2];
+            const localMin=Math.min(v0,v1,v2,v3,v4),localMax=Math.max(v0,v1,v2,v3,v4);
+            const target=clamp((v0+2*v1+4*v2+2*v3+v4)/10,localMin,localMax);
+            finalSkyline[c]=v2+clamp(target-v2,-finalMoveLimitDeg,finalMoveLimitDeg);
+          }
+        }
+        for(let c=0;c<columns.length;c++){
+          const owner=skylineOwner[c];
+          if(owner<0||!skylineEligible[c]) continue;
+          const floorAlt=owner>0?altGrid[c*layerCount+owner-1]:bottomAlt;
+          const commonAlt=Math.max(floorAlt,finalSkyline[c]);
+          for(let k=owner;k<layerCount;k++) altGrid[c*layerCount+k]=commonAlt;
+          finalSkyline[c]=commonAlt;
+        }
+        drawPhoto._hybridSkylineCache={
+          key:terrainGeometryKey,
+          terrainKey:realTerrainState.key,
+          facingAz:s.facingAz,
+          samples:columns.map((column,c)=>[column.az,finalSkyline[c]])
+        };
+
         const bottomY=H+4;
         /* 雲海の後処理用。列ごとに
              anyTopY  … 塗ったもの全体の上端（空との境目）
@@ -21340,7 +21417,10 @@ function drawPhoto(ctx,s){
         ctx.save();
         ctx.beginPath();
         let skylineStarted=false;
-        for(let diff=-half;diff<=half;diff+=step){
+        // 軽量化設定の最大10°刻みをそのまま線へ使わず、作成済み共通稜線を約5px間隔でなぞる。
+        // DEMや地形面の再計算は行わないため、増えるのは軽いlineToだけ。
+        const skylineDrawStep=clamp(5*Math.max(1,s.fovH)/Math.max(1,W),.03,1);
+        for(let diff=-half;diff<=half;diff+=skylineDrawStep){
           const az=norm360(s.facingAz+diff);
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
           // 海岸線判定で海側と確定した方位では、元DEMの稜線プロファイルを表示しない。
@@ -21348,7 +21428,7 @@ function drawPhoto(ctx,s){
           const openSea0=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[i0]);
           const openSea1=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[i1]);
           if(openSea0||openSea1){skylineStarted=false;continue;}
-          const altitude=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          const altitude=hybridSkylineAltitudeAt(az);
           const p=toXY(az,altitude);
           if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){skylineStarted=false;continue;}
           if(!skylineStarted){ctx.moveTo(p[0],p[1]);skylineStarted=true;}
@@ -21638,7 +21718,8 @@ function drawPhoto(ctx,s){
     const skylineSamples=[];
     for(let diff=-skyHalf; diff<=skyHalf; diff+=skyStep){
       const az=norm360(s.facingAz+diff);
-      const alt=groundAltitudeAt(az);
+      const hybridAlt=sampleCachedHybridSkylineAltitude(az,s.facingAz,realTerrainState.key);
+      const alt=Number.isFinite(hybridAlt)?hybridAlt:groundAltitudeAt(az);
       const p=toXY(az,alt);
       if(p) skylineSamples.push(p);
     }
