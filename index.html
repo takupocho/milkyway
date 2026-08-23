@@ -4488,7 +4488,7 @@
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
-                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く" aria-pressed="false" aria-label="高精細で描く" title="高精細"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" pathLength="140"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
+                <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く（長押しで対象範囲）" aria-pressed="false" aria-label="高精細で描く。長押しで対象範囲を設定" title="高精細・長押しで範囲設定"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" pathLength="140"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="短押し：取得状況／長押し：外部情報を読み直す" aria-label="短く押すと外部データの取得状況を表示、長押しすると読み直す" title="短押し：取得状況／長押し：読み直し">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   <svg class="reload-hold-ring" viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="19" pathLength="100"/></svg>
@@ -4591,6 +4591,19 @@
                   <div id="externalStatusList" class="external-status-list" aria-live="polite"></div>
                   <p id="externalStatusGuidance" class="external-status-guidance"></p>
                   <div class="plan-modal-actions"><button id="externalStatusOkBtn" type="button" class="primary">閉じる</button></div>
+                </section>
+              </div>
+              <div id="highDetailSettingsOverlay" class="plan-modal-overlay" aria-hidden="true">
+                <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="highDetailSettingsTitle">
+                  <div class="plan-modal-header"><h3 id="highDetailSettingsTitle" class="plan-modal-title">高精細スキャン範囲</h3><button id="highDetailSettingsCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
+                  <p class="plan-modal-help">高精細にしたい山・海岸などの中心地点をGoogleマップから貼り付けてください。観測地点からの距離と現在の画角を使い、必要な横幅は自動計算します。</p>
+                  <textarea id="highDetailCoordinatePaste" class="osm-import-input" inputmode="url" placeholder="例：35.12345, 134.56789&#10;GoogleマップのURL・共有文も貼り付けできます"></textarea>
+                  <div class="grid2" style="margin-top:10px;">
+                    <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="10" step="0.05" value="1"></div>
+                    <div class="field"><label class="top">中心より奥（km）</label><input id="highDetailBackKm" type="number" min="0.05" max="10" step="0.05" value="1"></div>
+                  </div>
+                  <p id="highDetailSettingsSummary" class="plan-modal-help" style="margin-top:10px;">中心地点を入力してください。</p>
+                  <div class="plan-modal-actions"><button id="highDetailSettingsCancelBtn" type="button">キャンセル</button><button id="highDetailSettingsStartBtn" type="button" class="primary">この範囲を高精細スキャン</button></div>
                 </section>
               </div>
               <div id="terrainTopViewOverlay" class="terrain-topview-overlay" aria-hidden="true">
@@ -4875,7 +4888,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="743-daruma-sun-view-detail-scan";
+const APP_VERSION="744-targeted-dem-daruma-sun";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6007,7 +6020,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -8748,6 +8761,8 @@ syncTripodHeightControl();
    1°は2°の2倍以上重いのに見た目の差が小さいので2°を採る。 */
 let highDetailOn=false;
 const HIGH_DETAIL_AZIMUTH_STEP=1, HIGH_DETAIL_LOCAL_MESH_M=1;
+let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+function highDetailTargetIsReady(){return Number.isFinite(highDetailTarget.lat)&&Number.isFinite(highDetailTarget.lon);}
 function normalTerrainAzimuthStepValue(){
   if(highDetailOn) return HIGH_DETAIL_AZIMUTH_STEP;
   return clamp(Math.round(+el.normalTerrainAzimuthStepSlider.value||1),1,10);
@@ -8811,14 +8826,60 @@ function setHighDetail(on){
   update();
   if(on) playHighDetailScan();
 }
-if(el.highDetailBtn) el.highDetailBtn.addEventListener("click",()=>{
-  setHighDetail(!highDetailOn);
-  /* 押したあとは焦点を手放す。残しておくと、このあと矢印キーで
-     前後左右へ動いたときにブラウザが焦点の印を出し、
-     OFFなのに琉珀色のままでONに見えてしまう。
-     スマホでタップしたときの :hover が居座る問題もこれで消える。 */
-  if(el.highDetailBtn.blur) el.highDetailBtn.blur();
+function updateHighDetailSettingsSummary(){
+  const coordinate=extractGoogleMapsCoordinate(el.highDetailCoordinatePaste?.value||"");
+  if(!coordinate){el.highDetailSettingsSummary.textContent="中心地点の緯度・経度を入力してください。";return null;}
+  const observerLat=+el.lat.value,observerLon=+el.lon.value;
+  const target=terrainDistanceAndBearing(observerLat,observerLon,coordinate.lat,coordinate.lon);
+  const front=clamp(+el.highDetailFrontKm.value||1,.05,10),back=clamp(+el.highDetailBackKm.value||1,.05,10);
+  const near=Math.max(.01,target.distanceKm-front),far=target.distanceKm+back;
+  const fov=state&&Number.isFinite(state.fovH)?state.fovH:20;
+  const width=2*far*Math.tan(Math.min(35,fov/2+1)*D2R);
+  el.highDetailSettingsSummary.textContent=`観測地点から中心まで ${target.distanceKm.toFixed(2)}km・方位 ${Math.round(target.bearing)}°。走査距離 ${near.toFixed(2)}〜${far.toFixed(2)}km、奥側の横幅は約${width.toFixed(2)}kmです。`;
+  return {coordinate,target,front,back};
+}
+function setHighDetailSettingsOpen(open){
+  if(!el.highDetailSettingsOverlay) return;
+  el.highDetailSettingsOverlay.classList.toggle("show",!!open);
+  el.highDetailSettingsOverlay.setAttribute("aria-hidden",String(!open));
+  if(open){
+    if(highDetailTargetIsReady()){
+      el.highDetailCoordinatePaste.value=`${highDetailTarget.lat.toFixed(6)}, ${highDetailTarget.lon.toFixed(6)}`;
+      el.highDetailFrontKm.value=highDetailTarget.frontKm;el.highDetailBackKm.value=highDetailTarget.backKm;
+    }
+    updateHighDetailSettingsSummary();
+    setTimeout(()=>el.highDetailCoordinatePaste.focus(),0);
+  }
+}
+el.highDetailCoordinatePaste?.addEventListener("input",updateHighDetailSettingsSummary);
+el.highDetailFrontKm?.addEventListener("input",updateHighDetailSettingsSummary);
+el.highDetailBackKm?.addEventListener("input",updateHighDetailSettingsSummary);
+el.highDetailSettingsCloseBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
+el.highDetailSettingsCancelBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
+el.highDetailSettingsOverlay?.addEventListener("click",e=>{if(e.target===el.highDetailSettingsOverlay)setHighDetailSettingsOpen(false);});
+el.highDetailSettingsStartBtn?.addEventListener("click",()=>{
+  const parsed=updateHighDetailSettingsSummary();if(!parsed) return;
+  highDetailTarget={lat:parsed.coordinate.lat,lon:parsed.coordinate.lon,frontKm:parsed.front,backKm:parsed.back,
+    distanceKm:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+  setHighDetailSettingsOpen(false);
+  if(highDetailOn)setHighDetail(false);
+  setHighDetail(true);
 });
+if(el.highDetailBtn){
+  let holdTimer=0,held=false;
+  const cancelHold=()=>{if(holdTimer){clearTimeout(holdTimer);holdTimer=0;}};
+  el.highDetailBtn.addEventListener("pointerdown",e=>{
+    held=false;cancelHold();
+    holdTimer=setTimeout(()=>{held=true;holdTimer=0;if(navigator.vibrate)navigator.vibrate(25);setHighDetailSettingsOpen(true);},700);
+  });
+  ["pointerup","pointercancel","pointerleave"].forEach(type=>el.highDetailBtn.addEventListener(type,cancelHold));
+  el.highDetailBtn.addEventListener("contextmenu",e=>e.preventDefault());
+  el.highDetailBtn.addEventListener("click",e=>{
+    if(held){held=false;e.preventDefault();return;}
+    setHighDetail(!highDetailOn);
+    if(el.highDetailBtn.blur) el.highDetailBtn.blur();
+  });
+}
 function localDetailMeshStepValue(){
   if(highDetailOn) return HIGH_DETAIL_LOCAL_MESH_M;
   return clamp(Math.round(+el.localDetailMeshStepSlider.value||5),1,5);
@@ -13804,14 +13865,34 @@ function highDetailRequestTile(x,y){
 /* 観測地点の周りを覚える。同じ場所なら何度呼んでも何も起きない。 */
 function highDetailEnsureField(lat,lon){
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
-  const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
+  let minLat,maxLat,minLon,maxLon;
+  if(highDetailTargetIsReady()){
+    const target=terrainDistanceAndBearing(lat,lon,highDetailTarget.lat,highDetailTarget.lon);
+    const fov=state&&Number.isFinite(state.fovH)?state.fovH:20;
+    const front=clamp(+highDetailTarget.frontKm||1,.05,10),back=clamp(+highDetailTarget.backKm||1,.05,10);
+    const nearKm=Math.max(.01,target.distanceKm-front),farKm=target.distanceKm+back;
+    const halfAngle=clamp(fov/2+1,1,35);
+    Object.assign(highDetailTarget,{distanceKm:target.distanceKm,bearing:target.bearing,nearKm,farKm,halfAngleDeg:halfAngle});
+    const corners=[];
+    for(const d of [nearKm,farKm]) for(const side of [-1,1]) corners.push(terrainDestination(lat,lon,target.bearing+side*halfAngle,d));
+    corners.push([highDetailTarget.lat,highDetailTarget.lon]);
+    minLat=Math.min(...corners.map(p=>p[0]));maxLat=Math.max(...corners.map(p=>p[0]));
+    minLon=Math.min(...corners.map(p=>p[1]));maxLon=Math.max(...corners.map(p=>p[1]));
+  }else{
+    const mLon=Math.max(1,111320*Math.cos(lat*D2R));
+    const dLat=HIGH_DETAIL_FIELD_RADIUS_M/111320,dLon=HIGH_DETAIL_FIELD_RADIUS_M/mLon;
+    minLat=lat-dLat;maxLat=lat+dLat;minLon=lon-dLon;maxLon=lon+dLon;
+  }
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)}|${highDetailTargetIsReady()?`${highDetailTarget.lat.toFixed(5)},${highDetailTarget.lon.toFixed(5)},${highDetailTarget.frontKm},${highDetailTarget.backKm}`:"near"}`;
   if(key===highDetailReadyKey) return;
   highDetailReadyKey=key;
-  const mLon=Math.max(1,111320*Math.cos(lat*D2R));
-  const dLat=HIGH_DETAIL_FIELD_RADIUS_M/111320, dLon=HIGH_DETAIL_FIELD_RADIUS_M/mLon;
-  const a=terrainTilePoint(lat-dLat,lon-dLon,15), b=terrainTilePoint(lat+dLat,lon+dLon,15);
+  const a=terrainTilePoint(minLat,minLon,15),b=terrainTilePoint(maxLat,maxLon,15);
   const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),y0=Math.min(a.y,b.y),y1=Math.max(a.y,b.y);
-  for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) highDetailRequestTile(x,y);
+  /* 広角・広範囲指定で無制限にタイルを取らない。中心に近い96枚を優先する。 */
+  const requests=[];
+  const center=terrainTilePoint(highDetailTargetIsReady()?highDetailTarget.lat:lat,highDetailTargetIsReady()?highDetailTarget.lon:lon,15);
+  for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) requests.push({x,y,d:(x-center.x)**2+(y-center.y)**2});
+  requests.sort((p,q)=>p.d-q.d).slice(0,96).forEach(p=>highDetailRequestTile(p.x,p.y));
 }
 /* 高精細をやめるときに、取った5mメッシュを全部捨てる。
    一時的に綺麗に見るための機能なので、降りたあともタイルを持ち続ける理由がない。
@@ -13855,7 +13936,12 @@ function highDetailBaseElevation(azDeg,distanceKm){
   if(!highDetailOn||!Number.isFinite(distanceKm)) return null;
   if(highDetailTileCount<=0) return null;
   const d=distanceKm*1000;
-  if(d<.5||d>HIGH_DETAIL_FIELD_RADIUS_M) return null;
+  if(d<.5) return null;
+  if(highDetailTargetIsReady()){
+    if(!Number.isFinite(highDetailTarget.nearKm)||distanceKm<highDetailTarget.nearKm||distanceKm>highDetailTarget.farKm) return null;
+    const delta=Math.abs(((azDeg-highDetailTarget.bearing+540)%360)-180);
+    if(delta>(highDetailTarget.halfAngleDeg||20)) return null;
+  }else if(d>HIGH_DETAIL_FIELD_RADIUS_M) return null;
   const oLat=+el.lat.value,oLon=+el.lon.value;
   if(!Number.isFinite(oLat)||!Number.isFinite(oLon)) return null;
   const mLon=Math.max(1,111320*Math.cos(oLat*D2R));
@@ -15940,6 +16026,7 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
 let photoClickRegions=[];
 function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
+  let darumaSunActive=false;
   ctx.clearRect(0,0,W,H);
   photoClickRegions.length=0; // 名称クリック検出用の領域をこのフレーム分だけ作り直す
   waterReflectionHorizonYByX=null;
@@ -16683,10 +16770,11 @@ function drawPhoto(ctx,s){
         /* profileが海面より明確に高い方角は、島・岬・山の向こうなので演出しない。 */
         const unobstructed=blockingAlt<=seaHorizonAlt+.12;
         if(seaVotes>=2&&unobstructed&&contactStrength>0){
+          darumaSunActive=true;
           const seaPoint=toXY(s.sunAltAz.az,seaHorizonAlt);
           if(seaPoint&&Number.isFinite(seaPoint[1])){
             const verticalRadius=Math.max(2,Math.hypot(sVAltX,sVAltY));
-            const lowerCenterY=seaPoint[1]-verticalRadius*.43;
+            const lowerCenterY=seaPoint[1]-verticalRadius*.12;
             ctx.save();
             /* 海面より上だけに限定し、水中へ別の太陽が丸ごと出るのを防ぐ。 */
             ctx.beginPath();ctx.rect(-2,-2,W+4,seaPoint[1]+3);ctx.clip();
@@ -16694,8 +16782,8 @@ function drawPhoto(ctx,s){
             lowerGlow.addColorStop(0,`rgba(${sunAtmosphereColor},${(.34*contactStrength).toFixed(3)})`);
             lowerGlow.addColorStop(1,`rgba(${sunAtmosphereColor},0)`);
             ctx.fillStyle=lowerGlow;ctx.fillRect(x-verticalRadius*3,lowerCenterY-verticalRadius*3,verticalRadius*6,verticalRadius*6);
-            /* 縦方向を約62%へ圧縮した下側像。上側の本体と重なることで首を作る。 */
-            ctx.transform(sVAzX,sVAzY,sVAltX*.62,sVAltY*.62,x,lowerCenterY);
+            /* 完全な鏡像ではなく、縦24%の小さな下側像だけを作って首へつなぐ。 */
+            ctx.transform(sVAzX,sVAzY,sVAltX*.24,sVAltY*.24,x,lowerCenterY);
             ctx.beginPath();ctx.arc(0,0,sunAngR,0,Math.PI*2);
             ctx.fillStyle=`rgb(${sunAtmosphereColor})`;
             ctx.globalAlpha=clamp((.58+.30*contactStrength)*sunExtinction,0,1);
@@ -17711,7 +17799,7 @@ function drawPhoto(ctx,s){
           const reflectedSunRGB=atmosphericCelestialRGB(s.sunAltAz.alt,"sun").join(",");
           const daylightSunVisibility=clamp(.86+dayFactor*.12,0,1);
           ctx.save();ctx.globalCompositeOperation="lighter";
-          drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility);
+          if(!darumaSunActive) drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility);
           drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
           drawCelestialLightRoad(s.sunAltAz,1,reflectedSunRGB,"sun",daylightSunVisibility);
           ctx.restore();
@@ -19631,7 +19719,28 @@ function drawPhoto(ctx,s){
            距離目盛りに無い点（富士山の高密度点など）はそのまま。
            ここを慎重にしないと、v550・v565と同じで海が陸になる。 */
         if(highDetailOn&&highDetailTileCount>0){
-          const limitKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
+          /* v744: 指定した遠景区間では、既存の粗い距離目盛りを補間するだけでなく、
+             取得した5m DEMをレイ上で直接追加走査する。最大約180点/列に抑える。 */
+          if(highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.nearKm)&&Number.isFinite(realTerrainState.observerElevation)){
+            const delta=Math.abs(((wrapped-highDetailTarget.bearing+540)%360)-180);
+            if(delta<=(highDetailTarget.halfAngleDeg||20)){
+              const nearKm=highDetailTarget.nearKm,farKm=highDetailTarget.farKm;
+              const spanM=Math.max(1,(farKm-nearKm)*1000);
+              const sampleStepM=clamp(spanM/180,5,50);
+              const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
+              const extra=[];
+              for(let metres=nearKm*1000;metres<=farKm*1000+.01;metres+=sampleStepM){
+                const distanceKm=metres/1000;
+                const elevation=highDetailBaseElevation(wrapped,distanceKm);
+                if(!Number.isFinite(elevation)) continue;
+                const curvatureDrop=metres*metres/(2*6371000*(7/6));
+                extra.push({distanceKm,alt:Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D,
+                  water:false,baseElevation:elevation,highDetailTarget:true});
+              }
+              if(extra.length) walk=(walk||[]).filter(p=>!p||p.distanceKm<nearKm||p.distanceKm>farKm).concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
+            }
+          }
+          const limitKm=highDetailTargetIsReady()?highDetailTarget.farKm:HIGH_DETAIL_FIELD_RADIUS_M/1000;
           let replaced=null;
           for(let i=0;i<walk.length;i++){
             const pt=walk[i];
