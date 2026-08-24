@@ -1600,6 +1600,30 @@
   }
   #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
   #highDetailBtn{position:relative;}
+  /* 超望遠・だるま判定は、通常の高精細スキャンとは独立した遠距離島影の確認機能。 */
+  #darumaTelephotoBtn{position:relative;}
+  #darumaTelephotoBtn.loading{color:var(--core-amber);border-color:var(--core-amber);opacity:1;}
+  #darumaTelephotoBtn.loading svg{animation:darumaTelephotoPulse 1s ease-in-out infinite alternate;}
+  #darumaTelephotoBtn.result-clear{color:#43d88a;border-color:#43d88a;opacity:1;}
+  #darumaTelephotoBtn.result-blocked{color:#ff6576;border-color:#ff6576;opacity:1;}
+  #darumaTelephotoBtn.result-unknown{color:#e8a659;border-color:#e8a659;opacity:1;}
+  @keyframes darumaTelephotoPulse{from{opacity:.45;transform:scale(.92)}to{opacity:1;transform:scale(1.04)}}
+  .daruma-telephoto-banner{
+    pointer-events:auto;cursor:pointer;max-width:min(92%,560px);margin:4px auto 0;padding:7px 11px;
+    border:1px solid rgba(232,166,89,.8);border-radius:12px;background:rgba(7,13,30,.88);
+    color:#f6f0e8;box-shadow:0 5px 18px rgba(0,0,0,.38);font:700 12px/1.45 'Inter',sans-serif;
+    text-align:center;white-space:normal;
+  }
+  .daruma-telephoto-banner.clear{border-color:rgba(67,216,138,.9);color:#dffff0;}
+  .daruma-telephoto-banner.blocked{border-color:rgba(255,101,118,.92);color:#ffe2e6;}
+  .daruma-telephoto-banner.unknown{border-color:rgba(232,166,89,.9);color:#ffedcf;}
+  .daruma-telephoto-result{
+    margin-top:12px;padding:12px;border:1px solid rgba(132,151,196,.38);border-radius:12px;
+    background:rgba(6,11,26,.55);color:#dfe7f5;font:600 13px/1.65 'Inter',sans-serif;white-space:pre-line;
+  }
+  .daruma-telephoto-result.clear{border-color:rgba(67,216,138,.6);}
+  .daruma-telephoto-result.blocked{border-color:rgba(255,101,118,.68);}
+  .daruma-telephoto-result.unknown{border-color:rgba(232,166,89,.62);}
   /* 高精細中心をシミュレーション画面から選ぶ間だけ表示する案内と照準。
      overlay自身は操作を奪わず、写真canvasの既存イベントでタップ位置を受け取る。 */
   .high-detail-photo-pick-overlay{
@@ -4533,6 +4557,7 @@
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
                 <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
                 <div id="highDetailStatusLabel" class="high-detail-status-label" hidden aria-live="polite"></div>
+                <button id="darumaTelephotoBanner" type="button" class="daruma-telephoto-banner" hidden aria-live="polite"></button>
               </div>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
@@ -4567,6 +4592,7 @@
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
+                <button id="darumaTelephotoBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="超望遠で朝陽・夕陽と遠方の島の重なりを判定" aria-pressed="false" aria-label="超望遠・だるま判定を開く" title="超望遠・だるま判定"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 15.5h17M5 18.5c2-1.2 4-1.2 6 0s4 1.2 8 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 2.5v1.2M6.8 4.2l.9.9M17.2 4.2l-.9.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
                 <button id="highDetailBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="一時的に高精細で描く（長押しで対象範囲）" aria-pressed="false" aria-label="高精細で描く。長押しで対象範囲を設定" title="高精細・長押しで範囲設定"><svg class="high-detail-dash-ring" aria-hidden="true"><rect x="0" y="0" width="100%" height="100%" pathLength="140"/></svg><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 12h2.2M11.4 12h2.2M15.8 12H18M12 7.5v2.2M12 14.3v2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
                 <button id="externalDataReloadBtn" class="external-data-reload-btn icon-help-target sim-right-help" type="button" data-help="短押し：取得状況／長押し：外部情報を読み直す" aria-label="短く押すと外部データの取得状況を表示、長押しすると読み直す" title="短押し：取得状況／長押し：読み直し">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19.2 8.2A8 8 0 1 0 20 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.3 3.8v4.8h-4.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -4687,6 +4713,23 @@
                   <p class="plan-modal-help" style="margin-top:6px;">川・池・湖は現在表示中の保存済み水域だけを高精細化します。水域サーバーへの再取得は行いません。</p>
                   <p id="highDetailDiagnostic" class="high-detail-diagnostic" hidden aria-live="assertive"></p>
                   <div class="plan-modal-actions"><button id="highDetailSettingsCancelBtn" type="button">キャンセル</button><button id="highDetailSettingsStartBtn" type="button" class="primary">この範囲を高精細スキャン</button></div>
+                </section>
+              </div>
+              <div id="darumaTelephotoOverlay" class="plan-modal-overlay" aria-hidden="true">
+                <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="darumaTelephotoTitle">
+                  <div class="plan-modal-header"><h3 id="darumaTelephotoTitle" class="plan-modal-title">超望遠・だるま判定</h3><button id="darumaTelephotoCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
+                  <p class="plan-modal-help">選択日の朝陽または夕陽が、実際の海面へ接する時刻と方位を計算し、太陽の円盤付近だけを5m優先の標高データで遠距離走査します。通常の水域データや水域サーバーは使用しません。</p>
+                  <div class="grid2" style="margin-top:12px;">
+                    <div class="field"><label class="top" for="darumaTelephotoEvent">判定する太陽</label><select id="darumaTelephotoEvent"><option value="sunset" selected>夕陽（日の入り側）</option><option value="sunrise">朝陽（日の出側）</option></select></div>
+                    <div class="field"><label class="top">選択日</label><input id="darumaTelephotoDateDisplay" type="text" readonly></div>
+                  </div>
+                  <div class="grid2" style="margin-top:10px;">
+                    <div class="field"><label class="top" for="darumaTelephotoNearKm">走査開始（km先）</label><input id="darumaTelephotoNearKm" type="number" min="1" max="119" step="1" value="5"></div>
+                    <div class="field"><label class="top" for="darumaTelephotoFarKm">走査終了（km先）</label><input id="darumaTelephotoFarKm" type="number" min="2" max="120" step="1" value="80"></div>
+                  </div>
+                  <p id="darumaTelephotoSummary" class="plan-modal-help" style="margin-top:10px;">現在の観測地点・視点高で海面接触時刻を計算します。</p>
+                  <div id="darumaTelephotoResult" class="daruma-telephoto-result" hidden aria-live="polite"></div>
+                  <div class="plan-modal-actions"><button id="darumaTelephotoClearBtn" type="button">判定表示を消す</button><button id="darumaTelephotoRunBtn" type="button" class="primary">この条件で判定</button></div>
                 </section>
               </div>
               <div id="terrainTopViewOverlay" class="terrain-topview-overlay" aria-hidden="true">
@@ -4971,7 +5014,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="762-tap-map-coordinate-copy";
+const APP_VERSION="763-telephoto-daruma-island-check";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6104,7 +6147,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -11182,6 +11225,7 @@ function collectPersistedSettings(){
     localDetailMeshStepM:localDetailMeshStepValue(),
     localDetailTerrainEnabled:false,
     localDetailTerrain:localDetailTerrainConfig(),
+    darumaTelephotoConfig:{...darumaTelephotoConfig},
   };
 }
 let saveSettingsTimer=null,saveSettingsRequestedAt=0;
@@ -11246,6 +11290,13 @@ async function loadPersistedSettings(){
       if(Number.isFinite(+s.localDetailTerrain.lat)) el.localDetailLat.value=+s.localDetailTerrain.lat;
       if(Number.isFinite(+s.localDetailTerrain.lon)) el.localDetailLon.value=+s.localDetailTerrain.lon;
       if(Number.isFinite(+s.localDetailTerrain.radiusM)) el.localDetailRadius.value=clamp(+s.localDetailTerrain.radiusM,5,50);
+    }
+    if(s.darumaTelephotoConfig&&typeof s.darumaTelephotoConfig==="object"){
+      darumaTelephotoConfig={
+        event:s.darumaTelephotoConfig.event==="sunrise"?"sunrise":"sunset",
+        nearKm:clamp(+s.darumaTelephotoConfig.nearKm||5,1,119),
+        farKm:clamp(+s.darumaTelephotoConfig.farKm||80,2,120)
+      };
     }
     // 標高配列はページ更新後に自動通信せず、利用者が取得ボタンを押した時だけ準備する。
     localDetailTerrainEnabled=false;localDetailTerrainData=null;
@@ -14754,6 +14805,422 @@ function decodeGsiElevationBilinear(pixels,pixelX,pixelY){
   // 海岸線など4画素の一部がnodataの場合、陸海を不自然に混ぜず最寄り画素へ戻す。
   return decodeGsiElevation(pixels,clamp(Math.round(pixelX),0,255),clamp(Math.round(pixelY),0,255));
 }
+
+/* =========================================================
+   超望遠・だるま判定（v763）
+
+   通常地形と通常の高精細スキャンは、画面全体を軽く描くための仕組みである。
+   ここではそれらとは別に、太陽円盤の幅だけを遠方へ走査する。水域APIは使わず、
+   国土地理院DEMに有限値がある場所を陸（島）として直接拾う。
+   ========================================================= */
+const DARUMA_TELEPHOTO_PARENT_Z=14;
+const DARUMA_TELEPHOTO_FINE_Z=15;
+const DARUMA_TELEPHOTO_MAX_PARENT_TILES=160;
+const DARUMA_TELEPHOTO_MAX_FINE_TILES=220;
+let darumaTelephotoConfig={event:"sunset",nearKm:5,farKm:80};
+let darumaTelephotoGeneration=0;
+let darumaTelephotoState={status:"idle",result:null,message:""};
+
+function darumaTelephotoObserverKey(lat,lon,eyeElevation){
+  return `${lat.toFixed(6)},${lon.toFixed(6)}|eye${eyeElevation.toFixed(2)}`;
+}
+function darumaTelephotoResultMatches(s){
+  const result=darumaTelephotoState.result,eye=observerEyeElevationM();
+  return !!(result&&s&&Number.isFinite(eye)&&result.date===el.dateInput.value&&
+    result.observerKey===darumaTelephotoObserverKey(s.lat,s.lon,eye));
+}
+function darumaTelephotoAngleDifference(a,b){return ((a-b+540)%360)-180;}
+function darumaTelephotoTimeText(minutes){
+  const total=Math.max(0,Math.round(minutes*60)),hour=Math.floor(total/3600)%24;
+  const minute=Math.floor(total/60)%60,second=total%60;
+  return `${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}:${String(second).padStart(2,"0")}`;
+}
+function pixelsContainDemValue(pixels){
+  const d=pixels&&pixels.data||pixels;if(!d)return false;
+  for(let q=0;q<d.length;q+=4){
+    if(d[q+3]===0)continue;
+    const value=d[q]*65536+d[q+1]*256+d[q+2];
+    if(value!==8388608)return true;
+  }
+  return false;
+}
+function setDarumaTelephotoOpen(open){
+  if(!el.darumaTelephotoOverlay)return;
+  el.darumaTelephotoOverlay.classList.toggle("show",!!open);
+  el.darumaTelephotoOverlay.setAttribute("aria-hidden",open?"false":"true");
+  if(open){
+    el.darumaTelephotoEvent.value=darumaTelephotoConfig.event;
+    el.darumaTelephotoNearKm.value=darumaTelephotoConfig.nearKm;
+    el.darumaTelephotoFarKm.value=darumaTelephotoConfig.farKm;
+    el.darumaTelephotoDateDisplay.value=el.dateInput.value||"—";
+    updateDarumaTelephotoSummary();
+    renderDarumaTelephotoResult();
+  }
+}
+function updateDarumaTelephotoSummary(){
+  if(!el.darumaTelephotoSummary)return;
+  const near=clamp(+el.darumaTelephotoNearKm.value||5,1,119);
+  const far=clamp(+el.darumaTelephotoFarKm.value||80,2,120);
+  const eye=observerEyeElevationM(),kind=el.darumaTelephotoEvent.value==="sunrise"?"朝陽":"夕陽";
+  el.darumaTelephotoSummary.textContent=far<=near
+    ?"走査終了は、走査開始より遠くしてください。"
+    :`${kind}の海面接触方位を、${near.toFixed(0)}～${far.toFixed(0)}km先まで走査します。視点は${Number.isFinite(eye)?`海抜${eye.toFixed(1)}m`:`標高データ準備中`}です。`;
+}
+function darumaTelephotoOutcomeText(result){
+  if(!result)return "";
+  const eventName=result.event==="sunrise"?"朝陽":"夕陽";
+  const heading=`${eventName}の海面接触 ${result.timeText}・方位 ${result.sunAz.toFixed(2)}°`;
+  const fallback=result.fallbackTiles?`（10m級補完 ${result.fallbackTiles}区画）`:"";
+  if(result.outcome==="blocked"){
+    const p=result.strongest;
+    return `島が太陽に重なります\n${heading}\n遮蔽地点：約${p.distanceKm.toFixed(1)}km先・標高${p.elevationM.toFixed(0)}m（島影上端 ${p.displayAltitudeDeg.toFixed(3)}°）\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽34′・地形7/6地球半径）`;
+  }
+  if(result.outcome==="clear"){
+    const visible=result.highestVisible;
+    return `太陽円盤に重なる島は確認されませんでした\n${heading}\n${visible?`最も高く見える陸地：約${visible.distanceKm.toFixed(1)}km先・標高${visible.elevationM.toFixed(0)}m（水平線上${visible.displayAltitudeDeg.toFixed(3)}°）`:`指定範囲の太陽円盤方向は海面として確認`}\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽34′・地形7/6地球半径）`;
+  }
+  return `判定できない区画が残っています\n${heading}\n標高タイル失敗 ${result.failedTiles}枚・範囲省略 ${result.omittedTiles}枚・未確認方位 ${result.unknownRays||0}本。島が無いとは断定していません。\n時間を空けて再判定するか、走査距離を狭めてください。水域サーバーは使用していません。`;
+}
+function renderDarumaTelephotoResult(){
+  const result=darumaTelephotoState.result;
+  if(!el.darumaTelephotoResult)return;
+  if(!result){
+    if(darumaTelephotoState.status==="loading"){
+      el.darumaTelephotoResult.hidden=false;el.darumaTelephotoResult.className="daruma-telephoto-result unknown";
+      el.darumaTelephotoResult.textContent=darumaTelephotoState.message||"遠方標高を確認しています…";
+    }else el.darumaTelephotoResult.hidden=true;
+    return;
+  }
+  el.darumaTelephotoResult.hidden=false;
+  el.darumaTelephotoResult.className=`daruma-telephoto-result ${result.outcome}`;
+  el.darumaTelephotoResult.textContent=darumaTelephotoOutcomeText(result);
+}
+function syncDarumaTelephotoUi(s=state){
+  const result=darumaTelephotoState.result,matching=result&&darumaTelephotoResultMatches(s);
+  if(el.darumaTelephotoBtn){
+    el.darumaTelephotoBtn.classList.remove("loading","result-clear","result-blocked","result-unknown");
+    if(darumaTelephotoState.status==="loading")el.darumaTelephotoBtn.classList.add("loading");
+    else if(matching)el.darumaTelephotoBtn.classList.add(`result-${result.outcome}`);
+    el.darumaTelephotoBtn.setAttribute("aria-pressed",String(!!matching));
+  }
+  if(el.darumaTelephotoBanner){
+    if(darumaTelephotoState.status==="loading"){
+      el.darumaTelephotoBanner.hidden=false;el.darumaTelephotoBanner.className="daruma-telephoto-banner unknown";
+      el.darumaTelephotoBanner.textContent=darumaTelephotoState.message||"超望遠の遠方標高を確認しています…";
+    }else if(matching){
+      el.darumaTelephotoBanner.hidden=false;el.darumaTelephotoBanner.className=`daruma-telephoto-banner ${result.outcome}`;
+      el.darumaTelephotoBanner.textContent=result.outcome==="blocked"
+        ?`超望遠判定：島が太陽に重なります（${result.timeText}・${result.sunAz.toFixed(2)}°）`
+        :(result.outcome==="clear"?`超望遠判定：太陽に重なる島は未検出（${result.timeText}・${result.sunAz.toFixed(2)}°）`:`超望遠判定：未確認区画があります。タップして詳細`);
+    }else el.darumaTelephotoBanner.hidden=true;
+  }
+  renderDarumaTelephotoResult();
+}
+function setDarumaTelephotoProgress(message){
+  darumaTelephotoState={status:"loading",result:null,message};
+  syncDarumaTelephotoUi();
+}
+function clearDarumaTelephotoResult(){
+  darumaTelephotoGeneration++;
+  darumaTelephotoState={status:"idle",result:null,message:""};
+  if(el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=false;
+  syncDarumaTelephotoUi();
+  if(typeof drawPhoto==="function")drawPhoto._terrainRenderKey=null;
+  if(typeof update==="function")update();
+}
+
+/* 視点高から求めた物理水平線へ太陽下端が接する瞬間を、2分走査＋二分法で求める。 */
+function findDarumaTelephotoContact(eventKind){
+  const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value,eye=observerEyeElevationM();
+  if(![lat,lon,tz,eye].every(Number.isFinite))throw new Error("観測地点の標高がまだ準備できていません。");
+  const parts=(el.dateInput.value||"").split("-").map(Number);
+  if(parts.length!==3||!parts.every(Number.isFinite))throw new Error("日付を確認してください。");
+  const [year,month,day]=parts;
+  const jdMidnight=toJulianDay(new Date(Date.UTC(year,month-1,day,0,0,0)-tz*3600000));
+  const physicalHorizon=currentSeaHorizonAltitudeDeg();
+  const middaySun=sunPosition(jdMidnight+.5),radius=middaySun.angularRadiusDeg||.26656;
+  /* raDecToAltAzは幾何高度なので、太陽の標準大気差34分を引いた高度で
+     「見かけの下端が水平線へ接する瞬間」を求める。 */
+  const solarRefraction=34/60;
+  const targetAltitude=physicalHorizon+radius-solarRefraction;
+  const valueAt=minute=>{
+    const jd=jdMidnight+minute/1440,sun=sunPosition(jd),aa=raDecToAltAz(sun.ra,sun.dec,jd,lat,lon);
+    return {minute,jd,sun,aa,value:aa.alt-targetAltitude};
+  };
+  let previous=valueAt(0),bracket=null;
+  for(let minute=2;minute<=1440;minute+=2){
+    const current=valueAt(minute);
+    const crossed=eventKind==="sunrise"
+      ?previous.value<=0&&current.value>0
+      :previous.value>0&&current.value<=0;
+    if(crossed){bracket=[previous,current];break;}
+    previous=current;
+  }
+  if(!bracket)throw new Error(eventKind==="sunrise"?"この日は朝陽の海面接触を求められませんでした。":"この日は夕陽の海面接触を求められませんでした。");
+  let [lo,hi]=bracket;
+  for(let i=0;i<28;i++){
+    const mid=valueAt((lo.minute+hi.minute)/2);
+    if(eventKind==="sunrise"){
+      if(mid.value>0)hi=mid;else lo=mid;
+    }else{
+      if(mid.value>0)lo=mid;else hi=mid;
+    }
+  }
+  const contact=valueAt((lo.minute+hi.minute)/2);
+  return {...contact,physicalHorizon,radius,solarRefraction,targetAltitude,eyeElevation:eye,lat,lon,tz,date:el.dateInput.value};
+}
+function collectDarumaTelephotoTiles(z,lat,lon,bearing,halfAngle,nearKm,farKm){
+  const map=new Map(),bearings=[bearing-halfAngle,bearing,bearing+halfAngle];
+  const stepKm=z===DARUMA_TELEPHOTO_PARENT_Z?0.65:0.32;
+  for(const az of bearings){
+    for(let distance=nearKm;distance<=farKm+.0001;distance+=stepKm){
+      const point=terrainDestination(lat,lon,norm360(az),Math.min(distance,farKm));
+      const tile=terrainTilePoint(point[0],point[1],z),key=`${tile.x}/${tile.y}`;
+      const old=map.get(key);
+      if(!old||distance<old.distanceKm)map.set(key,{z,x:tile.x,y:tile.y,key,distanceKm:distance});
+    }
+    const point=terrainDestination(lat,lon,norm360(az),farKm),tile=terrainTilePoint(point[0],point[1],z),key=`${tile.x}/${tile.y}`;
+    if(!map.has(key))map.set(key,{z,x:tile.x,y:tile.y,key,distanceKm:farKm});
+  }
+  return [...map.values()].sort((a,b)=>a.distanceKm-b.distanceKm);
+}
+async function darumaTelephotoMapLimit(items,limit,worker){
+  let index=0;
+  async function run(){while(index<items.length){const item=items[index++];await worker(item,index);}}
+  await Promise.all(Array.from({length:Math.min(limit,items.length)},run));
+}
+/* GSIでは海だけのDEMタイルが404になることがある。通常の通信失敗と区別し、
+   404は「標高なし＝海として確認」、タイムアウト等だけを未確認として扱う。 */
+async function fetchDarumaTelephotoDemPixels(layer,tile){
+  return queueLocalDetailFetch(async()=>{
+    const controller=typeof AbortController==="function"?new AbortController():null;
+    const timer=controller?setTimeout(()=>controller.abort(),15000):0;
+    try{
+      const response=await fetch(`https://cyberjapandata.gsi.go.jp/xyz/${layer}/${tile.z}/${tile.x}/${tile.y}.png`,{
+        mode:"cors",cache:"force-cache",...(controller?{signal:controller.signal}:{})
+      });
+      if(response.status===404)return {kind:"absent",pixels:null};
+      if(!response.ok)return {kind:"failed",pixels:null};
+      return {kind:"data",pixels:await imageBlobToPixels(await response.blob())};
+    }catch(error){return {kind:"failed",pixels:null};}
+    finally{if(timer)clearTimeout(timer);}
+  });
+}
+function darumaTelephotoElevationAt(lat,lon,fineTiles,parentSeaKeys,parentDemTiles){
+  const span=(2**DARUMA_TELEPHOTO_FINE_Z)*256;
+  const xf=(lon+180)/360*span;
+  const yf=(1-Math.asinh(Math.tan(clamp(lat,-85.05112878,85.05112878)*D2R))/Math.PI)/2*span;
+  const x0=Math.floor(xf),y0=Math.floor(yf),fx=xf-x0,fy=yf-y0;
+  let sum=0,weight=0,known=false;
+  for(let j=0;j<2;j++)for(let i=0;i<2;i++){
+    const gx=x0+i,gy=y0+j,key=`${gx>>8}/${gy>>8}`,tile=fineTiles.get(key);
+    if(tile===null){known=true;continue;}
+    if(!tile)continue;
+    known=true;
+    const value=tile[(gy&255)*256+(gx&255)];
+    if(!Number.isFinite(value))continue;
+    const w=(i?fx:1-fx)*(j?fy:1-fy);sum+=value*w;weight+=w;
+  }
+  if(weight>0)return {value:sum/weight,known:true};
+  const parent=terrainTilePoint(lat,lon,DARUMA_TELEPHOTO_PARENT_Z);
+  const parentKey=`${parent.x}/${parent.y}`;
+  if(parentSeaKeys.has(parentKey))known=true;
+  const parentPixels=parentDemTiles.get(parentKey);
+  if(parentPixels){
+    const value=decodeGsiElevationBilinear(parentPixels,parent.pixelX,parent.pixelY);
+    return {value:Number.isFinite(value)?value:NaN,known:true};
+  }
+  return {value:NaN,known};
+}
+function scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,parentSeaKeys,parentDemTiles){
+  const profile=[],azStep=.01,distanceStepKm=.015;
+  const effectiveEarthRadius=6371000*(7/6),eye=contact.eyeElevation;
+  let unknownSamples=0,highestVisible=null;
+  const lat1=contact.lat*D2R,sinLat1=Math.sin(lat1),cosLat1=Math.cos(lat1),lon1=contact.lon*D2R;
+  for(let offset=-halfAngle;offset<=halfAngle+.000001;offset+=azStep){
+    const az=norm360(contact.aa.az+offset),bearing=az*D2R,sinBearing=Math.sin(bearing),cosBearing=Math.cos(bearing);
+    let highest=null,rayUnknown=false;
+    for(let distanceKm=nearKm;distanceKm<=farKm+.000001;distanceKm+=distanceStepKm){
+      const angular=distanceKm/6371,sinAngular=Math.sin(angular),cosAngular=Math.cos(angular);
+      const lat2=Math.asin(sinLat1*cosAngular+cosLat1*sinAngular*cosBearing);
+      const lon2=lon1+Math.atan2(sinBearing*sinAngular*cosLat1,cosAngular-sinLat1*Math.sin(lat2));
+      const sample=darumaTelephotoElevationAt(lat2*R2D,((lon2*R2D+540)%360)-180,fineTiles,parentSeaKeys,parentDemTiles);
+      if(!sample.known){rayUnknown=true;continue;}
+      if(!Number.isFinite(sample.value)||sample.value<-.5)continue;
+      const distanceM=distanceKm*1000,curvatureDrop=distanceM*distanceM/(2*effectiveEarthRadius);
+      const altitude=Math.atan2(sample.value-eye-curvatureDrop,distanceM)*R2D;
+      if(!highest||altitude>highest.altitude){highest={az,altitude,distanceKm,elevationM:sample.value};}
+    }
+    if(rayUnknown)unknownSamples++;
+    if(highest){
+      highest.displayAltitudeDeg=highest.altitude-contact.physicalHorizon;
+      if(highest.displayAltitudeDeg>.002&&(!highestVisible||highest.displayAltitudeDeg>highestVisible.displayAltitudeDeg))highestVisible=highest;
+    }
+    profile.push(highest);
+  }
+  return {profile,unknownSamples,highestVisible};
+}
+function judgeDarumaTelephotoOverlap(contact,profile){
+  let strongest=null;
+  for(const point of profile){
+    if(!point)continue;
+    const horizontal=Math.abs(darumaTelephotoAngleDifference(point.az,contact.aa.az));
+    if(horizontal>contact.radius)continue;
+    const verticalHalf=Math.sqrt(Math.max(0,contact.radius*contact.radius-horizontal*horizontal));
+    const sunCenterDisplay=contact.targetAltitude+contact.solarRefraction-contact.physicalHorizon;
+    const sunBottom=sunCenterDisplay-verticalHalf,sunTop=sunCenterDisplay+verticalHalf;
+    const pointDisplay=point.altitude-contact.physicalHorizon;
+    if(pointDisplay<=.004||pointDisplay<=sunBottom+.003)continue;
+    const overlap=clamp((Math.min(pointDisplay,sunTop)-sunBottom)/Math.max(.001,2*verticalHalf),0,1);
+    const candidate={...point,overlap};
+    if(!strongest||candidate.overlap>strongest.overlap||
+      (candidate.overlap===strongest.overlap&&candidate.altitude>strongest.altitude))strongest=candidate;
+  }
+  return strongest;
+}
+async function runDarumaTelephotoScan(){
+  if(darumaTelephotoState.status==="loading")return;
+  const eventKind=el.darumaTelephotoEvent.value==="sunrise"?"sunrise":"sunset";
+  const nearKm=clamp(+el.darumaTelephotoNearKm.value||5,1,119),farKm=clamp(+el.darumaTelephotoFarKm.value||80,2,120);
+  if(farKm<=nearKm){el.darumaTelephotoSummary.textContent="走査終了は、走査開始より遠くしてください。";return;}
+  darumaTelephotoConfig={event:eventKind,nearKm,farKm};scheduleSaveSettings();
+  const generation=++darumaTelephotoGeneration;
+  if(el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=true;
+  try{
+    const contact=findDarumaTelephotoContact(eventKind),halfAngle=contact.radius+.08;
+    setDarumaTelephotoProgress(`海面接触 ${darumaTelephotoTimeText(contact.minute)}・方位${contact.aa.az.toFixed(2)}°を計算しました。遠方の島候補を確認中…`);
+    let parentTiles=collectDarumaTelephotoTiles(DARUMA_TELEPHOTO_PARENT_Z,contact.lat,contact.lon,contact.aa.az,halfAngle,nearKm,farKm);
+    const omittedParent=Math.max(0,parentTiles.length-DARUMA_TELEPHOTO_MAX_PARENT_TILES);
+    parentTiles=parentTiles.slice(0,DARUMA_TELEPHOTO_MAX_PARENT_TILES);
+    const parentSeaKeys=new Set(),parentDemTiles=new Map(),landParents=[],parentFailedKeys=new Set();let parentDone=0;
+    await darumaTelephotoMapLimit(parentTiles,3,async tile=>{
+      if(generation!==darumaTelephotoGeneration)return;
+      const fetched=await fetchDarumaTelephotoDemPixels("dem_png",tile),pixels=fetched.pixels;parentDone++;
+      if(fetched.kind==="failed")parentFailedKeys.add(tile.key);
+      else if(fetched.kind==="absent")parentSeaKeys.add(tile.key);
+      else if(pixelsContainDemValue(pixels)){landParents.push(tile);parentDemTiles.set(tile.key,pixels);}
+      else parentSeaKeys.add(tile.key);
+      if(parentDone%4===0||parentDone===parentTiles.length){
+        darumaTelephotoState.message=`遠方の島候補を確認中 ${parentDone}/${parentTiles.length}（候補${landParents.length}区画）`;
+        syncDarumaTelephotoUi();
+      }
+    });
+    if(generation!==darumaTelephotoGeneration)return;
+    const childMap=new Map();
+    for(const parent of landParents)for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++){
+      const x=parent.x*2+dx,y=parent.y*2+dy,key=`${x}/${y}`,old=childMap.get(key);
+      if(!old||parent.distanceKm<old.distanceKm)childMap.set(key,{z:DARUMA_TELEPHOTO_FINE_Z,x,y,key,distanceKm:parent.distanceKm});
+    }
+    let fineRequests=[...childMap.values()].sort((a,b)=>a.distanceKm-b.distanceKm);
+    const omittedFine=Math.max(0,fineRequests.length-DARUMA_TELEPHOTO_MAX_FINE_TILES);
+    fineRequests=fineRequests.slice(0,DARUMA_TELEPHOTO_MAX_FINE_TILES);
+    const fineTiles=new Map();let fineDone=0,fineFallback=0,fineLand=0;
+    await darumaTelephotoMapLimit(fineRequests,3,async tile=>{
+      if(generation!==darumaTelephotoGeneration)return;
+      /* dem_pngはz14までなので、z15では5mレイヤーを直接取得する。
+         5mが未整備・失敗の区画は、すでに成功した親z14を走査時に補完利用する。 */
+      const fineFetches=await Promise.all(["dem5a_png","dem5b_png","dem5c_png"].map(layer=>fetchDarumaTelephotoDemPixels(layer,tile)));
+      const fineSources=fineFetches.filter(item=>item.kind==="data"&&item.pixels).map(item=>item.pixels);
+      const decoded=highDetailDecode(fineSources);
+      if(decoded){fineTiles.set(tile.key,decoded);fineLand++;}
+      else{fineTiles.set(tile.key,null);fineFallback++;}
+      fineDone++;
+      if(fineDone%2===0||fineDone===fineRequests.length){
+        darumaTelephotoState.message=`5m優先標高を取得中 ${fineDone}/${fineRequests.length}（5m ${fineLand}・10m級補完 ${fineFallback}）`;
+        syncDarumaTelephotoUi();
+      }
+    });
+    if(generation!==darumaTelephotoGeneration)return;
+    darumaTelephotoState.message="地球の丸みと視点高を反映して、太陽円盤との重なりを計算中…";syncDarumaTelephotoUi();
+    await new Promise(resolve=>setTimeout(resolve,30));
+    const scan=scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,parentSeaKeys,parentDemTiles);
+    const strongest=judgeDarumaTelephotoOverlap(contact,scan.profile);
+    const failedTiles=parentFailedKeys.size,omittedTiles=omittedParent+omittedFine;
+    const incomplete=failedTiles>0||omittedTiles>0||scan.unknownSamples>0;
+    const outcome=strongest?"blocked":(incomplete?"unknown":"clear");
+    const result={
+      outcome,event:eventKind,date:contact.date,observerKey:darumaTelephotoObserverKey(contact.lat,contact.lon,contact.eyeElevation),
+      eyeElevation:contact.eyeElevation,physicalHorizon:contact.physicalHorizon,radius:contact.radius,solarRefraction:contact.solarRefraction,
+      contactJd:contact.jd,contactMinute:contact.minute,timeText:darumaTelephotoTimeText(contact.minute),sunAz:contact.aa.az,
+      sunCenterAltitude:contact.targetAltitude,nearKm,farKm,halfAngle,profile:scan.profile,
+      strongest,highestVisible:scan.highestVisible,failedTiles,omittedTiles,unknownRays:scan.unknownSamples,
+      parentTiles:parentTiles.length,fineTiles:fineRequests.length,fallbackTiles:fineFallback
+    };
+    darumaTelephotoState={status:outcome,result,message:""};
+    if(typeof stopPlayback==="function"&&playbackTimer)stopPlayback();
+    el.timeSlider.value=clamp(contact.minute,+el.timeSlider.min,+el.timeSlider.max);
+    el.facingAz.value=contact.aa.az.toFixed(3);el.facingAlt.value="0";
+    drawPhoto._terrainRenderKey=null;
+    update();
+    setDarumaTelephotoOpen(true);
+  }catch(error){
+    if(generation!==darumaTelephotoGeneration)return;
+    darumaTelephotoState={status:"idle",result:null,message:""};
+    syncDarumaTelephotoUi();
+    if(el.darumaTelephotoResult){
+      el.darumaTelephotoResult.hidden=false;el.darumaTelephotoResult.className="daruma-telephoto-result unknown";
+      el.darumaTelephotoResult.textContent=`判定を開始できませんでした。\n${String(error&&error.message||error)}`;
+    }
+  }finally{
+    if(generation===darumaTelephotoGeneration&&el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=false;
+  }
+}
+function darumaTelephotoDisplayShift(s){
+  if(!darumaTelephotoResultMatches(s))return 0;
+  const result=darumaTelephotoState.result;
+  if(Math.abs(darumaTelephotoAngleDifference(s.sunAltAz.az,result.sunAz))>3)return 0;
+  if(s.sunAltAz.alt<result.sunCenterAltitude-.8||s.sunAltAz.alt>result.sunCenterAltitude+2.5)return 0;
+  return result.solarRefraction-result.physicalHorizon;
+}
+function darumaTelephotoBlockingAltitudeAt(az,s){
+  if(!darumaTelephotoResultMatches(s))return null;
+  const profile=darumaTelephotoState.result.profile;if(!Array.isArray(profile)||profile.length<2)return null;
+  let before=null,after=null;
+  for(const point of profile){
+    if(!point)continue;
+    const delta=darumaTelephotoAngleDifference(point.az,az);
+    if(delta<=0&&(!before||delta>before.delta))before={delta,point};
+    if(delta>=0&&(!after||delta<after.delta))after={delta,point};
+  }
+  if(before&&after&&after.delta!==before.delta)return lerp(before.point.altitude,after.point.altitude,(-before.delta)/(after.delta-before.delta));
+  return before?before.point.altitude:(after?after.point.altitude:null);
+}
+function drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,dayFactor){
+  if(!darumaTelephotoResultMatches(s))return;
+  const result=darumaTelephotoState.result,profile=result.profile;if(!Array.isArray(profile))return;
+  const points=profile.map(point=>{
+    if(!point||point.altitude<=result.physicalHorizon+.002)return null;
+    const top=toXY(point.az,point.altitude-result.physicalHorizon),base=toXY(point.az,0);
+    return top&&base&&[...top,...base].every(Number.isFinite)?{top,base}:null;
+  });
+  let start=0;
+  while(start<points.length){
+    while(start<points.length&&!points[start])start++;
+    let end=start;while(end<points.length&&points[end])end++;
+    const run=points.slice(start,end);
+    if(run.length>=2){
+      const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
+      const topRGB=[Math.round(lerp(38,98,dayFactor)),Math.round(lerp(45,111,dayFactor)),Math.round(lerp(55,101,dayFactor))];
+      const bottomRGB=topRGB.map(value=>Math.round(value*.82));
+      const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
+      gradient.addColorStop(0,`rgb(${topRGB.join(",")})`);gradient.addColorStop(1,`rgb(${bottomRGB.join(",")})`);
+      ctx.save();ctx.beginPath();ctx.moveTo(run[0].top[0],run[0].top[1]);
+      for(let i=1;i<run.length;i++)ctx.lineTo(run[i].top[0],run[i].top[1]);
+      for(let i=run.length-1;i>=0;i--)ctx.lineTo(run[i].base[0],run[i].base[1]);
+      ctx.closePath();ctx.fillStyle=gradient;ctx.fill();ctx.restore();
+    }
+    start=Math.max(end,start+1);
+  }
+}
+
+el.darumaTelephotoBtn?.addEventListener("click",()=>setDarumaTelephotoOpen(true));
+el.darumaTelephotoBanner?.addEventListener("click",()=>setDarumaTelephotoOpen(true));
+el.darumaTelephotoCloseBtn?.addEventListener("click",()=>setDarumaTelephotoOpen(false));
+el.darumaTelephotoOverlay?.addEventListener("click",event=>{if(event.target===el.darumaTelephotoOverlay)setDarumaTelephotoOpen(false);});
+el.darumaTelephotoRunBtn?.addEventListener("click",runDarumaTelephotoScan);
+el.darumaTelephotoClearBtn?.addEventListener("click",()=>{clearDarumaTelephotoResult();setDarumaTelephotoOpen(false);});
+[el.darumaTelephotoEvent,el.darumaTelephotoNearKm,el.darumaTelephotoFarKm].forEach(control=>control?.addEventListener("input",updateDarumaTelephotoSummary));
+
 async function loadTilesWithLimit(tiles,limit=6){
   let index=0;
   async function worker(){while(index<tiles.length){const tile=tiles[index++];await loadGsiDemTile(tile);}}
@@ -17494,9 +17961,12 @@ function drawPhoto(ctx,s){
     }
   }
 
-  // 太陽
-  if(showBelowHorizon || s.sunAltAz.alt>-1){
-    const pt=toXY(s.sunAltAz.az,s.sunAltAz.alt);
+  // 太陽。超望遠判定中は、物理水平線の俯角ぶんだけ表示を持ち上げ、
+  // 実際の海面接触時刻を画面上の水平線0°へ対応させる。
+  const darumaTelephotoSunShift=darumaTelephotoDisplayShift(s);
+  const sunDisplayAltitude=s.sunAltAz.alt+darumaTelephotoSunShift;
+  if(showBelowHorizon || sunDisplayAltitude>-1){
+    const pt=toXY(s.sunAltAz.az,sunDisplayAltitude);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
       const [x,y]=pt;
       const celestialScale = arActive ? 2 : 1;
@@ -17550,13 +18020,17 @@ function drawPhoto(ctx,s){
            描画上の海面より下へ移動し、だるま形になる前に隠れてしまう。 */
         const renderedSeaHorizonAlt=0,physicalSeaHorizonAlt=currentSeaHorizonAltitudeDeg();
         const foldAlt=renderedSeaHorizonAlt+.045;
-        const blockingAlt=currentEyeTerrainBlockingAltitudeAt(s.sunAltAz.az);
+        const dedicatedMatched=darumaTelephotoResultMatches(s);
+        const dedicatedBlocking=darumaTelephotoBlockingAltitudeAt(s.sunAltAz.az,s);
+        const blockingAlt=Number.isFinite(dedicatedBlocking)?dedicatedBlocking:currentEyeTerrainBlockingAltitudeAt(s.sunAltAz.az);
         const angularRadius=s.sun.angularRadiusDeg||.26656;
         const sequenceStart=foldAlt+angularRadius+.14,sequenceEnd=foldAlt-angularRadius-.08;
-        const inSequence=s.sunAltAz.alt<=sequenceStart&&s.sunAltAz.alt>=sequenceEnd;
+        const inSequence=sunDisplayAltitude<=sequenceStart&&sunDisplayAltitude>=sequenceEnd;
         /* profileが海面より明確に高い方角は、島・岬・山の向こうなので演出しない。 */
-        const unobstructed=blockingAlt===null||blockingAlt<=physicalSeaHorizonAlt+.04;
-        if((seaVotes>=1||demSea)&&unobstructed&&inSequence){
+        const dedicatedBlocked=dedicatedMatched&&darumaTelephotoState.result.outcome==="blocked";
+        const dedicatedClear=dedicatedMatched&&darumaTelephotoState.result.outcome==="clear";
+        const unobstructed=!dedicatedBlocked&&(blockingAlt===null||blockingAlt<=physicalSeaHorizonAlt+.04);
+        if((dedicatedClear||seaVotes>=1||demSea)&&unobstructed&&inSequence){
           darumaSunActive=true;
           const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,renderedSeaHorizonAlt);
           if(foldPoint&&horizonPoint) darumaSunShape={foldY:foldPoint[1],horizonY:horizonPoint[1]};
@@ -22736,6 +23210,10 @@ function drawPhoto(ctx,s){
     ctx.restore();
   }
 
+  /* 専用走査で確認した遠方の島影を、通常地形・水面反射より手前へ重ねる。
+     通常地形が未完成でも、視点標高が確定して専用走査が成功していれば表示できる。 */
+  drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,clamp(s.twilight,0,1));
+
   // 実地形と照合して見えている主要な山を、重ならない範囲で最大6山表示する。
   drawMountainNameLabels(ctx,s,toXY,W,H);
 
@@ -23627,6 +24105,7 @@ function update(){
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
   state=computeState();
+  syncDarumaTelephotoUi(state);
   updateOsmFovOverlay(state);
   syncDroneMap(state);
   requestRealTerrainProfile(state.lat,state.lon);
