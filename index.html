@@ -4621,6 +4621,7 @@
                     <div class="field"><label class="top">中心より奥（km）</label><input id="highDetailBackKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
                   </div>
                   <p id="highDetailSettingsSummary" class="plan-modal-help" style="margin-top:10px;">中心地点を入力してください。</p>
+                  <p class="plan-modal-help" style="margin-top:6px;">川・池・湖は現在表示中の保存済み水域だけを高精細化します。水域サーバーへの再取得は行いません。</p>
                   <p id="highDetailDiagnostic" class="high-detail-diagnostic" hidden aria-live="assertive"></p>
                   <div class="plan-modal-actions"><button id="highDetailSettingsCancelBtn" type="button">キャンセル</button><button id="highDetailSettingsStartBtn" type="button" class="primary">この範囲を高精細スキャン</button></div>
                 </section>
@@ -4907,7 +4908,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="753-skip-empty-high-detail-points";
+const APP_VERSION="754-cached-water-high-detail";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8781,6 +8782,9 @@ let highDetailOn=false;
 let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
 let highDetailView={bearing:null,alt:null,fovH:null};
 let highDetailStatusTimer=0,highDetailFallbackPending=false,highDetailLastDiagnostic="";
+/* 高精細水域は取得済みのOSMポリゴンだけを使う。
+   このカウンターは描画結果の案内用で、水域通信やキャッシュ更新には使わない。 */
+let highDetailWaterChecks=0,highDetailWaterHits=0,highDetailWaterTransitions=0;
 function highDetailTargetIsReady(){return Number.isFinite(highDetailTarget.lat)&&Number.isFinite(highDetailTarget.lon);}
 function showHighDetailStatus(message,type="info",duration=5200){
   const label=el.highDetailStatusLabel;
@@ -8876,6 +8880,7 @@ function setHighDetail(on){
   renderSupersample=1;
   if(on){
     highDetailFallbackPending=false;
+    highDetailWaterChecks=0;highDetailWaterHits=0;highDetailWaterTransitions=0;
     setHighDetailDiagnostic("");
     highDetailView={
       bearing:state&&Number.isFinite(state.facingAz)?state.facingAz:0,
@@ -14135,6 +14140,9 @@ function highDetailReleaseField(){
   highDetailQueuedTileCount=0;
   highDetailFinishedTileCount=0;
   highDetailFailedTileCount=0;
+  highDetailWaterChecks=0;
+  highDetailWaterHits=0;
+  highDetailWaterTransitions=0;
 }
 /* 双一次補間した5mメッシュの標高。無ければ NaN。 */
 function highDetailElevationAt(lat,lon){
@@ -14176,6 +14184,43 @@ function highDetailBaseElevation(azDeg,distanceKm){
   const mLon=Math.max(1,111320*Math.cos(oLat*D2R));
   const fine=highDetailElevationAt(oLat+cos(azDeg)*d/111320,oLon+sin(azDeg)*d/mLon);
   return Number.isFinite(fine)?fine:null;
+}
+/* 保存済み・表示中の内陸水域を、任意方位・任意距離で直接判定する。
+
+   高精細ボタンから fetchOsmWaterRings は絶対に呼ばない。realTerrainState に既に
+   載っているポリゴンだけを読むため、Overpassが停止中でも現在見えている川を
+   そのまま細密化できる。取得範囲（半径5km）の外やキャッシュが無い場合は null を
+   返し、従来の粗い水判定を残す。false は「保存済み形状で陸と確認できた」の意味。 */
+function highDetailCachedInlandWaterAt(azDeg,distanceKm){
+  if(!highDetailOn||!Number.isFinite(distanceKm)||distanceKm<0||distanceKm>OSM_WATER_RADIUS_KM+.001) return null;
+  const rings=realTerrainState&&realTerrainState._osmWaterRings;
+  if(!Array.isArray(rings)||!rings.length) return null;
+  const observerLat=+el.lat.value,observerLon=+el.lon.value;
+  if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon)) return null;
+  const coordinate=terrainDestination(observerLat,observerLon,azDeg,distanceKm);
+  const water=pointInWaterRings(coordinate[0],coordinate[1],rings);
+  highDetailWaterChecks++;
+  if(water)highDetailWaterHits++;
+  return {lat:coordinate[0],lon:coordinate[1],water};
+}
+/* 通常描画は距離層へ圧縮してから面を作る。点だけ細かくしても距離層が粗いままだと、
+   川岸が最後にもう一度大きな階段へ丸められてしまう。
+
+   保存済み水域があり、高精細モードで実際に走査する区間だけ5m距離層を追加する。
+   5kmより外、画面外、通常表示には一切追加しないため、常時の描画負荷は変わらない。 */
+function highDetailLayerDistancesWithCachedWater(){
+  const rings=realTerrainState&&realTerrainState._osmWaterRings;
+  if(!highDetailOn||!Array.isArray(rings)||!rings.length) return TERRAIN_DISTANCES_KM;
+  const nearKm=highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.nearKm)?highDetailTarget.nearKm:.005;
+  const requestedFarKm=highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.farKm)?highDetailTarget.farKm:HIGH_DETAIL_FIELD_RADIUS_M/1000;
+  const farKm=Math.min(requestedFarKm,OSM_WATER_RADIUS_KM);
+  if(!(farKm>nearKm)) return TERRAIN_DISTANCES_KM;
+  const byMetre=new Map();
+  for(const distanceKm of TERRAIN_DISTANCES_KM)byMetre.set(Math.round(distanceKm*1000),distanceKm);
+  const firstM=Math.max(5,Math.floor(nearKm*1000/5)*5);
+  const lastM=Math.floor(farKm*1000);
+  for(let metres=firstM;metres<=lastM;metres+=5)if(!byMetre.has(metres))byMetre.set(metres,metres/1000);
+  return [...byMetre.entries()].sort((a,b)=>a[0]-b[0]).map(entry=>entry[1]);
 }
 /* 検証用の覚書き。?hddebug=1 の時だけ外から中身を見られるようにする。 */
 try{
@@ -20073,33 +20118,92 @@ function drawPhoto(ctx,s){
               const baseSampleStepM=clamp(spanM/sampleBudget,5,50);
               const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
               const extra=[];
-              // 水域は5m DEMの標高だけでは陸海を判別できない。通常レイの水判定を引き継ぎ、
-              // 水と分かっている区間には高精細の陸点を追加しない。
+              /* 水域は5m DEMの標高だけでは陸海を判別できない。
+
+                 v753までは通常レイの粗い水判定を引き継ぎ、水区間を全部飛ばしていた。
+                 そのため地形だけが細かくなり、川岸は距離目盛りどおりの階段が残った。
+
+                 v754では realTerrainState に既に載っている水域ポリゴンだけを、各高精細点の
+                 正確な緯度経度へ直接当てる。通信もキャッシュ更新も行わない。ポリゴンが無い、
+                 または取得半径5kmの外ではv753の安全動作へ戻し、海や既存水面を陸化しない。 */
               /* 通常レイにはDEM欠損位置を示すnullが残ることがある。
                  高精細点との距離比較・並べ替えへ渡す前に、有効な地形点だけへ絞る。 */
               const coarseWalk=(walk||[]).filter(point=>point&&Number.isFinite(point.distanceKm));
+              const cachedWaterAvailable=Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length>0;
               let coarseIndex=0;
+              let previousWaterSample=null;
+              const makeHighDetailPoint=(distanceKm,waterSample,nearestCoarse)=>{
+                /* キャッシュが使えない場所では、従来どおり粗い水点の上へ陸を足さない。 */
+                if(!waterSample&&nearestCoarse?.water) return null;
+                const elevation=highDetailBaseElevation(wrapped,distanceKm);
+                if(!Number.isFinite(elevation)) return null;
+                const sampleMetres=distanceKm*1000;
+                const curvatureDrop=sampleMetres*sampleMetres/(2*6371000*(7/6));
+                return {
+                  distanceKm,
+                  lat:waterSample?waterSample.lat:undefined,
+                  lon:waterSample?waterSample.lon:undefined,
+                  alt:Math.atan2(elevation-eyeElevation-curvatureDrop,sampleMetres)*R2D,
+                  water:waterSample?waterSample.water:false,
+                  baseElevation:elevation,
+                  highDetailTarget:true,
+                  highDetailCachedWater:!!waterSample
+                };
+              };
               for(let metres=nearKm*1000;metres<=farKm*1000+.01;){
                 const sampleMetres=metres;
                 const focusDistanceM=Math.abs(sampleMetres-highDetailTarget.distanceKm*1000);
                 const focusBlend=clamp(focusDistanceM/900,0,1);
-                metres+=clamp(lerp(baseSampleStepM*.45,baseSampleStepM,focusBlend),5,50);
+                const terrainStepM=clamp(lerp(baseSampleStepM*.45,baseSampleStepM,focusBlend),5,50);
+                /* 保存済み水域の取得範囲内だけ最大12m刻みにする。
+                   全区間を5mにせず、岸を跨いだ場所だけ下の二分探索で約1mまで絞る。 */
+                metres+=cachedWaterAvailable&&sampleMetres<=OSM_WATER_RADIUS_KM*1000
+                  ?Math.min(terrainStepM,12):terrainStepM;
                 const distanceKm=sampleMetres/1000;
                 while(coarseIndex+1<coarseWalk.length&&coarseWalk[coarseIndex+1]?.distanceKm<=distanceKm) coarseIndex++;
                 const coarseA=coarseWalk[coarseIndex],coarseB=coarseWalk[Math.min(coarseWalk.length-1,coarseIndex+1)];
                 const nearestCoarse=coarseA&&coarseB
                   ?(Math.abs(coarseA.distanceKm-distanceKm)<=Math.abs(coarseB.distanceKm-distanceKm)?coarseA:coarseB)
                   :(coarseA||coarseB);
-                if(nearestCoarse?.water) continue;
-                const elevation=highDetailBaseElevation(wrapped,distanceKm);
-                if(!Number.isFinite(elevation)) continue;
-                const curvatureDrop=sampleMetres*sampleMetres/(2*6371000*(7/6));
-                extra.push({distanceKm,alt:Math.atan2(elevation-eyeElevation-curvatureDrop,sampleMetres)*R2D,
-                  water:false,baseElevation:elevation,highDetailTarget:true});
+                const waterSample=highDetailCachedInlandWaterAt(wrapped,distanceKm);
+                /* 前回点との間で水陸が反転した場合、その区間だけ二分探索する。
+                   12〜50m間隔の全面走査を増やさず、川岸の位置だけ約1mまで詰められる。 */
+                if(waterSample&&previousWaterSample&&waterSample.water!==previousWaterSample.water){
+                  let low=previousWaterSample,high=waterSample;
+                  for(let refine=0;refine<8&&(high.distanceKm-low.distanceKm)*1000>1.25;refine++){
+                    const midDistanceKm=(low.distanceKm+high.distanceKm)/2;
+                    const mid=highDetailCachedInlandWaterAt(wrapped,midDistanceKm);
+                    if(!mid)break;
+                    mid.distanceKm=midDistanceKm;
+                    if(mid.water===low.water)low=mid;else high=mid;
+                  }
+                  const lowPoint=makeHighDetailPoint(low.distanceKm,low,null);
+                  const highPoint=makeHighDetailPoint(high.distanceKm,high,null);
+                  if(lowPoint)extra.push(lowPoint);
+                  if(highPoint)extra.push(highPoint);
+                  highDetailWaterTransitions++;
+                }
+                const finePoint=makeHighDetailPoint(distanceKm,waterSample,nearestCoarse);
+                if(finePoint)extra.push(finePoint);
+                if(waterSample){waterSample.distanceKm=distanceKm;previousWaterSample=waterSample;}
+                else previousWaterSample=null;
               }
               /* 取得途中・欠損タイルがあっても既存地形は絶対に削除しない。
                  高精細点は追加して稜線候補を増やすだけなので、失敗時も通常景色が残る。 */
-              if(extra.length>=2) walk=coarseWalk.concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
+              if(extra.length>=2){
+                walk=coarseWalk.concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
+                /* 粗い通常点が高精細点の間に残って誤った水の小片を作らないよう、
+                   同じ走査範囲・5km以内の通常点も保存済みポリゴンで再確認する。
+                   海のnodata、海岸線、既知水域、局所高精細地形は従来判定を優先する。 */
+                if(cachedWaterAvailable){
+                  walk=walk.map(point=>{
+                    if(!point||point.local||point.highDetailCachedWater||point.distanceKm<nearKm||point.distanceKm>farKm||
+                       point.baseNoData||point.baseCoastlineSea||point.baseKnown) return point;
+                    const cached=highDetailCachedInlandWaterAt(wrapped,point.distanceKm);
+                    return cached?{...point,lat:cached.lat,lon:cached.lon,water:cached.water,highDetailCachedWater:true}:point;
+                  });
+                }
+              }
             }
           }
           const limitKm=highDetailTargetIsReady()?highDetailTarget.farKm:HIGH_DETAIL_FIELD_RADIUS_M/1000;
@@ -21115,7 +21219,7 @@ function drawPhoto(ctx,s){
         const rayGrid=realTerrainState.rayGrid;
         if(!rayGrid||!rayGrid.length) return false;
         const bottomAlt=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
-        const layerKm=TERRAIN_DISTANCES_KM;
+        const layerKm=highDetailLayerDistancesWithCachedWater();
         const layerCount=layerKm.length;
         const replayGeometry=sharedTerrainProjectionPass==="replay"?sharedTerrainProjectionCache?.layeredGeometry:null;
         let columns,altGrid,waterGrid,cloudGrid;
@@ -21795,6 +21899,7 @@ function drawPhoto(ctx,s){
           let candidateMeshDrawn=false,commitSucceeded=false,failureReason="",failureStage="高精細描画の準備";
           const highDetailRenderStarted=performance.now();
           try{
+            highDetailWaterChecks=0;highDetailWaterHits=0;highDetailWaterTransitions=0;
             sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,meshPaintedTriangles:0,waterGradientTopY:null};
             failureStage="夜用地形の形状計算";
             candidateMeshDrawn=renderTerrainVariant(candidateTerrain,0,clamp(s.lp.base*.2,0,1),"commands");
@@ -21816,8 +21921,10 @@ function drawPhoto(ctx,s){
               ?`標高タイル取得中 ${Math.max(0,highDetailQueuedTileCount-highDetailPending)}/${highDetailQueuedTileCount}`
               :`標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}`;
             const elapsed=((performance.now()-highDetailRenderStarted)/1000).toFixed(1);
-            showHighDetailStatus(`高精細表示が完了しました：${highDetailAppliedRangeText()}・${tileText}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",8000);
-            setHighDetailDiagnostic(`前回の高精細表示：成功\n標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}枚・描画 ${elapsed}秒`,"info");
+            const waterStatus=highDetailWaterTransitions>0?"・保持済み水域から川岸を高精細化（水域通信なし）":
+              (highDetailWaterChecks>0?"・保持済み水域を照合（水域通信なし）":"・川岸は通常精度（水域通信なし）");
+            showHighDetailStatus(`高精細表示が完了しました：${highDetailAppliedRangeText()}・${tileText}${waterStatus}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",8000);
+            setHighDetailDiagnostic(`前回の高精細表示：成功\n標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}枚・描画 ${elapsed}秒\n水域：${highDetailWaterChecks>0?`保持済み形状を${highDetailWaterChecks.toLocaleString()}点で照合（水${highDetailWaterHits.toLocaleString()}点）・川岸${highDetailWaterTransitions.toLocaleString()}区間を細密化`:"高精細化なし"}\n高精細水域の外部通信：なし`,"info");
           }catch(error){
             failureReason=String(error&&error.message||"端末の描画処理を完了できませんでした");
             drawPhoto._terrainRenderKey=terrainRenderKey;
