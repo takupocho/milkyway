@@ -1600,6 +1600,43 @@
   }
   #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
   #highDetailBtn{position:relative;}
+  /* 高精細中心を写真から選ぶ間だけ表示する案内と照準。
+     overlay自身は操作を奪わず、写真canvasの既存イベントでタップ位置を受け取る。 */
+  .high-detail-photo-pick-overlay{
+    position:absolute;inset:0;z-index:1010;display:none;pointer-events:none;
+    border:2px solid rgba(102,202,255,.9);border-radius:8px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.25),inset 0 0 26px rgba(70,170,255,.18);
+  }
+  .photo-canvas-wrap.high-detail-photo-picking .high-detail-photo-pick-overlay{display:block;}
+  .photo-canvas-wrap.portrait .high-detail-photo-pick-overlay{left:16.6667%;right:16.6667%;}
+  .photo-canvas-wrap.high-detail-photo-picking #photoCanvas{cursor:crosshair;}
+  .high-detail-photo-pick-hint{
+    position:absolute;left:50%;top:12px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);
+    padding:8px 10px;border:1px solid rgba(130,210,255,.78);border-radius:11px;
+    background:rgba(7,14,31,.88);color:#eef8ff;
+    font:700 13px/1.35 'Inter',sans-serif;text-align:center;
+    box-shadow:0 5px 18px rgba(0,0,0,.42);pointer-events:auto;
+  }
+  .high-detail-photo-pick-hint button{
+    flex:0 0 auto;padding:5px 9px;border:1px solid rgba(255,255,255,.36);border-radius:8px;
+    background:rgba(34,42,72,.9);color:#fff;font:700 12px/1.2 'Inter',sans-serif;
+  }
+  .high-detail-photo-pick-marker{
+    position:absolute;left:50%;top:50%;width:30px;height:30px;display:none;
+    transform:translate(-50%,-50%);border:2px solid var(--core-amber);border-radius:50%;
+    box-shadow:0 0 0 2px rgba(7,12,28,.72),0 0 15px rgba(232,166,89,.95);
+  }
+  .high-detail-photo-pick-marker::before,.high-detail-photo-pick-marker::after{
+    content:"";position:absolute;background:var(--core-amber);box-shadow:0 0 5px rgba(232,166,89,.9);
+  }
+  .high-detail-photo-pick-marker::before{left:50%;top:-8px;width:2px;height:44px;transform:translateX(-50%);}
+  .high-detail-photo-pick-marker::after{left:-8px;top:50%;width:44px;height:2px;transform:translateY(-50%);}
+  .high-detail-photo-pick-marker.show{display:block;}
+  @media (max-width:760px){
+    .high-detail-photo-pick-hint{top:8px;font-size:11.5px;padding:7px 8px;gap:7px;}
+    .high-detail-photo-pick-hint button{font-size:11px;padding:4px 7px;}
+  }
   /* ボタン自体が真丸（border-radius:50%）なので、縁も真丸にする。
      pathLength=140 で周の長さを140に揃えてあるので、
      8+6=14 がちょうど10回分で回り、継ぎ目が見えない。
@@ -4399,6 +4436,10 @@
               <canvas id="meteorCanvas" width="1200" height="800"></canvas>
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
               <canvas id="shotPlanResult" class="shot-plan-result"></canvas>
+              <div id="highDetailPhotoPickOverlay" class="high-detail-photo-pick-overlay" aria-hidden="true">
+                <div class="high-detail-photo-pick-hint"><span>高精細化したい山・川・地面をタップ</span><button id="highDetailPhotoPickCancelBtn" type="button">キャンセル</button></div>
+                <div id="highDetailPhotoPickMarker" class="high-detail-photo-pick-marker" aria-hidden="true"></div>
+              </div>
               <div class="shot-plan-recording" id="shotPlanRecording">
                 <span class="shot-plan-rec-dot" aria-hidden="true"></span>
                 <span id="shotPlanRecText">記録中</span>
@@ -4614,7 +4655,9 @@
               <div id="highDetailSettingsOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="highDetailSettingsTitle">
                   <div class="plan-modal-header"><h3 id="highDetailSettingsTitle" class="plan-modal-title">高精細スキャン範囲</h3><button id="highDetailSettingsCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
-                  <p class="plan-modal-help">距離の基準にする山・海岸などの中心地点をGoogleマップから貼り付けてください。横方向は指定座標ではなく、現在画面に写っている範囲だけを高精細にします。</p>
+                  <p class="plan-modal-help">画面内の山・川・地面を選ぶと、描画中の距離から中心座標を自動設定できます。座標の貼り付けも引き続き使用できます。</p>
+                  <button id="highDetailPickFromPhotoBtn" type="button" class="primary" style="width:100%;margin-top:10px;">写真画面から中心を選ぶ</button>
+                  <p class="plan-modal-help" style="margin-top:10px;">または、距離の基準にする地点をGoogleマップから貼り付けてください。</p>
                   <textarea id="highDetailCoordinatePaste" class="osm-import-input" inputmode="url" placeholder="例：35.12345, 134.56789&#10;GoogleマップのURL・共有文も貼り付けできます"></textarea>
                   <div class="grid2" style="margin-top:10px;">
                     <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
@@ -4908,7 +4951,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="754-cached-water-high-detail";
+const APP_VERSION="755-photo-tap-high-detail-target";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6040,7 +6083,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -8785,6 +8828,103 @@ let highDetailStatusTimer=0,highDetailFallbackPending=false,highDetailLastDiagno
 /* 高精細水域は取得済みのOSMポリゴンだけを使う。
    このカウンターは描画結果の案内用で、水域通信やキャッシュ更新には使わない。 */
 let highDetailWaterChecks=0,highDetailWaterHits=0,highDetailWaterTransitions=0;
+/* 写真タップ用の距離面。通常地形を1/4解像度の非表示Canvasへ同じ順番で塗り、
+   色の24bitへ距離(m)を記録する。1200×800画面でも約240KBで済み、
+   大量の地形ポリゴンを選択待ちの間ずっと保持しなくてよい。 */
+const HIGH_DETAIL_PICK_SCALE=.25;
+const highDetailTerrainPickCanvas=document.createElement("canvas");
+const highDetailTerrainPickContext=highDetailTerrainPickCanvas.getContext("2d",{willReadFrequently:true});
+let highDetailTerrainPickState=null;
+let highDetailTerrainPickRequested=false;
+let highDetailPhotoPicking=false,highDetailPhotoPickTouchHandled=false,highDetailPhotoPickTimer=0;
+function beginHighDetailTerrainPickFrame(width,height,view,useFisheye,projectionPass){
+  if((!highDetailTerrainPickRequested&&!highDetailPhotoPicking)||!highDetailTerrainPickContext||highDetailOn||projectionPass==="replay") return null;
+  const pickWidth=Math.max(1,Math.ceil(width*HIGH_DETAIL_PICK_SCALE));
+  const pickHeight=Math.max(1,Math.ceil(height*HIGH_DETAIL_PICK_SCALE));
+  if(highDetailTerrainPickCanvas.width!==pickWidth)highDetailTerrainPickCanvas.width=pickWidth;
+  if(highDetailTerrainPickCanvas.height!==pickHeight)highDetailTerrainPickCanvas.height=pickHeight;
+  highDetailTerrainPickContext.setTransform(1,0,0,1,0,0);
+  highDetailTerrainPickContext.clearRect(0,0,pickWidth,pickHeight);
+  highDetailTerrainPickContext.setTransform(pickWidth/width,0,0,pickHeight/height,0,0);
+  highDetailTerrainPickContext.globalCompositeOperation="source-over";
+  highDetailTerrainPickContext.imageSmoothingEnabled=false;
+  highDetailTerrainPickState={
+    ready:false,width,height,pickWidth,pickHeight,
+    facingAz:view.facingAz,facingAlt:view.facingAlt,fovH:view.fovH,
+    focalLength:view.focalLength,sensorCrop:view.sensor&&view.sensor.crop||1,
+    useFisheye:!!useFisheye,lat:+el.lat.value,lon:+el.lon.value,
+    terrainKey:String(realTerrainState&&realTerrainState.key||"")
+  };
+  return highDetailTerrainPickContext;
+}
+function finishHighDetailTerrainPickFrame(success){
+  if(highDetailTerrainPickState)highDetailTerrainPickState.ready=!!success;
+  highDetailTerrainPickRequested=false;
+}
+function highDetailTerrainPickColor(distanceKm){
+  const code=clamp(Math.round(distanceKm*1000)+1,1,16777215);
+  return `rgb(${code&255},${(code>>8)&255},${(code>>16)&255})`;
+}
+function highDetailTerrainPickFrameMatches(){
+  const pick=highDetailTerrainPickState,current=state;
+  if(!pick||!pick.ready||!current||pick.useFisheye!==(mobileLensMode==="fisheye"&&!arActive))return false;
+  if(pick.width!==el.photoCanvas.width||pick.height!==el.photoCanvas.height)return false;
+  if(Math.abs(((pick.facingAz-current.facingAz+540)%360)-180)>.03||Math.abs(pick.facingAlt-current.facingAlt)>.03||Math.abs(pick.fovH-current.fovH)>.03)return false;
+  if(Math.abs(pick.lat-(+el.lat.value))>1e-5||Math.abs(pick.lon-(+el.lon.value))>1e-5)return false;
+  if(pick.terrainKey!==String(realTerrainState&&realTerrainState.key||""))return false;
+  return true;
+}
+function highDetailPhotoRayAt(canvasX,canvasY,pick){
+  const forward=toVec(pick.facingAz,pick.facingAlt);
+  const right=[cos(pick.facingAz),-sin(pick.facingAz),0];
+  const up=cross(right,forward);
+  let ray;
+  if(pick.useFisheye){
+    const screenX=canvasX-pick.width/2,screenY=pick.height/2-canvasY;
+    const radius=Math.hypot(screenX,screenY);
+    const pixelsPerMm=Math.hypot(pick.width,pick.height)/43.2666;
+    const effectiveFocal=Math.max(.01,pick.focalLength*pick.sensorCrop);
+    const ratio=clamp(radius/(2*effectiveFocal*pixelsPerMm),0,1);
+    const theta=2*Math.asin(ratio),sinTheta=Math.sin(theta),cosTheta=Math.cos(theta);
+    const ux=radius>1e-6?screenX/radius:0,uy=radius>1e-6?screenY/radius:0;
+    ray=[forward[0]*cosTheta+(right[0]*ux+up[0]*uy)*sinTheta,
+      forward[1]*cosTheta+(right[1]*ux+up[1]*uy)*sinTheta,
+      forward[2]*cosTheta+(right[2]*ux+up[2]*uy)*sinTheta];
+  }else{
+    const scale=(pick.width/2)/Math.tan(pick.fovH/2*D2R);
+    const dx=(canvasX-pick.width/2)/Math.max(1e-6,scale),dy=(pick.height/2-canvasY)/Math.max(1e-6,scale);
+    ray=[forward[0]+right[0]*dx+up[0]*dy,forward[1]+right[1]*dx+up[1]*dy,forward[2]+right[2]*dx+up[2]*dy];
+  }
+  const length=Math.hypot(ray[0],ray[1],ray[2])||1;
+  return {bearing:norm360(Math.atan2(ray[0],ray[1])*R2D),altitude:Math.asin(clamp(ray[2]/length,-1,1))*R2D};
+}
+function highDetailTerrainPickAt(pos){
+  const pick=highDetailTerrainPickState;
+  if(!pick||!highDetailTerrainPickFrameMatches()||!highDetailTerrainPickContext)return null;
+  const px=clamp(Math.floor(pos[0]/pick.width*pick.pickWidth),0,pick.pickWidth-1);
+  const py=clamp(Math.floor(pos[1]/pick.height*pick.pickHeight),0,pick.pickHeight-1);
+  const radius=4,x0=Math.max(0,px-radius),y0=Math.max(0,py-radius);
+  const x1=Math.min(pick.pickWidth-1,px+radius),y1=Math.min(pick.pickHeight-1,py+radius);
+  const image=highDetailTerrainPickContext.getImageData(x0,y0,x1-x0+1,y1-y0+1);
+  let found=null,best=Infinity;
+  for(let y=0;y<image.height;y++)for(let x=0;x<image.width;x++){
+    const index=(y*image.width+x)*4;if(image.data[index+3]<250)continue;
+    const absoluteX=x0+x,absoluteY=y0+y,dx=absoluteX-px,dy=absoluteY-py;
+    /* 稜線のすぐ上を押した場合は、同距離なら下側（地形側）の画素を優先する。 */
+    const score=dx*dx+dy*dy+(dy<0?.2:0);
+    if(score>=best)continue;
+    const code=image.data[index]+(image.data[index+1]<<8)+(image.data[index+2]<<16);
+    if(code<=0)continue;
+    found={distanceKm:(code-1)/1000,absoluteX,absoluteY};best=score;
+  }
+  if(!found||!Number.isFinite(found.distanceKm)||found.distanceKm<.001)return null;
+  const canvasX=(found.absoluteX+.5)/pick.pickWidth*pick.width;
+  const canvasY=(found.absoluteY+.5)/pick.pickHeight*pick.height;
+  const ray=highDetailPhotoRayAt(canvasX,canvasY,pick);
+  const coordinate=terrainDestination(pick.lat,pick.lon,ray.bearing,found.distanceKm);
+  return {distanceKm:found.distanceKm,bearing:ray.bearing,altitude:ray.altitude,
+    lat:coordinate[0],lon:coordinate[1],canvasX,canvasY};
+}
 function highDetailTargetIsReady(){return Number.isFinite(highDetailTarget.lat)&&Number.isFinite(highDetailTarget.lon);}
 function showHighDetailStatus(message,type="info",duration=5200){
   const label=el.highDetailStatusLabel;
@@ -8925,7 +9065,7 @@ function updateHighDetailSettingsSummary(){
   el.highDetailSettingsSummary.textContent=`観測地点から中心まで ${target.distanceKm.toFixed(2)}km・方位 ${Math.round(target.bearing)}°。走査距離 ${near.toFixed(2)}〜${far.toFixed(2)}km、奥側の横幅は約${width.toFixed(2)}kmです。`;
   return {coordinate,target,front,back};
 }
-function setHighDetailSettingsOpen(open){
+function setHighDetailSettingsOpen(open,focusCoordinate=true){
   if(!el.highDetailSettingsOverlay) return;
   el.highDetailSettingsOverlay.classList.toggle("show",!!open);
   el.highDetailSettingsOverlay.setAttribute("aria-hidden",String(!open));
@@ -8935,15 +9075,79 @@ function setHighDetailSettingsOpen(open){
       el.highDetailFrontKm.value=highDetailTarget.frontKm;el.highDetailBackKm.value=highDetailTarget.backKm;
     }
     updateHighDetailSettingsSummary();
-    setTimeout(()=>el.highDetailCoordinatePaste.focus(),0);
+    if(focusCoordinate)setTimeout(()=>el.highDetailCoordinatePaste.focus(),0);
   }
+}
+function setHighDetailPhotoPickMarker(picked){
+  const marker=el.highDetailPhotoPickMarker;
+  if(!marker)return;
+  if(!picked){marker.classList.remove("show");marker.setAttribute("aria-hidden","true");return;}
+  marker.style.left=`${clamp(picked.canvasX/el.photoCanvas.width*100,0,100)}%`;
+  marker.style.top=`${clamp(picked.canvasY/el.photoCanvas.height*100,0,100)}%`;
+  marker.classList.add("show");marker.setAttribute("aria-hidden","false");
+}
+function setHighDetailPhotoPicking(on,{returnToSettings=false}={}){
+  clearTimeout(highDetailPhotoPickTimer);highDetailPhotoPickTimer=0;
+  on=!!on;
+  if(on){
+    if(arActive){showHighDetailStatus("AR表示中は写真画面から選択できません。ARを終了してからお試しください。","error",0);return false;}
+    if(TERRAIN_RENDERER!=="layered"){
+      showHighDetailStatus("写真画面からの選択は、通常の地形描画方式で利用できます。","error",0);
+      return false;
+    }
+    const wasHighDetail=highDetailOn;
+    const needsFreshPick=!highDetailTerrainPickFrameMatches();
+    if(needsFreshPick)highDetailTerrainPickRequested=true;
+    if(wasHighDetail)setHighDetail(false);
+    setHighDetailSettingsOpen(false);
+    highDetailPhotoPicking=true;
+    el.photoCanvas.closest(".photo-canvas-wrap")?.classList.add("high-detail-photo-picking");
+    el.highDetailPhotoPickOverlay?.classList.add("show");
+    el.highDetailPhotoPickOverlay?.setAttribute("aria-hidden","false");
+    setHighDetailPhotoPickMarker(null);
+    if(needsFreshPick&&!highDetailTerrainPickFrameMatches()){
+      drawPhoto._terrainRenderKey=null;
+      update();
+    }
+    showHighDetailStatus("高精細化したい山・川・地面をタップしてください。","info",0);
+    return true;
+  }
+  highDetailPhotoPicking=false;highDetailPhotoPickTouchHandled=false;
+  el.photoCanvas.closest(".photo-canvas-wrap")?.classList.remove("high-detail-photo-picking");
+  el.highDetailPhotoPickOverlay?.classList.remove("show");
+  el.highDetailPhotoPickOverlay?.setAttribute("aria-hidden","true");
+  setHighDetailPhotoPickMarker(null);
+  if(returnToSettings)setHighDetailSettingsOpen(true,false);
+  return true;
+}
+function pickHighDetailTargetFromPhoto(pos){
+  const picked=highDetailTerrainPickAt(pos);
+  if(!picked){
+    showHighDetailStatus("この位置から地形の距離を取得できません。空や太陽ではなく、山・川・地面をタップしてください。","error",0);
+    return false;
+  }
+  setHighDetailPhotoPickMarker(picked);
+  highDetailTarget={...highDetailTarget,lat:picked.lat,lon:picked.lon,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+  el.highDetailCoordinatePaste.value=`${picked.lat.toFixed(6)}, ${picked.lon.toFixed(6)}`;
+  updateHighDetailSettingsSummary();
+  showHighDetailStatus(`選択地点：方位 ${picked.bearing.toFixed(1)}°・約 ${picked.distanceKm.toFixed(2)}km先`,"info",0);
+  highDetailPhotoPickTimer=setTimeout(()=>{
+    highDetailPhotoPickTimer=0;
+    setHighDetailPhotoPicking(false,{returnToSettings:true});
+  },320);
+  return true;
 }
 el.highDetailCoordinatePaste?.addEventListener("input",updateHighDetailSettingsSummary);
 el.highDetailFrontKm?.addEventListener("input",updateHighDetailSettingsSummary);
 el.highDetailBackKm?.addEventListener("input",updateHighDetailSettingsSummary);
+el.highDetailPickFromPhotoBtn?.addEventListener("click",()=>setHighDetailPhotoPicking(true));
+el.highDetailPhotoPickCancelBtn?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();setHighDetailPhotoPicking(false,{returnToSettings:true});});
 el.highDetailSettingsCloseBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
 el.highDetailSettingsCancelBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
 el.highDetailSettingsOverlay?.addEventListener("click",e=>{if(e.target===el.highDetailSettingsOverlay)setHighDetailSettingsOpen(false);});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&highDetailPhotoPicking){e.preventDefault();setHighDetailPhotoPicking(false,{returnToSettings:true});}
+});
 el.highDetailSettingsStartBtn?.addEventListener("click",()=>{
   const parsed=updateHighDetailSettingsSummary();if(!parsed) return;
   highDetailTarget={lat:parsed.coordinate.lat,lon:parsed.coordinate.lon,frontKm:parsed.front,backKm:parsed.back,
@@ -8963,7 +9167,13 @@ if(el.highDetailBtn){
   el.highDetailBtn.addEventListener("contextmenu",e=>e.preventDefault());
   el.highDetailBtn.addEventListener("click",e=>{
     if(held){held=false;e.preventDefault();return;}
-    setHighDetail(!highDetailOn);
+    if(highDetailOn)setHighDetail(false);
+    else{
+      /* 短押しは従来どおり観測地点付近を高精細化する。
+         写真選択や座標入力の対象は、長押し設定から開始した場合だけ使う。 */
+      highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+      setHighDetail(true);
+    }
     if(el.highDetailBtn.blur) el.highDetailBtn.blur();
   });
 }
@@ -9707,6 +9917,7 @@ function photoCanvasPos(e){
 }
 let photoDragging=false, photoDragStart=[0,0], photoDragStartView=null, photoDragFovH=60, photoDragFovV=40, photoDragMaxDist=0;
 function photoDragBegin(pos){
+  if(highDetailPhotoPicking)return;
   photoDragging=true;
   photoDragStart=pos;
   photoDragMaxDist=0;
@@ -9765,20 +9976,31 @@ function photoDragEnd(pos){
   if(pos && photoDragMaxDist<6) handlePhotoTap(pos);
   else if(photoDragMaxDist>=6) scheduleCameraViewUpdate(); // 保持レイヤーを外し、停止位置を正確な水面で確定する
 }
-el.photoCanvas.addEventListener("mousedown",(e)=>{ photoDragBegin(photoCanvasPos(e)); e.preventDefault(); });
+el.photoCanvas.addEventListener("mousedown",(e)=>{
+  const pos=photoCanvasPos(e);
+  if(highDetailPhotoPicking){pickHighDetailTargetFromPhoto(pos);e.preventDefault();return;}
+  photoDragBegin(pos);e.preventDefault();
+});
 window.addEventListener("mousemove",(e)=>{ if(photoDragging) photoDragMove(photoCanvasPos(e)); });
 window.addEventListener("mouseup",(e)=>{ if(photoDragging) photoDragEnd(photoCanvasPos(e)); });
 el.photoCanvas.addEventListener("touchstart",(e)=>{
   if(!e.touches||e.touches.length!==1) return;
+  if(highDetailPhotoPicking){
+    highDetailPhotoPickTouchHandled=true;
+    pickHighDetailTargetFromPhoto(photoCanvasPos(e));
+    e.preventDefault();return;
+  }
   photoDragBegin(photoCanvasPos(e));
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchmove",(e)=>{
+  if(highDetailPhotoPickTouchHandled){e.preventDefault();return;}
   if(!e.touches||e.touches.length!==1) return;
   photoDragMove(photoCanvasPos(e));
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchend",(e)=>{
+  if(highDetailPhotoPickTouchHandled){highDetailPhotoPickTouchHandled=false;e.preventDefault();return;}
   const pos = e.changedTouches && e.changedTouches[0]
     ? [ (e.changedTouches[0].clientX-el.photoCanvas.getBoundingClientRect().left)/el.photoCanvas.getBoundingClientRect().width*el.photoCanvas.width,
         (e.changedTouches[0].clientY-el.photoCanvas.getBoundingClientRect().top)/el.photoCanvas.getBoundingClientRect().height*el.photoCanvas.height ]
@@ -9789,6 +10011,7 @@ el.photoCanvas.addEventListener("touchend",(e)=>{
 /* マウスホイールで焦点距離を調整(奥へスクロール=ズームイン=焦点距離を上げる) */
 el.photoCanvas.addEventListener("wheel",(e)=>{
   e.preventDefault();
+  if(highDetailPhotoPicking)return;
   const dir = e.deltaY<0 ? 1 : -1;
   const newFocal = clamp((+el.focalLength.value)+dir, +el.focalLength.min, +el.focalLength.max);
   if(newFocal===+el.focalLength.value) return;
@@ -9805,6 +10028,7 @@ function photoTouchDist(touches){
   return Math.hypot(dx,dy);
 }
 el.photoCanvas.addEventListener("touchstart",(e)=>{
+  if(highDetailPhotoPicking){e.preventDefault();return;}
   if(!e.touches||e.touches.length!==2) return;
   photoDragging=false; // 1本指ドラッグ中に2本目が触れた場合に備え、ドラッグ状態をリセットしておく
   el.photoCanvas.classList.remove("dragging");
@@ -9813,6 +10037,7 @@ el.photoCanvas.addEventListener("touchstart",(e)=>{
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchmove",(e)=>{
+  if(highDetailPhotoPicking){e.preventDefault();return;}
   if(!e.touches||e.touches.length!==2 || photoPinchStartDist<=0) return;
   const dist=photoTouchDist(e.touches);
   const ratio=dist/photoPinchStartDist;
@@ -21323,6 +21548,9 @@ function drawPhoto(ctx,s){
           }
         }
 
+        /* 通常表示の完成形と同じポリゴンを距離色で非表示Canvasへも塗る。
+           写真を選択するときは、この面からタップ位置の実距離を読み取る。 */
+        const terrainPickCtx=beginHighDetailTerrainPickFrame(W,H,s,useDiagonalFisheye,sharedTerrainProjectionPass);
         const bottomY=H+4;
         /* 雲海の後処理用。列ごとに
              anyTopY  … 塗ったもの全体の上端（空との境目）
@@ -21399,6 +21627,10 @@ function drawPhoto(ctx,s){
                   cloudProf.fill+=performance.now()-__f0;
                 }else{
                   tctx.fillStyle=color;tctx.fill(path);
+                  if(terrainPickCtx&&!runCloud){
+                    terrainPickCtx.fillStyle=highDetailTerrainPickColor(distanceKm);
+                    terrainPickCtx.fill(path);
+                  }
                   /* 雲より手前の地形は、下描きから雲を削る。
                      奥から手前へ塗っているので、この順番で前後関係が合う。 */
                   if(cloudCtx){
@@ -21460,6 +21692,7 @@ function drawPhoto(ctx,s){
         if(cloudSeaVisible) paintCloudSeaEffects(columns,cloudTopY,anyTopY,bottomY,cloudCtx);
         drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount);
         if(sharedTerrainProjectionPass!=="replay"){wmctx.globalCompositeOperation="source-over";}
+        if(terrainPickCtx)finishHighDetailTerrainPickFrame(painted>0);
         return painted>0;
       }
 
