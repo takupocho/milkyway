@@ -4956,7 +4956,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="757-mobile-simulation-target-layout";
+const APP_VERSION="758-focal-scaled-sun-light-road";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -18252,6 +18252,13 @@ function drawPhoto(ctx,s){
         function drawCelestialLightRoad(aa,strength,color="255,232,180",kind="moon",visibilityOverride=null){
           const isSun=kind==="sun",altitudeLimit=isSun?20:24;
           if(!aa||aa.alt<=0||aa.alt>=altitudeLimit||!isConfirmedWaterDirection(aa.az)) return;
+          /* 光路は画面上の固定pxではなく、レンズの投影倍率へ追従させる。
+             通常レンズは55mm、対角魚眼は15.3mmを従来の見た目の基準とし、
+             センサーのクロップも含めた実効焦点距離で長さ・幅・ぼかしを一緒に拡大縮小する。 */
+          const effectiveFocalMm=Math.max(.1,s.focalLength*Math.max(.1,s.sensor?.crop||1));
+          const sunRoadReferenceFocalMm=useDiagonalFisheye?15.3:55;
+          const sunRoadZoom=isSun?clamp(effectiveFocalMm/sunRoadReferenceFocalMm,.25,12):1;
+          const sunRoadPixelScale=reflectionCanvasScale*sunRoadZoom;
           const wrapped=((aa.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
           const ridgeAlt=realTerrainState.profile?lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t):0;
           // 山・岬に隠れている天体から光路だけが現れないようにする。
@@ -18309,8 +18316,8 @@ function drawPhoto(ctx,s){
           }
           const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),isSun?1.08:1.18);
           const phasePower=clamp(strength,0,1);
-          const maxRoad=H*(isSun?.78:(kind==="moon"?.57:.43));
-          const roadLength=Math.max(8*reflectionCanvasScale,maxRoad*lowFactor*(.48+phasePower*.52));
+          const maxRoad=H*(isSun?.78:(kind==="moon"?.57:.43))*sunRoadZoom;
+          const roadLength=Math.max(8*sunRoadPixelScale,maxRoad*lowFactor*(.48+phasePower*.52));
           /* 鏡面反射の中心は太陽と同じ角度だけ水平線下へ来る。
              その前後へ光点を分布させ、高高度・望遠時に不自然に水平線から光が始まるのを防ぐ。 */
           const headShare=isSun?.52:.42;
@@ -18322,9 +18329,10 @@ function drawPhoto(ctx,s){
           if(endY-startY<5) return;
           const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
           const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.88:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.96:.66);
-          const baseWidth=(isSun?5.5:(kind==="moon"?6.8:4.2))*reflectionCanvasScale;
-          const roadWidth=(isSun?84:(kind==="moon"?50:31))*reflectionCanvasScale*(.50+lowFactor*.50);
-          const bands=Math.min(isSun?104:84,Math.max(18,Math.round((endY-startY)/(isSun?4.8:(kind==="moon"?4.4:5.6)))));
+          const baseWidth=(isSun?5.5:(kind==="moon"?6.8:4.2))*sunRoadPixelScale;
+          const roadWidth=(isSun?84:(kind==="moon"?50:31))*sunRoadPixelScale*(.50+lowFactor*.50);
+          const bandSpacing=(isSun?4.8:(kind==="moon"?4.4:5.6))*sunRoadZoom;
+          const bands=Math.min(isSun?104:84,Math.max(18,Math.round((endY-startY)/bandSpacing)));
           const specularQ=clamp((reflectedPoint[1]-startY)/(endY-startY),.08,.92);
           /* シミュレーション時刻に連動した滑らかな位相。静止画では固定され、時刻再生時だけ
              各波面の反射が少しずつ入れ替わるため、常時requestAnimationFrameを増やさない。 */
@@ -18353,15 +18361,15 @@ function drawPhoto(ctx,s){
             for(let shard=0;shard<shardCount;shard++){
               const shardNoise=changingNoise(band*4+shard,5),lengthNoise=changingNoise(band*4+shard,6);
               const centerOffset=(shardNoise-.5)*availableHalfWidth*1.48;
-              const shardHalf=Math.max(.8*reflectionCanvasScale,availableHalfWidth*(.08+.29*lengthNoise)*(shardCount===1?1.35:1));
-              const lineWidth=Math.max(.55,(isSun?1.65:(kind==="moon"?1.45:1.0))*reflectionCanvasScale*(.62+lengthNoise*.92)*(1+q*.34));
+              const shardHalf=Math.max(.8*sunRoadPixelScale,availableHalfWidth*(.08+.29*lengthNoise)*(shardCount===1?1.35:1));
+              const lineWidth=Math.max(.55,(isSun?1.65:(kind==="moon"?1.45:1.0))*sunRoadPixelScale*(.62+lengthNoise*.92)*(1+q*.34));
               glints.push({x1:x+centerOffset-shardHalf,x2:x+centerOffset+shardHalf,y:y+(shard-.5*(shardCount-1))*lineWidth*.72,alpha:bandAlpha*(.68+.32*lengthNoise),lineWidth,core:lengthNoise>.53});
             }
           }
           if(!glints.length) return;
           ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
           // 同じ短い反射だけをぼかして下に敷く。縦線をぼかした光の柱にはしない。
-          ctx.save();ctx.filter=`blur(${Math.max(1.5,(isSun?4.6:(kind==="moon"?3.4:2.5))*reflectionCanvasScale)}px)`;
+          ctx.save();ctx.filter=`blur(${Math.max(1.5,(isSun?4.6:(kind==="moon"?3.4:2.5))*sunRoadPixelScale)}px)`;
           glints.forEach(glint=>{
             ctx.strokeStyle=`rgba(${color},${glint.alpha*(isSun?.38:.30)})`;
             ctx.lineWidth=glint.lineWidth*(isSun?3.4:2.8);
