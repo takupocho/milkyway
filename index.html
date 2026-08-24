@@ -4907,7 +4907,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="752-mobile-high-detail-render";
+const APP_VERSION="753-skip-empty-high-detail-points";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -20075,7 +20075,9 @@ function drawPhoto(ctx,s){
               const extra=[];
               // 水域は5m DEMの標高だけでは陸海を判別できない。通常レイの水判定を引き継ぎ、
               // 水と分かっている区間には高精細の陸点を追加しない。
-              const coarseWalk=walk||[];
+              /* 通常レイにはDEM欠損位置を示すnullが残ることがある。
+                 高精細点との距離比較・並べ替えへ渡す前に、有効な地形点だけへ絞る。 */
+              const coarseWalk=(walk||[]).filter(point=>point&&Number.isFinite(point.distanceKm));
               let coarseIndex=0;
               for(let metres=nearKm*1000;metres<=farKm*1000+.01;){
                 const sampleMetres=metres;
@@ -20097,7 +20099,7 @@ function drawPhoto(ctx,s){
               }
               /* 取得途中・欠損タイルがあっても既存地形は絶対に削除しない。
                  高精細点は追加して稜線候補を増やすだけなので、失敗時も通常景色が残る。 */
-              if(extra.length>=2) walk=(walk||[]).concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
+              if(extra.length>=2) walk=coarseWalk.concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
             }
           }
           const limitKm=highDetailTargetIsReady()?highDetailTarget.farKm:HIGH_DETAIL_FIELD_RADIUS_M/1000;
