@@ -2279,8 +2279,17 @@
     background:rgba(16,20,42,.86);
     color:#fff;
     font:600 10px/1.25 'IBM Plex Mono',monospace;
-    pointer-events:none;
+    border:1px solid rgba(127,200,255,.55);
+    appearance:none;
+    cursor:copy;
+    pointer-events:auto;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
   }
+  .osm-map-coordinate:hover{background:rgba(28,38,72,.94);border-color:#7fc8ff;}
+  .osm-map-coordinate:active{transform:translateX(-50%) scale(.98);}
+  .osm-map-coordinate:focus-visible{outline:2px solid #f3b04f;outline-offset:2px;}
+  .osm-map-coordinate.copied{border-color:#56e39f;color:#bfffe0;background:rgba(15,55,48,.94);}
   /* 地点をまだ選んでいないときは、空の小さな帯だけが残るので出さない。 */
   .osm-map-coordinate:empty{display:none;}
   .osm-location-marker{
@@ -4609,7 +4618,7 @@
                   <div id="osmGoogleImportStatus" class="osm-import-status" aria-live="polite"></div>
                 </div>
                 </div>
-                <div id="osmMapCoordinate" class="osm-map-coordinate"></div>
+                <button id="osmMapCoordinate" type="button" class="osm-map-coordinate" aria-label="選択地点の緯度と経度をコピー" title="タップして緯度・経度をコピー"></button>
               </div>
               <!-- v663: 地図モードの6つのボタンは、地図パネルの中ではなく器の右端に置く。
                    縦構図では画像の外の余白に並び、横構図でも同じ場所に出る。
@@ -4962,7 +4971,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="761-visible-daruma-with-viewpoint-height";
+const APP_VERSION="762-tap-map-coordinate-copy";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -7222,6 +7231,39 @@ function updateOsmCoordinateLabel(){
   if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   el.osmMapCoordinate.textContent=`選択地点：緯度 ${osmCandidateLat.toFixed(5)} / 経度 ${osmCandidateLon.toFixed(5)}`;
 }
+/* マップで選んだ座標を、Googleマップ等へそのまま貼れる「緯度, 経度」でコピーする。
+   file://で開いた場合や一部のiPhoneでClipboard APIが使えない場合は、
+   ユーザー操作中に一時入力欄を選択する従来方式へ自動的に切り替える。 */
+async function copyOsmCandidateCoordinate(){
+  if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
+  const coordinateText=`${osmCandidateLat.toFixed(6)}, ${osmCandidateLon.toFixed(6)}`;
+  let copied=false;
+  if(navigator.clipboard&&typeof navigator.clipboard.writeText==="function"){
+    try{ await navigator.clipboard.writeText(coordinateText);copied=true; }catch(error){}
+  }
+  if(!copied){
+    const field=document.createElement("textarea");
+    field.value=coordinateText;
+    field.setAttribute("readonly","");
+    field.style.cssText="position:fixed;left:-9999px;top:0;opacity:0;";
+    document.body.appendChild(field);
+    field.focus();field.select();field.setSelectionRange(0,field.value.length);
+    try{ copied=document.execCommand("copy"); }catch(error){ copied=false; }
+    field.remove();
+  }
+  if(copied){
+    el.osmMapCoordinate.classList.add("copied");
+    showSkySearchPopup("緯度・経度をコピーしました");
+    setTimeout(()=>el.osmMapCoordinate.classList.remove("copied"),900);
+  }else{
+    showSkySearchPopup("自動コピーできませんでした");
+    window.prompt("次の緯度・経度をコピーしてください",coordinateText);
+  }
+}
+el.osmMapCoordinate.addEventListener("click",event=>{
+  event.preventDefault();event.stopPropagation();
+  copyOsmCandidateCoordinate();
+});
 function updateOsmSelectionMarker(){
   if(!osmMapInstance||typeof window.L==="undefined"||!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   const latLng=[osmCandidateLat,osmCandidateLon];
