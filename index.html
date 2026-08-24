@@ -4022,8 +4022,14 @@
             <input type="range" id="shutter" min="1" max="30" step="1">
           </div>
           <div class="field">
-            <label class="top">三脚の高さ（カメラ位置） <span class="val mono" id="tripodHeightVal">160cm</span></label>
+            <label class="top">三脚・カメラの高さ（レンズ中心） <span class="val mono" id="tripodHeightVal">160cm</span></label>
             <input type="range" id="tripodHeight" min="0" max="200" step="5" value="160">
+          </div>
+          <div class="field">
+            <label class="top" for="viewpointOffset">撮影場所の追加高さ（m）</label>
+            <input type="number" id="viewpointOffset" min="0" max="500" step="0.1" value="0" inputmode="decimal">
+            <p class="range-hint">視点標高＝地面標高＋追加高さ＋三脚。展望台・屋上・防波堤など、標高に含まれない高さを入力します。</p>
+            <p class="range-hint">現在の視点標高：<span class="val mono" id="observerEyeElevationVal">標高取得後に表示</span></p>
           </div>
           <div class="field">
             <label class="top">センサー</label>
@@ -4956,7 +4962,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="759-narrow-telephoto-sun-light-road";
+const APP_VERSION="761-visible-daruma-with-viewpoint-height";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6031,6 +6037,7 @@ const el={
   isoSlider:$("isoSlider"), isoVal:$("isoVal"),
   shutter:$("shutter"), ssVal:$("ssVal"),
   tripodHeight:$("tripodHeight"), tripodHeightVal:$("tripodHeightVal"),
+  viewpointOffset:$("viewpointOffset"), observerEyeElevationVal:$("observerEyeElevationVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
@@ -8558,12 +8565,14 @@ function cloudSeaTopAt(lat,lon,reliefM){
 }
 let railLinesVisible=false;
 
-/* 三脚に載せたカメラの地面からの高さ(m)。
+/* 三脚に載せたカメラの設置面からの高さ(m)。
    見かけの高度は atan((地物の標高 - カメラの標高) / 距離) なので、
    高さを変えると特に近距離の地形の見え方が大きく変わる(5m先なら1.6mで17.7°、0.5mで5.7°)。
    地形プロファイルは1.6m基準で作ってあるが、レイマーチ描画側では各点の実標高から
    その場で見かけ高度を計算し直すため、スライダーを動かしても地形の再取得は起きない。 */
 let tripodHeightM=1.6;
+/* 国土地理院DEMの地面標高には含まれない、展望台・屋上・防波堤などの追加高さ(m)。 */
+let viewpointOffsetM=0;
 /* キーボードで上昇した高さ(m)。三脚の高さに足して視点の高さになる。
    0で地面(＝三脚の高さのまま)、最大300m。
    地形の見かけ高度は各点の実標高から描画時に計算し直しているので、
@@ -8586,8 +8595,33 @@ function groundElevationM(){
   try{ return Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:null; }
   catch(e){ return null; }
 }
-// 視点の地面からの高さ。三脚の高さを使う箇所は必ずこれを通す。
-function eyeHeightAboveGroundM(){ return tripodHeightM+cameraRiseM; }
+// 視点のDEM地面からの高さ。追加高さ・三脚・上昇量を使う箇所は必ずこれを通す。
+function eyeHeightAboveGroundM(){ return viewpointOffsetM+tripodHeightM+cameraRiseM; }
+function observerEyeElevationM(){
+  const ground=groundElevationM();
+  return ground===null?null:ground+eyeHeightAboveGroundM();
+}
+function syncObserverEyeElevationDisplay(){
+  if(!el.observerEyeElevationVal) return;
+  const eye=observerEyeElevationM();
+  const text=eye===null
+    ?`標高取得後に表示（追加${viewpointOffsetM.toFixed(1)}m＋三脚${tripodHeightM.toFixed(2)}m）`
+    :`海抜 ${eye.toFixed(Math.abs(eye)<100?1:0)}m`;
+  if(el.observerEyeElevationVal.textContent!==text) el.observerEyeElevationVal.textContent=text;
+}
+function syncViewpointOffsetControl(){
+  if(!el.viewpointOffset) return;
+  // 入力途中で空欄にした瞬間は0へ確定せず、次の数字をそのまま入力できるようにする。
+  if(String(el.viewpointOffset.value||"").trim()===""){
+    syncObserverEyeElevationDisplay();
+    return;
+  }
+  const raw=Number(el.viewpointOffset.value);
+  viewpointOffsetM=clamp(Number.isFinite(raw)?raw:0,0,500);
+  viewpointOffsetM=Math.round(viewpointOffsetM*10)/10;
+  el.viewpointOffset.value=String(viewpointOffsetM);
+  syncObserverEyeElevationDisplay();
+}
 function syncTripodHeightControl(){
   // 0cm(地面置き)は正当な値なので「||160」では駄目(0がfalsyで160に化ける)。
   const raw=Math.round(+el.tripodHeight.value);
@@ -8601,6 +8635,7 @@ function syncTripodHeightControl(){
   el.tripodHeightVal.textContent=cameraRiseM>0
     ? `${base} ＋上昇 ${cameraRiseM.toFixed(1)}m`
     : base;
+  syncObserverEyeElevationDisplay();
   syncDroneBadge();
 }
 /* 【v730】高度表示の短押し／長押しから使う自動上昇・下降。 */
@@ -8634,8 +8669,8 @@ function startDroneAutoVertical(speedMps){
     const next=clamp(cameraRiseM+droneAutoVerticalSpeedMps*dt,0,CAMERA_RISE_MAX_M);
     if(next!==cameraRiseM){
       cameraRiseM=next;
-      const ground=groundElevationM();
-      droneHoldElevation=(cameraRiseM>0&&ground!==null)?ground+cameraRiseM:null;
+      const eye=observerEyeElevationM();
+      droneHoldElevation=(cameraRiseM>0&&eye!==null)?eye:null;
       /* 自動飛行は約30fpsで描画する。高度計算だけで60fps描き直す必要はない。 */
       if(!droneAutoVerticalLastDraw||now-droneAutoVerticalLastDraw>=32){
         droneAutoVerticalLastDraw=now;
@@ -8662,10 +8697,10 @@ function syncDroneBadge(){
   const flying=cameraRiseM>=.5;
   el.droneBadge.hidden=!flying;
   if(flying){
-    const ground=groundElevationM();
+    const ground=groundElevationM(),eye=observerEyeElevationM();
     const auto=droneAutoVerticalActive()?` ${droneAutoVerticalSpeedMps>0?"▲":"▼"}${Math.abs(droneAutoVerticalSpeedMps)}m/秒`:"";
-    el.droneBadge.textContent=(ground!==null
-      ? `ドローン 上空 ${Math.round(cameraRiseM)}m ／ 海抜 ${Math.round(ground+cameraRiseM)}m`
+    el.droneBadge.textContent=(ground!==null&&eye!==null
+      ? `ドローン 上空 ${Math.round(cameraRiseM)}m ／ 視点海抜 ${Math.round(eye)}m`
       : `ドローン 上空 ${Math.round(cameraRiseM)}m`)+auto;
   }
   syncSimTopStack();
@@ -8818,10 +8853,30 @@ async function updateSimAddress(lat,lon){
 }
 el.tripodHeight.addEventListener("input",()=>{
   syncTripodHeightControl();
+  if(cameraRiseM>0) droneHoldElevation=observerEyeElevationM();
+  invalidateCurrentEyeTerrainProfile();
   drawPhoto._terrainRenderKey=null; // 地形の見かけ高度が変わるので描き直す
   update();
   scheduleSaveSettings();
 });
+el.viewpointOffset.addEventListener("input",()=>{
+  syncViewpointOffsetControl();
+  if(cameraRiseM>0) droneHoldElevation=observerEyeElevationM();
+  invalidateCurrentEyeTerrainProfile();
+  drawPhoto._terrainRenderKey=null;
+  update();
+  scheduleSaveSettings();
+});
+el.viewpointOffset.addEventListener("change",()=>{
+  if(String(el.viewpointOffset.value||"").trim()==="") el.viewpointOffset.value="0";
+  syncViewpointOffsetControl();
+  if(cameraRiseM>0) droneHoldElevation=observerEyeElevationM();
+  invalidateCurrentEyeTerrainProfile();
+  drawPhoto._terrainRenderKey=null;
+  update();
+  scheduleSaveSettings();
+});
+syncViewpointOffsetControl();
 syncTripodHeightControl();
 /* 高精細モード（v751）。
    通常キャンバス・空・天体・近距離格子は重くせず、ボタンを押した時点の画面内にある
@@ -11018,7 +11073,7 @@ function collectPersistedSettings(){
     lat:el.lat.value, lon:el.lon.value, tz:el.tz.value, citySelect:el.citySelect.value,
     focalLength:el.focalLength.value, aperture:el.aperture.value, isoSlider:el.isoSlider.value,
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
-    tripodHeight:el.tripodHeight.value,
+    tripodHeight:el.tripodHeight.value, viewpointOffset:el.viewpointOffset.value,
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -11217,7 +11272,13 @@ async function loadPersistedSettings(){
       const saved=Math.round(+s.tripodHeight); // 0cmを160cmへ化けさせないため || は使わない
       el.tripodHeight.value=clamp(Number.isFinite(saved)?saved:160,0,200);
     }
+    if(s.viewpointOffset!==undefined){
+      const saved=Number(s.viewpointOffset);
+      el.viewpointOffset.value=clamp(Number.isFinite(saved)?saved:0,0,500);
+    }
+    syncViewpointOffsetControl();
     syncTripodHeightControl();
+    invalidateCurrentEyeTerrainProfile();
     if(s.skylineOpacity!==undefined) el.skylineOpacitySlider.value=s.skylineOpacity;
     el.skylineOpacityVal.textContent=`${el.skylineOpacitySlider.value}%`;
     showBelowHorizon=s.showBelowHorizon!==false;
@@ -11910,6 +11971,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     date:el.dateInput.value,timeMinutes:+el.timeSlider.value,is15hMode:timeRangeMode==="15h",
     focalLength:+el.focalLength.value,lensMode:mobileLensMode,
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
+    tripodHeight:+el.tripodHeight.value,viewpointOffset:+el.viewpointOffset.value,
     cloudSea:captureCloudSeaForPlan(),
     comets:captureCometsForPlan(),
     kmzBuilding:captureKmzBuildingForPlan(),
@@ -12144,6 +12206,9 @@ async function applySavedObservingPlan(location){
   }
   if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
   if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
+  if(Number.isFinite(+location.tripodHeight)) el.tripodHeight.value=clamp(Math.round(+location.tripodHeight),0,200);
+  if(Number.isFinite(+location.viewpointOffset)) el.viewpointOffset.value=clamp(+location.viewpointOffset,0,500);
+  syncViewpointOffsetControl();syncTripodHeightControl();invalidateCurrentEyeTerrainProfile();
   /* 雲海は、記録があればその内容でON、無ければOFFにする（v687）。 */
   applyCloudSeaFromPlan(location.cloudSea||null);
   /* 彗星も同じ（v688）。 */
@@ -12189,6 +12254,8 @@ function renderCurrentPlanPreview(){
   appendPlanPreviewItem("レンズ",`${el.focalLength.value}mm・${mobileLensMode==="fisheye"?"魚眼":"通常"}`);
   appendPlanPreviewItem("撮影方向",`方位 ${Math.round(+el.facingAz.value)}°・仰角 ${Math.round(+el.facingAlt.value)}°`);
   appendPlanPreviewItem("構図",orientation==="portrait"?"縦構図":"横構図");
+  const eye=observerEyeElevationM();
+  appendPlanPreviewItem("視点高",`${eye===null?"海抜未取得":`海抜 ${eye.toFixed(1)}m`}・追加 ${viewpointOffsetM.toFixed(1)}m・三脚 ${tripodHeightM.toFixed(2)}m`,true);
   /* 雲海はONのときだけ出す。ここに出ていれば、その内容で記録される（v687）。 */
   const cloudNow=captureCloudSeaForPlan();
   if(cloudNow) appendPlanPreviewItem("雲海",`${cloudSeaSummaryText(cloudNow)}・風 ${cloudSeaWindLabel()}`,true);
@@ -16042,11 +16109,88 @@ function requestRealTerrainProfile(lat,lon){
     }
   })();
 }
+let currentEyeTerrainProfileCache={grid:null,observerElevation:null,eyeHeight:null,profile:null,layerProfiles:null,blockingProfile:null};
+function invalidateCurrentEyeTerrainProfile(){
+  currentEyeTerrainProfileCache={grid:null,observerElevation:null,eyeHeight:null,profile:null,layerProfiles:null,blockingProfile:null};
+}
+/* 保存済みrayGridの実標高と距離から、現在の「追加高さ＋三脚＋上昇量」で稜線を再計算する。
+   外部データを取り直さず、地球曲率と標準的な大気差(7/6地球半径)も同じ式で統一する。 */
+function currentEyeTerrainProfile(){
+  const fallback=realTerrainState.profile;
+  const grid=realTerrainState.rayGrid,observerElevation=realTerrainState.observerElevation;
+  if(!Array.isArray(grid)||grid.length<360||!Number.isFinite(observerElevation)) return fallback;
+  const eyeHeight=eyeHeightAboveGroundM();
+  const cache=currentEyeTerrainProfileCache;
+  if(cache.grid===grid&&cache.observerElevation===observerElevation&&cache.eyeHeight===eyeHeight&&cache.profile) return cache.profile;
+  const eyeElevation=observerElevation+eyeHeight,earthRadius=6371000*(7/6);
+  const profile=new Array(360).fill(0);
+  const layerProfiles=TERRAIN_DISTANCE_BANDS.map(()=>new Array(360).fill(0));
+  /* だるま朝陽・夕陽の遮蔽判定専用。描画用profileは従来どおり0度未満を
+     切り捨てるが、遠い島が海の水平線より下へ隠れたかを調べるには、
+     地球曲率で負になった見かけ高度も保持する必要がある。 */
+  const blockingProfile=new Array(360).fill(null);
+  for(let az=0;az<360;az++){
+    const row=grid[az];
+    if(!Array.isArray(row)) continue;
+    let highest=0,highestLand=-Infinity;
+    for(const point of row){
+      if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<=0) continue;
+      const metres=point.distanceKm*1000;
+      let altitude=null;
+      if(Number.isFinite(point.baseElevation)){
+        const curvatureDrop=metres*metres/(2*earthRadius);
+        altitude=Math.atan2(point.baseElevation-eyeElevation-curvatureDrop,metres)*R2D;
+      }else if(!point.water&&Number.isFinite(point.alt)){
+        /* 古いキャッシュで実標高が無い陸点だけ、1.6m基準の保存角から近似補正する。 */
+        altitude=point.alt-Math.atan2(eyeHeight-1.6,metres)*R2D;
+      }
+      if(Number.isFinite(altitude)){
+        if(altitude>highest) highest=altitude;
+        if(!point.water&&!point.baseNoData&&altitude>highestLand) highestLand=altitude;
+        const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>point.distanceKm>=band.min&&point.distanceKm<band.max);
+        if(layerIndex>=0&&altitude>layerProfiles[layerIndex][az]) layerProfiles[layerIndex][az]=altitude;
+      }
+    }
+    profile[az]=clamp(highest,0,45);
+    blockingProfile[az]=Number.isFinite(highestLand)?clamp(highestLand,-45,45):null;
+    for(let layerIndex=0;layerIndex<layerProfiles.length;layerIndex++){
+      layerProfiles[layerIndex][az]=clamp(layerProfiles[layerIndex][az],0,45);
+    }
+  }
+  currentEyeTerrainProfileCache={grid,observerElevation,eyeHeight,profile,layerProfiles,blockingProfile};
+  return profile;
+}
+function currentEyeTerrainLayerProfiles(){
+  currentEyeTerrainProfile();
+  return currentEyeTerrainProfileCache.layerProfiles;
+}
 function realTerrainAltitudeAt(az){
-  const profile=realTerrainState.profile;
+  const profile=currentEyeTerrainProfile();
   if(!profile) return null;
   const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
   return lerp(profile[i0],profile[i1],t);
+}
+/* 海方向にある陸地だけの最高見かけ高度。nullの方位は海・標高欠損として
+   遮蔽物にしない。片側の整数方位にだけ島がある場合も消さない。 */
+function currentEyeTerrainBlockingAltitudeAt(az){
+  currentEyeTerrainProfile();
+  const profile=currentEyeTerrainProfileCache.blockingProfile;
+  if(!Array.isArray(profile)) return null;
+  const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
+  const a=profile[i0],b=profile[i1];
+  if(Number.isFinite(a)&&Number.isFinite(b)) return lerp(a,b,t);
+  if(Number.isFinite(a)) return a;
+  if(Number.isFinite(b)) return b;
+  return null;
+}
+/* 標準的な大気差を7/6地球半径で近似した、海面の見かけの水平線高度。
+   海抜が高いほど0度より下へ沈む。 */
+function currentSeaHorizonAltitudeDeg(){
+  const eyeElevation=observerEyeElevationM();
+  if(!Number.isFinite(eyeElevation)) return 0;
+  const eyeAboveSea=Math.max(.05,eyeElevation);
+  const effectiveEarthRadius=6371000*(7/6);
+  return -Math.acos(effectiveEarthRadius/(effectiveEarthRadius+eyeAboveSea))*R2D;
 }
 // 実地形・簡易シルエットのどちらでも使える、方位から「地面(山)の見かけの高度」を返す共通ヘルパー。
 // 流れ星が山より奥に隠れるようにする際の、地平線・稜線の高さ判定に使う。
@@ -16616,6 +16760,11 @@ function drawPhoto(ctx,s){
   }
   let darumaSunActive=false;
   let darumaSunShape=null;
+  const activeTerrainProfile=currentEyeTerrainProfile();
+  const activeTerrainLayerProfiles=currentEyeTerrainLayerProfiles();
+  const activeTerrainLayers=Array.isArray(realTerrainState.terrainLayers)
+    ?realTerrainState.terrainLayers.map((layer,index)=>({...layer,profile:activeTerrainLayerProfiles?.[index]||layer.profile}))
+    :[];
   ctx.clearRect(0,0,W,H);
   photoClickRegions.length=0; // 名称クリック検出用の領域をこのフレーム分だけ作り直す
   waterReflectionHorizonYByX=null;
@@ -17345,7 +17494,7 @@ function drawPhoto(ctx,s){
       /* v745 だるま朝陽・夕陽。
          鏡像は描かず、海面に接する太陽本体の下端だけをくびれ＋横張り出しへ変形する。 */
       const darumaSeason=s.dateMo===11||s.dateMo===12||s.dateMo===1||s.dateMo===2;
-      const darumaTerrainReady=realTerrainState&&realTerrainState.profile&&
+      const darumaTerrainReady=realTerrainState&&activeTerrainProfile&&
         realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
       if(darumaSeason&&darumaTerrainReady){
         const sunAzIndex=((Math.round(s.sunAltAz.az)%360)+360)%360;
@@ -17353,17 +17502,21 @@ function drawPhoto(ctx,s){
         const seaVotes=[openSea[(sunAzIndex+359)%360],openSea[sunAzIndex],openSea[(sunAzIndex+1)%360]].filter(Boolean).length;
         const noDataSeaFar=realTerrainState.noDataWaterFarKm||[];
         const demSea=Number.isFinite(noDataSeaFar[(sunAzIndex+359)%360])||Number.isFinite(noDataSeaFar[sunAzIndex])||Number.isFinite(noDataSeaFar[(sunAzIndex+1)%360]);
-        /* 下位蜃気楼の折り返し線は太陽と一緒に動かず、水平線の少し上に留まる。 */
-        const seaHorizonAlt=0,foldAlt=.045;
-        const blockingAlt=Number(realTerrainState.profile[sunAzIndex])||0;
+        /* 描画上の海面線は、このアプリの地形・水面描画と同じ仰角0度に置く。
+           一方、遠方の島が地球の丸みで隠れたかは、現在の視点高から求めた
+           物理的な水平線で判定する。両者を混ぜると、高所では太陽だけが
+           描画上の海面より下へ移動し、だるま形になる前に隠れてしまう。 */
+        const renderedSeaHorizonAlt=0,physicalSeaHorizonAlt=currentSeaHorizonAltitudeDeg();
+        const foldAlt=renderedSeaHorizonAlt+.045;
+        const blockingAlt=currentEyeTerrainBlockingAltitudeAt(s.sunAltAz.az);
         const angularRadius=s.sun.angularRadiusDeg||.26656;
         const sequenceStart=foldAlt+angularRadius+.14,sequenceEnd=foldAlt-angularRadius-.08;
         const inSequence=s.sunAltAz.alt<=sequenceStart&&s.sunAltAz.alt>=sequenceEnd;
         /* profileが海面より明確に高い方角は、島・岬・山の向こうなので演出しない。 */
-        const unobstructed=blockingAlt<=seaHorizonAlt+.35;
+        const unobstructed=blockingAlt===null||blockingAlt<=physicalSeaHorizonAlt+.04;
         if((seaVotes>=1||demSea)&&unobstructed&&inSequence){
           darumaSunActive=true;
-          const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,seaHorizonAlt);
+          const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,renderedSeaHorizonAlt);
           if(foldPoint&&horizonPoint) darumaSunShape={foldY:foldPoint[1],horizonY:horizonPoint[1]};
         }
       }
@@ -17657,7 +17810,7 @@ function drawPhoto(ctx,s){
     const groundRGB=mixRGB(nightGroundRGB,dayGroundRGB,dayFactor);
     const groundColor=showBelowHorizon ? `rgba(${groundRGB.join(",")},${belowHorizonAlpha})` : `rgb(${groundRGB.join(",")})`;
 
-    const realTerrainReady=realTerrainState.profile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
+    const realTerrainReady=activeTerrainProfile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
     if(realTerrainReady){
       // 距離帯別の稜線を遠方から手前へ重ね、夜の大気遠近法で奥行きを表現する。
       // 5層はそれぞれ稜線側を暗く、画面下側を少し明るい縦グラデーションで描く。
@@ -17779,8 +17932,8 @@ function drawPhoto(ctx,s){
         const si0=Math.floor(wrappedSummit),si1=(si0+1)%360,st=wrappedSummit-si0;
         // 全距離の最終稜線だけでは手前の地形と富士山を区別できないため、
         // 富士山までの距離を含む距離帯の稜線を専用に参照する。
-        const fujiBand=(realTerrainState.terrainLayers||[]).find(layer=>fuji.distanceKm>=layer.min&&fuji.distanceKm<layer.max);
-        const fujiProfile=fujiBand&&fujiBand.profile?fujiBand.profile:realTerrainState.profile;
+        const fujiBand=activeTerrainLayers.find(layer=>fuji.distanceKm>=layer.min&&fuji.distanceKm<layer.max);
+        const fujiProfile=fujiBand&&fujiBand.profile?fujiBand.profile:activeTerrainProfile;
         const measuredSummit=lerp(fujiProfile[si0]||0,fujiProfile[si1]||0,st);
         // 1度刻みDEMが剣ヶ峰を外す場合があるため「低すぎる」側では除外しない。
         // 理論上の山頂より明らかに高ければ、手前の山に隠れているものとして除外する。
@@ -17828,7 +17981,7 @@ function drawPhoto(ctx,s){
             lateralKm*(FUJI_VISUAL_PROFILE.summitM-FUJI_VISUAL_PROFILE.baseM)/FUJI_VISUAL_PROFILE.baseRadiusKm;
           if(expectedElevation<localSnowlineM){samples.push(null);continue;}
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-          const finalRidgeAlt=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          const finalRidgeAlt=lerp(activeTerrainProfile[i0]||0,activeTerrainProfile[i1]||0,t);
           // 隣接方位も含めた最大値を使い、粗い1度サンプルが細い山頂を外しても雪冠を消さない。
           const targetRidgeAlt=Math.max(
             lerp(fujiProfile[i0]||0,fujiProfile[i1]||0,t),
@@ -17903,7 +18056,7 @@ function drawPhoto(ctx,s){
         confirmedWaterAz=new Array(360).fill(false);
         const nearProfile=realTerrainState.waterNearKm;
         const coastlineOpenSea=realTerrainState.coastlineOpenSeaAz||[];
-        const waterLayers=realTerrainState.terrainLayers||[];
+        const waterLayers=activeTerrainLayers;
         const waterGrid=realTerrainState.nearSurfaceGrid||[];
         for(let az=0;az<360;az++){
           const hasShoreline=!!(nearProfile&&Number.isFinite(nearProfile[az]));
@@ -17979,7 +18132,7 @@ function drawPhoto(ctx,s){
           runs.forEach(run=>{
             const reflected=run.map(item=>{
               const wrapped=((item.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-              const ridgeAlt=Math.max(0,lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t));
+              const ridgeAlt=Math.max(0,lerp(activeTerrainProfile[i0]||0,activeTerrainProfile[i1]||0,t));
               const sourcePoint=toXY(item.az,ridgeAlt);
               const point=sourcePoint&&[...sourcePoint].every(Number.isFinite)
                 ?[sourcePoint[0],mirrorHorizonY*2-sourcePoint[1]]:null;
@@ -18270,7 +18423,7 @@ function drawPhoto(ctx,s){
           const sunRoadWidthPixelScale=reflectionCanvasScale*sunRoadWidthZoom;
           const sunRoadDetailPixelScale=reflectionCanvasScale*sunRoadDetailZoom;
           const wrapped=((aa.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-          const ridgeAlt=realTerrainState.profile?lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t):0;
+          const ridgeAlt=activeTerrainProfile?lerp(activeTerrainProfile[i0]||0,activeTerrainProfile[i1]||0,t):0;
           // 山・岬に隠れている天体から光路だけが現れないようにする。
           if(aa.alt<=ridgeAlt+.08) return;
           const reflectedPoint=toXY(aa.az,-aa.alt);
@@ -18764,7 +18917,7 @@ function drawPhoto(ctx,s){
       // DEMの連続nodataは主に海、OSM・既知形状は湖・池・貯水池として扱う。
       // 内水面が主体の場面では昼色を明るく、少し空色寄りにして海と区別する。
       let seaEvidence=0,inlandEvidence=0;
-      (realTerrainState.terrainLayers||[]).forEach(layer=>{
+      activeTerrainLayers.forEach(layer=>{
         for(let az=0;az<360;az++){
           seaEvidence+=(layer.noDataWaterProfile&&layer.noDataWaterProfile[az])||0;
           const total=(layer.waterProfile&&layer.waterProfile[az])||0;
@@ -18808,7 +18961,7 @@ function drawPhoto(ctx,s){
          どこかで被覆が途切れても最悪でも地面色が残り、空や海が透けることはなくなる。
          上端は方位ごとの実際の稜線(最大見かけ高度)なので、空の領域は一切塗らない。 */
       function fillGroundFloor(){
-        const profile=realTerrainState.profile;
+        const profile=activeTerrainProfile;
         if(!profile) return;
         const floorStep=Math.min(step,1);
         const points=[];
@@ -19146,14 +19299,14 @@ function drawPhoto(ctx,s){
             const fine=highDetailElevationAt(s.lat+worldNorthM/111320,s.lon+worldEastM/mLonHere);
             if(Number.isFinite(fine)){
               highDetailUsedCells++;
-              heightDeltaM=fine-(realTerrainState.observerElevation+1.6);
+              heightDeltaM=fine-(realTerrainState.observerElevation+eyeHeightAboveGroundM());
               baseElevation=fine;
             }
           }
           if(localDetailTerrainEnabled&&waterWeight<.5){
             const local=sampleLocalDetailElevation(worldEastM,worldNorthM);
             if(local&&Number.isFinite(realTerrainState.observerElevation)){
-              const detailedHeightM=local.elevation-(realTerrainState.observerElevation+1.6);
+              const detailedHeightM=local.elevation-(realTerrainState.observerElevation+eyeHeightAboveGroundM());
               heightDeltaM=lerp(heightDeltaM,detailedHeightM,local.blend);
               baseElevation=lerp(Number.isFinite(baseElevation)?baseElevation:local.elevation,local.elevation,local.blend);
             }
@@ -19224,7 +19377,7 @@ function drawPhoto(ctx,s){
                  !Number.isFinite(elevation01)||!Number.isFinite(elevation11)){row.push(base);continue;}
               const fx=gx-x0,fy=gy-y0,detailed=lerp(lerp(elevation00,elevation10,fx),lerp(elevation01,elevation11,fx),fy);
               const edgeBlend=clamp((radius-radial)/Math.min(3,Math.max(1,radius*.2)),0,1),blend=edgeBlend*edgeBlend*(3-2*edgeBlend);
-              const metres=Math.max(.1,Math.hypot(eastM,northM)),detailedAlt=Math.atan2(detailed-(realTerrainState.observerElevation+1.6),metres)*R2D;
+              const metres=Math.max(.1,Math.hypot(eastM,northM)),detailedAlt=Math.atan2(detailed-(realTerrainState.observerElevation+eyeHeightAboveGroundM()),metres)*R2D;
               // 粗い通常メッシュが海判定でも、局所DEMが範囲最低標高より1m以上高ければ岩・陸として復元する。
               // 海面相当の最低部は従来の水域属性を維持するため、周囲の海を陸化しない。
               const detailedLand=detailed>data.minElevation+1;
@@ -19859,7 +20012,7 @@ function drawPhoto(ctx,s){
       function drawSmoothNearshoreForeground(){
         const nearProfile=realTerrainState.waterNearKm;
         if(!nearProfile) return false;
-        const eyeHeightM=1.6,shoreStep=Math.min(step,.35),samples=[];
+        const eyeHeightM=eyeHeightAboveGroundM(),shoreStep=Math.min(step,.35),samples=[];
         for(let diff=-half-3;diff<=half+3;diff+=shoreStep){
           const az=norm360(s.facingAz+diff);
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
@@ -19917,7 +20070,7 @@ function drawPhoto(ctx,s){
         if(nearDistances.length<raw.length*.30) return false;
         const sorted=nearDistances.slice().sort((a,b)=>a-b);
         const median=sorted[Math.floor(sorted.length/2)]||.03;
-        const eyeHeightM=1.6,points=[];
+        const eyeHeightM=eyeHeightAboveGroundM(),points=[];
         for(let index=0;index<raw.length;index++){
           const item=raw[index];
           // 正面など水際距離が欠ける方位は、左右から得た代表距離で補間する。
@@ -20057,12 +20210,12 @@ function drawPhoto(ctx,s){
       // その後に近距離メッシュを描くことで、現在できている海岸線の形を変えず色だけを海へ戻す。
       function drawHorizonSeaBackdrop(){
         const sampleStep=Math.min(step,.5),samples=[];
-        const terrainLayers=realTerrainState.terrainLayers||[];
+        const terrainLayers=activeTerrainLayers;
         const grid=realTerrainState.nearSurfaceGrid;
         for(let diff=-half;diff<=half;diff+=sampleStep){
           const az=norm360(s.facingAz+diff),idx=((Math.round(az)%360)+360)%360;
           const p=toXY(az,0);
-          const ridgeAlt=realTerrainState.profile?realTerrainState.profile[idx]||0:0;
+          const ridgeAlt=activeTerrainProfile?activeTerrainProfile[idx]||0:0;
           const confirmed=terrainLayers.some(layer=>layer.waterProfile&&(layer.waterProfile[idx]||0)>=.5)
             ||!!(grid&&grid[idx]&&grid[idx].some(point=>point&&point.water))
             ||!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[idx]);
@@ -20183,9 +20336,9 @@ function drawPhoto(ctx,s){
         tctx.lineTo(W,H);tctx.closePath();tctx.fillStyle=gg;tctx.fill();
         tctx.restore();
       }
-      const layers=(realTerrainState.terrainLayers&&realTerrainState.terrainLayers.length)
-        ? [...realTerrainState.terrainLayers].reverse()
-        : [{key:"immediate",profile:realTerrainState.profile,waterProfile:null}];
+      const layers=activeTerrainLayers.length
+        ? [...activeTerrainLayers].reverse()
+        : [{key:"immediate",profile:activeTerrainProfile,waterProfile:null}];
       const hasDepthMesh=!!(realTerrainState.nearSurfaceGrid&&realTerrainState.nearSurfaceGrid.length);
       // 遠景を先に描き、近距離メッシュが成立しなければ従来のimmediate層へ自動的に戻す。
       // 確定水面を最下層へ敷き、その後から遠景・近景の地形を重ねて遮蔽する。
@@ -20762,7 +20915,7 @@ function drawPhoto(ctx,s){
         let nearCount=0;for(let i=0;i<nearProfile.length;i++) if(Number.isFinite(nearProfile[i])) nearCount++;
         const openSea=realTerrainState.coastlineOpenSeaAz||[];
         let openCount=0;for(let i=0;i<openSea.length;i++) if(openSea[i]) openCount++;
-        const layers=realTerrainState.terrainLayers||[];
+        const layers=activeTerrainLayers;
         let bandCount=0;
         layers.forEach(layer=>{ if(layer&&layer.waterProfile) for(let az=0;az<360;az++) if((layer.waterProfile[az]||0)>=.5){bandCount++;break;} });
         // 観測地点と、地形データが作られた地点のずれ
@@ -22076,7 +22229,7 @@ function drawPhoto(ctx,s){
            レイは方位間で補間するので、DEMの1°より細かくしても意味のある滑らかさが出る。
            粗くすると海岸線などが階段状に見えるため、細かさは画角に追従させる。 */
         const stepDeg=clamp(6/(W/Math.max(1,s.fovH)),.25,2);
-        const profileArray=realTerrainState.profile;
+        const profileArray=activeTerrainProfile;
         const skylineAt=az=>{
           if(!profileArray) return 0;
           const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
@@ -22377,7 +22530,7 @@ function drawPhoto(ctx,s){
           const openSea0=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[i0]);
           const openSea1=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[i1]);
           if(openSea0||openSea1){skylineStarted=false;continue;}
-          const altitude=lerp(realTerrainState.profile[i0]||0,realTerrainState.profile[i1]||0,t);
+          const altitude=lerp(activeTerrainProfile[i0]||0,activeTerrainProfile[i1]||0,t);
           const p=toXY(az,altitude);
           if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){skylineStarted=false;continue;}
           if(!skylineStarted){ctx.moveTo(p[0],p[1]);skylineStarted=true;}
@@ -22404,7 +22557,7 @@ function drawPhoto(ctx,s){
       // 遠い水際は水平線近くの細い水面、近い水際は画面下側まで広がる水面になる。
       // 方位ごとに別の距離を使うため、斜めに延びる岸や湾曲した湖岸も自然な形になる。
       if(!meshDrawn){
-        const eyeHeightM=1.6;
+        const eyeHeightM=eyeHeightAboveGroundM();
         const footingColors=terrainBandColors("immediate");
         const footingStep=Math.min(step,0.4);
         const footingPts=[];
@@ -23424,6 +23577,7 @@ function updateCameraViewOnly(){
 
 function update(){
   refreshObservedPlaceIfMoved();   // v716: 今いる場所の地名を追いかける
+  syncObserverEyeElevationDisplay();
   // ボタン操作などから即時update()が呼ばれた場合、待機中の同内容描画を重ねない。
   if(scheduledUpdateRaf){cancelAnimationFrame(scheduledUpdateRaf);scheduledUpdateRaf=0;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
@@ -23797,8 +23951,8 @@ function applyViewKeys(dt,fast){
     if(next!==cameraRiseM){
       cameraRiseM=next;
       // ここで決めた高さの絶対標高を覚え、移動中はこの標高を保つ。
-      const ground=groundElevationM();
-      droneHoldElevation=(cameraRiseM>0&&ground!==null)?ground+cameraRiseM:null;
+      const eye=observerEyeElevationM();
+      droneHoldElevation=(cameraRiseM>0&&eye!==null)?eye:null;
       syncTripodHeightControl();      // 表示を「三脚＋上昇」へ更新する
       drawPhoto._terrainRenderKey=null; // 視点の高さが変わるので地形を描き直す
       viewChanged=true;
@@ -23814,7 +23968,7 @@ function applyDroneAltitudeHold(){
   if(droneHoldElevation===null) return false;
   const ground=groundElevationM();
   if(ground===null) return false;
-  const next=clamp(droneHoldElevation-ground,0,CAMERA_RISE_MAX_M);
+  const next=clamp(droneHoldElevation-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
   if(Math.abs(next-cameraRiseM)<.05) return false;
   cameraRiseM=next;
   syncTripodHeightControl();
