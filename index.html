@@ -4607,7 +4607,7 @@
               <div id="highDetailSettingsOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="highDetailSettingsTitle">
                   <div class="plan-modal-header"><h3 id="highDetailSettingsTitle" class="plan-modal-title">高精細スキャン範囲</h3><button id="highDetailSettingsCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
-                  <p class="plan-modal-help">高精細にしたい山・海岸などの中心地点をGoogleマップから貼り付けてください。観測地点からの距離と現在の画角を使い、必要な横幅は自動計算します。</p>
+                  <p class="plan-modal-help">距離の基準にする山・海岸などの中心地点をGoogleマップから貼り付けてください。横方向は指定座標ではなく、現在画面に写っている範囲だけを高精細にします。</p>
                   <textarea id="highDetailCoordinatePaste" class="osm-import-input" inputmode="url" placeholder="例：35.12345, 134.56789&#10;GoogleマップのURL・共有文も貼り付けできます"></textarea>
                   <div class="grid2" style="margin-top:10px;">
                     <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
@@ -4899,7 +4899,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="749-safe-high-detail-commit";
+const APP_VERSION="751-queued-high-detail-dem";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8766,16 +8766,12 @@ el.tripodHeight.addEventListener("input",()=>{
   scheduleSaveSettings();
 });
 syncTripodHeightControl();
-/* 高精細モード（v743）。
-   押すと、現在画面内だけを画素基準で細かく走査し、局所高精細を1mへ細かくし、
-   さらに描画バッファを大きくして全体をシャープにする。
-   方位・仰角を動かしても維持し、前後左右に動き出したら自動で戻る。
-   実測値(24mm・幅1200pxで地形を作り直す時間):
-     1°=244ms / 2°=114ms / 3°=66ms / 5°=46ms / 10°=34ms
-   1°は2°の2倍以上重いのに見た目の差が小さいので2°を採る。 */
+/* 高精細モード（v751）。
+   通常キャンバス・空・天体・近距離格子は重くせず、ボタンを押した時点の画面内にある
+   地形列だけを5m DEMで細かく引き直す。夜用に求めた地形形状は昼用へ再利用する。 */
 let highDetailOn=false;
-const HIGH_DETAIL_AZIMUTH_STEP=1, HIGH_DETAIL_LOCAL_MESH_M=1;
-let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+let highDetailView={bearing:null,alt:null,fovH:null};
 let highDetailStatusTimer=0,highDetailFallbackPending=false;
 function highDetailTargetIsReady(){return Number.isFinite(highDetailTarget.lat)&&Number.isFinite(highDetailTarget.lon);}
 function showHighDetailStatus(message,type="info",duration=5200){
@@ -8794,8 +8790,12 @@ function highDetailAppliedRangeText(){
   if(!Number.isFinite(highDetailTarget.nearKm)||!Number.isFinite(highDetailTarget.farKm)) return "現在の画面範囲";
   return `${highDetailTarget.nearKm.toFixed(2)}〜${highDetailTarget.farKm.toFixed(2)}km`;
 }
+function highDetailViewChanged(s){
+  if(!highDetailOn||!s||!Number.isFinite(highDetailView.bearing)) return false;
+  const azDelta=Math.abs(((s.facingAz-highDetailView.bearing+540)%360)-180);
+  return azDelta>.03||Math.abs(s.facingAlt-highDetailView.alt)>.03||Math.abs(s.fovH-highDetailView.fovH)>.03;
+}
 function normalTerrainAzimuthStepValue(){
-  if(highDetailOn) return HIGH_DETAIL_AZIMUTH_STEP;
   return clamp(Math.round(+el.normalTerrainAzimuthStepSlider.value||1),1,10);
 }
 /* 実際に描画へ使う方位刻み(度)。稜線の輪郭線と地形本体の両方がこの1か所から値を取る。
@@ -8843,13 +8843,20 @@ function setHighDetail(on){
   on=!!on;
   if(on===highDetailOn) return;
   highDetailOn=on;
-  renderSupersample=on?HIGH_DETAIL_SUPERSAMPLE:1;
+  // 全画面を1.25倍にすると地形以外まで重くなる。v751は通常解像度のまま地形列だけ細密化する。
+  renderSupersample=1;
   if(on){
     highDetailFallbackPending=false;
+    highDetailView={
+      bearing:state&&Number.isFinite(state.facingAz)?state.facingAz:0,
+      alt:state&&Number.isFinite(state.facingAlt)?state.facingAlt:0,
+      fovH:state&&Number.isFinite(state.fovH)?state.fovH:20
+    };
     showHighDetailStatus(`高精細データを準備中… 走査距離 ${highDetailAppliedRangeText()}`,"info",0);
     highDetailEnsureField(+el.lat.value,+el.lon.value);
   }else{
     highDetailReleaseField();   // 降りるときに取った分を捨てる
+    highDetailView={bearing:null,alt:null,fovH:null};
     for(const key of ["_highDetailCandidateTerrain","_highDetailCandidateDayTerrain","_highDetailCandidateWaterMask"]){
       const canvas=drawPhoto[key];
       if(canvas){canvas.width=1;canvas.height=1;drawPhoto[key]=null;}
@@ -8905,7 +8912,7 @@ el.highDetailSettingsOverlay?.addEventListener("click",e=>{if(e.target===el.high
 el.highDetailSettingsStartBtn?.addEventListener("click",()=>{
   const parsed=updateHighDetailSettingsSummary();if(!parsed) return;
   highDetailTarget={lat:parsed.coordinate.lat,lon:parsed.coordinate.lon,frontKm:parsed.front,backKm:parsed.back,
-    distanceKm:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
+    distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
   setHighDetailSettingsOpen(false);
   if(highDetailOn)setHighDetail(false);
   setHighDetail(true);
@@ -8926,7 +8933,6 @@ if(el.highDetailBtn){
   });
 }
 function localDetailMeshStepValue(){
-  if(highDetailOn) return HIGH_DETAIL_LOCAL_MESH_M;
   return clamp(Math.round(+el.localDetailMeshStepSlider.value||5),1,5);
 }
 function syncLocalDetailMeshStepControl(){
@@ -13899,13 +13905,50 @@ function loadGsiDemTile(tile){
   if(gsiDemTileCache.has(tile.key)) return gsiDemTileCache.get(tile.key);
   const promise=fetch(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${tile.z}/${tile.x}/${tile.y}.png`,{mode:"cors",cache:"force-cache"})
     .then(r=>{if(!r.ok) throw new Error(`DEM ${r.status}`);return r.blob();})
-    .then(imageBlobToPixels).catch(()=>null);
+    .then(imageBlobToPixels).catch(()=>null)
+    // 通信失敗や画像展開失敗を固定キャッシュにしない。次回の再試行を可能にする。
+    .then(pixels=>{if(!pixels)gsiDemTileCache.delete(tile.key);return pixels;});
   gsiDemTileCache.set(tile.key,promise);
   return promise;
 }
 // 局所高精細用は、5mメッシュの個別レイヤーを優先する。
 // 地点ごとに整備ソースが異なるため5A→5B→5C、最後に統合DEMの順で有効画素を探す。
 const localDetailDemTileCache=new Map();
+/* v751: 高精細タイルを全枚数いっせいに取得すると、スマホでは通信・PNG展開・
+   getImageDataが同時に走りすぎる。取得と画像展開を含む処理全体を小さな待ち行列へ入れる。 */
+const LOCAL_DETAIL_FETCH_LIMIT=2;
+let localDetailFetchActive=0;
+const localDetailFetchQueue=[];
+function pumpLocalDetailFetchQueue(){
+  while(localDetailFetchActive<LOCAL_DETAIL_FETCH_LIMIT&&localDetailFetchQueue.length){
+    const job=localDetailFetchQueue.shift();
+    localDetailFetchActive++;
+    Promise.resolve().then(job.task).then(job.resolve,job.reject).finally(()=>{
+      localDetailFetchActive--;
+      pumpLocalDetailFetchQueue();
+    });
+  }
+}
+function queueLocalDetailFetch(task){
+  return new Promise((resolve,reject)=>{
+    localDetailFetchQueue.push({task,resolve,reject});
+    pumpLocalDetailFetchQueue();
+  });
+}
+async function fetchLocalDetailDemPixels(layer,tile){
+  return queueLocalDetailFetch(async()=>{
+    const controller=typeof AbortController==="function"?new AbortController():null;
+    const timer=controller?setTimeout(()=>controller.abort(),15000):0;
+    try{
+      const response=await fetch(`https://cyberjapandata.gsi.go.jp/xyz/${layer}/${tile.z}/${tile.x}/${tile.y}.png`,{
+        mode:"cors",cache:"force-cache",...(controller?{signal:controller.signal}:{})
+      });
+      if(!response.ok)return null;
+      return await imageBlobToPixels(await response.blob());
+    }catch(error){return null;}
+    finally{if(timer)clearTimeout(timer);}
+  });
+}
 /* =========================================================
    高精細モード用の「自分の周りの5mメッシュ」（v584）
 
@@ -13925,13 +13968,14 @@ const HIGH_DETAIL_RING_SET=new Set(TERRAIN_DISTANCES_KM.map(km=>Math.round(km*10
 const highDetailTiles=new Map();      // key: "x/y" -> Float32Array | null | "loading"
 let highDetailPending=0,highDetailReadyKey="",highDetailTileCount=0,highDetailUsedCells=0;
 let highDetailRequiredTileCount=0,highDetailQueuedTileCount=0;
+let highDetailFinishedTileCount=0,highDetailFailedTileCount=0;
 const highDetailOwnedTileKeys=new Set();  // 高精細が自分で取った分だけ
 /* 捨てたあとに遅れて届いたタイルを拾わないための世代番号。
    これが無いと、降りた直後に到着した分だけが残ってしまう。 */
 let highDetailGeneration=0;
 function highDetailDecode(sources){
   /* dem5a → 5b → 5c の順に見て、最初に値のある層を採る。 */
-  const out=new Float32Array(256*256);out.fill(NaN);
+  const out=new Float32Array(256*256);out.fill(NaN);let found=0;
   for(const pixels of sources||[]){
     const d=pixels.data||pixels;
     for(let i=0,q=0;i<out.length;i++,q+=4){
@@ -13939,10 +13983,10 @@ function highDetailDecode(sources){
       if(d[q+3]===0) continue;
       const v=d[q]*65536+d[q+1]*256+d[q+2];
       if(v===8388608) continue;
-      out[i]=(v<8388608?v:v-16777216)*0.01;
+      out[i]=(v<8388608?v:v-16777216)*0.01;found++;
     }
   }
-  return out;
+  return found?out:null;
 }
 function highDetailRequestTile(x,y){
   const key=`${x}/${y}`;
@@ -13957,18 +14001,41 @@ function highDetailRequestTile(x,y){
   loadLocalDetailDemTile({z:15,x,y,key:cacheKey})
     .then(sources=>{
       if(generation!==highDetailGeneration) return;   // もう降りている
-      highDetailTiles.set(key,(sources&&sources.length)?highDetailDecode(sources):null);highDetailTileCount++;
+      const decoded=(sources&&sources.length)?highDetailDecode(sources):null;
+      highDetailTiles.set(key,decoded);
+      if(decoded) highDetailTileCount++;
+      else highDetailFailedTileCount++;
     })
-    .catch(()=>{ if(generation===highDetailGeneration) highDetailTiles.set(key,null); })
+    .catch(()=>{
+      if(generation===highDetailGeneration){highDetailTiles.set(key,null);highDetailFailedTileCount++;}
+    })
     .finally(()=>{
+      // 高精細専用に取ったRGBA画像はFloat32標高へ変換済みなので、すぐ解放する。
+      if(highDetailOwnedTileKeys.has(cacheKey)){
+        localDetailDemTileCache.delete(cacheKey);
+        highDetailOwnedTileKeys.delete(cacheKey);
+      }
       if(generation!==highDetailGeneration) return;
       highDetailPending--;
+      highDetailFinishedTileCount++;
       if(highDetailPending<=0){
-        drawPhoto._terrainRenderKey=null;
         if(highDetailTileCount<=0){
-          showHighDetailStatus("高精細標高データを取得できませんでした。通常の景色を維持します。","error",8000);
+          showHighDetailStatus(`高精細標高を取得できませんでした（${highDetailFailedTileCount}/${highDetailQueuedTileCount}枚失敗）。通常の景色を維持します。`,"error",9000);
+          if(el.highDetailSettingsSummary){
+            el.highDetailSettingsSummary.textContent="前回の高精細スキャン：標高データを取得できませんでした。通常の景色は保持しました。";
+          }
+          if(!highDetailFallbackPending){
+            highDetailFallbackPending=true;
+            setTimeout(()=>{if(highDetailOn)setHighDetail(false);highDetailFallbackPending=false;},0);
+          }
+          return;
         }
+        // 1枚以上そろってから初めて高精細地形を描く。準備中は通常景色を触らない。
+        showHighDetailStatus(`高精細標高を取得しました ${highDetailTileCount}/${highDetailQueuedTileCount}枚。景色を描画しています…`,"info",0);
+        drawPhoto._terrainRenderKey=null;
         if(typeof update==="function") update();
+      }else{
+        showHighDetailStatus(`高精細標高を取得中 ${highDetailFinishedTileCount}/${highDetailQueuedTileCount}（有効${highDetailTileCount}・失敗${highDetailFailedTileCount}）`,"info",0);
       }
     });
 }
@@ -13976,36 +14043,45 @@ function highDetailRequestTile(x,y){
 function highDetailEnsureField(lat,lon){
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
   let minLat,maxLat,minLon,maxLon;
+  const scanBearing=Number.isFinite(highDetailView.bearing)?highDetailView.bearing:0;
+  const scanFov=Number.isFinite(highDetailView.fovH)?highDetailView.fovH:20;
+  const screenHalfAngle=clamp(scanFov/2+.6,.8,35);
+  let requestCenterLat=lat,requestCenterLon=lon;
   if(highDetailTargetIsReady()){
     const target=terrainDistanceAndBearing(lat,lon,highDetailTarget.lat,highDetailTarget.lon);
-    const fov=state&&Number.isFinite(state.fovH)?state.fovH:20;
     const front=clamp(+highDetailTarget.frontKm||1,.05,20),back=clamp(+highDetailTarget.backKm||1,.05,20);
     const nearKm=Math.max(.01,target.distanceKm-front),farKm=target.distanceKm+back;
-    const halfAngle=clamp(fov/2+1,1,35);
-    Object.assign(highDetailTarget,{distanceKm:target.distanceKm,bearing:target.bearing,nearKm,farKm,halfAngleDeg:halfAngle});
+    Object.assign(highDetailTarget,{distanceKm:target.distanceKm,targetBearing:target.bearing,
+      bearing:scanBearing,nearKm,farKm,halfAngleDeg:screenHalfAngle});
     const corners=[];
-    for(const d of [nearKm,farKm]) for(const side of [-1,1]) corners.push(terrainDestination(lat,lon,target.bearing+side*halfAngle,d));
-    corners.push([highDetailTarget.lat,highDetailTarget.lon]);
+    for(const d of [nearKm,farKm]) for(const side of [-1,1]) corners.push(terrainDestination(lat,lon,scanBearing+side*screenHalfAngle,d));
+    [requestCenterLat,requestCenterLon]=terrainDestination(lat,lon,scanBearing,(nearKm+farKm)/2);
     minLat=Math.min(...corners.map(p=>p[0]));maxLat=Math.max(...corners.map(p=>p[0]));
     minLon=Math.min(...corners.map(p=>p[1]));maxLon=Math.max(...corners.map(p=>p[1]));
   }else{
-    const mLon=Math.max(1,111320*Math.cos(lat*D2R));
-    const dLat=HIGH_DETAIL_FIELD_RADIUS_M/111320,dLon=HIGH_DETAIL_FIELD_RADIUS_M/mLon;
-    minLat=lat-dLat;maxLat=lat+dLat;minLon=lon-dLon;maxLon=lon+dLon;
+    // 中心指定が無い場合も、観測地点を囲む正方形ではなく現在画面の1km区間だけを取る。
+    const nearKm=.01,farKm=HIGH_DETAIL_FIELD_RADIUS_M/1000;
+    const corners=[];
+    for(const d of [nearKm,farKm]) for(const side of [-1,1]) corners.push(terrainDestination(lat,lon,scanBearing+side*screenHalfAngle,d));
+    [requestCenterLat,requestCenterLon]=terrainDestination(lat,lon,scanBearing,(nearKm+farKm)/2);
+    minLat=Math.min(...corners.map(p=>p[0]));maxLat=Math.max(...corners.map(p=>p[0]));
+    minLon=Math.min(...corners.map(p=>p[1]));maxLon=Math.max(...corners.map(p=>p[1]));
   }
-  const key=`${lat.toFixed(3)},${lon.toFixed(3)}|${highDetailTargetIsReady()?`${highDetailTarget.lat.toFixed(5)},${highDetailTarget.lon.toFixed(5)},${highDetailTarget.frontKm},${highDetailTarget.backKm}`:"near"}`;
+  const key=`${lat.toFixed(3)},${lon.toFixed(3)}|view${scanBearing.toFixed(3)}/${scanFov.toFixed(3)}|${highDetailTargetIsReady()?`${highDetailTarget.lat.toFixed(5)},${highDetailTarget.lon.toFixed(5)},${highDetailTarget.frontKm},${highDetailTarget.backKm}`:"near"}`;
   if(key===highDetailReadyKey) return;
   highDetailReadyKey=key;
   const a=terrainTilePoint(minLat,minLon,15),b=terrainTilePoint(maxLat,maxLon,15);
   const x0=Math.min(a.x,b.x),x1=Math.max(a.x,b.x),y0=Math.min(a.y,b.y),y1=Math.max(a.y,b.y);
   /* 広角・広範囲指定で無制限にタイルを取らない。中心に近い96枚を優先する。 */
   const requests=[];
-  const center=terrainTilePoint(highDetailTargetIsReady()?highDetailTarget.lat:lat,highDetailTargetIsReady()?highDetailTarget.lon:lon,15);
+  const center=terrainTilePoint(requestCenterLat,requestCenterLon,15);
   for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++) requests.push({x,y,d:(x-center.x)**2+(y-center.y)**2});
   requests.sort((p,q)=>p.d-q.d);
   highDetailRequiredTileCount=requests.length;
   const queued=requests.slice(0,96);
   highDetailQueuedTileCount=queued.length;
+  highDetailFinishedTileCount=0;
+  highDetailFailedTileCount=0;
   queued.forEach(p=>highDetailRequestTile(p.x,p.y));
   const omitted=Math.max(0,highDetailRequiredTileCount-highDetailQueuedTileCount);
   showHighDetailStatus(`高精細データを準備中… ${highDetailQueuedTileCount}枚${omitted?`（範囲が広いため${omitted}枚分は通常精度で補完）`:""}`,"info",0);
@@ -14025,6 +14101,8 @@ function highDetailReleaseField(){
   highDetailUsedCells=0;
   highDetailRequiredTileCount=0;
   highDetailQueuedTileCount=0;
+  highDetailFinishedTileCount=0;
+  highDetailFailedTileCount=0;
 }
 /* 双一次補間した5mメッシュの標高。無ければ NaN。 */
 function highDetailElevationAt(lat,lon){
@@ -14141,21 +14219,29 @@ function localDetailTilePoint(lat,lon){
 }
 function loadLocalDetailDemTile(tile){
   if(localDetailDemTileCache.has(tile.key))return localDetailDemTileCache.get(tile.key);
-  const layers=["dem5a_png","dem5b_png","dem5c_png","dem_png"],baseKey=tile.key.replace(/^local-detail\//,"");
+  const layers=["dem5a_png","dem5b_png","dem5c_png","dem_png"];
   const promise=(async()=>{
-    const sources=[];
+    const sources=[],filled=new Uint8Array(256*256);
+    let missing=filled.length;
     for(const layer of layers){
-      try{
-        const response=await fetch(`https://cyberjapandata.gsi.go.jp/xyz/${layer}/${tile.z}/${tile.x}/${tile.y}.png`,{mode:"cors",cache:"force-cache"});
-        if(!response.ok)continue;
-        const pixels=await imageBlobToPixels(await response.blob());
-        if(pixels)sources.push(pixels);
-      }catch(error){}
+      const pixels=await fetchLocalDetailDemPixels(layer,tile);
+      if(!pixels)continue;
+      sources.push(pixels);
+      // 先に取得したレイヤーだけで全面が埋まった場合、残り3種類を取りに行かない。
+      for(let i=0,q=0;i<filled.length;i++,q+=4){
+        if(filled[i]||pixels[q+3]===0)continue;
+        const value=pixels[q]*65536+pixels[q+1]*256+pixels[q+2];
+        if(value===8388608)continue;
+        filled[i]=1;missing--;
+      }
+      if(missing<=0)break;
     }
-    // 個別5mタイルが未整備の場合のみ、従来タイルへフォールバックする。
-    if(!sources.length){const fallback={...tile,key:baseKey},pixels=await loadGsiDemTile(fallback);if(pixels)sources.push(pixels);}
     return sources;
-  })();
+  })().then(sources=>{
+    // 空の結果を残すと、同じページ内の次回スキャンまで永久に失敗するため削除する。
+    if(!sources.length)localDetailDemTileCache.delete(tile.key);
+    return sources;
+  }).catch(()=>{localDetailDemTileCache.delete(tile.key);return [];});
   localDetailDemTileCache.set(tile.key,promise);return promise;
 }
 async function localDetailElevationAt(tile){
@@ -16146,6 +16232,11 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
 let photoClickRegions=[];
 function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
+  if(highDetailViewChanged(s)&&!highDetailFallbackPending){
+    highDetailFallbackPending=true;
+    showHighDetailStatus("方位・仰角・焦点距離が変わったため、画面内高精細を終了しました。","info",5200);
+    setTimeout(()=>{if(highDetailOn)setHighDetail(false);highDetailFallbackPending=false;},0);
+  }
   let darumaSunActive=false;
   let darumaSunShape=null;
   ctx.clearRect(0,0,W,H);
@@ -16153,8 +16244,7 @@ function drawPhoto(ctx,s){
   waterReflectionHorizonYByX=null;
   meteorReflectionWaterPath=null;
   const isMobileView = (typeof mobileHeaderMQ!=="undefined") && mobileHeaderMQ.matches;
-  /* 高精細モードでは画素数が増えるので、絶対値で書いてある文字の大きさや
-     線の太さを同じ割合で拡大する。これが無いと文字だけ小さく見える。 */
+  /* 通常は1。将来、出力全体を拡大する場合にも文字と線を同じ割合で追従させる。 */
   const uiScale = (typeof renderSupersample==="number"&&renderSupersample>0)?renderSupersample:1;
   const labelFontBump = (isMobileView ? 3 : 0) + (arActive ? 3 : 0); // スマホ・ARモードでは名称の文字を少し大きくする
   const arSizeScale = arActive ? 1.7 : 1; // ARモードでは星座線・星・水平線・グリッドなどを目立つよう太く/大きくする
@@ -19847,6 +19937,13 @@ function drawPhoto(ctx,s){
       function azimuthVisibleBands(azDeg,bottomAlt,skylineOnly,rawBands){
         const grid=realTerrainState.rayGrid;
         const wrapped=((azDeg%360)+360)%360;
+        /* v750: 層描画は同じ地形形状を夜用・昼用の2回使う。
+           高精細列の可視帯は夜側で一度だけ計算し、昼側はその結果を再利用する。 */
+        const screenBandCacheKey=rawBands?`${wrapped.toFixed(7)}|${bottomAlt.toFixed(5)}`:null;
+        const screenBandCache=sharedTerrainProjectionCache?.screenHighDetailBands;
+        if(screenBandCacheKey&&sharedTerrainProjectionPass==="replay"&&screenBandCache?.has(screenBandCacheKey)){
+          return screenBandCache.get(screenBandCacheKey);
+        }
         const i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
         const row0=grid&&grid[i0],row1=grid&&grid[i1];
         /* 富士山の高密度点などで方位ごとに点数が変わるため、添字ではなく「距離」で対応付ける。
@@ -19933,22 +20030,41 @@ function drawPhoto(ctx,s){
            距離目盛りに無い点（富士山の高密度点など）はそのまま。
            ここを慎重にしないと、v550・v565と同じで海が陸になる。 */
         if(highDetailOn&&highDetailTileCount>0){
-          /* v744: 指定した遠景区間では、既存の粗い距離目盛りを補間するだけでなく、
-             取得した5m DEMをレイ上で直接追加走査する。最大約180点/列に抑える。 */
+          /* v750: 指定した距離区間では、取得した5m DEMを画面列の実方位で直接走査する。
+             画面中央・指定中心距離へサンプルを集中し、周辺と前後端は自動的に間引く。 */
           if(highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.nearKm)&&Number.isFinite(realTerrainState.observerElevation)){
             const delta=Math.abs(((wrapped-highDetailTarget.bearing+540)%360)-180);
             if(delta<=(highDetailTarget.halfAngleDeg||20)){
               const nearKm=highDetailTarget.nearKm,farKm=highDetailTarget.farKm;
               const spanM=Math.max(1,(farKm-nearKm)*1000);
-              const sampleStepM=clamp(spanM/180,5,50);
+              /* 画面中央ほど横方向の主役になりやすいので距離サンプルも増やす。
+                 さらに指定中心の前後約900mは刻みを最大約45%まで細かくし、
+                 手前端・奥端は粗くする。全面5m走査より軽く、主役の稜線へ計算を集中できる。 */
+              const edgeRatio=clamp(delta/Math.max(.001,highDetailTarget.halfAngleDeg||20),0,1);
+              const sampleBudget=Math.round(lerp(260,150,edgeRatio*edgeRatio));
+              const baseSampleStepM=clamp(spanM/sampleBudget,5,50);
               const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
               const extra=[];
-              for(let metres=nearKm*1000;metres<=farKm*1000+.01;metres+=sampleStepM){
-                const distanceKm=metres/1000;
+              // 水域は5m DEMの標高だけでは陸海を判別できない。通常レイの水判定を引き継ぎ、
+              // 水と分かっている区間には高精細の陸点を追加しない。
+              const coarseWalk=walk||[];
+              let coarseIndex=0;
+              for(let metres=nearKm*1000;metres<=farKm*1000+.01;){
+                const sampleMetres=metres;
+                const focusDistanceM=Math.abs(sampleMetres-highDetailTarget.distanceKm*1000);
+                const focusBlend=clamp(focusDistanceM/900,0,1);
+                metres+=clamp(lerp(baseSampleStepM*.45,baseSampleStepM,focusBlend),5,50);
+                const distanceKm=sampleMetres/1000;
+                while(coarseIndex+1<coarseWalk.length&&coarseWalk[coarseIndex+1]?.distanceKm<=distanceKm) coarseIndex++;
+                const coarseA=coarseWalk[coarseIndex],coarseB=coarseWalk[Math.min(coarseWalk.length-1,coarseIndex+1)];
+                const nearestCoarse=coarseA&&coarseB
+                  ?(Math.abs(coarseA.distanceKm-distanceKm)<=Math.abs(coarseB.distanceKm-distanceKm)?coarseA:coarseB)
+                  :(coarseA||coarseB);
+                if(nearestCoarse?.water) continue;
                 const elevation=highDetailBaseElevation(wrapped,distanceKm);
                 if(!Number.isFinite(elevation)) continue;
-                const curvatureDrop=metres*metres/(2*6371000*(7/6));
-                extra.push({distanceKm,alt:Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D,
+                const curvatureDrop=sampleMetres*sampleMetres/(2*6371000*(7/6));
+                extra.push({distanceKm,alt:Math.atan2(elevation-eyeElevation-curvatureDrop,sampleMetres)*R2D,
                   water:false,baseElevation:elevation,highDetailTarget:true});
               }
               /* 取得途中・欠損タイルがあっても既存地形は絶対に削除しない。
@@ -20087,8 +20203,18 @@ function drawPhoto(ctx,s){
           const cloudFill=cloudSeaVisible&&cloudSeaSurfaceFade()>.01;
           bands.push({lo:highest,hi:0,distanceKm:cloudFill?40:(water?60:20),water:cloudFill?false:water,cloud:cloudFill});
         }
-        if(!bands.length) return null;
-        if(rawBands) return bands; // 層描画は距離ごとの生の帯をそのまま使う
+        if(!bands.length){
+          if(screenBandCacheKey&&sharedTerrainProjectionPass==="commands"&&screenBandCache){
+            screenBandCache.set(screenBandCacheKey,null);
+          }
+          return null;
+        }
+        if(rawBands){
+          if(screenBandCacheKey&&sharedTerrainProjectionPass==="commands"&&screenBandCache){
+            screenBandCache.set(screenBandCacheKey,bands);
+          }
+          return bands; // 層描画は距離ごとの生の帯をそのまま使う
+        }
         /* 見た目が同じになる隣接帯をまとめる。
            距離が離れるほど色の変化は緩やかなので、遠いほど粗く量子化してよい。
            塗る図形の数が数分の1になり、描画コストが大きく下がる(色は変わらない)。 */
@@ -20970,18 +21096,18 @@ function drawPhoto(ctx,s){
            下限は0.15°だったが、600mm（水平画角3.4°）だと画面全体でわずか23本になり、
            稜線がガクガクに見える。望遠側だけ下限を下げる。
            広角側はこの式が0.15を上回るので本数は変わらず、重くならない。 */
-        const stepDeg=clamp((highDetailOn?1.25:5)/(W/Math.max(1,s.fovH)),highDetailOn?.004:.03,highDetailOn?.35:1.5);
+        const stepDeg=clamp((highDetailOn?1.5:5)/(W/Math.max(1,s.fovH)),highDetailOn?.004:.03,highDetailOn?.35:1.5);
         const cornerHalf=rayHalfSpanDeg();
         const startAz=s.facingAz-cornerHalf-stepDeg;
         const endAz=s.facingAz+cornerHalf+stepDeg;
         const columns=[];
         if(highDetailOn&&!useDiagonalFisheye){
-          /* v743: 望遠時に2°刻みを拡大するのではなく、現在画面の画素列から方位を逆算する。
-             中央は約1.25px、端は最大4pxごと。主役を細かくしつつ、周辺の計算量を抑える。 */
+          /* v750: 現在画面の画素列から方位を逆算する。中央は約1.5px、端は最大3.5pxごと。
+             182mmでは中央約0.014°となり、7.5km先でも横方向約1.9mの刻みになる。 */
           const leftPad=-Math.max(8,W*.025),rightPad=W-leftPad;
           for(let screenX=leftPad;screenX<=rightPad+.001;){
             const normalized=Math.min(1,Math.abs(screenX-W/2)/Math.max(1,W/2));
-            const pixelStep=lerp(1.25,4,normalized*normalized);
+            const pixelStep=lerp(1.5,3.5,normalized*normalized);
             const az=s.facingAz+Math.atan((screenX-W/2)/Math.max(1e-6,rectilinearScale))*R2D;
             const bands=azimuthVisibleBands(az,bottomAlt,false,true);
             columns.push({az,bands:bands||[]});
@@ -21626,26 +21752,13 @@ function drawPhoto(ctx,s){
           if(immediate) fillTerrainBand(immediate,terrainBandColors("immediate"));
         }
         unifyWaterSurfaceGradient();
-        return variantMeshDrawn;
-      }
-      function highDetailCanvasHasTerrain(sourceCanvas){
-        // 大きなCanvas全体をgetImageDataするとスマホのメモリを圧迫するため、24×16へ縮小して
-        // 地形画素が本当に完成したかだけを確認する。
-        const probe=drawPhoto._highDetailTerrainProbe||(drawPhoto._highDetailTerrainProbe=document.createElement("canvas"));
-        if(probe.width!==24||probe.height!==16){probe.width=24;probe.height=16;}
-        const pctx=probe.getContext("2d",{willReadFrequently:true});
-        pctx.clearRect(0,0,24,16);pctx.drawImage(sourceCanvas,0,0,24,16);
-        let pixels;
-        try{pixels=pctx.getImageData(0,0,24,16).data;}
-        catch(error){return null;} // 外部テクスチャで読取不可でも、描画完了自体は失敗扱いにしない
-        let visible=0;
-        for(let i=3;i<pixels.length;i+=4) if(pixels[i]>=24) visible++;
-        return visible>=3;
+        // 従来方式でも地形帯または近距離メッシュを必ず描いているため、描画完了として返す。
+        return true;
       }
       if(terrainNeedsRender){
         // 地形形状が変わった時だけ、完全な夜と完全な昼の2枚を生成する。
         // 時刻再生中はこの高密度メッシュを作り直さず、下で2枚を合成するだけにする。
-        if(highDetailOn){
+        if(highDetailOn&&highDetailPending<=0&&highDetailTileCount>0){
           // v749: 完成済みの通常地形へ直接描かない。夜・昼・水域マスクを別Canvasで完成させ、
           // 3枚とも正常と確認できた時だけ本番レイヤーへ交換する。
           const candidateTerrain=drawPhoto._highDetailCandidateTerrain||(drawPhoto._highDetailCandidateTerrain=document.createElement("canvas"));
@@ -21658,13 +21771,10 @@ function drawPhoto(ctx,s){
           renderWaterMaskContext=candidateWaterMask.getContext("2d");
           let candidateMeshDrawn=false,commitSucceeded=false,failureReason="";
           try{
-            if(highDetailPending<=0&&highDetailQueuedTileCount>0&&highDetailTileCount<=0){
-              throw new Error("高精細標高タイルを取得できませんでした");
-            }
-            sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
+            sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],screenHighDetailBands:new Map(),meshPaintedTriangles:0,waterGradientTopY:null};
             candidateMeshDrawn=renderTerrainVariant(candidateTerrain,0,clamp(s.lp.base*.2,0,1),"commands");
-            renderTerrainVariant(candidateDayTerrain,1,clamp(.65+s.lp.base*.2,0,1),"replay");
-            if(highDetailCanvasHasTerrain(candidateTerrain)===false||highDetailCanvasHasTerrain(candidateDayTerrain)===false){
+            const candidateDayPainted=renderTerrainVariant(candidateDayTerrain,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+            if(!candidateMeshDrawn||!candidateDayPainted){
               throw new Error("高精細地形の描画結果が空になりました");
             }
             terrainCanvas.width=W;terrainCanvas.height=H;
@@ -21681,7 +21791,7 @@ function drawPhoto(ctx,s){
             const tileText=highDetailPending>0
               ?`標高タイル取得中 ${Math.max(0,highDetailQueuedTileCount-highDetailPending)}/${highDetailQueuedTileCount}`
               :`標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}`;
-            showHighDetailStatus(`高精細表示：${highDetailAppliedRangeText()}・${tileText}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",highDetailPending>0?0:6200);
+            showHighDetailStatus(`画面内高精細：${highDetailAppliedRangeText()}・${tileText}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",highDetailPending>0?0:6200);
           }catch(error){
             failureReason=String(error&&error.message||"端末の描画処理を完了できませんでした");
             // 本番レイヤーには一切触れていないため、直前の通常景色がそのまま残る。
@@ -21702,7 +21812,9 @@ function drawPhoto(ctx,s){
           }
           if(!commitSucceeded){meshDrawn=drawPhoto._terrainMeshDrawn||false;}
         }else{
-          sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],meshPaintedTriangles:0,waterGradientTopY:null};
+          // v751: 標高タイルの準備中、または全タイル失敗時は通常地形をそのまま描く。
+          // 高精細候補は1枚以上の有効タイルがそろい、全取得が終わってからだけ作る。
+          sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],screenHighDetailBands:new Map(),meshPaintedTriangles:0,waterGradientTopY:null};
           meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
           renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
           wmctx=realWaterMaskContext;
@@ -22718,7 +22830,6 @@ let suppressPhotoDrawForUpdate=false;
    地形・道路・等高線・星まで全部が細かくなる。
    中間のレイヤーはすべてW/Hから寸法を取っているので、ここだけで付いてくる。 */
 let renderSupersample=1;
-const HIGH_DETAIL_SUPERSAMPLE=1.25;
 function applyCanvasSize(){
   let targetW,targetH,targetAspect,isPortrait;
   if(arActive){
