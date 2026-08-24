@@ -1600,7 +1600,7 @@
   }
   #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
   #highDetailBtn{position:relative;}
-  /* 高精細中心を写真から選ぶ間だけ表示する案内と照準。
+  /* 高精細中心をシミュレーション画面から選ぶ間だけ表示する案内と照準。
      overlay自身は操作を奪わず、写真canvasの既存イベントでタップ位置を受け取る。 */
   .high-detail-photo-pick-overlay{
     position:absolute;inset:0;z-index:1010;display:none;pointer-events:none;
@@ -1611,15 +1611,20 @@
   .photo-canvas-wrap.portrait .high-detail-photo-pick-overlay{left:16.6667%;right:16.6667%;}
   .photo-canvas-wrap.high-detail-photo-picking #photoCanvas{cursor:crosshair;}
   .high-detail-photo-pick-hint{
-    position:absolute;left:50%;top:12px;transform:translateX(-50%);
-    display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);
+    position:absolute;left:10px;right:10px;top:12px;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    width:auto;max-width:none;box-sizing:border-box;
     padding:8px 10px;border:1px solid rgba(130,210,255,.78);border-radius:11px;
     background:rgba(7,14,31,.88);color:#eef8ff;
     font:700 13px/1.35 'Inter',sans-serif;text-align:center;
     box-shadow:0 5px 18px rgba(0,0,0,.42);pointer-events:auto;
   }
+  .high-detail-photo-pick-hint span{
+    flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .high-detail-photo-pick-hint.error{border-color:rgba(255,112,126,.9);color:#ffe3e7;}
   .high-detail-photo-pick-hint button{
-    flex:0 0 auto;padding:5px 9px;border:1px solid rgba(255,255,255,.36);border-radius:8px;
+    flex:0 0 auto;width:auto;min-width:68px;padding:5px 9px;border:1px solid rgba(255,255,255,.36);border-radius:8px;
     background:rgba(34,42,72,.9);color:#fff;font:700 12px/1.2 'Inter',sans-serif;
   }
   .high-detail-photo-pick-marker{
@@ -1634,7 +1639,7 @@
   .high-detail-photo-pick-marker::after{left:-8px;top:50%;width:44px;height:2px;transform:translateY(-50%);}
   .high-detail-photo-pick-marker.show{display:block;}
   @media (max-width:760px){
-    .high-detail-photo-pick-hint{top:8px;font-size:11.5px;padding:7px 8px;gap:7px;}
+    .high-detail-photo-pick-hint{left:6px;right:6px;top:8px;font-size:11.5px;padding:7px 8px;gap:6px;}
     .high-detail-photo-pick-hint button{font-size:11px;padding:4px 7px;}
   }
   /* ボタン自体が真丸（border-radius:50%）なので、縁も真丸にする。
@@ -4437,7 +4442,7 @@
               <canvas id="walkerFxCanvas" width="1200" height="800"></canvas>
               <canvas id="shotPlanResult" class="shot-plan-result"></canvas>
               <div id="highDetailPhotoPickOverlay" class="high-detail-photo-pick-overlay" aria-hidden="true">
-                <div class="high-detail-photo-pick-hint"><span>高精細化したい山・川・地面をタップ</span><button id="highDetailPhotoPickCancelBtn" type="button">キャンセル</button></div>
+                <div class="high-detail-photo-pick-hint"><span id="highDetailPhotoPickHintText">山・川・地面をタップ</span><button id="highDetailPhotoPickCancelBtn" type="button">キャンセル</button></div>
                 <div id="highDetailPhotoPickMarker" class="high-detail-photo-pick-marker" aria-hidden="true"></div>
               </div>
               <div class="shot-plan-recording" id="shotPlanRecording">
@@ -4655,8 +4660,8 @@
               <div id="highDetailSettingsOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="highDetailSettingsTitle">
                   <div class="plan-modal-header"><h3 id="highDetailSettingsTitle" class="plan-modal-title">高精細スキャン範囲</h3><button id="highDetailSettingsCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
-                  <p class="plan-modal-help">画面内の山・川・地面を選ぶと、描画中の距離から中心座標を自動設定できます。座標の貼り付けも引き続き使用できます。</p>
-                  <button id="highDetailPickFromPhotoBtn" type="button" class="primary" style="width:100%;margin-top:10px;">写真画面から中心を選ぶ</button>
+                  <p class="plan-modal-help">シミュレーション画面内の山・川・地面を選ぶと、描画中の距離から中心座標を自動設定できます。座標の貼り付けも引き続き使用できます。</p>
+                  <button id="highDetailPickFromPhotoBtn" type="button" class="primary" style="width:100%;margin-top:10px;">シミュレーション画面から中心を選ぶ</button>
                   <p class="plan-modal-help" style="margin-top:10px;">または、距離の基準にする地点をGoogleマップから貼り付けてください。</p>
                   <textarea id="highDetailCoordinatePaste" class="osm-import-input" inputmode="url" placeholder="例：35.12345, 134.56789&#10;GoogleマップのURL・共有文も貼り付けできます"></textarea>
                   <div class="grid2" style="margin-top:10px;">
@@ -4951,7 +4956,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="756-extended-cached-water-high-detail";
+const APP_VERSION="757-mobile-simulation-target-layout";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6083,7 +6088,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
   shotPlanInterval:$("shotPlanInterval"), shotPlanUnit:$("shotPlanUnit"), shotPlanStart:$("shotPlanStart"),
@@ -8940,6 +8945,13 @@ function showHighDetailStatus(message,type="info",duration=5200){
     highDetailStatusTimer=setTimeout(()=>{label.hidden=true;syncSimTopStack();},duration);
   }
 }
+function hideHighDetailStatus(){
+  const label=el.highDetailStatusLabel;
+  if(!label)return;
+  clearTimeout(highDetailStatusTimer);
+  label.hidden=true;
+  syncSimTopStack();
+}
 function setHighDetailDiagnostic(message,type="info"){
   highDetailLastDiagnostic=String(message||"");
   const box=el.highDetailDiagnostic;
@@ -9089,13 +9101,17 @@ function setHighDetailPhotoPickMarker(picked){
   marker.style.top=`${clamp(picked.canvasY/el.photoCanvas.height*100,0,100)}%`;
   marker.classList.add("show");marker.setAttribute("aria-hidden","false");
 }
+function setHighDetailPhotoPickHint(message,isError=false){
+  if(el.highDetailPhotoPickHintText)el.highDetailPhotoPickHintText.textContent=message;
+  el.highDetailPhotoPickHintText?.closest(".high-detail-photo-pick-hint")?.classList.toggle("error",!!isError);
+}
 function setHighDetailPhotoPicking(on,{returnToSettings=false}={}){
   clearTimeout(highDetailPhotoPickTimer);highDetailPhotoPickTimer=0;
   on=!!on;
   if(on){
-    if(arActive){showHighDetailStatus("AR表示中は写真画面から選択できません。ARを終了してからお試しください。","error",0);return false;}
+    if(arActive){showHighDetailStatus("AR表示中はシミュレーション画面から選択できません。ARを終了してからお試しください。","error",0);return false;}
     if(TERRAIN_RENDERER!=="layered"){
-      showHighDetailStatus("写真画面からの選択は、通常の地形描画方式で利用できます。","error",0);
+      showHighDetailStatus("シミュレーション画面からの選択は、通常の地形描画方式で利用できます。","error",0);
       return false;
     }
     const wasHighDetail=highDetailOn;
@@ -9108,11 +9124,12 @@ function setHighDetailPhotoPicking(on,{returnToSettings=false}={}){
     el.highDetailPhotoPickOverlay?.classList.add("show");
     el.highDetailPhotoPickOverlay?.setAttribute("aria-hidden","false");
     setHighDetailPhotoPickMarker(null);
+    setHighDetailPhotoPickHint("山・川・地面をタップ");
+    hideHighDetailStatus();
     if(needsFreshPick&&!highDetailTerrainPickFrameMatches()){
       drawPhoto._terrainRenderKey=null;
       update();
     }
-    showHighDetailStatus("高精細化したい山・川・地面をタップしてください。","info",0);
     return true;
   }
   highDetailPhotoPicking=false;highDetailPhotoPickTouchHandled=false;
@@ -9126,14 +9143,14 @@ function setHighDetailPhotoPicking(on,{returnToSettings=false}={}){
 function pickHighDetailTargetFromPhoto(pos){
   const picked=highDetailTerrainPickAt(pos);
   if(!picked){
-    showHighDetailStatus("この位置から地形の距離を取得できません。空や太陽ではなく、山・川・地面をタップしてください。","error",0);
+    setHighDetailPhotoPickHint("空ではなく地形をタップ",true);
     return false;
   }
   setHighDetailPhotoPickMarker(picked);
   highDetailTarget={...highDetailTarget,lat:picked.lat,lon:picked.lon,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
   el.highDetailCoordinatePaste.value=`${picked.lat.toFixed(6)}, ${picked.lon.toFixed(6)}`;
   updateHighDetailSettingsSummary();
-  showHighDetailStatus(`選択地点：方位 ${picked.bearing.toFixed(1)}°・約 ${picked.distanceKm.toFixed(2)}km先`,"info",0);
+  setHighDetailPhotoPickHint(`選択：約${picked.distanceKm.toFixed(2)}km先`);
   highDetailPhotoPickTimer=setTimeout(()=>{
     highDetailPhotoPickTimer=0;
     setHighDetailPhotoPicking(false,{returnToSettings:true});
