@@ -23053,6 +23053,16 @@ function drawPhoto(ctx,s){
             if(distanceM<.4) return Number.isFinite(footElev)?footElev:NaN;
             return rayBaseElevationAt(norm360(atan2d(eastM,northM)),distanceM/1000);
           };
+          /* v783: 水域上の橋脚だけに仮想川底を与えるための判定。
+             保存済み水域ポリゴンを優先し、地図水面が読める地点ではそれも補助に使う。 */
+          const bridgeWaterAtXY=(eastM,northM)=>{
+            const lat=originLat+northM/111320;
+            const lon=originLon+eastM/Math.max(1,metrePerDegLon);
+            const rings=realTerrainState&&realTerrainState._osmWaterRings;
+            if(Array.isArray(rings)&&rings.length&&pointInWaterRings(lat,lon,rings))return true;
+            const mapWater=worldMapWaterForDistance(lat,lon,Math.hypot(eastM,northM));
+            return mapWater===true;
+          };
           const bridgeSectionAt=(eastM,northM,perpEast,perpNorth,halfWidth,elevation,terrainElevation,thicknessM)=>{
             const distanceM=Math.hypot(eastM,northM);
             if(distanceM>bridgeRangeM||!Number.isFinite(elevation)) return null;
@@ -23160,7 +23170,14 @@ function drawPhoto(ctx,s){
               const layerClearance=way.layer>1?Math.min(8,3.5*(way.layer-1)):0;
               const requestedClearance=Math.max(defaultClearance,layerClearance);
               const missingClearance=Number.isFinite(middleGround)?Math.max(0,requestedClearance-(lineMiddle-middleGround)):0;
-              const camberM=Math.min(1,Math.max(.12,totalM*.0015))+missingClearance;
+              /* v782: 不足クリアランス全量をsinカーブへ入れると、長い河川橋だけが
+                 数mの大きなアーチになり、直線的な新幹線高架との接続が折れて見える。
+                 実際の鉄道橋の縦断線形は限りなく直線に近いため、見える反りは
+                 鉄道で最大約46cm、道路橋でも最大約73cmへ抑える。
+                 水面より前へ復元する既存処理は維持するので、橋が水中へ消えることはない。 */
+              const structuralCamberM=clamp(totalM*.00055,.04,way.kind==="rail"?.18:.28);
+              const clearanceCamberM=Math.min(missingClearance,way.kind==="rail"?.28:.45);
+              const camberM=structuralCamberM+clearanceCamberM;
               /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
               const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
               const halfWidth=Math.max(1,(way.widthM||5)/2);
@@ -23199,11 +23216,21 @@ function drawPhoto(ctx,s){
                       strokeGroundSegment(bridgeRailMarkPaths[bucket],previous.centre,current.centre);
                     }
                     const crossedPier=Math.floor(previous.travel/pierIntervalM)!==Math.floor(travelM/pierIntervalM);
-                    const clearance=Number.isFinite(current.terrainElevation)?deckElevation-current.terrainElevation:0;
+                    /* 橋面を直線に近づけたv782では、水面DEMまでの差だけを使うと橋脚が
+                       数十cmの突起になる。水域上では仮想川底を水面より下へ置き、
+                       鉄道橋5〜10m・道路橋4〜8mの深さを橋長に応じて与える。 */
+                    const onWater=bridgeWaterAtXY(eastM,northM);
+                    const virtualWaterDepthM=way.kind==="rail"
+                      ?clamp(4+totalM*.015,5,10)
+                      :clamp(3+totalM*.01,4,8);
+                    const pierTerrainElevation=Number.isFinite(current.terrainElevation)
+                      ?current.terrainElevation-(onWater?virtualWaterDepthM:0)
+                      :current.terrainElevation;
+                    const clearance=Number.isFinite(pierTerrainElevation)?deckElevation-pierTerrainElevation:0;
                     if(totalM>=28&&crossedPier&&t>.12&&t<.88&&clearance>1.5&&current.groundCentre){
                       fillBridgePierPrism(
                         bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,
-                        deckElevation-displayThicknessM,current.terrainElevation,
+                        deckElevation-displayThicknessM,pierTerrainElevation,
                         displayHalfWidth,way.widthM||5,current.distanceM
                       );
                     }
