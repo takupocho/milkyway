@@ -4766,6 +4766,12 @@
                     <div class="field"><label class="top">中心より手前（km）</label><input id="highDetailFrontKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
                     <div class="field"><label class="top">中心より奥（km）</label><input id="highDetailBackKm" type="number" min="0.05" max="20" step="0.05" value="1"></div>
                   </div>
+                  <div class="field" style="margin-top:12px;">
+                    <label class="top">高精細度合い <span class="val mono" id="highDetailQualityVal">3（バランス）</span></label>
+                    <input id="highDetailQualitySlider" type="range" min="1" max="5" step="1" value="3">
+                    <div class="range-labels"><span>← 1 遠景安定</span><span>5 最高精細 →</span></div>
+                  </div>
+                  <p class="plan-modal-help" style="margin-top:6px;">低いほど奥の景色を安定して描き、高いほど近景の細かな凹凸や水際を優先します。</p>
                   <p id="highDetailSettingsSummary" class="plan-modal-help" style="margin-top:10px;">中心地点を入力してください。</p>
                   <p class="plan-modal-help" style="margin-top:6px;">川・池・湖は現在表示中の保存済み水域だけを高精細化します。水域サーバーへの再取得は行いません。</p>
                   <p id="highDetailDiagnostic" class="high-detail-diagnostic" hidden aria-live="assertive"></p>
@@ -4954,7 +4960,7 @@
             <ul>
               <li>天の川の実写: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">ESO/S. Brunier</a> ・ <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>（投影して使用）</li>
               <li>地形・標高: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院</a>（標高タイルを加工して作成）</li>
-              <li>道路・線路・地図: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>（ODbL）</li>
+              <li>水域・道路・線路・橋・地図: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>（ODbL・Shortbread静的ベクトルタイル）</li>
               <li>航空写真: Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community</li>
             </ul>
           </details>
@@ -5086,7 +5092,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="769-preserve-water-in-high-detail";
+const APP_VERSION="778-polygon-bridge-piers";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6194,6 +6200,7 @@ const el={
   terrainTopViewBtn:$("terrainTopViewBtn"), terrainTopViewOverlay:$("terrainTopViewOverlay"), terrainTopViewCloseBtn:$("terrainTopViewCloseBtn"), terrainTopViewRange:$("terrainTopViewRange"), terrainTopViewCanvas:$("terrainTopViewCanvas"), terrainTopViewStatus:$("terrainTopViewStatus"),
   localDetailTerrainBtn:$("localDetailTerrainBtn"), localDetailFetchBtn:$("localDetailFetchBtn"), localDetailCoordinatePaste:$("localDetailCoordinatePaste"), localDetailCoordinateApplyBtn:$("localDetailCoordinateApplyBtn"), localDetailLat:$("localDetailLat"), localDetailLon:$("localDetailLon"), localDetailRadius:$("localDetailRadius"), localDetailName:$("localDetailName"), localDetailRegisterBtn:$("localDetailRegisterBtn"), localDetailDeleteBtn:$("localDetailDeleteBtn"), localDetailSavedSelect:$("localDetailSavedSelect"), localDetailLoadBtn:$("localDetailLoadBtn"), localDetailTerrainStatus:$("localDetailTerrainStatus"),
   normalTerrainAzimuthStepSlider:$("normalTerrainAzimuthStepSlider"), normalTerrainAzimuthStepVal:$("normalTerrainAzimuthStepVal"),
+  highDetailQualitySlider:$("highDetailQualitySlider"), highDetailQualityVal:$("highDetailQualityVal"),
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
   nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
@@ -9059,12 +9066,28 @@ syncTripodHeightControl();
    通常キャンバス・空・天体・近距離格子は重くせず、ボタンを押した時点の画面内にある
    地形列だけを5m DEMで細かく引き直す。夜用に求めた地形形状は昼用へ再利用する。 */
 let highDetailOn=false;
+function highDetailQualityValue(){return clamp(Math.round(+el.highDetailQualitySlider?.value||3),1,5);}
+function syncHighDetailQualityControl(){
+  const level=highDetailQualityValue();
+  const labels=["","遠景安定","やや安定","バランス","高精細","最高精細"];
+  if(el.highDetailQualitySlider)el.highDetailQualitySlider.value=level;
+  if(el.highDetailQualityVal)el.highDetailQualityVal.textContent=`${level}（${labels[level]}）`;
+}
+el.highDetailQualitySlider?.addEventListener("input",()=>{
+  syncHighDetailQualityControl();
+  drawPhoto._terrainRenderKey=null;
+  if(highDetailOn)scheduleCameraViewUpdate();
+  scheduleSaveSettings();
+});
+syncHighDetailQualityControl();
 let highDetailTarget={lat:null,lon:null,frontKm:1,backKm:1,distanceKm:null,targetBearing:null,bearing:null,nearKm:null,farKm:null,halfAngleDeg:null};
 let highDetailView={bearing:null,alt:null,fovH:null};
 let highDetailStatusTimer=0,highDetailFallbackPending=false,highDetailLastDiagnostic="";
-/* 高精細水域は取得済みのOSMポリゴンだけを使う。
-   このカウンターは描画結果の案内用で、水域通信やキャッシュ更新には使わない。 */
+/* 高精細水域は、通常表示ですでに読み込んだ地理院淡色地図の水面と
+   取得済みOSMポリゴンだけを使う。このカウンターは描画結果の案内用で、
+   水域通信やキャッシュ更新には使わない。 */
 let highDetailWaterChecks=0,highDetailWaterHits=0,highDetailWaterTransitions=0;
+let highDetailMapWaterChecks=0,highDetailMapWaterHits=0;
 let highDetailExtendedWaterChecks=0,highDetailExtendedWaterHits=0,highDetailExtendedWaterTransitions=0;
 let highDetailWaterExtentMemo={rings:null,observerKey:"",maxKm:5};
 /* 写真タップ用の距離面。通常地形を1/4解像度の非表示Canvasへ同じ順番で塗り、
@@ -9267,6 +9290,7 @@ function setHighDetail(on){
   if(on){
     highDetailFallbackPending=false;
     highDetailWaterChecks=0;highDetailWaterHits=0;highDetailWaterTransitions=0;
+    highDetailMapWaterChecks=0;highDetailMapWaterHits=0;
     highDetailExtendedWaterChecks=0;highDetailExtendedWaterHits=0;highDetailExtendedWaterTransitions=0;
     setHighDetailDiagnostic("");
     highDetailView={
@@ -11334,6 +11358,7 @@ function collectPersistedSettings(){
     observedPlaceLon:currentObservedPlaceLon,
     normalTerrainAzimuthStep:normalTerrainAzimuthStepValue(),
     localDetailMeshStepM:localDetailMeshStepValue(),
+    highDetailQuality:highDetailQualityValue(),
     localDetailTerrainEnabled:false,
     localDetailTerrain:localDetailTerrainConfig(),
     darumaTelephotoConfig:{...darumaTelephotoConfig},
@@ -11397,6 +11422,8 @@ async function loadPersistedSettings(){
       el.localDetailMeshStepSlider.value=clamp(Math.round(+s.localDetailMeshStepM||5),1,5);
     }
     syncLocalDetailMeshStepControl();
+    if(s.highDetailQuality!==undefined)el.highDetailQualitySlider.value=clamp(Math.round(+s.highDetailQuality||3),1,5);
+    syncHighDetailQualityControl();
     if(s.localDetailTerrain&&typeof s.localDetailTerrain==="object"){
       if(Number.isFinite(+s.localDetailTerrain.lat)) el.localDetailLat.value=+s.localDetailTerrain.lat;
       if(Number.isFinite(+s.localDetailTerrain.lon)) el.localDetailLon.value=+s.localDetailTerrain.lon;
@@ -14708,6 +14735,8 @@ function highDetailReleaseField(){
   highDetailWaterChecks=0;
   highDetailWaterHits=0;
   highDetailWaterTransitions=0;
+  highDetailMapWaterChecks=0;
+  highDetailMapWaterHits=0;
   highDetailExtendedWaterChecks=0;
   highDetailExtendedWaterHits=0;
   highDetailExtendedWaterTransitions=0;
@@ -14786,31 +14815,48 @@ function highDetailWaterProbeStepM(distanceKm){
   if(distanceKm<=20)return 24;
   return 40;
 }
+function highDetailMapWaterAvailable(){
+  const observerLat=+el.lat.value,observerLon=+el.lon.value;
+  if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon)||worldMapTiles<=0)return false;
+  /* falseは「地図タイルを読めたうえで陸」なので、nullと区別する。 */
+  return worldMapWaterForDistance(observerLat,observerLon,0)!==null;
+}
 /* 保存済み・表示中の内陸水域を、任意方位・任意距離で直接判定する。
 
-   高精細ボタンから fetchOsmWaterRings は絶対に呼ばない。realTerrainState に既に
-   載っているポリゴンだけを読むため、Overpassが停止中でも現在見えている川を
-   そのまま細密化できる。5kmより先は、座標が保存済みリングの外接範囲内にある場合だけ
-   水/陸を確定し、保存形状が届いていない場所は null で従来の粗い水面を残す。 */
+   通常表示の川は、OSMポリゴンだけでなく地理院淡色地図の塗り色からも確定している。
+   v772までは高精細側がOSMだけを見ていたため、地図から見つかった川が高精細化した瞬間に
+   陸へ戻ることがあった。高精細時も、すでに読み込み済みの地図水面を最優先で参照し、
+   その地点のタイルが無い時だけ保存済みOSM形状へ戻る。
+
+   高精細ボタンから worldMapEnsureTiles / fetchOsmWaterRings は絶対に呼ばない。
+   したがってスキャンによる水域通信や、現在の水域キャッシュの消去・更新は起きない。 */
 function highDetailCachedInlandWaterAt(azDeg,distanceKm){
   if(!highDetailOn||!Number.isFinite(distanceKm)||distanceKm<0) return null;
   const rings=realTerrainState&&realTerrainState._osmWaterRings;
-  if(!Array.isArray(rings)||!rings.length) return null;
   const observerLat=+el.lat.value,observerLon=+el.lon.value;
   if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon)) return null;
   const coordinate=terrainDestination(observerLat,observerLon,azDeg,distanceKm);
   const extended=distanceKm>OSM_WATER_RADIUS_KM+.001;
-  let water;
+  let water=worldMapWaterForDistance(coordinate[0],coordinate[1],distanceKm*1000),source="map";
+  if(water!==null){
+    highDetailMapWaterChecks++;
+    if(water)highDetailMapWaterHits++;
+  }else{
+    source="osm";
+    if(!Array.isArray(rings)||!rings.length)return null;
+    if(extended){
+      const ringClass=cachedWaterRingClassAt(coordinate[0],coordinate[1],rings);
+      if(!ringClass)return null;
+      water=ringClass===2;
+    }else water=pointInWaterRings(coordinate[0],coordinate[1],rings);
+  }
   if(extended){
-    const ringClass=cachedWaterRingClassAt(coordinate[0],coordinate[1],rings);
-    if(!ringClass)return null;
-    water=ringClass===2;
     highDetailExtendedWaterChecks++;
     if(water)highDetailExtendedWaterHits++;
-  }else water=pointInWaterRings(coordinate[0],coordinate[1],rings);
+  }
   highDetailWaterChecks++;
   if(water)highDetailWaterHits++;
-  return {lat:coordinate[0],lon:coordinate[1],water,extended};
+  return {lat:coordinate[0],lon:coordinate[1],water,extended,source};
 }
 /* 通常描画は距離層へ圧縮してから面を作る。点だけ細かくしても距離層が粗いままだと、
    川岸が最後にもう一度大きな階段へ丸められてしまう。
@@ -14820,10 +14866,12 @@ function highDetailCachedInlandWaterAt(azDeg,distanceKm){
    画面外・通常表示には一切追加しないため、常時の描画負荷は変わらない。 */
 function highDetailLayerDistancesWithCachedWater(){
   const rings=realTerrainState&&realTerrainState._osmWaterRings;
-  if(!highDetailOn||!Array.isArray(rings)||!rings.length) return TERRAIN_DISTANCES_KM;
+  const mapAvailable=highDetailMapWaterAvailable();
+  if(!highDetailOn) return TERRAIN_DISTANCES_KM;
+  if(!mapAvailable&&(!Array.isArray(rings)||!rings.length)) return TERRAIN_DISTANCES_KM;
   const nearKm=highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.nearKm)?highDetailTarget.nearKm:.005;
   const requestedFarKm=highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.farKm)?highDetailTarget.farKm:HIGH_DETAIL_FIELD_RADIUS_M/1000;
-  const farKm=Math.min(requestedFarKm,highDetailCachedWaterExtentKm(rings));
+  const farKm=mapAvailable?requestedFarKm:Math.min(requestedFarKm,highDetailCachedWaterExtentKm(rings));
   if(!(farKm>nearKm)) return TERRAIN_DISTANCES_KM;
   const byMetre=new Map();
   for(const distanceKm of TERRAIN_DISTANCES_KM)byMetre.set(Math.round(distanceKm*1000),distanceKm);
@@ -15664,25 +15712,303 @@ async function loadTilesWithLimit(tiles,limit=6){
 // =========================================================
 // OSM(OpenStreetMap)の水域ポリゴンデータによる、より精度の高い水面判定。
 // 国土地理院DEMの「標高データなし(海)」「局所的な平坦さ(湖沼の推定)」だけでは
-// 実際の水域境界と完全には一致しないため、可能な場合はOverpass API経由で
-// 実際の湖沼・池・貯水池のポリゴン形状を取得し、点がその中に入るかで判定する。
+// 実際の水域境界と完全には一致しないため、v774テスト版ではOverpassを完全に停止し、
+// OSM FoundationのShortbread静的ベクトルタイルから水域・道路・線路・橋を取得する。
 // 外部サービスのため、取得できない場合(CORS・通信不可など)は自動的に
 // 従来の標高ベースの判定のみにフォールバックする。
 // =========================================================
-const OSM_WATER_ENDPOINTS=[
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.openstreetmap.ru/api/interpreter"
-];
+const OVERPASS_DISABLED_TEST=true;
+const OSM_WATER_ENDPOINTS=[];
+
+/* =========================================================
+   v774: Overpassを使わないShortbread静的ベクトルタイル取得。
+   - APIキー不要の事前生成MVTをHTTPキャッシュ＋既存IndexedDB派生キャッシュで再利用。
+   - 単一HTMLを維持するため、必要なProtocol Buffers/MVT読み取りだけを内蔵する。
+   - 取得失敗時に部分的な水域を確定しないよう、対象タイルが1枚でも失敗したら再試行扱い。
+   ========================================================= */
+const STATIC_VECTOR_SOURCE_LABEL="OSM静的ベクトル";
+const STATIC_VECTOR_VERSION="shortbread_v1";
+const STATIC_VECTOR_ZOOM=14;
+const STATIC_VECTOR_TILE_CACHE_LIMIT=192;
+const staticVectorTileCache=new Map();
+const staticVectorFetchQueue=[];
+let staticVectorFetchActive=0;
+const staticVectorTextDecoder=new TextDecoder("utf-8");
+
+class StaticPbfReader{
+  constructor(bytes){
+    this.buf=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);
+    this.pos=0;this.len=this.buf.length;
+    this.view=new DataView(this.buf.buffer,this.buf.byteOffset,this.buf.byteLength);
+  }
+  varint(){
+    let value=0,shift=0;
+    while(this.pos<this.len&&shift<=56){
+      const byte=this.buf[this.pos++];
+      value+=(byte&127)*Math.pow(2,shift);
+      if(!(byte&128)) return value;
+      shift+=7;
+    }
+    throw new Error("MVT varint error");
+  }
+  svarint(){const value=this.varint();return value%2?-(value+1)/2:value/2;}
+  bytes(){const length=this.varint(),start=this.pos,end=start+length;if(end>this.len)throw new Error("MVT length error");this.pos=end;return this.buf.subarray(start,end);}
+  string(){return staticVectorTextDecoder.decode(this.bytes());}
+  float(){const value=this.view.getFloat32(this.pos,true);this.pos+=4;return value;}
+  double(){const value=this.view.getFloat64(this.pos,true);this.pos+=8;return value;}
+  skip(wire){
+    if(wire===0){this.varint();return;}
+    if(wire===1){this.pos+=8;return;}
+    if(wire===2){this.pos+=this.varint();return;}
+    if(wire===5){this.pos+=4;return;}
+    throw new Error(`MVT wire ${wire}`);
+  }
+}
+function parseStaticVectorValue(bytes){
+  const reader=new StaticPbfReader(bytes);let value=null;
+  while(reader.pos<reader.len){
+    const tag=reader.varint(),field=tag>>3,wire=tag&7;
+    if(field===1&&wire===2)value=reader.string();
+    else if(field===2&&wire===5)value=reader.float();
+    else if(field===3&&wire===1)value=reader.double();
+    else if((field===4||field===5)&&wire===0)value=reader.varint();
+    else if(field===6&&wire===0)value=reader.svarint();
+    else if(field===7&&wire===0)value=!!reader.varint();
+    else reader.skip(wire);
+  }
+  return value;
+}
+function parseStaticVectorFeature(bytes,keys,values){
+  const reader=new StaticPbfReader(bytes),tagIndexes=[],geometry=[];
+  let id="",type=0;
+  while(reader.pos<reader.len){
+    const tag=reader.varint(),field=tag>>3,wire=tag&7;
+    if(field===1&&wire===0)id=String(reader.varint());
+    else if(field===2&&wire===2){const packed=new StaticPbfReader(reader.bytes());while(packed.pos<packed.len)tagIndexes.push(packed.varint());}
+    else if(field===3&&wire===0)type=reader.varint();
+    else if(field===4&&wire===2){const packed=new StaticPbfReader(reader.bytes());while(packed.pos<packed.len)geometry.push(packed.varint());}
+    else reader.skip(wire);
+  }
+  const properties={};
+  for(let index=0;index+1<tagIndexes.length;index+=2){
+    const key=keys[tagIndexes[index]];
+    if(key!==undefined)properties[key]=values[tagIndexes[index+1]];
+  }
+  return {id,type,properties,geometry};
+}
+function parseStaticVectorLayer(bytes){
+  const reader=new StaticPbfReader(bytes),keys=[],values=[],featureBytes=[];
+  let name="",extent=4096;
+  while(reader.pos<reader.len){
+    const tag=reader.varint(),field=tag>>3,wire=tag&7;
+    if(field===1&&wire===2)name=reader.string();
+    else if(field===2&&wire===2)featureBytes.push(reader.bytes());
+    else if(field===3&&wire===2)keys.push(reader.string());
+    else if(field===4&&wire===2)values.push(parseStaticVectorValue(reader.bytes()));
+    else if(field===5&&wire===0)extent=reader.varint();
+    else reader.skip(wire);
+  }
+  return {name,extent,features:featureBytes.map(bytes=>parseStaticVectorFeature(bytes,keys,values))};
+}
+function parseStaticVectorTile(arrayBuffer){
+  const reader=new StaticPbfReader(arrayBuffer),layers=new Map();
+  while(reader.pos<reader.len){
+    const tag=reader.varint(),field=tag>>3,wire=tag&7;
+    if(field===3&&wire===2){const layer=parseStaticVectorLayer(reader.bytes());if(layer.name)layers.set(layer.name,layer);}
+    else reader.skip(wire);
+  }
+  return layers;
+}
+function decodeStaticVectorGeometry(feature){
+  const values=feature.geometry||[],parts=[];let index=0,x=0,y=0,current=null;
+  while(index<values.length){
+    const commandInteger=values[index++],command=commandInteger&7,count=commandInteger>>3;
+    if(command===1){
+      for(let n=0;n<count;n++){
+        x+=(values[index]%2?-(values[index]+1)/2:values[index]/2);index++;
+        y+=(values[index]%2?-(values[index]+1)/2:values[index]/2);index++;
+        if(current&&current.length)parts.push(current);
+        current=[[x,y]];
+      }
+    }else if(command===2){
+      if(!current)current=[];
+      for(let n=0;n<count;n++){
+        x+=(values[index]%2?-(values[index]+1)/2:values[index]/2);index++;
+        y+=(values[index]%2?-(values[index]+1)/2:values[index]/2);index++;
+        current.push([x,y]);
+      }
+    }else if(command===7){
+      if(current&&current.length){const first=current[0],last=current[current.length-1];if(first[0]!==last[0]||first[1]!==last[1])current.push(first.slice());}
+    }else break;
+  }
+  if(current&&current.length)parts.push(current);
+  return parts;
+}
+function staticVectorTileUrl(z,x,y){return `https://vector.openstreetmap.org/${STATIC_VECTOR_VERSION}/${z}/${x}/${y}.mvt`;}
+function pumpStaticVectorFetchQueue(){
+  while(staticVectorFetchActive<6&&staticVectorFetchQueue.length){
+    const job=staticVectorFetchQueue.shift();staticVectorFetchActive++;
+    (async()=>{
+      try{
+        let lastError=null;
+        for(let attempt=0;attempt<3;attempt++){
+          const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+          try{
+            const response=await fetch(job.url,{cache:"force-cache",signal:controller.signal});
+            if(!response.ok){
+              const retryable=[429,502,503,504].includes(response.status);
+              if(!retryable||attempt===2)throw new Error(`static vector ${response.status}`);
+              const retryAfter=Math.max(0,parseFloat(response.headers.get("Retry-After")||"0")*1000);
+              await delayPromise(Math.max(retryAfter,600*(attempt+1)));
+              continue;
+            }
+            const buffer=await response.arrayBuffer();
+            job.resolve(buffer.byteLength?parseStaticVectorTile(buffer):new Map());
+            lastError=null;break;
+          }catch(error){
+            lastError=error;
+            if(attempt<2)await delayPromise(600*(attempt+1));
+          }finally{clearTimeout(timer);}
+        }
+        if(lastError)throw lastError;
+      }catch(error){job.reject(error);}
+      finally{staticVectorFetchActive--;pumpStaticVectorFetchQueue();}
+    })();
+  }
+}
+function fetchStaticVectorTile(z,x,y){
+  const tileCount=2**z,wrappedX=((x%tileCount)+tileCount)%tileCount,key=`${z}/${wrappedX}/${y}`;
+  if(staticVectorTileCache.has(key))return staticVectorTileCache.get(key);
+  const promise=new Promise((resolve,reject)=>{staticVectorFetchQueue.push({url:staticVectorTileUrl(z,wrappedX,y),resolve,reject});pumpStaticVectorFetchQueue();})
+    .catch(error=>{staticVectorTileCache.delete(key);throw error;});
+  staticVectorTileCache.set(key,promise);
+  while(staticVectorTileCache.size>STATIC_VECTOR_TILE_CACHE_LIMIT)staticVectorTileCache.delete(staticVectorTileCache.keys().next().value);
+  return promise;
+}
+function staticLonToTileX(lon,z){return (lon+180)/360*(2**z);}
+function staticLatToTileY(lat,z){
+  const limited=clamp(lat,-85.05112878,85.05112878),rad=limited*Math.PI/180;
+  return (1-Math.asinh(Math.tan(rad))/Math.PI)/2*(2**z);
+}
+function staticTilesForRadius(lat,lon,radiusKm,z=STATIC_VECTOR_ZOOM){
+  const latDelta=radiusKm/110.574,lonDelta=radiusKm/(111.32*Math.max(.08,Math.cos(lat*Math.PI/180)));
+  const minY=Math.max(0,Math.floor(staticLatToTileY(lat+latDelta,z)));
+  const maxY=Math.min(2**z-1,Math.floor(staticLatToTileY(lat-latDelta,z)));
+  const minX=Math.floor(staticLonToTileX(lon-lonDelta,z)),maxX=Math.floor(staticLonToTileX(lon+lonDelta,z));
+  const centerX=staticLonToTileX(lon,z),centerY=staticLatToTileY(lat,z),tiles=[];
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++)tiles.push({z,x,y,distance:(x+.5-centerX)**2+(y+.5-centerY)**2});
+  tiles.sort((a,b)=>a.distance-b.distance);return tiles;
+}
+async function loadStaticVectorArea(lat,lon,radiusKm){
+  const refs=staticTilesForRadius(lat,lon,radiusKm);
+  return Promise.all(refs.map(async ref=>({...ref,layers:await fetchStaticVectorTile(ref.z,ref.x,ref.y)})));
+}
+function staticTilePointToLatLon(tile,point,extent){
+  const count=2**tile.z,worldX=(tile.x+point[0]/extent)/count,worldY=(tile.y+point[1]/extent)/count;
+  return [Math.atan(Math.sinh(Math.PI*(1-2*worldY)))*180/Math.PI,worldX*360-180];
+}
+function staticFeatureLatLonParts(tile,layer,feature){
+  return decodeStaticVectorGeometry(feature).map(part=>{
+    const result=[];
+    part.forEach(point=>{
+      const converted=staticTilePointToLatLon(tile,point,layer.extent||4096),previous=result[result.length-1];
+      if(!previous||Math.abs(previous[0]-converted[0])>1e-10||Math.abs(previous[1]-converted[1])>1e-10)result.push(converted);
+    });
+    return result;
+  }).filter(part=>part.length>=2);
+}
+function staticRawPointInRing(point,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const a=ring[i],b=ring[j];
+    if(((a[1]>point[1])!==(b[1]>point[1]))&&(point[0]<(b[0]-a[0])*(point[1]-a[1])/((b[1]-a[1])||1e-12)+a[0]))inside=!inside;
+  }
+  return inside;
+}
+function staticRawRingArea(ring){let area=0;for(let i=0,j=ring.length-1;i<ring.length;j=i++)area+=ring[j][0]*ring[i][1]-ring[i][0]*ring[j][1];return area/2;}
+function staticFeatureWaterPolygons(tile,layer,feature){
+  const rawRings=decodeStaticVectorGeometry(feature).filter(ring=>ring.length>=4).map(raw=>({raw,area:Math.abs(staticRawRingArea(raw)),parent:null,depth:0,polygon:null})).sort((a,b)=>b.area-a.area);
+  rawRings.forEach((item,index)=>{
+    let parent=null;
+    for(let previous=0;previous<index;previous++){
+      const candidate=rawRings[previous];
+      if(candidate.area>item.area&&staticRawPointInRing(item.raw[0],candidate.raw)&&(!parent||candidate.area<parent.area))parent=candidate;
+    }
+    item.parent=parent;item.depth=parent?parent.depth+1:0;
+  });
+  const polygons=[];
+  rawRings.forEach(item=>{
+    const points=item.raw.map(point=>staticTilePointToLatLon(tile,point,layer.extent||4096));
+    if(item.depth%2===0){item.polygon={outer:ringWithBbox(points),holes:[]};polygons.push(item.polygon);}
+    else{
+      let owner=item.parent;while(owner&&owner.depth%2!==0)owner=owner.parent;
+      if(owner?.polygon)owner.polygon.holes.push(ringWithBbox(points));
+    }
+  });
+  return polygons;
+}
+function staticLineIntersectsRadius(points,lat,lon,radiusKm){
+  const cosLat=Math.max(.05,Math.cos(lat*Math.PI/180)),limitSq=(radiusKm*1000)**2,xy=points.map(point=>[(point[1]-lon)*111320*cosLat,(point[0]-lat)*111320]);
+  for(let index=1;index<xy.length;index++){
+    const a=xy[index-1],b=xy[index],vx=b[0]-a[0],vy=b[1]-a[1],lengthSq=vx*vx+vy*vy;
+    const t=lengthSq?clamp(-(a[0]*vx+a[1]*vy)/lengthSq,0,1):0,px=a[0]+t*vx,py=a[1]+t*vy;
+    if(px*px+py*py<=limitSq)return true;
+  }
+  return false;
+}
+function staticTruthy(value){return value===true||value===1||value==="1"||value==="true"||value==="yes";}
+async function fetchStaticWaterRings(lat,lon,radiusKm){
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),rings=[];
+  tiles.forEach(tile=>["ocean","water_polygons"].forEach(layerName=>{
+    const layer=tile.layers.get(layerName);if(!layer)return;
+    layer.features.forEach(feature=>{if(feature.type===3&&String(feature.properties?.kind||"")!=="glacier")rings.push(...staticFeatureWaterPolygons(tile,layer,feature));});
+  }));
+  return rings;
+}
+async function fetchStaticRoadWays(lat,lon,radiusKm){
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),ways=[];
+  tiles.forEach(tile=>{
+    const layer=tile.layers.get("streets");if(!layer)return;
+    layer.features.forEach(feature=>{
+      const props=feature.properties||{};if(feature.type!==2||staticTruthy(props.rail)||staticTruthy(props.tunnel))return;
+      const baseKind=String(props.kind||""),kind=staticTruthy(props.link)&&!baseKind.endsWith("_link")?`${baseKind}_link`:baseKind,widthM=ROAD_CLASS_WIDTH_M[kind];if(!widthM)return;
+      staticFeatureLatLonParts(tile,layer,feature).forEach(points=>{if(staticLineIntersectsRadius(points,lat,lon,radiusKm))ways.push({widthM,points});});
+    });
+  });
+  return ways;
+}
+async function fetchStaticRailWays(lat,lon,radiusKm){
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),ways=[];
+  tiles.forEach(tile=>{
+    const layer=tile.layers.get("streets");if(!layer)return;
+    layer.features.forEach(feature=>{
+      const props=feature.properties||{},kind=String(props.kind||"");if(feature.type!==2||!staticTruthy(props.rail)||staticTruthy(props.tunnel)||!RAIL_CLASS_WIDTH_M[kind])return;
+      staticFeatureLatLonParts(tile,layer,feature).forEach(points=>{if(staticLineIntersectsRadius(points,lat,lon,radiusKm))ways.push({widthM:RAIL_CLASS_WIDTH_M[kind],points});});
+    });
+  });
+  return ways;
+}
+async function fetchStaticBridgeWays(lat,lon,radiusKm){
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),ways=[];let serial=0;
+  tiles.forEach(tile=>{
+    const layer=tile.layers.get("streets");if(!layer)return;
+    layer.features.forEach(feature=>{
+      const props=feature.properties||{};if(feature.type!==2||!staticTruthy(props.bridge)||staticTruthy(props.tunnel))return;
+      const rail=staticTruthy(props.rail),baseKind=String(props.kind||""),kind=staticTruthy(props.link)&&!baseKind.endsWith("_link")?`${baseKind}_link`:baseKind;
+      const widthM=rail?(RAIL_CLASS_WIDTH_M[baseKind]||4.2):(BRIDGE_HIGHWAY_WIDTH_M[kind]||5);
+      staticFeatureLatLonParts(tile,layer,feature).forEach(points=>{
+        if(staticLineIntersectsRadius(points,lat,lon,radiusKm))ways.push({id:`sv-${tile.z}-${tile.x}-${tile.y}-${feature.id||serial++}`,kind:rail?"rail":"road",widthM,name:"",structure:"yes",layer:1,points});
+      });
+    });
+  });
+  return ways;
+}
 let lastOverpassFailure="";
 function overpassFailureLabel(){
-  return lastOverpassFailure==="429"?"取得制限（429）":lastOverpassFailure==="504"?"サーバー混雑（504）":lastOverpassFailure==="timeout"?"タイムアウト":"通信エラー";
+  return lastOverpassFailure==="static"?"静的タイル通信エラー":lastOverpassFailure==="429"?"取得制限（429）":lastOverpassFailure==="504"?"サーバー混雑（504）":lastOverpassFailure==="timeout"?"タイムアウト":"通信エラー";
 }
 function waterFailureStatusDetail(){
-  const reason=overpassFailureLabel();
-  return (waterAcquisitionHistory?.consecutiveFailures||0)>=2
-    ?`${reason}。取得先が一時的に混雑しているか、アクセスしにくい状態が続いています。しばらく時間を空けてから再度お試しください`
-    :reason;
+  return "OSM静的ベクトルタイルを取得できませんでした。通信状態を確認して再度お試しください";
 }
 const WATER_ACQUISITION_HISTORY_KEY="mwsim.waterAcquisitionHistory.v1";
 let waterAcquisitionHistory=(()=>{
@@ -15767,7 +16093,7 @@ function openExternalGeoCacheDb(){
    「最後に使った時刻」をlocalStorageの小さな表に持ち、古いものから消す。
    時刻を巨大な本体と一緒に書き戻すと1回数MBの書き込みになるため、別に持つ。 */
 const CACHE_TOUCH_KEY="mwsim.cacheTouch.v1";
-const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,mountain:200};
+const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,"coastline-static-v1":200,"roads-static-v1":200,"rails-static-v1":200,"bridges-static-v1":200,mountain:200};
 let cacheTouchMap=(()=>{ try{ return JSON.parse(localStorage.getItem(CACHE_TOUCH_KEY))||{}; }catch(error){ return {}; } })();
 let cacheTouchSaveTimer=0;
 function saveCacheTouchMap(){
@@ -16061,22 +16387,7 @@ function computeOsmWaterSegments(lat,lon,radiusKm,rings){
   return {nearKm,farKm};
 }
 async function fetchOsmWaterRingsOnce(url,query,timeoutMs){
-  const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),timeoutMs);
-  lastOverpassFailure="";
-  try{
-    const res=await fetch(url,{
-      method:"POST",
-      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body:"data="+encodeURIComponent(query),
-      signal:controller.signal
-    });
-    if(!res.ok){lastOverpassFailure=String(res.status);throw new Error(`overpass ${res.status}`);}
-    lastOverpassFailure="";
-    return await res.json();
-  }finally{
-    clearTimeout(timer);
-  }
+  throw new Error("Overpass disabled in v774 static-vector test");
 }
 function parseOsmWaterRings(data){
   const rings=[];
@@ -16112,41 +16423,28 @@ function delayPromise(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 /* 【v735】公開Overpassへ同時送信しない。1サーバーずつ順番に試し、成功した時点で終了する。
    429/504を受けた場合も同じ巡回を繰り返さず、次の自動更新または手動読み直しまで待つ。 */
 async function firstSuccessfulWaterRequest(query,endpoints=OSM_WATER_ENDPOINTS,staggerMs=1800,timeoutMs=18000){
-  let lastError=null;
-  for(let index=0;index<endpoints.length;index++){
-    if(index) await delayPromise(staggerMs);
-    try{const result=await fetchOsmWaterRingsOnce(endpoints[index],query,timeoutMs);recordWaterAcquisitionResult(true);return result;}
-    catch(error){
-      lastError=error;
-      if(error&&error.name==="AbortError") lastOverpassFailure="timeout";
-      else if(!/^overpass \d+$/.test(String(error&&error.message||""))) lastOverpassFailure="network";
-    }
-  }
-  recordWaterAcquisitionResult(false);
-  throw lastError||new Error("water fetch failed");
+  throw new Error("Overpass disabled in v774 static-vector test");
 }
-async function fetchOsmWaterRingsNetwork(query){
-  return parseOsmWaterRings(await firstSuccessfulWaterRequest(query));
+async function fetchOsmWaterRingsNetwork(lat,lon,radiusKm){
+  try{
+    const rings=await fetchStaticWaterRings(lat,lon,radiusKm);
+    lastOverpassFailure="";recordWaterAcquisitionResult(true);return rings;
+  }catch(error){lastOverpassFailure="static";recordWaterAcquisitionResult(false);throw error;}
 }
 function fetchOsmWaterRings(lat,lon,radiusKm){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmWaterCache.has(key)) return osmWaterCache.get(key);
   const forceRefresh=forcedWaterRefreshKeys.delete(key);
-  const radiusM=Math.round(radiusKm*1000);
-  // natural=waterにはwater=riverも含まれるため重複問い合わせを削除。
-  // 旧riverbankタグだけは近距離2.5kmに絞り、湖・池の取得を重くしない。
-  const riverRadiusM=Math.min(radiusM,2500);
-  const query=`[out:json][timeout:45];(way["natural"="water"](around:${radiusM},${lat},${lon});relation["natural"="water"](around:${radiusM},${lat},${lon});way["landuse"="reservoir"](around:${radiusM},${lat},${lon});relation["landuse"="reservoir"](around:${radiusM},${lat},${lon});way["waterway"="riverbank"](around:${riverRadiusM},${lat},${lon});relation["waterway"="riverbank"](around:${riverRadiusM},${lat},${lon}););out geom;`;
   const promise=(async()=>{
     // 読み直し時も成功済みキャッシュを捨てない。まず即時表示し、更新は裏側で行う。
-    const saved=await externalGeoCacheGet(`water:${key}`);
+    const saved=await externalGeoCacheGet(`water:shortbread-v1:${key}`);
     if(Array.isArray(saved)){
       osmWaterCacheSources.set(key,"persistent");
       if(forceRefresh){
-        fetchOsmWaterRingsNetwork(query).then(fresh=>{
+        fetchOsmWaterRingsNetwork(lat,lon,radiusKm).then(fresh=>{
           if(!Array.isArray(fresh)) return;
-          externalGeoCacheSet(`water:${key}`,fresh);
-          osmWaterCacheSources.set(key,"network");
+          externalGeoCacheSet(`water:shortbread-v1:${key}`,fresh);
+          osmWaterCacheSources.set(key,"static-vector");
           osmWaterCache.set(key,Promise.resolve(fresh));
           const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
           const target=realTerrainProfileCache.get(terrainKey)||(realTerrainState.key===terrainKey?realTerrainState:null);
@@ -16159,9 +16457,9 @@ function fetchOsmWaterRings(lat,lon,radiusKm){
       return saved;
     }
     try{
-      const rings=await fetchOsmWaterRingsNetwork(query);
-      osmWaterCacheSources.set(key,"network");
-      externalGeoCacheSet(`water:${key}`,rings);
+      const rings=await fetchOsmWaterRingsNetwork(lat,lon,radiusKm);
+      osmWaterCacheSources.set(key,"static-vector");
+      externalGeoCacheSet(`water:shortbread-v1:${key}`,rings);
       return rings;
     }catch(error){
       osmWaterCacheSources.set(key,"error");
@@ -16210,20 +16508,18 @@ function parseOsmRoadWays(data){
 /* Overpassの応答は混み具合で17秒を超えることがあり、水域と同じ18秒では取りこぼす。
    道路・線路は表示を待たせても支障が無いので、待ち時間を長めに取る。 */
 const OSM_LINE_TIMEOUT_MS=40000;
-async function fetchOsmRoadWaysNetwork(query){
-  return parseOsmRoadWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS));
+async function fetchOsmRoadWaysNetwork(lat,lon,radiusKm){
+  return fetchStaticRoadWays(lat,lon,radiusKm);
 }
 function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmRoadCache.has(key)) return osmRoadCache.get(key);
-  const radiusM=Math.round(radiusKm*1000);
-  const query=`[out:json][timeout:35];way["highway"](around:${radiusM},${lat},${lon});out geom;`;
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`roads-v1:${key}`);
+    const saved=await externalGeoCacheGet(`roads-static-v1:${key}`);
     if(Array.isArray(saved)) return saved;
     try{
-      const ways=await fetchOsmRoadWaysNetwork(query);
-      externalGeoCacheSet(`roads-v1:${key}`,ways);
+      const ways=await fetchOsmRoadWaysNetwork(lat,lon,radiusKm);
+      externalGeoCacheSet(`roads-static-v1:${key}`,ways);
       return ways;
     }catch(error){
       osmRoadCache.delete(key); // 失敗した約束を残すと、以後ずっと空のまま返ってしまう
@@ -16269,20 +16565,18 @@ function parseOsmRailWays(data){
     };
   }).filter(way=>way.points.length>=2);
 }
-async function fetchOsmRailWaysNetwork(query){
-  return parseOsmRailWays(await firstSuccessfulWaterRequest(query,OSM_WATER_ENDPOINTS,2500,OSM_LINE_TIMEOUT_MS));
+async function fetchOsmRailWaysNetwork(lat,lon,radiusKm){
+  return fetchStaticRailWays(lat,lon,radiusKm);
 }
 function fetchOsmRailWays(lat,lon,radiusKm=OSM_RAIL_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmRailCache.has(key)) return osmRailCache.get(key);
-  const radiusM=Math.round(radiusKm*1000);
-  const query=`[out:json][timeout:35];way["railway"~"^(rail|light_rail|narrow_gauge|tram|subway|monorail|funicular)$"](around:${radiusM},${lat},${lon});out geom;`;
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`rails-v1:${key}`);
+    const saved=await externalGeoCacheGet(`rails-static-v1:${key}`);
     if(Array.isArray(saved)) return saved;
     try{
-      const ways=await fetchOsmRailWaysNetwork(query);
-      externalGeoCacheSet(`rails-v1:${key}`,ways);
+      const ways=await fetchOsmRailWaysNetwork(lat,lon,radiusKm);
+      externalGeoCacheSet(`rails-static-v1:${key}`,ways);
       return ways;
     }catch(error){
       osmRailCache.delete(key);
@@ -16359,41 +16653,25 @@ function bridgeFailureLabel(error){
   return "通信エラー";
 }
 async function fetchOsmBridgeOnce(url,query,timeoutMs){
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
-  try{
-    const response=await fetch(url,{
-      method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
-      body:"data="+encodeURIComponent(query),signal:controller.signal
-    });
-    if(!response.ok) throw new Error(`bridge overpass ${response.status}`);
-    return await response.json();
-  }finally{clearTimeout(timer);}
+  throw new Error("Overpass disabled in v774 static-vector test");
 }
 async function firstSuccessfulBridgeRequest(query){
-  let lastError=null;
-  for(let index=0;index<OSM_WATER_ENDPOINTS.length;index++){
-    if(index) await delayPromise(2500);
-    try{return await fetchOsmBridgeOnce(OSM_WATER_ENDPOINTS[index],query,OSM_LINE_TIMEOUT_MS);}
-    catch(error){lastError=error;}
-  }
-  throw lastError||new Error("bridge fetch failed");
+  throw new Error("Overpass disabled in v774 static-vector test");
 }
-async function fetchOsmBridgeWaysNetwork(query){
-  return parseOsmBridgeWays(await firstSuccessfulBridgeRequest(query));
+async function fetchOsmBridgeWaysNetwork(lat,lon,radiusKm){
+  return fetchStaticBridgeWays(lat,lon,radiusKm);
 }
 function fetchOsmBridgeWays(lat,lon,radiusKm=OSM_BRIDGE_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmBridgeCache.has(key)) return osmBridgeCache.get(key);
-  const radiusM=Math.round(radiusKm*1000);
-  const query=`[out:json][timeout:35];(way["bridge"]["highway"](around:${radiusM},${lat},${lon});way["bridge"]["railway"~"^(rail|light_rail|narrow_gauge|tram|subway|monorail|funicular)$"](around:${radiusM},${lat},${lon}););out tags geom;`;
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`bridges-v1:${key}`);
+    const saved=await externalGeoCacheGet(`bridges-static-v1:${key}`);
     if(Array.isArray(saved)){lastBridgeFailure="";osmBridgeCacheSources.set(key,"persistent");return saved;}
     try{
-      const ways=await fetchOsmBridgeWaysNetwork(query);
+      const ways=await fetchOsmBridgeWaysNetwork(lat,lon,radiusKm);
       lastBridgeFailure="";
-      osmBridgeCacheSources.set(key,"network");
-      externalGeoCacheSet(`bridges-v1:${key}`,ways);
+      osmBridgeCacheSources.set(key,"static-vector");
+      externalGeoCacheSet(`bridges-static-v1:${key}`,ways);
       return ways;
     }catch(error){
       lastBridgeFailure=bridgeFailureLabel(error);
@@ -16414,7 +16692,7 @@ function syncBridgeButtonStatus(){
   }
   else if(count!==null) el.popupBridgeBtn.textContent=`橋（${count}）`;
   else el.popupBridgeBtn.textContent="橋";
-  const source=osmBridgeState.source==="plan"?"撮影計画":(osmBridgeState.source==="persistent"?"保存済みキャッシュ":(osmBridgeState.source==="network"?"新規取得":""));
+  const source=osmBridgeState.source==="plan"?"撮影計画":(osmBridgeState.source==="persistent"?"保存済みキャッシュ":(osmBridgeState.source==="static-vector"?"OSM静的ベクトル":""));
   const radiusLabel=Number.isFinite(+osmBridgeState.radiusKm)&&osmBridgeState.radiusKm>0?`・半径${osmBridgeState.radiusKm}km`:"";
   const updateLabel=count!==null&&osmBridgeState.loading?`・半径${OSM_BRIDGE_RADIUS_KM}kmへ更新中`:
     (count!==null&&(+osmBridgeState.radiusKm||0)<OSM_BRIDGE_RADIUS_KM&&lastBridgeFailure?`・${OSM_BRIDGE_RADIUS_KM}km更新失敗（${lastBridgeFailure}）`:"");
@@ -16503,28 +16781,28 @@ function createCoastlineSeaClassifier(originLat,originLon,ways){
   };
   return {valid,originAtSea,nearestDistanceM:valid?Math.sqrt(nearestSq):null,segmentCount:segments.length,classify};
 }
-async function fetchOsmCoastlineWaysNetwork(query){
-  return parseOsmCoastlineWays(await firstSuccessfulWaterRequest(query));
+async function fetchOsmCoastlineWaysNetwork(){
+  // Shortbreadのoceanポリゴンを水域リングへ直接含めるため、別の海岸線検索は不要。
+  return [];
 }
 function fetchOsmCoastlineWays(lat,lon,radiusKm=OSM_COASTLINE_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmCoastlineCache.has(key)) return osmCoastlineCache.get(key);
-  const forceRefresh=forcedCoastlineRefreshKeys.delete(key),radiusM=Math.round(radiusKm*1000);
-  const query=`[out:json][timeout:35];way["natural"="coastline"](around:${radiusM},${lat},${lon});out geom;`;
+  const forceRefresh=forcedCoastlineRefreshKeys.delete(key);
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`coastline-v1:${key}`);
+    const saved=await externalGeoCacheGet(`coastline-static-v1:${key}`);
     if(Array.isArray(saved)){
       osmCoastlineCacheSources.set(key,"persistent");
-      if(forceRefresh) fetchOsmCoastlineWaysNetwork(query).then(fresh=>{
+      if(forceRefresh) fetchOsmCoastlineWaysNetwork().then(fresh=>{
         if(!Array.isArray(fresh)) return;
-        externalGeoCacheSet(`coastline-v1:${key}`,fresh);
-        osmCoastlineCacheSources.set(key,"network");osmCoastlineCache.set(key,Promise.resolve(fresh));
+        externalGeoCacheSet(`coastline-static-v1:${key}`,fresh);
+        osmCoastlineCacheSources.set(key,"static-vector");osmCoastlineCache.set(key,Promise.resolve(fresh));
       }).catch(()=>{});
       return saved;
     }
     try{
-      const ways=await fetchOsmCoastlineWaysNetwork(query);
-      osmCoastlineCacheSources.set(key,"network");externalGeoCacheSet(`coastline-v1:${key}`,ways);return ways;
+      const ways=await fetchOsmCoastlineWaysNetwork();
+      osmCoastlineCacheSources.set(key,"static-vector");externalGeoCacheSet(`coastline-static-v1:${key}`,ways);return ways;
     }catch(error){osmCoastlineCacheSources.set(key,"error");return null;}
   })();
   osmCoastlineCache.set(key,promise);
@@ -17112,9 +17390,10 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       if(typeof update==="function") update();
     }
     resultObj._osmRefineStatus="ready";
+    resultObj._waterDataSource="shortbread-v1";
     const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`;
     const waterSource=osmWaterCacheSources.get(waterCacheKey);
-    const savedLabel=waterSource==="plan"?"・撮影計画の保存水域":(waterSource==="persistent"?"・保存済みキャッシュ":"");
+    const savedLabel=waterSource==="plan"?"・撮影計画の保存水域":(waterSource==="persistent"?"・保存済みキャッシュ":(waterSource==="static-vector"?"・OSM静的ベクトル":""));
     const coastLabel=Array.isArray(coastlineWays)&&coastlineWays.length?`・海岸線${coastlineWays.length}本`:"";
     resultObj._osmRefineDetail=(rings.length?`${rings.length}形状${savedLabel}`:`水域なし・正常応答${savedLabel}`)+coastLabel;
     externalGeoCacheSet(terrainCacheId(key),resultObj);
@@ -17195,7 +17474,7 @@ function requestRealTerrainProfile(lat,lon){
     setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
     if(typeof update==="function") update();
-    if(fromPersistent&&result._osmRefineStatus==="ready"){
+    if(fromPersistent&&result._osmRefineStatus==="ready"&&result._waterDataSource==="shortbread-v1"){
       result._osmRefinePending=false;
       const cachedWaterDetail=result._osmRefineDetail||"取得済み";
       setExternalDataStatus("water","ready",cachedWaterDetail.includes("保存済みキャッシュ")?cachedWaterDetail:`${cachedWaterDetail}・保存済みキャッシュ`);
@@ -17504,34 +17783,7 @@ function terrainDistanceAndBearing(lat1,lon1,lat2,lon2){
   return {distanceKm,bearing:norm360(Math.atan2(y,x)*R2D)};
 }
 async function fetchMountainNodes(lat,lon){
-  // 表示に標高が必須なので、最初からeleタグを持つ山頂だけを要求する。
-  // 従来の半径90kmは都市部・山岳部で応答が大きすぎたため、肉眼で地形判別しやすい60kmへ絞る。
-  // 富士山自体は専用情報を持つため、この一覧取得範囲に依存しない。
-  const query=`[out:json][timeout:45];(node(around:60000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["ele"]["name"];node(around:60000,${lat.toFixed(6)},${lon.toFixed(6)})["natural"="peak"]["ele"]["name:ja"];);out body qt;`;
-  const endpoints=["https://overpass.kumi.systems/api/interpreter","https://overpass-api.de/api/interpreter","https://overpass.openstreetmap.ru/api/interpreter"];
-  let lastError=null;
-  for(const endpoint of endpoints){
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),20000);
-    try{
-      const response=await fetch(endpoint,{method:"POST",mode:"cors",headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body:`data=${encodeURIComponent(query)}`,signal:controller.signal});
-      if(!response.ok) throw new Error(`Mountain API ${response.status}`);
-      const json=await response.json();
-      return (json.elements||[]).map(node=>{
-        const tags=node.tags||{};
-        const famousArea=FAMOUS_MOUNTAIN_AREAS.find(area=>terrainDistanceAndBearing(node.lat,node.lon,area.lat,area.lon).distanceKm<=area.radiusKm);
-        const name=famousArea?.name||tags["name:ja"]||tags["official_name:ja"]||tags.name;
-        const ele=parseFloat(String(tags.ele||"").replace(/,/g,""));
-        const prominence=parseFloat(String(tags.prominence||"").replace(/,/g,""));
-        if(!name||!Number.isFinite(ele)||!Number.isFinite(node.lat)||!Number.isFinite(node.lon)) return null;
-        const db=terrainDistanceAndBearing(lat,lon,node.lat,node.lon);
-        const notable=!!famousArea||!!tags.wikidata||!!tags.wikipedia;
-        return {name,lat:node.lat,lon:node.lon,ele,distanceKm:db.distanceKm,bearing:db.bearing,prominence:Number.isFinite(prominence)?prominence:0,notable};
-      }).filter(Boolean);
-    }catch(error){lastError=error;}
-    finally{clearTimeout(timer);}
-  }
-  throw lastError||new Error("Mountain data unavailable");
+  throw new Error("Overpass disabled in v774 static-vector test");
 }
 function requestMountainNames(lat,lon){
   if(arActive) return;
@@ -17565,6 +17817,15 @@ function requestMountainNames(lat,lon){
           if(typeof update==="function") update();
           return;
         }
+      }
+      // v774テスト版はOverpassへ一切アクセスしない。既存キャッシュが無い地域では
+      // 山名の新規取得だけを停止し、DEM地形や富士山専用表示はそのまま維持する。
+      if(OVERPASS_DISABLED_TEST){
+        if(token!==mountainNameState.requestToken) return;
+        Object.assign(mountainNameState,{key,loadingKey:"",failedKey:"",mountains:[]});
+        setExternalDataStatus("mountain","idle","Overpassなしテスト版：新規山名取得OFF");
+        if(typeof update==="function") update();
+        return;
       }
       const mountains=await fetchMountainNodes(lat,lon);
       if(token!==mountainNameState.requestToken) return;
@@ -21689,8 +21950,11 @@ function drawPhoto(ctx,s){
                  手前端・奥端は粗くする。全面5m走査より軽く、主役の稜線へ計算を集中できる。 */
               const edgeRatio=clamp(delta/Math.max(.001,highDetailTarget.halfAngleDeg||20),0,1);
               // 画面横3〜5px刻みと釣り合う距離密度。元の5m DEM以上の過剰走査を避ける。
-              const sampleBudget=Math.round(lerp(220,130,edgeRatio*edgeRatio));
-              const baseSampleStepM=clamp(spanM/sampleBudget,5,50);
+              const quality=highDetailQualityValue();
+              const centreBudgets=[0,70,100,140,180,220],edgeBudgets=[0,45,65,90,110,130];
+              const sampleBudget=Math.round(lerp(centreBudgets[quality],edgeBudgets[quality],edgeRatio*edgeRatio));
+              const minimumStepM=[0,24,16,10,7,5][quality];
+              const baseSampleStepM=clamp(spanM/sampleBudget,minimumStepM,70);
               const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
               const extra=[];
               /* 水域は5m DEMの標高だけでは陸海を判別できない。
@@ -21704,12 +21968,14 @@ function drawPhoto(ctx,s){
               /* 通常レイにはDEM欠損位置を示すnullが残ることがある。
                  高精細点との距離比較・並べ替えへ渡す前に、有効な地形点だけへ絞る。 */
               const coarseWalk=(walk||[]).filter(point=>point&&Number.isFinite(point.distanceKm));
-              const cachedWaterAvailable=Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length>0;
-              const cachedWaterMaxKm=cachedWaterAvailable?highDetailCachedWaterExtentKm(realTerrainState._osmWaterRings):0;
+              const mapWaterAvailable=highDetailMapWaterAvailable();
+              const cachedWaterAvailable=mapWaterAvailable||(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length>0);
+              const cachedWaterMaxKm=mapWaterAvailable?farKm:(cachedWaterAvailable?highDetailCachedWaterExtentKm(realTerrainState._osmWaterRings):0);
               let coarseIndex=0;
               let previousWaterSample=null;
               const makeHighDetailPoint=(distanceKm,waterSample,nearestCoarse)=>{
-                /* キャッシュが使えない場所では、従来どおり粗い水点の上へ陸を足さない。 */
+                /* 保存済みポリゴンで直接判定できない粗い水点は高精細面へ広げない。
+                   通常水域を混ぜると、通常の大きな距離ブロックが高精細画面へ復活する。 */
                 if(!waterSample&&nearestCoarse?.water) return null;
                 const elevation=highDetailBaseElevation(wrapped,distanceKm);
                 if(!Number.isFinite(elevation)) return null;
@@ -21730,11 +21996,12 @@ function drawPhoto(ctx,s){
                 const sampleMetres=metres;
                 const focusDistanceM=Math.abs(sampleMetres-highDetailTarget.distanceKm*1000);
                 const focusBlend=clamp(focusDistanceM/900,0,1);
-                const terrainStepM=clamp(lerp(baseSampleStepM*.45,baseSampleStepM,focusBlend),5,50);
+                const focusScale=[0,.9,.72,.6,.52,.45][quality];
+                const terrainStepM=clamp(lerp(baseSampleStepM*focusScale,baseSampleStepM,focusBlend),minimumStepM,70);
                 /* 保存済みポリゴンが届く範囲は遠方ほど12〜40mへ段階的に広げる。
                    全区間を5mにせず、岸を跨いだ場所だけ下の二分探索で約1mまで絞る。 */
                 metres+=cachedWaterAvailable&&sampleMetres<=cachedWaterMaxKm*1000
-                  ?Math.min(terrainStepM,highDetailWaterProbeStepM(sampleMetres/1000)):terrainStepM;
+                  ?Math.min(terrainStepM,highDetailWaterProbeStepM(sampleMetres/1000)*[0,2.5,2,1.5,1.2,1][quality]):terrainStepM;
                 const distanceKm=sampleMetres/1000;
                 while(coarseIndex+1<coarseWalk.length&&coarseWalk[coarseIndex+1]?.distanceKm<=distanceKm) coarseIndex++;
                 const coarseA=coarseWalk[coarseIndex],coarseB=coarseWalk[Math.min(coarseWalk.length-1,coarseIndex+1)];
@@ -22311,6 +22578,7 @@ function drawPhoto(ctx,s){
          手前の地形に隠れる部分には出ない。
          --------------------------------------------------------- */
       function drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount){
+        if(!(bridgeLinesVisible&&osmBridgeState.ways)) drawPhoto._bridgeForegroundOverlay=null;
         if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)&&!(bridgeLinesVisible&&osmBridgeState.ways)) return;
         const rangeM=groundOverlayRangeM();
         /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
@@ -22387,12 +22655,15 @@ function drawPhoto(ctx,s){
         const bridgeSidePaths=bridgePaths?newPaths():null;
         const bridgeEdgePaths=bridgePaths?newPaths():null;
         const bridgePierPaths=bridgePaths?newPaths():null;
+        const bridgePierShadePaths=bridgePaths?newPaths():null;
+        const bridgePierEdgePaths=bridgePaths?newPaths():null;
         const bridgeRailMarkPaths=bridgePaths?newPaths():null;
         const activeBridgeSignatures=bridgePaths?new Set(osmBridgeState.ways.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
         const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
-        // 橋は5kmを基準に同じ薄れ方を使う。道路の1.2kmを基準にはしない。
-        const bridgeFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
+        /* v776: 橋は遠景でも撮影構図の目印になるため、5km内では一定以下に薄くしない。
+           地形に隠れる判定は残すので、山越しの橋まで透けて見えることはない。 */
+        const bridgeFadeOfBucket=index=>Math.max(.64,Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8)));
 
         if(gridPaths){
           /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
@@ -22606,6 +22877,11 @@ function drawPhoto(ctx,s){
           const pixelsPerDegree=W/Math.max(1,s.fovH);
           /* 遠くで細くなりすぎて消えないよう、画面上0.45画素分の幅は実寸で確保する。 */
           const minHalfMetresAt=(distanceM)=>.45*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          /* v776: 道路より重要な橋は、遠距離でも橋面3.2px・側面1.35pxを下回らせない。
+             距離から必要な見かけ幅をメートルへ戻して3D断面へ与えるため、近距離では
+             実寸のまま、遠距離だけ自然に視認性を補う。 */
+          const minBridgeHalfMetresAt=(distanceM)=>1.6*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          const minBridgeThicknessMetresAt=(distanceM)=>1.35*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
           const NEAR_BLEND_M=25;
           const CROSS_SLOPE_BASE_M=10;
           /* 1つの断面を、左右の縁と中心の「実寸の3次元ベクトル」で返す。
@@ -22752,6 +23028,49 @@ function drawPhoto(ctx,s){
               terrainElevation,distanceM
             };
           };
+          /* v778: 橋脚を画面固定幅の線ではなく、実寸を持つ直方体ポリゴンとして作る。
+             橋方向の厚さは橋幅に応じて1.5〜4.2m、橋幅方向は橋幅の約68%とする。
+             遠景だけは1.5px相当を下限にして、v776の遠距離視認性も維持する。 */
+          const fillBridgePierPrism=(bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,deckBottomElevation,terrainElevation,bridgeHalfWidth,bridgeWidthM,distanceM)=>{
+            if(!Number.isFinite(deckBottomElevation)||!Number.isFinite(terrainElevation)) return false;
+            const bottomElevation=Math.min(terrainElevation,deckBottomElevation-.35);
+            if(deckBottomElevation-bottomElevation<.35) return false;
+            const minPierHalfM=.75*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+            const alongHalf=Math.max(clamp((1.2+bridgeWidthM*.12)/2,.75,2.1),minPierHalfM);
+            const acrossHalf=Math.max(clamp(bridgeHalfWidth*.68,.8,6),minPierHalfM);
+            const vertex=(along,across,elevation)=>groundVec(
+              eastM+dirEast*along+perpEast*across,
+              northM+dirNorth*along+perpNorth*across,
+              elevation
+            );
+            const top00=vertex(-alongHalf,-acrossHalf,deckBottomElevation);
+            const top10=vertex( alongHalf,-acrossHalf,deckBottomElevation);
+            const top11=vertex( alongHalf, acrossHalf,deckBottomElevation);
+            const top01=vertex(-alongHalf, acrossHalf,deckBottomElevation);
+            const bottom00=vertex(-alongHalf,-acrossHalf,bottomElevation);
+            const bottom10=vertex( alongHalf,-acrossHalf,bottomElevation);
+            const bottom11=vertex( alongHalf, acrossHalf,bottomElevation);
+            const bottom01=vertex(-alongHalf, acrossHalf,bottomElevation);
+            /* 観測者を向く2面だけを描く。正面と側面を別Pathへ分け、陰影で立体感を出す。 */
+            const viewEast=-eastM,viewNorth=-northM;
+            const alongPositive=dirEast*viewEast+dirNorth*viewNorth>=0;
+            const acrossPositive=perpEast*viewEast+perpNorth*viewNorth>=0;
+            const frontFace=alongPositive
+              ?[top10,top11,bottom11,bottom10]
+              :[top00,top01,bottom01,bottom00];
+            const sideFace=acrossPositive
+              ?[top01,top11,bottom11,bottom01]
+              :[top00,top10,bottom10,bottom00];
+            const frontDrawn=fillGroundPolygon(bridgePierPaths[bucket],frontFace);
+            const sideDrawn=fillGroundPolygon(bridgePierShadePaths[bucket],sideFace);
+            if(frontDrawn||sideDrawn){
+              strokeGroundSegment(bridgePierEdgePaths[bucket],bottom00,top00);
+              strokeGroundSegment(bridgePierEdgePaths[bucket],bottom10,top10);
+              strokeGroundSegment(bridgePierEdgePaths[bucket],bottom11,top11);
+              strokeGroundSegment(bridgePierEdgePaths[bucket],bottom01,top01);
+            }
+            return frontDrawn||sideDrawn;
+          };
           const buildBridgeRibbons=(ways)=>{
             for(const way of ways){
               const points=way.points;
@@ -22790,10 +23109,16 @@ function drawPhoto(ctx,s){
               const lineMiddle=(startElevation+endElevation)/2;
               /* 高架橋など、DEM上で両端も中央も同じ高さになってしまう場合だけ中央を持ち上げる。
                  河川橋で既に谷との高低差が取れている場合は余計なアーチを加えない。 */
-              const requestedClearance=way.layer>1?Math.min(8,3.5*(way.layer-1)):0;
+              /* v777: 静的ベクトルには橋面標高が無いため、平坦なDEMでは橋が水位まで
+                 落ちていた。橋長に応じた最低クリアランスを中央へ与え、両端は道路へ
+                 接続したまま水面上へ持ち上げる。既に谷との高低差があれば加算しない。 */
+              const defaultClearance=clamp((way.kind==="rail"?3:2.5)+totalM*.01,2.8,6.5);
+              const layerClearance=way.layer>1?Math.min(8,3.5*(way.layer-1)):0;
+              const requestedClearance=Math.max(defaultClearance,layerClearance);
               const missingClearance=Number.isFinite(middleGround)?Math.max(0,requestedClearance-(lineMiddle-middleGround)):0;
               const camberM=Math.min(1,Math.max(.12,totalM*.0015))+missingClearance;
-              const thicknessM=clamp(.55+(way.widthM||5)*.055,.7,1.5);
+              /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
+              const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
               const halfWidth=Math.max(1,(way.widthM||5)/2);
               const pierIntervalM=clamp(totalM/Math.max(1,Math.round(totalM/38)),24,48);
               let previous=null;
@@ -22809,9 +23134,12 @@ function drawPhoto(ctx,s){
                 for(let sample=(i>0?1:0);sample<=steps;sample++){
                   const f=sample/steps,travelM=cumulative[i]+segmentM*f,t=clamp(travelM/totalM,0,1);
                   const eastM=a.east+(b.east-a.east)*f,northM=a.north+(b.north-a.north)*f;
+                  const distanceM=Math.hypot(eastM,northM);
                   const terrainElevation=elevationAtXY(eastM,northM);
                   const deckElevation=lerp(startElevation,endElevation,t)+Math.sin(Math.PI*t)*camberM;
-                  const current=bridgeSectionAt(eastM,northM,perpEast,perpNorth,halfWidth,deckElevation,terrainElevation,thicknessM);
+                  const displayHalfWidth=Math.max(halfWidth,minBridgeHalfMetresAt(distanceM));
+                  const displayThicknessM=Math.max(thicknessM,minBridgeThicknessMetresAt(distanceM));
+                  const current=bridgeSectionAt(eastM,northM,perpEast,perpNorth,displayHalfWidth,deckElevation,terrainElevation,displayThicknessM);
                   if(!current){previous=null;continue;}
                   current.travel=travelM;
                   if(previous){
@@ -22829,7 +23157,11 @@ function drawPhoto(ctx,s){
                     const crossedPier=Math.floor(previous.travel/pierIntervalM)!==Math.floor(travelM/pierIntervalM);
                     const clearance=Number.isFinite(current.terrainElevation)?deckElevation-current.terrainElevation:0;
                     if(totalM>=28&&crossedPier&&t>.12&&t<.88&&clearance>1.5&&current.groundCentre){
-                      strokeGroundSegment(bridgePierPaths[bucket],current.groundCentre,current.bottomCentre);
+                      fillBridgePierPrism(
+                        bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,
+                        deckElevation-displayThicknessM,current.terrainElevation,
+                        displayHalfWidth,way.widthM||5,current.distanceM
+                      );
                     }
                   }
                   previous=current;
@@ -22867,8 +23199,7 @@ function drawPhoto(ctx,s){
           // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
           strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
         }
-        /* 道路と橋面で同じ人工物パレットを共有する。
-           橋だけ別の山色へ寄らず、昼夜どちらでも道路の続きとして見える。 */
+        /* 道路用パレット。橋は水面との見分けを優先するため、下で専用色を使う。 */
         const roadSurfaceRGB=mixRGB([104,108,116],[132,132,130],terrainDayFactor);
         const roadMarkRGB=mixRGB([158,162,170],[226,226,222],terrainDayFactor);
         const roadSurfaceBaseAlpha=lerp(.62,.86,terrainDayFactor);
@@ -22922,29 +23253,87 @@ function drawPhoto(ctx,s){
           }
         }
         if(bridgePaths){
+          /* v777: この投影済み橋形状を、水面反射の後で橋だけ戻すためにも保持する。
+             Path2Dはすでに地形の遮蔽判定を通過しているので、山の裏側の橋は含まれない。 */
+          drawPhoto._bridgeForegroundOverlay={
+            key:terrainGeometryKey,buckets:FADE_BUCKETS,
+            deck:bridgePaths,side:bridgeSidePaths,edge:bridgeEdgePaths,
+            pier:bridgePierPaths,pierShade:bridgePierShadePaths,pierEdge:bridgePierEdgePaths,
+            mark:bridgeRailMarkPaths
+          };
           /* 橋脚→側面→橋面の順に重ねる。橋面を最後に置くことで、川底へ垂れた
-             旧道路リボンがキャッシュに残っていても視線上では橋が主役になる。 */
-          const deckRGB=roadSurfaceRGB;
-          const sideRGB=roadSurfaceRGB.map(value=>Math.round(value*.78));
-          const pierRGB=roadSurfaceRGB.map(value=>Math.round(value*.64));
-          const edgeRGB=roadMarkRGB;
-          const markRGB=roadMarkRGB;
+             旧道路リボンがキャッシュに残っていても視線上では橋が主役になる。
+
+             v775: 水面と橋の明度差を昼夜で逆転させる。
+             昼は明るい川・湖に沈まない濃いチャコール、夜は暗い水面から浮く
+             明るめのスチールグレーへ滑らかに補間する。橋・鉄橋とも同じ規則で、
+             側面・橋脚は橋面より暗く、縁と枕木／中央線は一段明るく保つ。 */
+          const deckRGB=mixRGB([120,128,140],[38,42,48],terrainDayFactor);
+          const sideRGB=mixRGB([86,94,106],[27,30,35],terrainDayFactor);
+          const pierRGB=mixRGB([68,76,88],[21,24,29],terrainDayFactor);
+          const pierShadeRGB=mixRGB([46,54,66],[13,16,20],terrainDayFactor);
+          const pierEdgeRGB=mixRGB([118,128,142],[8,10,14],terrainDayFactor);
+          const edgeRGB=mixRGB([176,186,198],[12,15,20],terrainDayFactor);
+          const markRGB=mixRGB([198,194,180],[178,166,132],terrainDayFactor);
+          const bridgeSurfaceBaseAlpha=lerp(.82,.97,terrainDayFactor);
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=bridgeFadeOfBucket(i);
             if(fade<=0) continue;
-            const alpha=roadSurfaceBaseAlpha*fade;
-            tctx.strokeStyle=`rgba(${pierRGB.join(",")},${(alpha*.88).toFixed(3)})`;
-            tctx.lineWidth=Math.max(.8,2.4*fade);tctx.stroke(bridgePierPaths[i]);
+            const alpha=bridgeSurfaceBaseAlpha*fade;
+            tctx.fillStyle=`rgba(${pierShadeRGB.join(",")},${(alpha*.92).toFixed(3)})`;tctx.fill(bridgePierShadePaths[i]);
+            tctx.fillStyle=`rgba(${pierRGB.join(",")},${(alpha*.96).toFixed(3)})`;tctx.fill(bridgePierPaths[i]);
+            tctx.strokeStyle=`rgba(${pierEdgeRGB.join(",")},${(alpha*.58).toFixed(3)})`;
+            tctx.lineWidth=Math.max(.7,1.05*fade);tctx.stroke(bridgePierEdgePaths[i]);
             tctx.fillStyle=`rgba(${sideRGB.join(",")},${(alpha*.96).toFixed(3)})`;tctx.fill(bridgeSidePaths[i]);
             tctx.fillStyle=`rgba(${deckRGB.join(",")},${alpha.toFixed(3)})`;tctx.fill(bridgePaths[i]);
             tctx.strokeStyle=`rgba(${edgeRGB.join(",")},${(alpha*.82).toFixed(3)})`;
-            tctx.lineWidth=Math.max(.7,1.35*fade);tctx.stroke(bridgeEdgePaths[i]);
+            tctx.lineWidth=Math.max(1.2,1.8*fade);tctx.stroke(bridgeEdgePaths[i]);
             tctx.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;
-            tctx.lineWidth=Math.max(.65,1.1*fade);tctx.stroke(bridgeRailMarkPaths[i]);
+            tctx.lineWidth=Math.max(1.05,1.45*fade);tctx.stroke(bridgeRailMarkPaths[i]);
           }
           tctx.lineWidth=1;
         }
         tctx.restore();
+      }
+      /* v777: 水面反射は地形レイヤーより後に描かれるため、上空から見ると
+         水面マスク内に入った橋まで鏡面色で覆っていた。投影済みの橋だけを別Canvasへ
+         描き、水域画素との共通部分に限定して反射後へ戻す。陸上部分は二重描画せず、
+         地形遮蔽済みPath2Dを使うため山越しに透けることもない。 */
+      function restoreBridgeForegroundAboveWater(){
+        const overlay=drawPhoto._bridgeForegroundOverlay;
+        if(!bridgeLinesVisible||!overlay||overlay.key!==terrainGeometryKey||!waterSurfaceMaskCanvas.width) return false;
+        const restoreCanvas=drawPhoto._bridgeWaterRestoreCanvas||(drawPhoto._bridgeWaterRestoreCanvas=document.createElement("canvas"));
+        if(restoreCanvas.width!==W||restoreCanvas.height!==H){restoreCanvas.width=W;restoreCanvas.height=H;}
+        const restoreCtx=restoreCanvas.getContext("2d");
+        restoreCtx.setTransform(1,0,0,1,0,0);restoreCtx.clearRect(0,0,W,H);
+        restoreCtx.save();restoreCtx.globalAlpha=terrainDisplayAlpha;restoreCtx.lineJoin="round";restoreCtx.lineCap="round";
+        const deckRGB=mixRGB([120,128,140],[38,42,48],dayFactor);
+        const sideRGB=mixRGB([86,94,106],[27,30,35],dayFactor);
+        const pierRGB=mixRGB([68,76,88],[21,24,29],dayFactor);
+        const pierShadeRGB=mixRGB([46,54,66],[13,16,20],dayFactor);
+        const pierEdgeRGB=mixRGB([118,128,142],[8,10,14],dayFactor);
+        const edgeRGB=mixRGB([176,186,198],[12,15,20],dayFactor);
+        const markRGB=mixRGB([198,194,180],[178,166,132],dayFactor);
+        const bridgeSurfaceBaseAlpha=lerp(.82,.97,dayFactor);
+        for(let i=0;i<overlay.buckets;i++){
+          const fade=Math.max(.64,Math.min(1,1.3*Math.pow(1-(i+.5)/overlay.buckets,.8)));
+          const alpha=bridgeSurfaceBaseAlpha*fade;
+          restoreCtx.fillStyle=`rgba(${pierShadeRGB.join(",")},${(alpha*.92).toFixed(3)})`;restoreCtx.fill(overlay.pierShade[i]);
+          restoreCtx.fillStyle=`rgba(${pierRGB.join(",")},${(alpha*.96).toFixed(3)})`;restoreCtx.fill(overlay.pier[i]);
+          restoreCtx.strokeStyle=`rgba(${pierEdgeRGB.join(",")},${(alpha*.58).toFixed(3)})`;
+          restoreCtx.lineWidth=Math.max(.7,1.05*fade);restoreCtx.stroke(overlay.pierEdge[i]);
+          restoreCtx.fillStyle=`rgba(${sideRGB.join(",")},${(alpha*.96).toFixed(3)})`;restoreCtx.fill(overlay.side[i]);
+          restoreCtx.fillStyle=`rgba(${deckRGB.join(",")},${alpha.toFixed(3)})`;restoreCtx.fill(overlay.deck[i]);
+          restoreCtx.strokeStyle=`rgba(${edgeRGB.join(",")},${(alpha*.82).toFixed(3)})`;
+          restoreCtx.lineWidth=Math.max(1.2,1.8*fade);restoreCtx.stroke(overlay.edge[i]);
+          restoreCtx.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;
+          restoreCtx.lineWidth=Math.max(1.05,1.45*fade);restoreCtx.stroke(overlay.mark[i]);
+        }
+        restoreCtx.restore();
+        /* 反射が橋を覆った水域画素だけを残す。陸上の橋は元の地形レイヤーをそのまま使う。 */
+        restoreCtx.save();restoreCtx.globalCompositeOperation="destination-in";
+        restoreCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H);restoreCtx.restore();
+        ctx.drawImage(restoreCanvas,0,0);return true;
       }
       function drawLayeredTerrain(){
         const rayGrid=realTerrainState.rayGrid;
@@ -22959,7 +23348,13 @@ function drawPhoto(ctx,s){
            下限は0.15°だったが、600mm（水平画角3.4°）だと画面全体でわずか23本になり、
            稜線がガクガクに見える。望遠側だけ下限を下げる。
            広角側はこの式が0.15を上回るので本数は変わらず、重くならない。 */
-        const stepDeg=clamp((highDetailOn?3:5)/(W/Math.max(1,s.fovH)),highDetailOn?.006:.03,highDetailOn?.5:1.5);
+        const highDetailQuality=highDetailQualityValue();
+        const highDetailTargetPx=[0,10,8,6,4.5,3][highDetailQuality];
+        const highDetailMinDeg=[0,.04,.025,.015,.009,.006][highDetailQuality];
+        const highDetailMaxDeg=[0,1.25,1,.8,.65,.5][highDetailQuality];
+        const stepDeg=highDetailOn
+          ?clamp(highDetailTargetPx/(W/Math.max(1,s.fovH)),highDetailMinDeg,highDetailMaxDeg)
+          :clamp(5/(W/Math.max(1,s.fovH)),.03,1.5);
         if(replayGeometry&&replayGeometry.layerCount===layerCount){
           // 夜側で完成した小さな数値格子だけを再利用する。大量の帯オブジェクトは作り直さない。
           columns=replayGeometry.columns;
@@ -22977,7 +23372,9 @@ function drawPhoto(ctx,s){
             const leftPad=-Math.max(8,W*.025),rightPad=W-leftPad;
             for(let screenX=leftPad;screenX<=rightPad+.001;){
               const normalized=Math.min(1,Math.abs(screenX-W/2)/Math.max(1,W/2));
-              const pixelStep=lerp(3,5,normalized*normalized);
+              const centrePx=[0,10,8,6,4.5,3][highDetailQuality];
+              const edgePx=[0,14,11,8,6.5,5][highDetailQuality];
+              const pixelStep=lerp(centrePx,edgePx,normalized*normalized);
               const az=s.facingAz+Math.atan((screenX-W/2)/Math.max(1e-6,rectilinearScale))*R2D;
               const bands=azimuthVisibleBands(az,bottomAlt,false,true);
               columns.push({az,bands:bands||[]});
@@ -23075,17 +23472,13 @@ function drawPhoto(ctx,s){
 
         // 奥から手前へ。各層は「そこまでに見える面」を画面下端まで塗る。
         for(let k=layerCount-1;k>=0;k--){
-          /* 手前の層と全方位で同じなら、新しく見えるものが無いので描かない。
-             ただし高さだけで判断すると、高精細水域で追加した細かな距離層が
-             「高さは同じ・陸水だけ変化」の場合に丸ごと省略され、川が消える。
-             高さ・水域・雲のどれか1つでも変われば、材質の違う層として必ず描く。 */
+          /* 以前の高品質版と同じく、見かけ高度が全方位で同じ層は省略する。
+             水/陸属性だけで細かな層を全部描くと、通常距離帯の矩形が水面へ現れ、
+             高精細スキャン後の川がブロック状になる。水面色は完成マスクから別途確定する。 */
           if(k<layerCount-1){
             let changed=false;
             for(let c=0;c<columns.length;c++){
-              const here=c*layerCount+k,next=here+1;
-              if(altGrid[here]!==altGrid[next]||waterGrid[here]!==waterGrid[next]||cloudGrid[here]!==cloudGrid[next]){
-                changed=true;break;
-              }
+              if(altGrid[c*layerCount+k]!==altGrid[c*layerCount+k+1]){changed=true;break;}
             }
             if(!changed) continue;
           }
@@ -23628,6 +24021,68 @@ function drawPhoto(ctx,s){
         // 従来方式でも地形帯または近距離メッシュを必ず描いているため、描画完了として返す。
         return true;
       }
+      /* 高精細の地形形状と水面マスクは別々のCanvasへ作る。
+         水域判定が正しくても、最後に手前の陸地層が重なると水面色だけが消え、
+         境界線だけ残る場合がある。完成した水面マスクを正として、交換直前に
+         水面色をもう一度確定する。高精細水域の外部通信は行わない。 */
+      function highDetailWaterMaskStats(previousMask,candidateMask){
+        const probe=drawPhoto._highDetailWaterProbeCanvas||(drawPhoto._highDetailWaterProbeCanvas=document.createElement("canvas"));
+        const probeW=96,probeH=Math.max(32,Math.round(probeW*H/Math.max(1,W)));
+        if(probe.width!==probeW||probe.height!==probeH){probe.width=probeW;probe.height=probeH;}
+        const pctx=probe.getContext("2d",{willReadFrequently:true});
+        const alphaOf=canvas=>{
+          pctx.setTransform(1,0,0,1,0,0);pctx.clearRect(0,0,probeW,probeH);
+          if(canvas&&canvas.width>1&&canvas.height>1)pctx.drawImage(canvas,0,0,probeW,probeH);
+          const pixels=pctx.getImageData(0,0,probeW,probeH).data,alpha=new Uint8Array(probeW*probeH);
+          for(let i=0,p=3;i<alpha.length;i++,p+=4)alpha[i]=pixels[p];
+          return alpha;
+        };
+        const previous=alphaOf(previousMask),candidate=alphaOf(candidateMask);
+        let previousCount=0,candidateCount=0,overlap=0;
+        for(let i=0;i<previous.length;i++){
+          const wasWater=previous[i]>=32,isWater=candidate[i]>=32;
+          if(wasWater)previousCount++;
+          if(isWater)candidateCount++;
+          if(wasWater&&isWater)overlap++;
+        }
+        return {previousCount,candidateCount,overlap};
+      }
+      /* 遠くの細い川は96px幅の診断用縮小では0点になる場合がある。
+         粗い通常マスクへ戻す前に、実解像度の候補へ水面画素が本当に無いか確認する。 */
+      function highDetailWaterMaskHasVisiblePixels(mask,minPixels=12){
+        if(!mask||mask.width!==W||mask.height!==H)return false;
+        const pixels=mask.getContext("2d",{willReadFrequently:true}).getImageData(0,0,W,H).data;
+        let count=0;
+        for(let alpha=3;alpha<pixels.length;alpha+=4){
+          if(pixels[alpha]>=32&&++count>=minPixels)return true;
+        }
+        return false;
+      }
+      function commitHighDetailWaterColor(targetCanvas,waterMask,previousTerrain=null,previousMask=null){
+        if(!targetCanvas||!waterMask||waterMask.width<=1||waterMask.height<=1)return;
+        const repair=drawPhoto._highDetailWaterRepairCanvas||(drawPhoto._highDetailWaterRepairCanvas=document.createElement("canvas"));
+        if(repair.width!==W||repair.height!==H){repair.width=W;repair.height=H;}
+        const rctx=repair.getContext("2d"),targetCtx=targetCanvas.getContext("2d");
+        const representativeKm=highDetailTargetIsReady()&&Number.isFinite(highDetailTarget.distanceKm)
+          ?Math.max(.02,highDetailTarget.distanceKm):.5;
+        /* まず高精細マスク全体を、その距離・昼夜に合う水面色で保証する。
+           これで新しく細くなった川岸にも陸色が残らない。 */
+        rctx.setTransform(1,0,0,1,0,0);rctx.clearRect(0,0,W,H);
+        rctx.globalCompositeOperation="source-over";
+        rctx.fillStyle=`rgb(${rayBandColor(true,representativeKm,-1).join(",")})`;
+        rctx.fillRect(0,0,W,H);
+        rctx.globalCompositeOperation="destination-in";rctx.drawImage(waterMask,0,0,W,H);
+        targetCtx.save();targetCtx.globalCompositeOperation="source-over";targetCtx.drawImage(repair,0,0);targetCtx.restore();
+        /* 通常表示で既に完成していた水面部分は、その色調・距離霞を引き継ぐ。
+           高精細マスクとの共通部分だけなので、新しい陸地を水へ戻すことはない。 */
+        if(previousTerrain&&previousMask&&previousTerrain.width===W&&previousTerrain.height===H&&previousMask.width===W&&previousMask.height===H){
+          rctx.clearRect(0,0,W,H);rctx.globalCompositeOperation="source-over";rctx.drawImage(previousTerrain,0,0,W,H);
+          rctx.globalCompositeOperation="destination-in";rctx.drawImage(previousMask,0,0,W,H);
+          rctx.globalCompositeOperation="destination-in";rctx.drawImage(waterMask,0,0,W,H);
+          targetCtx.save();targetCtx.globalCompositeOperation="source-over";targetCtx.drawImage(repair,0,0);targetCtx.restore();
+        }
+        rctx.globalCompositeOperation="source-over";
+      }
       if(terrainNeedsRender){
         // 地形形状が変わった時だけ、完全な夜と完全な昼の2枚を生成する。
         // 時刻再生中はこの高密度メッシュを作り直さず、下で2枚を合成するだけにする。
@@ -23641,18 +24096,37 @@ function drawPhoto(ctx,s){
           if(candidateWaterMask.width!==W||candidateWaterMask.height!==H){candidateWaterMask.width=W;candidateWaterMask.height=H;}
           renderWaterMaskCanvas=candidateWaterMask;
           renderWaterMaskContext=candidateWaterMask.getContext("2d");
+          const previousBridgeForegroundOverlay=drawPhoto._bridgeForegroundOverlay;
           let candidateMeshDrawn=false,commitSucceeded=false,failureReason="",failureStage="高精細描画の準備";
+          let waterMaskEmptyFallback=false,waterMaskStats=null;
           const highDetailRenderStarted=performance.now();
           try{
             highDetailWaterChecks=0;highDetailWaterHits=0;highDetailWaterTransitions=0;
+            highDetailMapWaterChecks=0;highDetailMapWaterHits=0;
             highDetailExtendedWaterChecks=0;highDetailExtendedWaterHits=0;highDetailExtendedWaterTransitions=0;
             sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,meshPaintedTriangles:0,waterGradientTopY:null};
             failureStage="夜用地形の形状計算";
             candidateMeshDrawn=renderTerrainVariant(candidateTerrain,0,clamp(s.lp.base*.2,0,1),"commands");
             if(!candidateMeshDrawn)throw new Error("夜用地形の描画結果が空になりました");
+            /* 高精細水域は、通常マスクとの面積比に関係なく必ず優先する。
+               正確な川は通常の距離帯より細くなることがあるため、「小さい」という理由で
+               粗い通常マスクを混ぜると高精細化が失われる。候補が本当に空の時だけ、
+               水域の完全消失を避ける最終保険として通常表示を維持する。 */
+            waterMaskStats=highDetailWaterMaskStats(waterSurfaceMaskCanvas,candidateWaterMask);
+            const oldWater=waterMaskStats.previousCount,newWater=waterMaskStats.candidateCount;
+            if(oldWater>=8&&newWater<3&&!highDetailWaterMaskHasVisiblePixels(candidateWaterMask)){
+              const candidateMaskContext=candidateWaterMask.getContext("2d");
+              candidateMaskContext.save();candidateMaskContext.globalCompositeOperation="source-over";
+              candidateMaskContext.drawImage(waterSurfaceMaskCanvas,0,0,W,H);candidateMaskContext.restore();
+              waterMaskEmptyFallback=true;
+            }
+            /* 夜用は通常表示の水面色も共通部分へ戻せる。昼用はこの後で描き直すため、
+               高精細マスクに合う水面色を最終段階で直接確定する。 */
+            commitHighDetailWaterColor(candidateTerrain,candidateWaterMask,terrainCanvas,waterSurfaceMaskCanvas);
             failureStage="昼用地形への圧縮形状の再利用";
             const candidateDayPainted=renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
             if(!candidateDayPainted)throw new Error("昼用地形の描画結果が空になりました");
+            commitHighDetailWaterColor(dayTerrainCanvas,candidateWaterMask);
             failureStage="完成した高精細地形への交換";
             terrainCanvas.width=W;terrainCanvas.height=H;
             terrainCanvas.getContext("2d").drawImage(candidateTerrain,0,0);
@@ -23668,10 +24142,12 @@ function drawPhoto(ctx,s){
               :`標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}`;
             const elapsed=((performance.now()-highDetailRenderStarted)/1000).toFixed(1);
             const extendedWaterText=highDetailExtendedWaterChecks>0?`・5km超も${highDetailExtendedWaterChecks.toLocaleString()}点照合`:"";
-            const waterStatus=highDetailWaterTransitions>0?`・保持済み水域から川岸を高精細化${extendedWaterText}（水域通信なし）`:
-              (highDetailWaterChecks>0?`・保持済み水域を照合${extendedWaterText}（水域通信なし）`:"・川岸は通常精度（水域通信なし）");
+            const waterProtectionText=waterMaskEmptyFallback?"・高精細水域が空のため通常水面を維持":"・水面色を高精細マスクから確定";
+            const waterSourceText=highDetailMapWaterChecks>0?"既読地図＋保存形状":"保存形状";
+            const waterStatus=highDetailWaterTransitions>0?`・${waterSourceText}から川岸を高精細化${extendedWaterText}${waterProtectionText}（水域通信なし）`:
+              (highDetailWaterChecks>0?`・${waterSourceText}を直接照合${extendedWaterText}${waterProtectionText}（水域通信なし）`:`・川岸は通常精度${waterProtectionText}（水域通信なし）`);
             showHighDetailStatus(`高精細表示が完了しました：${highDetailAppliedRangeText()}・${tileText}${waterStatus}${omitted?`・範囲外${omitted}枚分は通常精度`:""}`,"info",8000);
-            setHighDetailDiagnostic(`前回の高精細表示：成功\n標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}枚・描画 ${elapsed}秒\n水域：${highDetailWaterChecks>0?`保持済み形状を${highDetailWaterChecks.toLocaleString()}点で照合（水${highDetailWaterHits.toLocaleString()}点）・川岸${highDetailWaterTransitions.toLocaleString()}区間を細密化`:"高精細化なし"}\n5km超：${highDetailExtendedWaterChecks>0?`${highDetailExtendedWaterChecks.toLocaleString()}点照合（水${highDetailExtendedWaterHits.toLocaleString()}点）・川岸${highDetailExtendedWaterTransitions.toLocaleString()}区間`:"対象形状なし"}\n高精細水域の外部通信：なし`,"info");
+            setHighDetailDiagnostic(`前回の高精細表示：成功\n標高タイル ${highDetailTileCount}/${highDetailQueuedTileCount}枚・描画 ${elapsed}秒\n水域：${highDetailWaterChecks.toLocaleString()}点で直接照合（水${highDetailWaterHits.toLocaleString()}点）・川岸${highDetailWaterTransitions.toLocaleString()}区間を細密化\n既読地図：${highDetailMapWaterChecks.toLocaleString()}点（水${highDetailMapWaterHits.toLocaleString()}点）・残りは保存OSM形状\n水面マスク：通常${waterMaskStats?.previousCount||0}・高精細${waterMaskStats?.candidateCount||0}・共通${waterMaskStats?.overlap||0}${waterMaskEmptyFallback?"・高精細水域が空のため通常水面を維持":"・高精細水面のみ採用"}\n5km超：${highDetailExtendedWaterChecks>0?`${highDetailExtendedWaterChecks.toLocaleString()}点照合（水${highDetailExtendedWaterHits.toLocaleString()}点）・川岸${highDetailExtendedWaterTransitions.toLocaleString()}区間`:"対象形状なし"}\n高精細水域の外部通信：なし`,"info");
           }catch(error){
             failureReason=String(error&&error.message||"端末の描画処理を完了できませんでした");
             drawPhoto._terrainRenderKey=terrainRenderKey;
@@ -23682,10 +24158,13 @@ function drawPhoto(ctx,s){
             renderWaterMaskCanvas=waterSurfaceMaskCanvas;
             renderWaterMaskContext=realWaterMaskContext;
             sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
+            if(!commitSucceeded) drawPhoto._bridgeForegroundOverlay=previousBridgeForegroundOverlay;
             if(commitSucceeded){
               candidateTerrain.width=1;candidateTerrain.height=1;drawPhoto._highDetailCandidateTerrain=null;
               candidateWaterMask.width=1;candidateWaterMask.height=1;drawPhoto._highDetailCandidateWaterMask=null;
             }
+            const waterRepair=drawPhoto._highDetailWaterRepairCanvas;
+            if(waterRepair){waterRepair.width=1;waterRepair.height=1;drawPhoto._highDetailWaterRepairCanvas=null;}
           }
           if(!commitSucceeded){meshDrawn=drawPhoto._terrainMeshDrawn||false;}
         }else{
@@ -23746,8 +24225,10 @@ function drawPhoto(ctx,s){
       // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
       /* 反射演出側で端末依存のCanvasエラーが起きても、太陽・月・軌跡を含む
          シミュレーション本体の描画は最後まで継続する。 */
-      try{drawWaterReflections();}
+      let waterReflectionDrawn=false;
+      try{waterReflectionDrawn=drawWaterReflections();}
       catch(reflectionError){console.warn("Water reflection drawing was skipped for this frame.",reflectionError);}
+      if(waterReflectionDrawn) restoreBridgeForegroundAboveWater();
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
       drawSeasonalFujiSnow();
       /* KMZ建物は、地形だけでなく水面レイヤーよりも後に描く。
