@@ -15997,7 +15997,7 @@ async function fetchStaticBridgeWays(lat,lon,radiusKm){
       const rail=staticTruthy(props.rail),baseKind=String(props.kind||""),kind=staticTruthy(props.link)&&!baseKind.endsWith("_link")?`${baseKind}_link`:baseKind;
       const widthM=rail?(RAIL_CLASS_WIDTH_M[baseKind]||4.2):(BRIDGE_HIGHWAY_WIDTH_M[kind]||5);
       staticFeatureLatLonParts(tile,layer,feature).forEach(points=>{
-        if(staticLineIntersectsRadius(points,lat,lon,radiusKm))ways.push({id:`sv-${tile.z}-${tile.x}-${tile.y}-${feature.id||serial++}`,kind:rail?"rail":"road",widthM,name:"",structure:"yes",layer:1,points});
+        if(staticLineIntersectsRadius(points,lat,lon,radiusKm))ways.push({id:`sv-${tile.z}-${tile.x}-${tile.y}-${feature.id||serial++}`,kind:rail?"rail":"road",highwayClass:rail?"":kind,widthM,name:"",structure:"yes",layer:1,points});
       });
     });
   });
@@ -16093,7 +16093,7 @@ function openExternalGeoCacheDb(){
    「最後に使った時刻」をlocalStorageの小さな表に持ち、古いものから消す。
    時刻を巨大な本体と一緒に書き戻すと1回数MBの書き込みになるため、別に持つ。 */
 const CACHE_TOUCH_KEY="mwsim.cacheTouch.v1";
-const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,"coastline-static-v1":200,"roads-static-v1":200,"rails-static-v1":200,"bridges-static-v1":200,mountain:200};
+const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,"coastline-static-v1":200,"roads-static-v1":200,"rails-static-v1":200,"bridges-static-v1":200,"bridges-static-v2":200,mountain:200};
 let cacheTouchMap=(()=>{ try{ return JSON.parse(localStorage.getItem(CACHE_TOUCH_KEY))||{}; }catch(error){ return {}; } })();
 let cacheTouchSaveTimer=0;
 function saveCacheTouchMap(){
@@ -16635,7 +16635,7 @@ function parseOsmBridgeWays(data){
   }).map(elem=>{
     const tags=elem.tags||{},kind=RAIL_CLASS_WIDTH_M[tags.railway]?"rail":"road";
     return {
-      id:String(elem.id||""),kind,widthM:bridgeDefaultWidthM(tags,kind),
+      id:String(elem.id||""),kind,highwayClass:kind==="road"?String(tags.highway||""):"",widthM:bridgeDefaultWidthM(tags,kind),
       name:String(tags.name||tags["bridge:name"]||""),
       structure:String(tags["bridge:structure"]||tags.bridge||"yes"),
       layer:Number.isFinite(parseInt(tags.layer,10))?parseInt(tags.layer,10):1,
@@ -16665,13 +16665,13 @@ function fetchOsmBridgeWays(lat,lon,radiusKm=OSM_BRIDGE_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmBridgeCache.has(key)) return osmBridgeCache.get(key);
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`bridges-static-v1:${key}`);
+    const saved=await externalGeoCacheGet(`bridges-static-v2:${key}`);
     if(Array.isArray(saved)){lastBridgeFailure="";osmBridgeCacheSources.set(key,"persistent");return saved;}
     try{
       const ways=await fetchOsmBridgeWaysNetwork(lat,lon,radiusKm);
       lastBridgeFailure="";
       osmBridgeCacheSources.set(key,"static-vector");
-      externalGeoCacheSet(`bridges-static-v1:${key}`,ways);
+      externalGeoCacheSet(`bridges-static-v2:${key}`,ways);
       return ways;
     }catch(error){
       lastBridgeFailure=bridgeFailureLabel(error);
@@ -16737,6 +16737,49 @@ function bridgeEndpointSignature(points){
   const pointText=point=>`${(+point[0]).toFixed(6)},${(+point[1]).toFixed(6)}`;
   const first=pointText(points[0]),last=pointText(points[points.length-1]);
   return first<last?`${first}|${last}`:`${last}|${first}`;
+}
+/* v781: Shortbreadのbridge属性には、河川橋だけでなく道路・谷・線路をまたぐ
+   小さな陸橋も含まれる。撮影画面では水面上の橋を主役にし、高速道路系だけは
+   高架橋として水域外でも残す。水域が未取得なら誤消去を避けてnullを返す。 */
+const BRIDGE_ALWAYS_VISIBLE_HIGHWAYS=new Set(["motorway","motorway_link","trunk","trunk_link"]);
+function bridgeIsAlwaysVisibleHighway(way){
+  return way?.kind==="road"&&BRIDGE_ALWAYS_VISIBLE_HIGHWAYS.has(String(way.highwayClass||""));
+}
+function bridgeCrossesKnownWater(way){
+  const points=way&&way.points;
+  if(!Array.isArray(points)||points.length<2)return false;
+  const rings=realTerrainState&&realTerrainState._osmWaterRings;
+  const mapAvailable=worldMapTiles>0;
+  if((!Array.isArray(rings)||!rings.length)&&!mapAvailable)return null;
+  let knownSamples=0;
+  for(let index=1;index<points.length;index++){
+    const a=points[index-1],b=points[index];
+    const meanLat=(a[0]+b[0])/2;
+    const segmentM=Math.hypot((b[0]-a[0])*111320,(b[1]-a[1])*111320*Math.cos(meanLat*D2R));
+    const steps=Math.max(1,Math.ceil(segmentM/5));
+    for(let sample=0;sample<=steps;sample++){
+      const f=sample/steps,lat=lerp(a[0],b[0],f),lon=lerp(a[1],b[1],f);
+      if(Array.isArray(rings)&&rings.length){
+        const ringClass=cachedWaterRingClassAt(lat,lon,rings);
+        /* 水域リングは観測地点の半径5kmをまとめて取得済み。リング外はこの範囲では陸と
+           判断できるため、0も「不明」ではなく既知の陸サンプルとして数える。 */
+        knownSamples++;if(ringClass===2)return true;
+      }
+      if(mapAvailable){
+        const mapWater=worldMapWaterForDistance(lat,lon,0);
+        if(mapWater!==null){knownSamples++;if(mapWater)return true;}
+      }
+    }
+  }
+  return knownSamples?false:null;
+}
+function visibleBridgeWays(ways){
+  if(!Array.isArray(ways))return [];
+  return ways.filter(way=>{
+    if(bridgeIsAlwaysVisibleHighway(way))return true;
+    const crosses=bridgeCrossesKnownWater(way);
+    return crosses===null?true:crosses;
+  });
 }
 function createCoastlineSeaClassifier(originLat,originLon,ways){
   const cosLat=Math.cos(originLat*Math.PI/180),segments=[];
@@ -22651,14 +22694,15 @@ function drawPhoto(ctx,s){
         const roadCentrePaths=roadPaths?newPaths():null;
         const railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
         const railTiePaths=railPaths?newPaths():null;
-        const bridgePaths=(bridgeLinesVisible&&osmBridgeState.ways)?newPaths():null;
+        const bridgeWaysForDisplay=(bridgeLinesVisible&&osmBridgeState.ways)?visibleBridgeWays(osmBridgeState.ways):[];
+        const bridgePaths=bridgeWaysForDisplay.length?newPaths():null;
         const bridgeSidePaths=bridgePaths?newPaths():null;
         const bridgeEdgePaths=bridgePaths?newPaths():null;
         const bridgePierPaths=bridgePaths?newPaths():null;
         const bridgePierShadePaths=bridgePaths?newPaths():null;
         const bridgePierEdgePaths=bridgePaths?newPaths():null;
         const bridgeRailMarkPaths=bridgePaths?newPaths():null;
-        const activeBridgeSignatures=bridgePaths?new Set(osmBridgeState.ways.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
+        const activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
         const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
         /* v776: 橋は遠景でも撮影構図の目印になるため、5km内では一定以下に薄くしない。
@@ -23177,7 +23221,7 @@ function drawPhoto(ctx,s){
             const ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
             buildRibbon(ways,railPaths,railTiePaths,"ties");
           }
-          if(bridgePaths) buildBridgeRibbons(osmBridgeState.ways);
+          if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
         }
 
         tctx.save();
