@@ -4769,7 +4769,7 @@
                   <div class="field" style="margin-top:12px;">
                     <label class="top">高精細度合い <span class="val mono" id="highDetailQualityVal">3（バランス）</span></label>
                     <input id="highDetailQualitySlider" type="range" min="1" max="5" step="1" value="3">
-                    <div class="range-labels"><span>← 1 遠景安定</span><span>5 最高精細 →</span></div>
+                    <div class="range-labels"><span>← 1 旧高精細風・遠景安定</span><span>5 最高精細 →</span></div>
                   </div>
                   <p class="plan-modal-help" style="margin-top:6px;">低いほど奥の景色を安定して描き、高いほど近景の細かな凹凸や水際を優先します。</p>
                   <p id="highDetailSettingsSummary" class="plan-modal-help" style="margin-top:10px;">中心地点を入力してください。</p>
@@ -9069,7 +9069,7 @@ let highDetailOn=false;
 function highDetailQualityValue(){return clamp(Math.round(+el.highDetailQualitySlider?.value||3),1,5);}
 function syncHighDetailQualityControl(){
   const level=highDetailQualityValue();
-  const labels=["","遠景安定","やや安定","バランス","高精細","最高精細"];
+  const labels=["","旧高精細風・遠景安定","旧高精細寄り","バランス","高精細","最高精細"];
   if(el.highDetailQualitySlider)el.highDetailQualitySlider.value=level;
   if(el.highDetailQualityVal)el.highDetailQualityVal.textContent=`${level}（${labels[level]}）`;
 }
@@ -23412,27 +23412,63 @@ function drawPhoto(ctx,s){
             }
           }
 
+          /* v780: 「遠景安定」は走査点を減らすだけでは旧高精細の見た目へ戻らない。
+             静的ベクトル水域は細かな枝・穴まで保持するため、遠景では数列だけの
+             水陸反転が横長の矩形として強調される。手前の川岸は維持し、800m以遠だけ
+             短い孤立区間を左右の多数派へ統合する。1ほど旧高精細に近い安定表示。 */
+          if(highDetailOn&&highDetailQuality<=3){
+            const stableFromKm=[0,.80,1.15,1.65][highDetailQuality];
+            const maxIslandColumns=[0,5,3,1][highDetailQuality];
+            const stabilizedWater=new Uint8Array(columns.length);
+            for(let k=0;k<layerCount;k++){
+              if(layerKm[k]<stableFromKm)continue;
+              for(let c=0;c<columns.length;c++)stabilizedWater[c]=waterGrid[c*layerCount+k];
+              let start=0;
+              while(start<columns.length){
+                const value=stabilizedWater[start];
+                let end=start+1;
+                while(end<columns.length&&stabilizedWater[end]===value)end++;
+                const runLength=end-start;
+                const left=start>0?stabilizedWater[start-1]:value;
+                const right=end<columns.length?stabilizedWater[end]:value;
+                if(runLength<=maxIslandColumns[highDetailQuality]&&left===right&&left!==value){
+                  for(let c=start;c<end;c++)waterGrid[c*layerCount+k]=left;
+                }
+                start=end;
+              }
+            }
+          }
+
           /* ポリゴン抜けを防ぐ構造を維持したまま、80m以遠の陸地層だけを軽くならす。 */
           const FAR_RIDGE_SMOOTH_MIN_KM=.08;
           const smoothAltitudeLimitDeg=clamp(1.6*Math.max(1,s.fovH)/Math.max(1,W),.002,.10);
           const smoothScratch=new Float64Array(columns.length);
-          for(let pass=0;pass<2;pass++){
+          const ridgeSmoothPasses=highDetailOn?[0,7,5,3,2,2][highDetailQuality]:2;
+          const ridgeSmoothRadius=highDetailOn&&highDetailQuality<=2?3:2;
+          for(let pass=0;pass<ridgeSmoothPasses;pass++){
             for(let k=0;k<layerCount;k++){
               if(layerKm[k]<FAR_RIDGE_SMOOTH_MIN_KM)continue;
               for(let c=0;c<columns.length;c++)smoothScratch[c]=altGrid[c*layerCount+k];
-              for(let c=2;c<columns.length-2;c++){
+              for(let c=ridgeSmoothRadius;c<columns.length-ridgeSmoothRadius;c++){
                 const index=c*layerCount+k;
                 if(waterGrid[index]||cloudGrid[index])continue;
                 let sameLand=true;
-                for(let offset=-2;offset<=2;offset++){
+                for(let offset=-ridgeSmoothRadius;offset<=ridgeSmoothRadius;offset++){
                   const neighbor=(c+offset)*layerCount+k;
                   if(waterGrid[neighbor]||cloudGrid[neighbor]){sameLand=false;break;}
                 }
                 if(!sameLand)continue;
-                const v0=smoothScratch[c-2],v1=smoothScratch[c-1],v2=smoothScratch[c],v3=smoothScratch[c+1],v4=smoothScratch[c+2];
-                const localMin=Math.min(v0,v1,v2,v3,v4),localMax=Math.max(v0,v1,v2,v3,v4);
-                const weighted=(v0+2*v1+4*v2+2*v3+v4)/10;
-                altGrid[index]=v2+clamp(clamp(weighted,localMin,localMax)-v2,-smoothAltitudeLimitDeg,smoothAltitudeLimitDeg);
+                let weighted=0,weightTotal=0,localMin=Infinity,localMax=-Infinity;
+                for(let offset=-ridgeSmoothRadius;offset<=ridgeSmoothRadius;offset++){
+                  const value=smoothScratch[c+offset];
+                  const weight=ridgeSmoothRadius+1-Math.abs(offset);
+                  weighted+=value*weight;weightTotal+=weight;
+                  localMin=Math.min(localMin,value);localMax=Math.max(localMax,value);
+                }
+                const centre=smoothScratch[c],average=weighted/weightTotal;
+                const strength=highDetailOn?[0,1,.86,.68,.55,.55][highDetailQuality]:.55;
+                const correction=(clamp(average,localMin,localMax)-centre)*strength;
+                altGrid[index]=centre+clamp(correction,-smoothAltitudeLimitDeg,smoothAltitudeLimitDeg);
               }
             }
           }
