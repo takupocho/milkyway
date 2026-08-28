@@ -5131,7 +5131,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="823-inland-water-color";
+const APP_VERSION="827-inland-reflection-only";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -23458,6 +23458,58 @@ function drawPhoto(ctx,s){
         }
         return polygon;
       }
+      /* 【v826】方位ごとの「その距離までに現れた地面の最高見かけ高度」。
+         直接投影する内水面が、手前の山に隠れるかどうかを見るために使う。
+         見かけ高度は水面と同じ式（地球の丸みを引いた atan2）で作るので同じ物差しで比べられる。
+         観測地点・地形・視点の高さが変わるまで使い回す。
+         rayGridの行は距離の昇順で入っている（?hddebug=1 の __hd.grid() で確認済み）。 */
+      function inlandOcclusionProfile(){
+        const grid=realTerrainState&&realTerrainState.rayGrid;
+        const eyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const key=`${realTerrainState.key}|${realTerrainState._renderRevision||0}|${eyeElevation.toFixed(2)}`;
+        const cached=drawPhoto._inlandOcclusionProfile;
+        if(cached&&cached.key===key&&cached.grid===grid)return cached.rows;
+        const rows=new Array(360);
+        for(let az=0;az<360;az++){
+          const row=Array.isArray(grid)?grid[az]:null,dist=[],maxAlt=[];
+          if(Array.isArray(row)){
+            let running=-90;
+            for(const point of row){
+              if(!point||!Number.isFinite(point.distanceKm)||!Number.isFinite(point.baseElevation))continue;
+              /* 遮蔽物は地面だけ。水面を入れると、ポリゴンの代表水位とDEMの水面値の
+                 数mのずれで、同じ湖の手前が奥を隠してしまう。 */
+              if(point.water||point.baseNoData)continue;
+              const metres=Math.max(.3,point.distanceKm*1000);
+              const drop=metres*metres/(2*6371000*(7/6));
+              const alt=Math.atan2(point.baseElevation-eyeElevation-drop,metres)*R2D;
+              if(alt>running)running=alt;
+              dist.push(point.distanceKm);maxAlt.push(running);
+            }
+          }
+          rows[az]={dist,maxAlt};
+        }
+        drawPhoto._inlandOcclusionProfile={key,grid,rows};
+        return rows;
+      }
+      /* その方位で、指定した距離「より手前」に現れた地面の最高見かけ高度。 */
+      function inlandTerrainMaxAltBefore(azDeg,distanceKm){
+        const rows=inlandOcclusionProfile();
+        const limit=distanceKm*.995;
+        const wrapped=((azDeg%360)+360)%360,i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
+        const pick=row=>{
+          if(!row||!row.dist.length)return null;
+          if(limit<=row.dist[0])return null;
+          let lo=0,hi=row.dist.length-1;
+          if(limit>=row.dist[hi])return row.maxAlt[hi];
+          while(lo<hi-1){const mid=(lo+hi)>>1;if(row.dist[mid]<=limit)lo=mid;else hi=mid;}
+          return row.maxAlt[lo];
+        };
+        const a=pick(rows[i0]),b=pick(rows[i1]);
+        if(a===null&&b===null)return null;
+        if(a===null)return b;
+        if(b===null)return a;
+        return lerp(a,b,t);
+      }
       function directInlandWaterGeometry(){
         const rings=realTerrainState&&realTerrainState._osmWaterRings;
         const originLat=+el.lat.value,originLon=+el.lon.value;
@@ -23483,17 +23535,33 @@ function drawPhoto(ctx,s){
           elevationSamples.sort((a,b)=>a-b);
           const waterElevation=elevationSamples.length?elevationSamples[Math.floor((elevationSamples.length-1)*.22)]:0;
           const path=new Path2D();let projected=0,distanceTotal=0;
+          const observerEyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+          /* 【v826】手前の地面がこの高さより上にあれば隠れているとみなす余裕（度）。
+             0にすると水面自身の起伏で自己遮蔽してしまうので、わずかに持たせる。 */
+          const OCCLUSION_MARGIN_DEG=.08;
+          /* 湖の中に立っているときは、輪郭が観測者を取り囲むので遮蔽判定を使わない。
+             （手前も奥も同じ水面で、切ると湖が割れる） */
+          const skipOcclusion=!!realTerrainState.observerWaterNearby;
           const appendRing=ring=>{
             let started=false;
+            const endRun=()=>{if(started){path.closePath();started=false;}};
             for(const point of ring){
               const distanceM=Math.hypot(point.x,point.y);if(distanceM<.3)continue;
               const metres=Math.max(.3,distanceM),drop=metres*metres/(2*6371000*(7/6));
-              const screen=toXY(norm360(atan2d(point.x,point.y)),Math.atan2(waterElevation-((realTerrainState.observerElevation||0)+eyeHeightAboveGroundM())-drop,metres)*R2D);
-              if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1]))continue;
+              const azimuth=norm360(atan2d(point.x,point.y));
+              const altitude=Math.atan2(waterElevation-observerEyeElevation-drop,metres)*R2D;
+              if(!skipOcclusion){
+                /* 【v826】手前の尾根に隠れる点は描かない。輪郭は見えている区間ごとに分けて閉じる。
+                   これが「山に隠れるはずの川・池が透ける」不具合の直しどころ。 */
+                const blockingAlt=inlandTerrainMaxAltBefore(azimuth,distanceM/1000);
+                if(blockingAlt!==null&&blockingAlt>altitude+OCCLUSION_MARGIN_DEG){endRun();continue;}
+              }
+              const screen=toXY(azimuth,altitude);
+              if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1])){endRun();continue;}
               if(!started){path.moveTo(screen[0],screen[1]);started=true;}else path.lineTo(screen[0],screen[1]);
               projected++;distanceTotal+=distanceM;
             }
-            if(started)path.closePath();
+            endRun();
           };
           appendRing(clippedOuter);
           for(const hole of (polygon.holes||[])){
@@ -23584,9 +23652,18 @@ function drawPhoto(ctx,s){
             if(!bands)continue;
             for(const band of bands){
               if(!band.water||!(band.hi>band.lo))continue;
-              /* 川・湖・池は通常の4倍距離走査へ入れない。
-                 海だけをv790の短冊水面として残し、内水面は後段のv791直接投影だけで描く。 */
-              if(coarseWaterBandIsTaggedInland((azLeft+azRight)/2,band.distanceKm))continue;
+              /* 【v826】内水面は輪郭ポリゴンの直接投影（滑らかな岸）に任せる。
+                 帯の階段が滑らかな岸へ混ざらないようにするため、通常はここで読み飛ばす。
+                 ただし観測地点が水の上にいるときだけは、輪郭が自分を取り囲んで投影が
+                 成立しないため、この帯のマスクを使う。 */
+              if(!realTerrainState.observerWaterNearby&&
+                 coarseWaterBandIsTaggedInland((azLeft+azRight)/2,band.distanceKm))continue;
+              /* 【v824】内水面（湖・川・池）もこの水面マスクへ入れる。
+                 v791以降は内水面を除外し、輪郭ポリゴンの直接投影だけに任せていたが、
+                 **湖の中に立つと輪郭が観測者を取り囲むため、投影が成立せずマスクが空になる。**
+                 その結果、反射が最後の destination-in で全部消え、湖が「ただの平らな面」になっていた
+                 （精進湖の湖上で確認。反射は runs=1 で描かれているのに画面に残らない）。
+                 帯は遮蔽込みで作られているので、山の向こうの水がマスクへ入ることもない。 */
               const p0=toXY(azLeft,band.lo),p1=toXY(azLeft,band.hi);
               const p2=toXY(azRight,band.hi),p3=toXY(azRight,band.lo);
               if(!p0||!p1||!p2||!p3)continue;
@@ -23822,19 +23899,12 @@ function drawPhoto(ctx,s){
             }
             if(altCount>=2){
               const meanAlt=altSum/altCount;
-              /* 【v823】通常表示では水の色を別パス（drawNormalFineWaterMaskOnly）へ任せているが、
-                 そちらは海の短冊しか色を塗らない。内水面（湖・川・池）は
-                 drawDirectInlandVectorWater が「反射を切り抜くマスク」だけを作っていて、
-                 色を塗る相手が誰もいなかった。
-                 そのため湖の上に立っても周囲が陸の色で塗られていた（精進湖）。
-                 v710にはこの分離が無く、帯パスが水をそのまま塗っていた。
-
-                 内水面の帯だけは、ここで塗る。帯は遮蔽込みで作られているので、
-                 山の向こうの水が透けることもない。海は今までどおり別パスに任せる。 */
-              const runInlandWater=!!runWater&&normalSeparateWaterColorPass&&
-                coarseWaterBandIsTaggedInland(columns[runStart].az,distanceKm);
+              /* 【v827】内水面はv822と同じく「輪郭ポリゴンのマスク越しに映る反射」だけで見せる。
+                 v823でここへ帯の色を足したが、反射の当たらない池だけが濃紺のべた塗りになり、
+                 川（反射で明るい）と二色になってしまうためやめた。
+                 湖の上に立ったときは、v826で帯もマスクへ入るので反射が水面を覆う。 */
               const rgb=runCloud?rayCloudColor(distanceKm,meanAlt)
-                :rayBandColor((normalSeparateWaterColorPass&&!runInlandWater)?false:!!runWater,distanceKm,meanAlt);
+                :rayBandColor(normalSeparateWaterColorPass?false:!!runWater,distanceKm,meanAlt);
               const color=`rgb(${rgb.join(",")})`;
               // 画面外へ飛ぶ継ぎ目で切り、連続した部分ごとに1枚の図形として塗る。
               let segment=[];
