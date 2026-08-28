@@ -5095,7 +5095,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="810-water-ring-index";
+const APP_VERSION="811-fine-water-walk-memo";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14895,6 +14895,11 @@ function waterLayerDistancesForCurrentMode(){
 let normalFineWaterMaskPass=false;
 let normalSeparateWaterColorPass=false;
 let normalFineWaterMemo={signature:"",rings:null,values:new Map()};
+/* v811: 水面マスク用に細分化した「1列ぶんの歩き」を方位で覚える入れ物。
+   中身は観測地点・地形データ・水域形状・視点の高さだけで決まる。
+   点の総数で上限を持つ（1列が約350点あるので、件数で数えると実際の重さと合わない）。 */
+let normalFineWaterWalkMemo={signature:"",rings:null,points:0,values:new Map()};
+const NORMAL_FINE_WATER_WALK_MEMO_MAX_POINTS=300000;
 /* 通常表示では通信を増やさず、すでに読み込まれた静的水域形状だけを任意点へ当てる。
    false（陸）も有効な判定なので、null（判定材料なし）とは区別する。 */
 function normalCachedWaterAt(azDeg,distanceKm){
@@ -21764,22 +21769,63 @@ function drawPhoto(ctx,s){
           const rings=realTerrainState&&realTerrainState._osmWaterRings;
           if(coarseWalk.length>=2&&(highDetailMapWaterAvailable()||(Array.isArray(rings)&&rings.length))){
             const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
-            const extra=[];
-            const coarseMetres=new Set(coarseWalk.map(point=>Math.round(point.distanceKm*1000)));
-            for(const distanceKm of NORMAL_WATER_FINE_DISTANCES_KM){
-              if(distanceKm>NORMAL_WATER_FINE_RADIUS_KM)break;
-              if(coarseMetres.has(Math.round(distanceKm*1000)))continue;
-              const waterSample=normalCachedWaterAt(wrapped,distanceKm);
-              if(!waterSample)continue;
-              const baseElevation=baseElevationAtDistanceInRow(coarseWalk,distanceKm);
-              if(!Number.isFinite(baseElevation))continue;
-              const metres=distanceKm*1000;
-              const curvatureDrop=metres*metres/(2*6371000*(7/6));
-              extra.push({distanceKm,lat:waterSample.lat,lon:waterSample.lon,
-                alt:Math.atan2(baseElevation-eyeElevation-curvatureDrop,Math.max(.1,metres))*R2D,
-                water:waterSample.water,baseElevation,normalFineWater:true});
+            /* v811: この列の結果は方位だけで決まる。画角・仰角・時刻を変えても同じものになる。
+               v809で列の方位を固定格子へ乗せたので、パン中は同じ方位が繰り返し来る。 */
+            /* 画角と画面幅も鍵へ入れる。列の刻み(stepDeg)がこの2つで決まるため、
+               焦点距離を変えると問い合わせる方位の並びが丸ごと変わる。
+               入れておかないと、複数の焦点距離ぶんが同時に溜まって上限を奪い合い、
+               かえって作り直しが増える（実測で望遠が50ms→83msに悪化した）。 */
+            const walkSignature=`${realTerrainState.key}|${realTerrainState._renderRevision||0}|`+
+              `${worldMapTiles}|${eyeElevation.toFixed(3)}|${W}|${s.fovH.toFixed(3)}|`+
+              `${localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-off"}`;
+            if(normalFineWaterWalkMemo.signature!==walkSignature||normalFineWaterWalkMemo.rings!==rings){
+              normalFineWaterWalkMemo={signature:walkSignature,rings,points:0,values:new Map()};
             }
-            if(extra.length)walk=coarseWalk.concat(extra).sort((a,b)=>a.distanceKm-b.distanceKm);
+            const walkMemoKey=Math.round(wrapped*10000);
+            const walkMemoHit=normalFineWaterWalkMemo.values.get(walkMemoKey);
+            if(walkMemoHit!==undefined){
+              walk=walkMemoHit;
+            }else{
+              const extra=[];
+              const coarseMetres=new Set(coarseWalk.map(point=>Math.round(point.distanceKm*1000)));
+              for(const distanceKm of NORMAL_WATER_FINE_DISTANCES_KM){
+                if(distanceKm>NORMAL_WATER_FINE_RADIUS_KM)break;
+                if(coarseMetres.has(Math.round(distanceKm*1000)))continue;
+                const waterSample=normalCachedWaterAt(wrapped,distanceKm);
+                if(!waterSample)continue;
+                const baseElevation=baseElevationAtDistanceInRow(coarseWalk,distanceKm);
+                if(!Number.isFinite(baseElevation))continue;
+                const metres=distanceKm*1000;
+                const curvatureDrop=metres*metres/(2*6371000*(7/6));
+                extra.push({distanceKm,lat:waterSample.lat,lon:waterSample.lon,
+                  alt:Math.atan2(baseElevation-eyeElevation-curvatureDrop,Math.max(.1,metres))*R2D,
+                  water:waterSample.water,baseElevation,normalFineWater:true});
+              }
+              if(extra.length){
+                /* v811: どちらも距離の昇順で、同じ距離は coarseMetres で外してある。
+                   並べ直す必要は無いので、2本を前から突き合わせて合流させる。 */
+                const merged=new Array(coarseWalk.length+extra.length);
+                let a=0,b=0,out=0;
+                while(a<coarseWalk.length&&b<extra.length){
+                  merged[out++]=coarseWalk[a].distanceKm<=extra[b].distanceKm?coarseWalk[a++]:extra[b++];
+                }
+                while(a<coarseWalk.length)merged[out++]=coarseWalk[a++];
+                while(b<extra.length)merged[out++]=extra[b++];
+                walk=merged;
+              }
+              normalFineWaterWalkMemo.values.set(walkMemoKey,walk);
+              normalFineWaterWalkMemo.points+=walk.length;
+              /* 上限を超えたら全部捨てるのではなく、古い方位から1つずつ捨てる。
+                 全消しにすると、望遠のように1コマの列数が多い時に
+                 コマの途中で毎回空になり、かえって遅くなる。 */
+              while(normalFineWaterWalkMemo.points>NORMAL_FINE_WATER_WALK_MEMO_MAX_POINTS){
+                const oldest=normalFineWaterWalkMemo.values.keys().next();
+                if(oldest.done)break;
+                const dropped=normalFineWaterWalkMemo.values.get(oldest.value);
+                normalFineWaterWalkMemo.values.delete(oldest.value);
+                normalFineWaterWalkMemo.points-=dropped?dropped.length:0;
+              }
+            }
           }
         }
         /* 高精細モード（v590）。
