@@ -5173,7 +5173,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="835-polygon-decides-shoreline";
+const APP_VERSION="839-water-edge-without-readback";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -16351,7 +16351,7 @@ async function pruneExternalGeoCache(){
     await new Promise(resolve=>{
       const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");
       const store=tx.objectStore(EXTERNAL_GEO_CACHE_STORE);
-      doomed.forEach(key=>store.delete(key));
+      doomed.forEach(key=>{store.delete(key);externalGeoCacheIdRemove(key);});
       tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();
     });
     doomed.forEach(key=>{ delete cacheTouchMap[String(key)]; });
@@ -16359,9 +16359,38 @@ async function pruneExternalGeoCache(){
     return doomed.length;
   }catch(error){ return 0; }
 }
+/* 【v837】保存済みIDの索引。空振りの読みをIndexedDBまで行かせないために持つ。
+   実測で、保存が無いIDを1回読むだけで約500msかかっていた（1歩＝11m進むたびに発生）。
+   索引が作れなかったときは null のままにして、従来どおり読みに行く。
+   これを「空のSet」で代用すると、保存済みキャッシュを丸ごと見失うので絶対にしないこと。 */
+let externalGeoCacheIdIndex=null,externalGeoCacheIdIndexPromise=null;
+function externalGeoCacheIds(){
+  if(externalGeoCacheIdIndex) return Promise.resolve(externalGeoCacheIdIndex);
+  if(!externalGeoCacheIdIndexPromise){
+    externalGeoCacheIdIndexPromise=(async()=>{
+      try{
+        const db=await openExternalGeoCacheDb();
+        const keys=await new Promise((resolve,reject)=>{
+          const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");
+          const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).getAllKeys();
+          req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);
+        });
+        externalGeoCacheIdIndex=new Set(keys.map(String));
+      }catch(error){externalGeoCacheIdIndex=null;}
+      return externalGeoCacheIdIndex;
+    })();
+  }
+  return externalGeoCacheIdIndexPromise;
+}
+function externalGeoCacheIdAdd(id){ if(externalGeoCacheIdIndex) externalGeoCacheIdIndex.add(String(id)); }
+function externalGeoCacheIdRemove(id){ if(externalGeoCacheIdIndex) externalGeoCacheIdIndex.delete(String(id)); }
 async function externalGeoCacheGet(id){
   let indexedData=null;
-  try{
+  const ids=await externalGeoCacheIds();
+  if(ids&&!ids.has(String(id))){
+    /* 索引に無い＝保存されていない。読みに行かない。 */
+    if(cacheKindOf(id)!=="water") return null;
+  }else try{
     const db=await openExternalGeoCacheDb();
     indexedData=await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).get(id);req.onsuccess=()=>{if(req.result)touchCacheEntry(id);resolve(req.result?.data??null);};req.onerror=()=>reject(req.error);});
   }catch(error){}
@@ -16381,6 +16410,7 @@ async function externalGeoCacheSet(id,data){
     if(cacheKindOf(id)==="terrain") scheduleCachePrune(); // 重いのは地形だけなので、これを入れた時に整理する
     const db=await openExternalGeoCacheDb();
     await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).put({id,data,savedAt:Date.now()});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+    externalGeoCacheIdAdd(id);
   }catch(error){}
   if(cacheKindOf(id)==="water"&&Array.isArray(data)){
     /* localStorageの容量超過はpersistentSet側で吸収し、利用可能ならwindow.storageへ残る。 */
@@ -16423,7 +16453,7 @@ async function deleteExternalGeoCacheKeys(keys){
   await new Promise(resolve=>{
     const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");
     const store=tx.objectStore(EXTERNAL_GEO_CACHE_STORE);
-    keys.forEach(key=>store.delete(key));
+    keys.forEach(key=>{store.delete(key);externalGeoCacheIdRemove(key);});
     tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();
   });
   keys.forEach(key=>{ delete cacheTouchMap[String(key)]; });
@@ -16557,6 +16587,7 @@ async function externalGeoCacheDelete(id){
   try{
     const db=await openExternalGeoCacheDb();
     await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+    externalGeoCacheIdRemove(id);
   }catch(error){}
   delete cacheTouchMap[String(id)];saveCacheTouchMap();
 }
@@ -16811,8 +16842,14 @@ async function fetchOsmWaterRingsNetwork(lat,lon,radiusKm){
 }
 function fetchOsmWaterRings(lat,lon,radiusKm){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
-  if(osmWaterCache.has(key)) return osmWaterCache.get(key);
+  /* 【v836】強制再取得の印を先に消費する。
+     以前は先にメモリキャッシュを返していたため、印が消費されずSetに残り続け、
+     後の無関係なタイミングで再取得が走っていた。
+     印が立っているときは、メモリに残っている（＝固まっているかもしれない）
+     取得を捨ててから頼み直す。 */
   const forceRefresh=forcedWaterRefreshKeys.delete(key);
+  if(forceRefresh) osmWaterCache.delete(key);
+  if(osmWaterCache.has(key)) return osmWaterCache.get(key);
   const promise=(async()=>{
     // 読み直し時も成功済みキャッシュを捨てない。まず即時表示し、更新は裏側で行う。
     let saved=await externalGeoCacheGet(`water:shortbread-v3-explicit-class:${key}`);
@@ -17764,6 +17801,20 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     setExternalDataStatus("water","error",waterFailureStatusDetail());
   });
 }
+/* 【v838】メモリに置く地形プロファイルの数。
+     1件は rayGrid 51,120点＋nearSurfaceGrid 32,400点＝83,520点。
+     **実測でJSヒープが1件あたり約15MB増える**（新しい地点を3つ作って +45.5MB）。
+     ずっと3件固定だったので、まっすぐ33m進むだけで通ってきた場所が全部押し出され、
+     戻るたびに保存から読み直していた（1回あたり約390ms）。
+     とはいえ増やしすぎると携帯で落ちるので、端末のメモリ量で決める。
+     navigator.deviceMemory が無い端末（Safariなど）は従来どおり3件。 */
+function terrainProfileCacheLimit(){
+  const gb=typeof navigator!=="undefined"&&Number.isFinite(navigator.deviceMemory)?navigator.deviceMemory:0;
+  return gb>=8?8:(gb>=4?6:3);
+}
+/* 【v837】移動が止まったとみなすまでの待ち時間。 */
+const TERRAIN_SETTLE_MS=300;
+let terrainSettleTimer=0,terrainSettleArmed=false,terrainSettlePendingKey="";
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
@@ -17784,6 +17835,33 @@ function requestRealTerrainProfile(lat,lon){
     setExternalDataStatus("elevation","ready","キャッシュ");
     setExternalDataStatus("fuji","ready","専用情報準備済み");
     refineTerrainWaterWithOsm(lat,lon,key,cached);
+    return;
+  }
+  /* 【v837】ここから先が高い（実測: 保存の空振り読み約500ms＋構築約476ms）。
+     1歩＝11mごとに走るので、動かしている間は操作が止まって見えていた。
+     直前の地形をそのまま出したまま、動きが止まるまで待つ。
+     **遅延中も loadingKey を立てること。** v832の「取得中は直前の地形を描き続ける」は
+     この値を見ているので、空のままだと標高を使わない初期版の景色へ落ちる。
+     初回（まだ地形が1つも無い）だけは待たずに始める。 */
+  if(realTerrainState.profile&&!terrainSettleArmed){
+    realTerrainState.loadingKey=key;
+    syncSimLoadingLabel();
+    setExternalDataStatus("elevation","loading","移動が止まってから読み込み");
+    /* 待ち直すのは行き先が変わったときだけ。
+       同じ地点でupdate()が繰り返し走っても待ち時間を延ばさない
+       （延ばすと、時刻アニメーション中などに永久に構築されなくなる）。 */
+    if(terrainSettlePendingKey!==key){
+      terrainSettlePendingKey=key;
+      clearTimeout(terrainSettleTimer);
+      terrainSettleTimer=setTimeout(()=>{
+        const nextLat=state?.lat??+el.lat.value,nextLon=state?.lon??+el.lon.value;
+        terrainSettlePendingKey="";
+        realTerrainState.loadingKey="";
+        terrainSettleArmed=true;
+        try{ requestRealTerrainProfile(nextLat,nextLon); }
+        finally{ terrainSettleArmed=false; }
+      },TERRAIN_SETTLE_MS);
+    }
     return;
   }
   if(realTerrainState.loadingKey===key) return;
@@ -17826,7 +17904,7 @@ function requestRealTerrainProfile(lat,lon){
       return;
     }
     realTerrainProfileCache.set(key,result);
-    while(realTerrainProfileCache.size>3) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
+    while(realTerrainProfileCache.size>terrainProfileCacheLimit()) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
@@ -18242,6 +18320,31 @@ function drawMountainNameLabels(ctx,s,toXY,W,H){
   }
   ctx.restore();
 }
+/* 【v836】水域を読み直すときの後始末。2つの読み直しボタンで必ず同じことをする。
+   **staticVectorTileCache.clear() を飛ばしてはいけない。**
+   ベクトルタイルの取得は「取得中のPromise」をこのMapに覚えているので、
+   消さずに頼み直すと、固まっている同じPromiseがそのまま返る。
+   つまり読み直しにならず、待ち直しているだけになる（v835以前の
+   「外部情報を読み直す」がまさにこれで、止まった水域を復帰させられなかった）。
+   道路・線路・橋・DEMは維持し、水域の取得と投影結果だけを捨てる。 */
+function resetWaterFetchState(waterKey,coastlineKey,terrainResult){
+  osmWaterCache.delete(waterKey);osmWaterCacheSources.delete(waterKey);
+  osmCoastlineCache.delete(coastlineKey);osmCoastlineCacheSources.delete(coastlineKey);
+  forcedWaterRefreshKeys.add(waterKey);forcedCoastlineRefreshKeys.add(coastlineKey);
+  staticVectorTileCache.clear();worldWaterMask=null;worldWaterKey=null;worldWaterOrigin=null;
+  for(const name of [
+    "_directInlandWaterGeometry","_normalFineWaterSegments",
+    "_normalFineWaterMaskCanvas","_inlandVectorWaterColorCanvas","_grownWaterMaskCanvas",
+    "_smearMaskA","_smearMaskB",
+    "_directInlandMaskCanvas","_directInlandColorCanvas","_confirmedWaterAzCache"
+  ])drawPhoto[name]=null;
+  if(terrainResult){
+    terrainResult._osmRefinePending=false;terrainResult._osmRefineStatus="";terrainResult._osmRefineDetail="";
+    terrainResult._osmWaterRings=null;terrainResult._osmCoastlineWays=null;
+    terrainResult._renderRevision=(terrainResult._renderRevision||0)+1;
+  }
+  realTerrainState._osmWaterRings=null;realTerrainState._osmCoastlineWays=null;
+}
 async function reloadCurrentWaterCacheOnly(){
   const lat=state?.lat??parseFloat(document.getElementById("lat")?.value);
   const lon=state?.lon??parseFloat(document.getElementById("lon")?.value);
@@ -18267,23 +18370,9 @@ async function reloadCurrentWaterCacheOnly(){
     }
   }catch(error){}
 
-  /* 道路・線路・橋・DEMは維持し、水域取得と投影結果だけを破棄する。 */
-  osmWaterCache.delete(waterKey);osmWaterCacheSources.delete(waterKey);
-  osmCoastlineCache.delete(coastlineKey);osmCoastlineCacheSources.delete(coastlineKey);
-  forcedWaterRefreshKeys.add(waterKey);forcedCoastlineRefreshKeys.add(coastlineKey);
-  staticVectorTileCache.clear();worldWaterMask=null;worldWaterKey=null;worldWaterOrigin=null;
-  for(const name of [
-    "_directInlandWaterGeometry","_normalFineWaterSegments",
-    "_normalFineWaterMaskCanvas","_inlandVectorWaterColorCanvas","_grownWaterMaskCanvas",
-    "_smearMaskA","_smearMaskB",
-    "_directInlandMaskCanvas","_directInlandColorCanvas","_confirmedWaterAzCache"
-  ])drawPhoto[name]=null;
   const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
   if(!terrainResult)return false;
-  terrainResult._osmRefinePending=false;terrainResult._osmRefineStatus="";terrainResult._osmRefineDetail="";
-  terrainResult._osmWaterRings=null;terrainResult._osmCoastlineWays=null;
-  terrainResult._renderRevision=(terrainResult._renderRevision||0)+1;
-  realTerrainState._osmWaterRings=null;realTerrainState._osmCoastlineWays=null;
+  resetWaterFetchState(waterKey,coastlineKey,terrainResult);
   setExternalDataStatus("water","loading","現在地点の水域キャッシュを削除・再取得中");
   if(typeof update==="function")update();
   refineTerrainWaterWithOsm(lat,lon,terrainKey,terrainResult);
@@ -18292,8 +18381,13 @@ async function reloadCurrentWaterCacheOnly(){
 
 function reloadCurrentExternalSimulationData(){
   // 赤・点滅中の項目があればその項目だけを再取得し、全て緑なら全項目を更新する。
+  /* 【v836】「赤・点滅中」は error と loading のこと。
+     以前は !== "ready" で拾っていたため、**idle も対象になっていた**。
+     山名はOverpass廃止で新規取得の手段が無く、保存が無い地点では常に idle になる。
+     そのため「全て緑なら全項目」の分岐へ一度も入らず、
+     長押ししても山名を取り直そうとするだけで、標高も水域も読み直されていなかった。 */
   const allKeys=Object.keys(EXTERNAL_DATA_STATUS_CONFIG);
-  let targets=new Set(allKeys.filter(key=>externalDataStatuses[key]!=="ready"));
+  let targets=new Set(allKeys.filter(key=>externalDataStatuses[key]==="error"||externalDataStatuses[key]==="loading"));
   if(!targets.size) targets=new Set(allKeys);
 
   // 富士山情報は標高データに依存し、標高を更新する場合は水域判定も同じ地形結果から作り直す。
@@ -18310,7 +18404,10 @@ function reloadCurrentExternalSimulationData(){
     if(terrainKey) forcedTerrainRefreshKeys.add(terrainKey);
     if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
     if(coastlineCacheKey) forcedCoastlineRefreshKeys.add(coastlineCacheKey);
-    gsiDemTileCache.clear();realTerrainProfileCache.clear();osmWaterCache.clear();osmCoastlineCache.clear();
+    gsiDemTileCache.clear();realTerrainProfileCache.clear();osmCoastlineCache.clear();
+    /* 【v836】全部緑のときはこちらを通る。ここでも取得中のタイルPromiseを捨てる。
+       消さないと、固まっている取得をそのまま待ち直すことになる。 */
+    resetWaterFetchState(waterCacheKey,coastlineCacheKey,null);
     realTerrainState.requestToken++;
     Object.assign(realTerrainState,{key:"",loadingKey:"",failedKey:"",profile:null,terrainLayers:null,observerElevation:null});
     document.body.classList.remove("real-terrain-visible");
@@ -18318,15 +18415,19 @@ function reloadCurrentExternalSimulationData(){
     setExternalDataStatus("water","loading","標高データ待ち");
     setExternalDataStatus("fuji","loading","標高データ待ち");
   }else if(targets.has("water")){
-    if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
-    if(coastlineCacheKey) forcedCoastlineRefreshKeys.add(coastlineCacheKey);
-    osmWaterCache.clear();osmCoastlineCache.clear();
     const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
     if(terrainResult){
-      terrainResult._osmRefinePending=false;terrainResult._osmRefineStatus="";terrainResult._osmRefineDetail="";
+      /* 【v836】「水域だけ」ボタンと同じ後始末を通す。
+         ここを省いていたため、取得中のタイルPromiseが残ったままになり、
+         このボタンでは止まった水域を復帰させられなかった。 */
+      resetWaterFetchState(waterCacheKey,coastlineCacheKey,terrainResult);
       setExternalDataStatus("water","loading");
+      if(typeof update==="function")update();
       refineTerrainWaterWithOsm(lat,lon,terrainKey,terrainResult);
     }else{
+      if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
+      if(coastlineCacheKey) forcedCoastlineRefreshKeys.add(coastlineCacheKey);
+      osmWaterCache.clear();osmCoastlineCache.clear();
       // 通常は起きないが、地形本体が失われていれば依存する3項目をまとめて復旧する。
       gsiDemTileCache.clear();realTerrainProfileCache.clear();
       realTerrainState.requestToken++;
@@ -21793,41 +21894,66 @@ function drawPhoto(ctx,s){
         const edgeCtx=edgeCanvas.getContext("2d");
         const edgeCacheKey=`${terrainGeometryKey}|edge|${edgeW}x${edgeH}`;
         if(edgeResized||drawPhoto._waterLandEdgeKey!==edgeCacheKey){
-          const waterAnalysisCanvas=drawPhoto._waterLandAnalysisWaterCanvas||(drawPhoto._waterLandAnalysisWaterCanvas=document.createElement("canvas"));
-          const terrainAnalysisCanvas=drawPhoto._waterLandAnalysisTerrainCanvas||(drawPhoto._waterLandAnalysisTerrainCanvas=document.createElement("canvas"));
-          if(waterAnalysisCanvas.width!==edgeW||waterAnalysisCanvas.height!==edgeH){waterAnalysisCanvas.width=edgeW;waterAnalysisCanvas.height=edgeH;}
-          if(terrainAnalysisCanvas.width!==edgeW||terrainAnalysisCanvas.height!==edgeH){terrainAnalysisCanvas.width=edgeW;terrainAnalysisCanvas.height=edgeH;}
-          const waterAnalysisCtx=waterAnalysisCanvas.getContext("2d");
-          const terrainAnalysisCtx=terrainAnalysisCanvas.getContext("2d");
-          waterAnalysisCtx.clearRect(0,0,edgeW,edgeH);
-          terrainAnalysisCtx.clearRect(0,0,edgeW,edgeH);
-          waterAnalysisCtx.imageSmoothingEnabled=true;
-          terrainAnalysisCtx.imageSmoothingEnabled=true;
-          waterAnalysisCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H,0,0,edgeW,edgeH);
-          terrainAnalysisCtx.drawImage(terrainCanvas,0,0,W,H,0,0,edgeW,edgeH);
-          let waterPixels,terrainPixels;
-          try{
-            waterPixels=waterAnalysisCtx.getImageData(0,0,edgeW,edgeH).data;
-            terrainPixels=terrainAnalysisCtx.getImageData(0,0,edgeW,edgeH).data;
-          }catch(error){return false;}
-          const edgeImage=edgeCtx.createImageData(edgeW,edgeH),edge=edgeImage.data;
-          let edgeCount=0;
-          const isLandNeighbor=index=>waterPixels[index+3]<64&&terrainPixels[index+3]>=160;
-          for(let y=1;y<edgeH-1;y++){
-            for(let x=1;x<edgeW-1;x++){
-              const index=(y*edgeW+x)*4;
-              if(waterPixels[index+3]<128) continue;
-              if(!isLandNeighbor(index-4)&&!isLandNeighbor(index+4)&&
-                 !isLandNeighbor(index-edgeW*4)&&!isLandNeighbor(index+edgeW*4)) continue;
-              edge[index]=255;edge[index+1]=255;edge[index+2]=255;edge[index+3]=255;edgeCount++;
-            }
-          }
-          edgeCtx.clearRect(0,0,edgeW,edgeH);
-          if(edgeCount) edgeCtx.putImageData(edgeImage,0,0);
-          drawPhoto._waterLandEdgeHasPixels=edgeCount>0;
+          /* 【v839】画素を1つも読まずに、合成だけで境界を作る。
+             以前は縮小した水域マスクと地形を getImageData で読み、
+             隣が陸である水の画素を数え上げていた。
+             実測でその getImageData が1コマ**70.5ms**（画素ループ自体は2.4ms）。
+             Canvasの描画はGPU側で遅延実行されるため、getImageData は
+             そこまでに積んだ描画を全部終わらせてから返す。待ち合わせが起きていた。
+             （`willReadFrequently:true` も試したが効果なし。78.0→77.5ms）
+
+               land  ＝ 地形 − 水
+               inner ＝ 水 − 4方向へずらした水の共通部分   （水の内側1px）
+               境界  ＝ inner ∩ 4方向へ太らせた land
+
+             空との境目に線を引かない性質はそのまま。水の外側が空なら
+             そこには地形が無く、太らせた land にも入らないので落ちる。
+             Canvasを自分自身へ描くと読み戻しで遅くなるため、3枚で受け渡す。 */
+          const makeCanvas=name=>{
+            const canvas=drawPhoto[name]||(drawPhoto[name]=document.createElement("canvas"));
+            if(canvas.width!==edgeW||canvas.height!==edgeH){canvas.width=edgeW;canvas.height=edgeH;}
+            return canvas;
+          };
+          const waterSmall=makeCanvas("_waterLandAnalysisWaterCanvas");
+          const landSmall=makeCanvas("_waterLandAnalysisTerrainCanvas");
+          const scratch=makeCanvas("_waterLandScratchCanvas");
+          const reset=context=>{
+            context.setTransform(1,0,0,1,0,0);context.globalCompositeOperation="source-over";
+            context.globalAlpha=1;context.filter="none";context.imageSmoothingEnabled=true;
+            context.clearRect(0,0,edgeW,edgeH);
+          };
+          const waterCtx=waterSmall.getContext("2d");
+          const landCtx=landSmall.getContext("2d");
+          const scratchCtx=scratch.getContext("2d");
+          reset(waterCtx);reset(landCtx);reset(scratchCtx);
+          waterCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H,0,0,edgeW,edgeH);
+          /* land ＝ 地形 − 水 */
+          landCtx.drawImage(terrainCanvas,0,0,W,H,0,0,edgeW,edgeH);
+          landCtx.globalCompositeOperation="destination-out";
+          landCtx.drawImage(waterSmall,0,0);
+          landCtx.globalCompositeOperation="source-over";
+          const offsets=[[1,0],[-1,0],[0,1],[0,-1]];
+          /* scratch ＝ 4方向へずらした水の共通部分（＝1px内側へ縮めた水） */
+          scratchCtx.drawImage(waterSmall,0,0);
+          scratchCtx.globalCompositeOperation="destination-in";
+          for(const offset of offsets)scratchCtx.drawImage(waterSmall,offset[0],offset[1]);
+          scratchCtx.globalCompositeOperation="source-over";
+          /* water ＝ 水 − 縮めた水（＝水の内側1px） */
+          waterCtx.globalCompositeOperation="destination-out";
+          waterCtx.drawImage(scratch,0,0);
+          waterCtx.globalCompositeOperation="source-over";
+          /* scratch ＝ 4方向へ太らせた land */
+          reset(scratchCtx);
+          scratchCtx.drawImage(landSmall,0,0);
+          for(const offset of offsets)scratchCtx.drawImage(landSmall,offset[0],offset[1]);
+          /* 境界 ＝ 内側1px ∩ 太らせた land */
+          waterCtx.globalCompositeOperation="destination-in";
+          waterCtx.drawImage(scratch,0,0);
+          waterCtx.globalCompositeOperation="source-over";
+          reset(edgeCtx);
+          edgeCtx.drawImage(waterSmall,0,0);
           drawPhoto._waterLandEdgeKey=edgeCacheKey;
         }
-        if(!drawPhoto._waterLandEdgeHasPixels) return false;
         const skylineOpacityRaw=+el.skylineOpacitySlider.value;
         const skylineAlpha=clamp(Number.isFinite(skylineOpacityRaw)?skylineOpacityRaw/100:.75,0,1);
         // 山の稜線より控えめな青灰色。昼は周囲の地形になじむ暗い緑灰色へ変化する。
