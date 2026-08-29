@@ -4417,6 +4417,14 @@
               <span>← 1 最軽量</span><span>4 標準 →</span>
             </div>
           </div>
+          <div class="field" style="margin-top:14px;">
+            <label class="top">水域を描く距離 <span class="val mono" id="waterRadiusVal">10km（標準）</span></label>
+            <input type="range" id="waterRadiusSlider" min="4" max="10" step="2" value="10">
+            <div style="display:flex;justify-content:space-between;gap:10px;margin-top:6px;color:var(--dim-2);font-size:11px;font-weight:700;">
+              <span>← 4km 最軽量</span><span>10km 標準 →</span>
+            </div>
+          </div>
+          <p class="map-hint" style="margin-top:6px;">川・池・湖をどこまで描くかです。既定の10kmが今までと同じ絵になります。下げると遠くの小さな池が出なくなりますが、その分だけ軽くなり、水域の取得も速くなります（実測: 三木市で10km→4kmのとき1コマ297ms→223ms、取得タイル121枚→約20枚）。近くの川・遠くの海・地形の見え方は変わりません。</p>
           <p class="map-hint" style="margin-top:6px;">10km以内の川・池・湖の水際を、通常の距離目盛りの何倍で見るかです。既定の4がいちばん細かく、今までと同じ絵になります。下げるほど水際は粗くなりますが、画面を動かしたときの重さがはっきり軽くなります。動きがもたつく端末ではここを下げてください。</p>
           <p class="map-hint" style="margin-top:6px;">観測地点から50mより遠い局所高精細地形の格子間隔です。小さいほど岩や小地形の輪郭が細かくなり、大きいほど局所地形の投影とポリゴン描画が軽くなります。取得するDEM標高値は変わりません。</p>
         </div>
@@ -5173,7 +5181,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="839-water-edge-without-readback";
+const APP_VERSION="842-map-label-holes";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6270,6 +6278,7 @@ const el={
   localDetailTerrainBtn:$("localDetailTerrainBtn"), localDetailFetchBtn:$("localDetailFetchBtn"), localDetailCoordinatePaste:$("localDetailCoordinatePaste"), localDetailCoordinateApplyBtn:$("localDetailCoordinateApplyBtn"), localDetailLat:$("localDetailLat"), localDetailLon:$("localDetailLon"), localDetailRadius:$("localDetailRadius"), localDetailName:$("localDetailName"), localDetailRegisterBtn:$("localDetailRegisterBtn"), localDetailDeleteBtn:$("localDetailDeleteBtn"), localDetailSavedSelect:$("localDetailSavedSelect"), localDetailLoadBtn:$("localDetailLoadBtn"), localDetailTerrainStatus:$("localDetailTerrainStatus"),
   normalTerrainAzimuthStepSlider:$("normalTerrainAzimuthStepSlider"), normalTerrainAzimuthStepVal:$("normalTerrainAzimuthStepVal"),
   normalWaterFineLevelSlider:$("normalWaterFineLevelSlider"), normalWaterFineLevelVal:$("normalWaterFineLevelVal"),
+  waterRadiusSlider:$("waterRadiusSlider"), waterRadiusVal:$("waterRadiusVal"),
   cacheManagerList:$("cacheManagerList"), cacheManagerTotal:$("cacheManagerTotal"), cacheManagerStatus:$("cacheManagerStatus"),
   cacheManagerRefreshBtn:$("cacheManagerRefreshBtn"), cacheManagerLegacyBtn:$("cacheManagerLegacyBtn"),
   cacheManagerAllBtn:$("cacheManagerAllBtn"), cacheManagerMountainBtn:$("cacheManagerMountainBtn"),
@@ -9394,6 +9403,39 @@ function syncNormalWaterFineLevelControl(){
   const label=level===1?"細分化しない（最軽量）":(level===2?"2分割（軽量）":(level===3?"3分割":"4分割（標準）"));
   if(el.normalWaterFineLevelVal)el.normalWaterFineLevelVal.textContent=label;
 }
+function syncWaterRadiusControl(){
+  if(!el.waterRadiusSlider)return;
+  const km=waterDrawRadiusKm();
+  el.waterRadiusSlider.value=km;
+  if(el.waterRadiusVal)el.waterRadiusVal.textContent=km>=10?"10km（標準）":(km<=4?"4km（最軽量）":`${km}km`);
+}
+/* 【v840】半径を変えたら、水域の形と描画キャッシュを作り直す。
+   取得の鍵も半径を含むので、下げた半径ぶんだけ取り直しになる（保存済みは消さない）。 */
+el.waterRadiusSlider?.addEventListener("input",()=>{
+  syncWaterRadiusControl();
+  NORMAL_WATER_FINE_DISTANCE_CACHE.clear();
+  for(const name of [
+    "_directInlandWaterGeometry","_normalFineWaterSegments","_normalFineWaterMaskCanvas",
+    "_inlandVectorWaterColorCanvas","_grownWaterMaskCanvas","_smearMaskA","_smearMaskB",
+    "_directInlandMaskCanvas","_directInlandColorCanvas","_confirmedWaterAzCache","_waterLandEdgeKey"
+  ])drawPhoto[name]=null;
+  drawPhoto._terrainRenderKey=null;
+  const lat=state?.lat,lon=state?.lon;
+  if(Number.isFinite(lat)&&Number.isFinite(lon)){
+    const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+    const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
+    if(terrainResult){
+      terrainResult._osmRefinePending=false;terrainResult._osmRefineStatus="";terrainResult._osmRefineDetail="";
+      terrainResult._osmWaterRings=null;terrainResult._osmCoastlineWays=null;
+      terrainResult._renderRevision=(terrainResult._renderRevision||0)+1;
+      realTerrainState._osmWaterRings=null;realTerrainState._osmCoastlineWays=null;
+      refineTerrainWaterWithOsm(lat,lon,terrainKey,terrainResult);
+    }
+  }
+  scheduleCameraViewUpdate();
+  scheduleSaveSettings();
+});
+syncWaterRadiusControl();
 el.normalWaterFineLevelSlider?.addEventListener("input",()=>{
   syncNormalWaterFineLevelControl();
   drawPhoto._terrainRenderKey=null;
@@ -11489,6 +11531,7 @@ function collectPersistedSettings(){
     observedPlaceLon:currentObservedPlaceLon,
     normalTerrainAzimuthStep:normalTerrainAzimuthStepValue(),
     normalWaterFineLevel:normalWaterFineLevelValue(),
+    waterDrawRadiusKm:waterDrawRadiusKm(),
     localDetailMeshStepM:localDetailMeshStepValue(),
     highDetailQuality:highDetailQualityValue(),
     localDetailTerrainEnabled:false,
@@ -11553,6 +11596,10 @@ async function loadPersistedSettings(){
     if(s.normalWaterFineLevel!==undefined&&el.normalWaterFineLevelSlider){
       el.normalWaterFineLevelSlider.value=clamp(Math.round(+s.normalWaterFineLevel||4),1,4);
       syncNormalWaterFineLevelControl();
+    }
+    if(s.waterDrawRadiusKm!==undefined&&el.waterRadiusSlider){
+      el.waterRadiusSlider.value=clamp(Math.round(+s.waterDrawRadiusKm||10),4,10);
+      syncWaterRadiusControl();
     }
     if(s.localDetailMeshStepM!==undefined){
       el.localDetailMeshStepSlider.value=clamp(Math.round(+s.localDetailMeshStepM||5),1,5);
@@ -12289,7 +12336,7 @@ function capturePlanWaterSnapshot(lat,lon){
   if(!(rings&&rings.length)&&!(coastlineWays&&coastlineWays.length)) return null;
   return {
     version:1,lat,lon,savedAt:Date.now(),
-    waterRadiusKm:OSM_WATER_RADIUS_KM,coastlineRadiusKm:OSM_COASTLINE_RADIUS_KM,
+    waterRadiusKm:waterDrawRadiusKm(),coastlineRadiusKm:OSM_COASTLINE_RADIUS_KM,
     rings:Array.isArray(rings)?JSON.parse(JSON.stringify(rings)):[],
     coastlineWays:Array.isArray(coastlineWays)?JSON.parse(JSON.stringify(coastlineWays)):[]
   };
@@ -14236,12 +14283,56 @@ function worldMapLevelMap(z){
   if(!level){ level=new Map(); worldMapLevels.set(z,level); }
   return level;
 }
-function worldMapDecodeTile(pixels){
+/* 【v842】淡色地図には地名の注記（文字）が描かれている。
+   文字の画素は水色ではないので、そのままだと「陸」と判定され、
+   湖の上に文字の形をした陸が浮かぶ（精進湖の「精進湖」「富士五湖」で確認）。
+   等高線・境界線・橋の線も同じ理由で水に穴を開ける。
+
+   **水に完全に囲まれた小さな塊だけ**を注記とみなして埋める。
+   タイルの縁につながる非水域は隣のタイルへ続く本物の陸なので、大きさに関わらず残す。
+   岬や半島は必ず陸につながっているため埋まらない。
+   湖の中の本物の島も、外接する箱が上限を超えていれば残る。
+   （最初は「細い連なりを埋める」方式にしたが、横に長い画線が残った。実際に見て作り直した）
+   タイルを読み込んだ直後に1回だけ通すので、描画時間は増えない。 */
+function worldMapFillLabelHoles(out,maxBox){
+  const N=256,size=N*N,visited=new Uint8Array(size),stack=new Int32Array(size),comp=new Int32Array(size);
+  let sp=0;
+  const push=i=>{if(!visited[i]&&out[i]!==1){visited[i]=1;stack[sp++]=i;}};
+  /* 1) タイルの縁につながる非水域に印をつける。これは隣のタイルへ続く本物の陸。 */
+  for(let x=0;x<N;x++){push(x);push((N-1)*N+x);}
+  for(let y=0;y<N;y++){push(y*N);push(y*N+N-1);}
+  while(sp>0){
+    const i=stack[--sp],x=i%N,y=(i/N)|0;
+    if(x>0)push(i-1);if(x<N-1)push(i+1);
+    if(y>0)push(i-N);if(y<N-1)push(i+N);
+  }
+  /* 2) 残った非水域＝水に完全に囲まれた塊。小さいものだけを注記とみなして埋める。 */
+  for(let start=0;start<size;start++){
+    if(out[start]===1||visited[start])continue;
+    let count=0,minX=N,maxX=-1,minY=N,maxY=-1;
+    sp=0;stack[sp++]=start;visited[start]=1;
+    while(sp>0){
+      const i=stack[--sp];comp[count++]=i;
+      const x=i%N,y=(i/N)|0;
+      if(x<minX)minX=x;if(x>maxX)maxX=x;
+      if(y<minY)minY=y;if(y>maxY)maxY=y;
+      if(x>0)push(i-1);if(x<N-1)push(i+1);
+      if(y>0)push(i-N);if(y<N-1)push(i+N);
+    }
+    if(maxX-minX+1<=maxBox&&maxY-minY+1<=maxBox)for(let k=0;k<count;k++)out[comp[k]]=1;
+  }
+  return out;
+}
+function worldMapDecodeTile(pixels,z){
   const out=new Uint8Array(256*256),d=pixels.data||pixels;
   for(let i=0,q=0;i<out.length;i++,q+=4){
     if(Math.abs(d[q]-190)<=6&&Math.abs(d[q+1]-210)<=6&&Math.abs(d[q+2]-255)<=6) out[i]=1;
   }
-  return out;
+  /* 埋める塊の大きさの上限。手前ほど文字が大きく写るので大きめに、
+     遠景は1画素の実距離が大きいので小さめにして、本物の島を残す。
+     z17は約1m/pxなので56px＝約56m四方まで。 */
+  const maxBox=z>=16?56:(z>=14?32:16);
+  return worldMapFillLabelHoles(out,maxBox);
 }
 function worldMapRequestTile(z,x,y){
   const level=worldMapLevelMap(z),key=worldTileKey(x,y);
@@ -14251,7 +14342,7 @@ function worldMapRequestTile(z,x,y){
   fetch(`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,{mode:"cors",cache:"force-cache"})
     .then(r=>{ if(!r.ok) throw new Error(`map ${r.status}`); return r.blob(); })
     .then(imageBlobToPixels)
-    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels):null);worldMapMemo.delete(z);worldMapTiles++; })
+    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels,z):null);worldMapMemo.delete(z);worldMapTiles++; })
     .catch(()=>{ level.set(key,null); })
     .finally(()=>{
       worldMapPending--;
@@ -15031,23 +15122,36 @@ const NORMAL_WATER_FINE_RADIUS_KM=10;
 const NORMAL_WATER_FINE_DISTANCE_CACHE=new Map();
 function normalWaterFineDistances(parts){
   const level=clamp(Math.round(parts||4),1,4);
-  const cached=NORMAL_WATER_FINE_DISTANCE_CACHE.get(level);
+  /* 【v840】半径も選べるようになったので、覚え書きの鍵に入れる。 */
+  const radiusKm=waterDrawRadiusKm();
+  const cacheKey=`${level}|${radiusKm}`;
+  const cached=NORMAL_WATER_FINE_DISTANCE_CACHE.get(cacheKey);
   if(cached)return cached;
   const byMetre=new Map();
   for(let i=0;i<TERRAIN_DISTANCES_KM.length;i++){
     const current=TERRAIN_DISTANCES_KM[i];
     byMetre.set(Math.round(current*1000),current);
     const next=TERRAIN_DISTANCES_KM[i+1];
-    if(!Number.isFinite(next)||current>=NORMAL_WATER_FINE_RADIUS_KM)continue;
-    const end=Math.min(next,NORMAL_WATER_FINE_RADIUS_KM);
+    if(!Number.isFinite(next)||current>=radiusKm)continue;
+    const end=Math.min(next,radiusKm);
     for(let part=1;part<level;part++){
       const distance=current+(end-current)*part/level;
       byMetre.set(Math.round(distance*1000),distance);
     }
   }
   const list=[...byMetre.entries()].sort((a,b)=>a[0]-b[0]).map(entry=>entry[1]);
-  NORMAL_WATER_FINE_DISTANCE_CACHE.set(level,list);
+  NORMAL_WATER_FINE_DISTANCE_CACHE.set(cacheKey,list);
   return list;
+}
+/* 【v840】水域を描く距離。つまみが無い・壊れているときは従来どおり10km。
+   **ここで NORMAL_WATER_FINE_RADIUS_KM を参照してはいけない。**
+   この関数はつまみの初期表示から呼ばれ、それはあの定数の宣言より前に走るため、
+   参照すると「Cannot access ... before initialization」で起動ごと止まる（実際に踏んだ）。
+   上限10kmは NORMAL_WATER_FINE_RADIUS_KM と OSM_WATER_RADIUS_KM に合わせてある。 */
+function waterDrawRadiusKm(){
+  const slider=el&&el.waterRadiusSlider;
+  const value=Math.round(+(slider&&slider.value)||10);
+  return clamp(value,4,10);
 }
 function normalWaterFineLevelValue(){
   const slider=el&&el.normalWaterFineLevelSlider;
@@ -15069,7 +15173,7 @@ const NORMAL_FINE_WATER_WALK_MEMO_MAX_POINTS=300000;
 /* 通常表示では通信を増やさず、すでに読み込まれた静的水域形状だけを任意点へ当てる。
    false（陸）も有効な判定なので、null（判定材料なし）とは区別する。 */
 function normalCachedWaterAt(azDeg,distanceKm){
-  if(highDetailOn||!normalFineWaterMaskPass||!Number.isFinite(distanceKm)||distanceKm<0||distanceKm>NORMAL_WATER_FINE_RADIUS_KM)return null;
+  if(highDetailOn||!normalFineWaterMaskPass||!Number.isFinite(distanceKm)||distanceKm<0||distanceKm>waterDrawRadiusKm())return null;
   const observerLat=+el.lat.value,observerLon=+el.lon.value;
   if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon))return null;
   const rings=realTerrainState&&realTerrainState._osmWaterRings;
@@ -17620,7 +17724,7 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
   resultObj._osmRefinePending=true;
   resultObj._osmRefineStatus="loading";
   setExternalDataStatus("water","loading");
-  fetchOsmWaterRings(lat,lon,OSM_WATER_RADIUS_KM).then(async rings=>{
+  fetchOsmWaterRings(lat,lon,waterDrawRadiusKm()).then(async rings=>{
     if(!rings||!resultObj.terrainLayers){
       resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
       setExternalDataStatus("water","error",waterFailureStatusDetail());
@@ -17789,7 +17893,7 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     }
     resultObj._osmRefineStatus="ready";
     resultObj._waterDataSource="shortbread-v1";
-    const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`;
+    const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`;
     const waterSource=osmWaterCacheSources.get(waterCacheKey);
     const savedLabel=waterSource==="plan"?"・撮影計画の保存水域":(waterSource==="persistent"?"・保存済みキャッシュ":(waterSource==="static-vector"?"・OSM静的ベクトル":""));
     const coastLabel=Array.isArray(coastlineWays)&&coastlineWays.length?`・海岸線${coastlineWays.length}本`:"";
@@ -18350,7 +18454,7 @@ async function reloadCurrentWaterCacheOnly(){
   const lon=state?.lon??parseFloat(document.getElementById("lon")?.value);
   if(!Number.isFinite(lat)||!Number.isFinite(lon))return false;
   const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  const waterKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`;
+  const waterKey=`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`;
   const coastlineKey=`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_COASTLINE_RADIUS_KM}`;
   /* 現在地点に対応する新旧水域だけを保存領域から削除する。 */
   for(const id of [
@@ -18397,7 +18501,7 @@ function reloadCurrentExternalSimulationData(){
   const lat=state?.lat??parseFloat(document.getElementById("lat")?.value);
   const lon=state?.lon??parseFloat(document.getElementById("lon")?.value);
   const terrainKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(4)},${lon.toFixed(4)}`:"";
-  const waterCacheKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_WATER_RADIUS_KM}`:"";
+  const waterCacheKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`:"";
   const coastlineCacheKey=Number.isFinite(lat)&&Number.isFinite(lon)?`${lat.toFixed(2)},${lon.toFixed(2)},${OSM_COASTLINE_RADIUS_KM}`:"";
 
   if(targets.has("elevation")){
@@ -22220,7 +22324,7 @@ function drawPhoto(ctx,s){
               const extra=[];
               const coarseMetres=new Set(coarseWalk.map(point=>Math.round(point.distanceKm*1000)));
               for(const distanceKm of normalWaterFineDistances(normalWaterFineLevelValue())){
-                if(distanceKm>NORMAL_WATER_FINE_RADIUS_KM)break;
+                if(distanceKm>waterDrawRadiusKm())break;
                 if(coarseMetres.has(Math.round(distanceKm*1000)))continue;
                 const waterSample=normalCachedWaterAt(wrapped,distanceKm);
                 if(!waterSample)continue;
@@ -23770,7 +23874,7 @@ function drawPhoto(ctx,s){
         const cacheKey=`${terrainGeometryKey}|inland|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
         const cached=drawPhoto._directInlandWaterGeometry;
         if(cached&&cached.key===cacheKey&&cached.rings===rings)return cached.items;
-        const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R)),limitM=NORMAL_WATER_FINE_RADIUS_KM*1000,items=[];
+        const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R)),limitM=waterDrawRadiusKm()*1000,items=[];
         for(const polygon of rings){
           if(!polygon||polygon.waterClass!=="inland")continue;
           const outer=polygon.outer||polygon,outerPoints=outer.points;
