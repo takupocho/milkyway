@@ -296,6 +296,25 @@
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .range-hint{font-size:10.5px;color:var(--dim-2);margin-top:3px;}
 
+  /* ---------- 【v828】キャッシュ管理 ---------- */
+  .cache-manager-list{
+    margin-top:8px;border:1px solid rgba(132,154,196,.28);border-radius:10px;
+    background:rgba(11,18,39,.32);padding:6px 8px;
+    font:600 11px/1.7 'IBM Plex Mono',monospace;color:#cfe2ff;
+  }
+  .cache-manager-row{
+    display:flex;align-items:center;gap:8px;
+    padding:3px 0;border-bottom:1px solid rgba(132,154,196,.16);
+  }
+  .cache-manager-row:last-child{border-bottom:0;}
+  .cache-manager-row .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cache-manager-row .count{color:var(--dim);min-width:4.5em;text-align:right;}
+  .cache-manager-row button{
+    width:auto;padding:2px 9px;font-size:11px;border-radius:7px;flex:0 0 auto;
+  }
+  .cache-manager-row.warn .name{color:var(--warn);}
+  .cache-manager-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .cache-manager-actions button{width:auto;flex:1 1 auto;min-width:44%;}
   /* ---------- 月別 天の川ベストタイム表 ---------- */
   .month-toggle-btn{
     margin-top:14px;
@@ -4403,6 +4422,29 @@
         </div>
       </section>
 
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">キャッシュ管理<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint">取り直せる地図データだけを消せます。<b>撮影計画・登録観測地（写真を含む）と設定は、ここでは一切消えません。</b></p>
+          <div id="cacheManagerList" class="cache-manager-list">読み込み中…</div>
+          <p class="map-hint" id="cacheManagerTotal" style="margin-top:6px;"></p>
+          <div class="cache-manager-actions">
+            <button id="cacheManagerRefreshBtn" type="button">最新の状態にする</button>
+            <button id="cacheManagerLegacyBtn" type="button" class="primary">旧形式の残骸を掃除（おすすめ）</button>
+          </div>
+          <p class="map-hint" style="margin-top:6px;">「旧形式の残骸」は、いまのアプリがもう読まない古い形式のデータです。Overpassを使っていた頃の水域・海岸線などが残っていると、撮影計画を開いたときに古い形で描かれることがあります。消しても失うものはありません。</p>
+          <div class="cache-manager-actions" style="margin-top:10px;">
+            <button id="cacheManagerAllBtn" type="button">地図データをすべて削除</button>
+          </div>
+          <p class="map-hint" style="margin-top:6px;">地形・水域・海岸線・道路・線路・橋・彗星・撮影計画の保存水域を消します。<b>山名は残します。</b>次に開いた地点から順に取り直すので、しばらく読み込みが増えます。</p>
+          <div class="cache-manager-actions" style="margin-top:10px;">
+            <button id="cacheManagerMountainBtn" type="button">山名キャッシュも削除する</button>
+          </div>
+          <p class="map-hint" style="margin-top:6px;"><b>山名だけは、いま新しく取得する手段がありません</b>（Overpassを廃止したため）。消すと、保存済みの地点でも山名が出なくなります。掃除の目的がはっきりしている時だけ使ってください。</p>
+          <p id="cacheManagerStatus" class="map-hint" style="margin-top:8px;" aria-live="polite"></p>
+        </div>
+      </section>
+
     </aside>
     </div>
 
@@ -5131,7 +5173,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="827-inland-reflection-only";
+const APP_VERSION="830-inland-ring-visibility";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6228,6 +6270,9 @@ const el={
   localDetailTerrainBtn:$("localDetailTerrainBtn"), localDetailFetchBtn:$("localDetailFetchBtn"), localDetailCoordinatePaste:$("localDetailCoordinatePaste"), localDetailCoordinateApplyBtn:$("localDetailCoordinateApplyBtn"), localDetailLat:$("localDetailLat"), localDetailLon:$("localDetailLon"), localDetailRadius:$("localDetailRadius"), localDetailName:$("localDetailName"), localDetailRegisterBtn:$("localDetailRegisterBtn"), localDetailDeleteBtn:$("localDetailDeleteBtn"), localDetailSavedSelect:$("localDetailSavedSelect"), localDetailLoadBtn:$("localDetailLoadBtn"), localDetailTerrainStatus:$("localDetailTerrainStatus"),
   normalTerrainAzimuthStepSlider:$("normalTerrainAzimuthStepSlider"), normalTerrainAzimuthStepVal:$("normalTerrainAzimuthStepVal"),
   normalWaterFineLevelSlider:$("normalWaterFineLevelSlider"), normalWaterFineLevelVal:$("normalWaterFineLevelVal"),
+  cacheManagerList:$("cacheManagerList"), cacheManagerTotal:$("cacheManagerTotal"), cacheManagerStatus:$("cacheManagerStatus"),
+  cacheManagerRefreshBtn:$("cacheManagerRefreshBtn"), cacheManagerLegacyBtn:$("cacheManagerLegacyBtn"),
+  cacheManagerAllBtn:$("cacheManagerAllBtn"), cacheManagerMountainBtn:$("cacheManagerMountainBtn"),
   highDetailQualitySlider:$("highDetailQualitySlider"), highDetailQualityVal:$("highDetailQualityVal"),
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
   nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
@@ -16342,6 +16387,171 @@ async function externalGeoCacheSet(id,data){
     await persistentSet(LAST_WATER_CACHE_FALLBACK_KEY,JSON.stringify({id,data,savedAt:Date.now()}));
   }
 }
+/* 【v828】キャッシュ管理。
+   取り直せる地図データ（IndexedDB）だけを対象にする。
+   撮影計画・登録観測地・設定は localStorage にあり、ここでは一切触らない。 */
+const CACHE_CATEGORIES=[
+  {id:"terrain",  label:"地形（標高）",         test:id=>id.startsWith(`terrain:v${TERRAIN_CACHE_FORMAT}:`)},
+  {id:"water",    label:"水域（川・池・湖・海）", test:id=>id.startsWith("water:shortbread-v3-explicit-class:")},
+  {id:"coastline",label:"海岸線",               test:id=>id.startsWith("coastline-static-v1:")},
+  {id:"roads",    label:"道路",                 test:id=>id.startsWith("roads-static-v1:")},
+  {id:"rails",    label:"線路",                 test:id=>id.startsWith("rails-static-v1:")},
+  {id:"bridges",  label:"橋",                   test:id=>id.startsWith("bridges-static-v2:")},
+  {id:"comet",    label:"彗星の軌道要素",        test:id=>id.startsWith("comet-elements-v1")},
+  {id:"plan",     label:"撮影計画の保存水域",     test:id=>id.startsWith("plan-water-v1:")},
+  {id:"mountain", label:"山名（取り直せません）",  test:id=>id.startsWith("mountain:"),warn:true}
+];
+/* どの区分にも当てはまらない＝いまのコードが読まない古い形式。 */
+const CACHE_LEGACY_ID="legacy";
+const CACHE_LEGACY_LABEL="旧形式の残骸（もう読まれません）";
+function cacheCategoryIdOf(id){
+  const text=String(id);
+  for(const category of CACHE_CATEGORIES) if(category.test(text)) return category.id;
+  return CACHE_LEGACY_ID;
+}
+async function readExternalGeoCacheKeys(){
+  const db=await openExternalGeoCacheDb();
+  return await new Promise((resolve,reject)=>{
+    const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readonly");
+    const req=tx.objectStore(EXTERNAL_GEO_CACHE_STORE).getAllKeys();
+    req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);
+  });
+}
+async function deleteExternalGeoCacheKeys(keys){
+  if(!keys.length) return 0;
+  const db=await openExternalGeoCacheDb();
+  await new Promise(resolve=>{
+    const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");
+    const store=tx.objectStore(EXTERNAL_GEO_CACHE_STORE);
+    keys.forEach(key=>store.delete(key));
+    tx.oncomplete=()=>resolve();tx.onerror=()=>resolve();
+  });
+  keys.forEach(key=>{ delete cacheTouchMap[String(key)]; });
+  saveCacheTouchMap();
+  return keys.length;
+}
+/* 消した後は、画面が持っている覚え書きも捨てる。
+   これをしないと、消したのに古いものが出続ける。 */
+function clearInMemoryGeoCaches(){
+  const maps=[
+    typeof osmWaterCache!=="undefined"?osmWaterCache:null,
+    typeof osmWaterCacheSources!=="undefined"?osmWaterCacheSources:null,
+    typeof osmCoastlineCache!=="undefined"?osmCoastlineCache:null,
+    typeof osmCoastlineCacheSources!=="undefined"?osmCoastlineCacheSources:null,
+    typeof osmRoadCache!=="undefined"?osmRoadCache:null,
+    typeof osmRailCache!=="undefined"?osmRailCache:null,
+    typeof osmBridgeCache!=="undefined"?osmBridgeCache:null,
+    typeof osmBridgeCacheSources!=="undefined"?osmBridgeCacheSources:null,
+    typeof realTerrainProfileCache!=="undefined"?realTerrainProfileCache:null,
+    typeof mountainNameCache!=="undefined"?mountainNameCache:null,
+    typeof staticVectorTileCache!=="undefined"?staticVectorTileCache:null
+  ];
+  maps.forEach(map=>{ try{ if(map&&typeof map.clear==="function") map.clear(); }catch(error){} });
+  try{ localStorage.removeItem(LAST_WATER_CACHE_FALLBACK_KEY); }catch(error){}
+}
+function setCacheManagerStatus(text){
+  if(el.cacheManagerStatus) el.cacheManagerStatus.textContent=text||"";
+}
+/* 誤って消さないよう、1回目の押下では確認に変える。 */
+const cacheManagerArmed=new Map();
+function armCacheManagerButton(button,label,run){
+  if(!button) return;
+  button.addEventListener("click",async()=>{
+    if(cacheManagerArmed.get(button)){
+      clearTimeout(cacheManagerArmed.get(button));
+      cacheManagerArmed.delete(button);
+      button.textContent=label;
+      button.classList.remove("active");
+      await run();
+      return;
+    }
+    button.textContent="もう一度押すと削除";
+    button.classList.add("active");
+    cacheManagerArmed.set(button,setTimeout(()=>{
+      cacheManagerArmed.delete(button);
+      button.textContent=label;
+      button.classList.remove("active");
+    },5000));
+  });
+}
+async function renderCacheManager(){
+  if(!el.cacheManagerList) return;
+  el.cacheManagerList.textContent="読み込み中…";
+  let keys=[];
+  try{ keys=await readExternalGeoCacheKeys(); }
+  catch(error){ el.cacheManagerList.textContent="キャッシュを読めませんでした。"; return; }
+  const counts={};
+  keys.forEach(key=>{ const id=cacheCategoryIdOf(key); counts[id]=(counts[id]||0)+1; });
+  const rows=CACHE_CATEGORIES.map(category=>({...category,count:counts[category.id]||0}));
+  rows.push({id:CACHE_LEGACY_ID,label:CACHE_LEGACY_LABEL,count:counts[CACHE_LEGACY_ID]||0,warn:true});
+  el.cacheManagerList.innerHTML="";
+  rows.forEach(row=>{
+    const line=document.createElement("div");
+    line.className="cache-manager-row"+(row.warn?" warn":"");
+    const name=document.createElement("span");name.className="name";name.textContent=row.label;
+    const count=document.createElement("span");count.className="count";count.textContent=`${row.count}件`;
+    line.append(name,count);
+    if(row.count>0){
+      const button=document.createElement("button");
+      button.type="button";button.textContent="削除";
+      armCacheManagerButton(button,"削除",async()=>{
+        const all=await readExternalGeoCacheKeys();
+        const doomed=all.filter(key=>cacheCategoryIdOf(key)===row.id);
+        const removed=await deleteExternalGeoCacheKeys(doomed);
+        clearInMemoryGeoCaches();
+        setCacheManagerStatus(`${row.label} を ${removed}件 削除しました。画面を開き直すと確実です。`);
+        renderCacheManager();
+      });
+      line.append(button);
+    }
+    el.cacheManagerList.append(line);
+  });
+  if(el.cacheManagerTotal){
+    let text=`合計 ${keys.length}件`;
+    try{
+      if(navigator.storage&&navigator.storage.estimate){
+        const estimate=await navigator.storage.estimate();
+        if(estimate&&Number.isFinite(estimate.usage)) text+=` ／ この端末での使用量 約${(estimate.usage/1048576).toFixed(1)}MB`;
+      }
+    }catch(error){}
+    el.cacheManagerTotal.textContent=text;
+  }
+}
+if(el.cacheManagerRefreshBtn) el.cacheManagerRefreshBtn.addEventListener("click",()=>{
+  setCacheManagerStatus("");renderCacheManager();
+});
+armCacheManagerButton(el.cacheManagerLegacyBtn,"旧形式の残骸を掃除（おすすめ）",async()=>{
+  const keys=await readExternalGeoCacheKeys();
+  const doomed=keys.filter(key=>cacheCategoryIdOf(key)===CACHE_LEGACY_ID);
+  const removed=await deleteExternalGeoCacheKeys(doomed);
+  clearInMemoryGeoCaches();
+  setCacheManagerStatus(removed?`旧形式の残骸を ${removed}件 削除しました。`:"旧形式の残骸はありませんでした。");
+  renderCacheManager();
+});
+armCacheManagerButton(el.cacheManagerAllBtn,"地図データをすべて削除",async()=>{
+  const keys=await readExternalGeoCacheKeys();
+  const doomed=keys.filter(key=>cacheCategoryIdOf(key)!=="mountain");
+  const removed=await deleteExternalGeoCacheKeys(doomed);
+  clearInMemoryGeoCaches();
+  setCacheManagerStatus(`地図データを ${removed}件 削除しました（山名は残しています）。画面を開き直してください。`);
+  renderCacheManager();
+});
+armCacheManagerButton(el.cacheManagerMountainBtn,"山名キャッシュも削除する",async()=>{
+  const keys=await readExternalGeoCacheKeys();
+  const doomed=keys.filter(key=>cacheCategoryIdOf(key)==="mountain");
+  const removed=await deleteExternalGeoCacheKeys(doomed);
+  clearInMemoryGeoCaches();
+  setCacheManagerStatus(`山名キャッシュを ${removed}件 削除しました。新しく取得する手段は今のところありません。`);
+  renderCacheManager();
+});
+/* 設定画面の「キャッシュ管理」を開いた時に数え直す。開くまでは何もしない。 */
+if(el.cacheManagerList){
+  const group=el.cacheManagerList.closest(".ctrl-group");
+  const toggle=group&&group.querySelector(".ctrl-group-toggle");
+  if(toggle) toggle.addEventListener("click",()=>{
+    if(!group.classList.contains("collapsed")) renderCacheManager();
+  });
+}
 async function externalGeoCacheDelete(id){
   if(!id)return;
   try{
@@ -23510,6 +23720,8 @@ function drawPhoto(ctx,s){
         if(b===null)return a;
         return lerp(a,b,t);
       }
+      /* 【v830】この割合を超えて隠れている内水面は丸ごと描かない。 */
+      const INLAND_HIDDEN_DROP_RATIO=2/3;
       function directInlandWaterGeometry(){
         const rings=realTerrainState&&realTerrainState._osmWaterRings;
         const originLat=+el.lat.value,originLon=+el.lon.value;
@@ -23542,33 +23754,41 @@ function drawPhoto(ctx,s){
           /* 湖の中に立っているときは、輪郭が観測者を取り囲むので遮蔽判定を使わない。
              （手前も奥も同じ水面で、切ると湖が割れる） */
           const skipOcclusion=!!realTerrainState.observerWaterNearby;
+          let hidden=0;
+          /* 【v830】頂点は1つも捨てない。数えるだけにする。
+             v826〜v829は隠れる頂点を間引いて輪郭を分割していたが、
+             **塗り潰しポリゴンは輪郭の一部を消しても可視範囲にはならない**。
+             残った弧を閉じると別の形になり、精進湖では湖の内側がえぐれていた
+             （遮蔽なし44形状 → 遮蔽あり16形状、頂点の80%が却下）。
+             隠れた割合は、この形状を丸ごと描くかどうかの判断だけに使う。 */
           const appendRing=ring=>{
             let started=false;
-            const endRun=()=>{if(started){path.closePath();started=false;}};
             for(const point of ring){
               const distanceM=Math.hypot(point.x,point.y);if(distanceM<.3)continue;
               const metres=Math.max(.3,distanceM),drop=metres*metres/(2*6371000*(7/6));
               const azimuth=norm360(atan2d(point.x,point.y));
               const altitude=Math.atan2(waterElevation-observerEyeElevation-drop,metres)*R2D;
-              if(!skipOcclusion){
-                /* 【v826】手前の尾根に隠れる点は描かない。輪郭は見えている区間ごとに分けて閉じる。
-                   これが「山に隠れるはずの川・池が透ける」不具合の直しどころ。 */
-                const blockingAlt=inlandTerrainMaxAltBefore(azimuth,distanceM/1000);
-                if(blockingAlt!==null&&blockingAlt>altitude+OCCLUSION_MARGIN_DEG){endRun();continue;}
-              }
               const screen=toXY(azimuth,altitude);
-              if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1])){endRun();continue;}
+              if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1]))continue;
+              if(!skipOcclusion){
+                const blockingAlt=inlandTerrainMaxAltBefore(azimuth,distanceM/1000);
+                if(blockingAlt!==null&&blockingAlt>altitude+OCCLUSION_MARGIN_DEG)hidden++;
+              }
               if(!started){path.moveTo(screen[0],screen[1]);started=true;}else path.lineTo(screen[0],screen[1]);
               projected++;distanceTotal+=distanceM;
             }
-            endRun();
+            if(started)path.closePath();
           };
           appendRing(clippedOuter);
           for(const hole of (polygon.holes||[])){
             const clippedHole=clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon);
             if(clippedHole.length>=3)appendRing(clippedHole);
           }
-          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000});
+          /* 【v830】3分の2を超えて隠れている形状は、尾根の裏にあるとみなして丸ごと捨てる。
+             これがv826の「山の向こうの川・池が透ける」対策の代わり。
+             尾根をまたぐ形状は丸ごと描かれるので、その分だけ透ける。割り切り。 */
+          if(projected>=3&&hidden<=projected*INLAND_HIDDEN_DROP_RATIO)
+            items.push({path,distanceKm:distanceTotal/projected/1000,hiddenRatio:hidden/projected});
         }
         drawPhoto._directInlandWaterGeometry={key:cacheKey,rings,items};return items;
       }
@@ -24420,8 +24640,14 @@ function drawPhoto(ctx,s){
                   if(inlandMask.width!==W||inlandMask.height!==H){inlandMask.width=W;inlandMask.height=H;}
                   const inlandMaskContext=inlandMask.getContext("2d");
                   inlandMaskContext.clearRect(0,0,W,H);
-                  if(drawDirectInlandVectorWater(inlandMaskContext,null)){
-                    /* 内水面の通常色は描かず、反射を切り抜く形状マスクだけを追加する。 */
+                  /* 【v829】輪郭ポリゴンに「色」も塗らせる。
+                     v826で帯パスが内水面を読み飛ばすようになった（階段状の岸を消すため）のに、
+                     ここが colorContext=null のままだったので、
+                     **通常表示で内水面に水色を塗る経路がどこにも無くなっていた**。
+                     地形の帯は normalSeparateWaterColorPass で水域を陸の色に塗るので、
+                     湖が緑のまま残り「後から陸が被さった」ように見えていた（精進湖で確認）。
+                     投影は滑らかなので、v822の岸のなめらかさは保たれる。 */
+                  if(drawDirectInlandVectorWater(inlandMaskContext,colorContext)){
                     fineContext.drawImage(inlandMask,0,0);
                   }
                   tctx.drawImage(colorLayer,0,0);
@@ -24435,6 +24661,9 @@ function drawPhoto(ctx,s){
                 if(colorLayer){
                   const colorContext=colorLayer.getContext("2d");colorContext.clearRect(0,0,W,H);
                   drawNormalFineWaterMaskOnly(null,colorContext);
+                  /* 【v829】昼用の再利用パスも海の色しか塗り直していなかった。
+                     川・池・湖も同じ輪郭ポリゴンで塗り直す。 */
+                  drawDirectInlandVectorWater(null,colorContext);
                   tctx.drawImage(colorLayer,0,0);
                 }
                 redrawStoredBridgeOverlay(tctx,terrainDayFactor);
