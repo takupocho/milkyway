@@ -5173,7 +5173,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="830-inland-ring-visibility";
+const APP_VERSION="835-polygon-decides-shoreline";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -18273,8 +18273,9 @@ async function reloadCurrentWaterCacheOnly(){
   forcedWaterRefreshKeys.add(waterKey);forcedCoastlineRefreshKeys.add(coastlineKey);
   staticVectorTileCache.clear();worldWaterMask=null;worldWaterKey=null;worldWaterOrigin=null;
   for(const name of [
-    "_directInlandWaterGeometry","_taggedInlandWaterRings","_coarseInlandBandMemo","_normalFineWaterSegments",
-    "_normalFineWaterMaskCanvas","_inlandVectorWaterColorCanvas",
+    "_directInlandWaterGeometry","_normalFineWaterSegments",
+    "_normalFineWaterMaskCanvas","_inlandVectorWaterColorCanvas","_grownWaterMaskCanvas",
+    "_smearMaskA","_smearMaskB",
     "_directInlandMaskCanvas","_directInlandColorCanvas","_confirmedWaterAzCache"
   ])drawPhoto[name]=null;
   const terrainResult=realTerrainProfileCache.get(terrainKey)||(realTerrainState.profile?realTerrainState:null);
@@ -19589,7 +19590,20 @@ function drawPhoto(ctx,s){
     const groundRGB=mixRGB(nightGroundRGB,dayGroundRGB,dayFactor);
     const groundColor=showBelowHorizon ? `rgba(${groundRGB.join(",")},${belowHorizonAlpha})` : `rgb(${groundRGB.join(",")})`;
 
-    const realTerrainReady=activeTerrainProfile&&realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
+    /* 【v832】取得中は「直前の地点の地形」をそのまま描き続ける。
+       地形の鍵は緯度経度の小数4桁＝約11m刻みなので、ドローンや地図のドラッグで動くと
+       すぐ鍵が変わり、新しい地形が届くまでのあいだ false になっていた。
+       すると else 側の初期版の描画（標高を使わない平らな地面＋木）へ落ち、
+       移動のたびに景色が点滅して追えなくなる。
+       このとき realTerrainState は消されていない。requestRealTerrainProfile は
+       loadingKey を立てるだけで、profile / rayGrid / observerElevation は
+       取得完了まで前の地点のまま残っている。**描けるものを持っているのに使っていなかった。**
+       直前の地点は数十m違うだけで見た目はほとんど変わらない。
+       取得中であることは「地形データ読み込み中…」の表示で分かる。
+       初回起動（profileがまだ無い）と取得失敗（loadingKeyが消える）は、
+       これまでどおり初期版の景色になる。 */
+    const realTerrainReady=!!activeTerrainProfile
+      &&(realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`||!!realTerrainState.loadingKey);
     if(realTerrainReady){
       // 距離帯別の稜線を遠方から手前へ重ね、夜の大気遠近法で奥行きを表現する。
       // 5層はそれぞれ稜線側を暗く、画面下側を少し明るい縦グラデーションで描く。
@@ -21730,65 +21744,6 @@ function drawPhoto(ctx,s){
         if(waterMaskStateSaved) wmctx.restore();
         return paintedTriangles>=20;
       }
-      // 最短距離の陸地だけを独立した前景レイヤーとして描く。
-      // 陸/水境界で省略されたメッシュの隙間や、下層の空色が足元へ露出しても、
-      // 全地形の合成後にこのレイヤーを重ねることで確実に陸色へ戻す。
-      function drawForegroundFooting(grid){
-        if(!grid||!grid.length) return false;
-        const footingColors=terrainBandColors("immediate");
-        const footingStep=Math.min(step,.35);
-        const footingHalf=half+4;
-        const samples=[];
-        for(let diff=-footingHalf;diff<=footingHalf;diff+=footingStep){
-          const az=norm360(s.facingAz+diff);
-          const index=((Math.round(az)%360)+360)%360;
-          const row=grid[index]||[];
-          // 5〜30mの範囲で最初に取得できた点を使う。水面上では陸を重ねない。
-          const point=row.find(item=>item&&item.distanceKm<=.03);
-          if(!point||point.water){samples.push(null);continue;}
-          const seaNearKm=realTerrainState.coastlineSeaNearKm&&realTerrainState.coastlineSeaNearKm[index];
-          const seaFarKm=realTerrainState.coastlineSeaFarKm&&realTerrainState.coastlineSeaFarKm[index];
-          const lowCoastalLand=!Number.isFinite(point.baseElevation)||point.baseElevation<=8;
-          const insideCoastlineSea=lowCoastalLand&&Number.isFinite(seaNearKm)&&Number.isFinite(seaFarKm)&&
-            point.distanceKm>=seaNearKm+.003&&point.distanceKm<=seaFarKm-.003;
-          // 海岸線から得た海区間内の0m前後の点は、足元の陸として最後に重ねない。
-          if(insideCoastlineSea){samples.push(null);continue;}
-          // 海区間より手前に砂浜・低地がある場合は、その陸の上端を実際の水際距離へ投影する。
-          // 従来の一律-1.5°では、近い水際でも緑の柱が水平線近くから画面下へ伸びていた。
-          const nearShoreAhead=lowCoastalLand&&Number.isFinite(seaNearKm)&&seaNearKm>point.distanceKm&&seaNearKm<=.12;
-          const shorelineAltitude=nearShoreAhead?-Math.atan2(1.6,Math.max(1,seaNearKm*1000))*R2D:null;
-          const altitude=nearShoreAhead?clamp(shorelineAltitude,-35,-1.5):clamp(point.alt,-35,-1.5);
-          const projected=toXY(az,altitude);
-          samples.push(projected&&Number.isFinite(projected[0])&&Number.isFinite(projected[1])?projected:null);
-        }
-        let painted=false,start=0;
-        while(start<samples.length){
-          while(start<samples.length&&!samples[start]) start++;
-          let end=start;
-          while(end<samples.length&&samples[end]) end++;
-          const run=samples.slice(start,end);
-          if(run.length>=2){
-            const shoreline=smoothedScreenPoints(run);
-            const topY=Math.min(...shoreline.map(point=>point[1]));
-            const gradient=ctx.createLinearGradient(0,topY,0,H);
-            gradient.addColorStop(0,footingColors.top);
-            gradient.addColorStop(1,footingColors.bottom);
-            const runWidth=Math.max(1,Math.abs(shoreline[shoreline.length-1][0]-shoreline[0][0]));
-            const spread=Math.min(nearShoreSpreadPx,Math.max(nearShoreSpreadPx*.45,runWidth*.3));
-            const leftCoast=start>0,rightCoast=end<samples.length;
-            const first=shoreline[0],last=shoreline[shoreline.length-1];
-            const leftBottom=leftCoast?first[0]-spread:0;
-            const rightBottom=rightCoast?last[0]+spread:W;
-            const footingPath=new Path2D();footingPath.moveTo(leftBottom,H);
-            if(leftCoast) footingPath.quadraticCurveTo(leftBottom,lerp(H,first[1],.45),first[0],first[1]);else footingPath.lineTo(first[0],first[1]);
-            traceSmoothOpenPath(footingPath,shoreline,false);
-            if(rightCoast) footingPath.quadraticCurveTo(rightBottom,lerp(H,last[1],.55),rightBottom,H);else footingPath.lineTo(rightBottom,H);
-            footingPath.closePath();ctx.fillStyle=gradient;ctx.fill(footingPath);painted=true;
-          }
-          start=Math.max(end,start+1);
-        }
-        return painted;
-      }
       // 遠景レイヤーと近距離メッシュでは水色の算出方法が異なるため、そのままでは
       // 距離帯の境界が二色の帯に見える。全地形の水域判定が終わった段階で、共通の
       // 水域マスクだけを使って一枚の縦グラデーションに塗り直す。
@@ -23668,61 +23623,21 @@ function drawPhoto(ctx,s){
         }
         return polygon;
       }
-      /* 【v826】方位ごとの「その距離までに現れた地面の最高見かけ高度」。
-         直接投影する内水面が、手前の山に隠れるかどうかを見るために使う。
-         見かけ高度は水面と同じ式（地球の丸みを引いた atan2）で作るので同じ物差しで比べられる。
-         観測地点・地形・視点の高さが変わるまで使い回す。
-         rayGridの行は距離の昇順で入っている（?hddebug=1 の __hd.grid() で確認済み）。 */
-      function inlandOcclusionProfile(){
-        const grid=realTerrainState&&realTerrainState.rayGrid;
-        const eyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
-        const key=`${realTerrainState.key}|${realTerrainState._renderRevision||0}|${eyeElevation.toFixed(2)}`;
-        const cached=drawPhoto._inlandOcclusionProfile;
-        if(cached&&cached.key===key&&cached.grid===grid)return cached.rows;
-        const rows=new Array(360);
-        for(let az=0;az<360;az++){
-          const row=Array.isArray(grid)?grid[az]:null,dist=[],maxAlt=[];
-          if(Array.isArray(row)){
-            let running=-90;
-            for(const point of row){
-              if(!point||!Number.isFinite(point.distanceKm)||!Number.isFinite(point.baseElevation))continue;
-              /* 遮蔽物は地面だけ。水面を入れると、ポリゴンの代表水位とDEMの水面値の
-                 数mのずれで、同じ湖の手前が奥を隠してしまう。 */
-              if(point.water||point.baseNoData)continue;
-              const metres=Math.max(.3,point.distanceKm*1000);
-              const drop=metres*metres/(2*6371000*(7/6));
-              const alt=Math.atan2(point.baseElevation-eyeElevation-drop,metres)*R2D;
-              if(alt>running)running=alt;
-              dist.push(point.distanceKm);maxAlt.push(running);
-            }
+      /* 【v833】観測者（局所座標の原点）がこの輪郭の内側にいるか。原点から+x方向へ交差数え上げ。
+         輪郭は clipInlandVectorRing が返す {x,y}（メートル）の並び。 */
+      function observerInsideLocalRing(ring){
+        let inside=false;
+        for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+          const yi=ring[i].y,yj=ring[j].y;
+          if((yi>0)!==(yj>0)){
+            const xCross=ring[i].x+(0-yi)*(ring[j].x-ring[i].x)/(yj-yi);
+            if(xCross>0)inside=!inside;
           }
-          rows[az]={dist,maxAlt};
         }
-        drawPhoto._inlandOcclusionProfile={key,grid,rows};
-        return rows;
+        return inside;
       }
-      /* その方位で、指定した距離「より手前」に現れた地面の最高見かけ高度。 */
-      function inlandTerrainMaxAltBefore(azDeg,distanceKm){
-        const rows=inlandOcclusionProfile();
-        const limit=distanceKm*.995;
-        const wrapped=((azDeg%360)+360)%360,i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
-        const pick=row=>{
-          if(!row||!row.dist.length)return null;
-          if(limit<=row.dist[0])return null;
-          let lo=0,hi=row.dist.length-1;
-          if(limit>=row.dist[hi])return row.maxAlt[hi];
-          while(lo<hi-1){const mid=(lo+hi)>>1;if(row.dist[mid]<=limit)lo=mid;else hi=mid;}
-          return row.maxAlt[lo];
-        };
-        const a=pick(rows[i0]),b=pick(rows[i1]);
-        if(a===null&&b===null)return null;
-        if(a===null)return b;
-        if(b===null)return a;
-        return lerp(a,b,t);
-      }
-      /* 【v830】この割合を超えて隠れている内水面は丸ごと描かない。 */
-      const INLAND_HIDDEN_DROP_RATIO=2/3;
       function directInlandWaterGeometry(){
+        let observerInsideRing=false;   /* 【v835】観測者を囲むリングを飛ばしたか */
         const rings=realTerrainState&&realTerrainState._osmWaterRings;
         const originLat=+el.lat.value,originLon=+el.lon.value;
         if(!Array.isArray(rings)||!rings.some(polygon=>polygon&&polygon.waterClass==="inland")||!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
@@ -23738,29 +23653,33 @@ function drawPhoto(ctx,s){
           if(Number.isFinite(outer.minLat)&&(outer.maxLat<originLat-latMargin||outer.minLat>originLat+latMargin||outer.maxLon<originLon-lonMargin||outer.minLon>originLon+lonMargin))continue;
           const clippedOuter=clipInlandVectorRing(outerPoints,limitM,originLat,originLon,metrePerDegLon);
           if(clippedOuter.length<3)continue;
-          const elevationSamples=[],stride=Math.max(1,Math.floor(clippedOuter.length/16));
+          /* 【v833】観測者がこの輪郭の内側にいるなら、この形状は投影しない。
+             自分を取り囲む輪郭は画面上で閉じた形にならず、
+             「一番近い岸の見かけ高度」で水平に切れた別の形になる。
+             その形を太らせて帯マスクから引くと、**足元の正しい水が横一直線に消える**
+             （精進湖の湖上 35.489995,138.605700 で確認。最終マスクに黒い帯が出る）。
+             この場合は帯マスクだけに任せる。帯は湖上でも足元まで正しく水にしている。 */
+          if(observerInsideLocalRing(clippedOuter)){observerInsideRing=true;continue;}
+          /* 【v831】水位は輪郭上のDEMから推す。輪郭は岸そのものなので標本に岸の高さが混ざり、
+             22%点では高く出すぎていた（精進湖で907.2m。DEMの湖面は900.0m）。
+             7m浮くと水面が本来より上へ寄り、手前の岸に階段状の帯が残る。
+             標本を増やし、下から10%点を採って湖面へ寄せる。 */
+          const elevationSamples=[],stride=Math.max(1,Math.floor(clippedOuter.length/48));
           for(let i=0;i<clippedOuter.length;i+=stride){
             const point=clippedOuter[i],distanceM=Math.hypot(point.x,point.y);if(distanceM<1)continue;
             const elevation=rayBaseElevationAt(norm360(atan2d(point.x,point.y)),distanceM/1000);
             if(Number.isFinite(elevation))elevationSamples.push(elevation);
           }
           elevationSamples.sort((a,b)=>a-b);
-          const waterElevation=elevationSamples.length?elevationSamples[Math.floor((elevationSamples.length-1)*.22)]:0;
+          const waterElevation=elevationSamples.length?elevationSamples[Math.floor((elevationSamples.length-1)*.10)]:0;
           const path=new Path2D();let projected=0,distanceTotal=0;
           const observerEyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
-          /* 【v826】手前の地面がこの高さより上にあれば隠れているとみなす余裕（度）。
-             0にすると水面自身の起伏で自己遮蔽してしまうので、わずかに持たせる。 */
-          const OCCLUSION_MARGIN_DEG=.08;
-          /* 湖の中に立っているときは、輪郭が観測者を取り囲むので遮蔽判定を使わない。
-             （手前も奥も同じ水面で、切ると湖が割れる） */
-          const skipOcclusion=!!realTerrainState.observerWaterNearby;
-          let hidden=0;
-          /* 【v830】頂点は1つも捨てない。数えるだけにする。
-             v826〜v829は隠れる頂点を間引いて輪郭を分割していたが、
-             **塗り潰しポリゴンは輪郭の一部を消しても可視範囲にはならない**。
-             残った弧を閉じると別の形になり、精進湖では湖の内側がえぐれていた
-             （遮蔽なし44形状 → 遮蔽あり16形状、頂点の80%が却下）。
-             隠れた割合は、この形状を丸ごと描くかどうかの判断だけに使う。 */
+          /* 【v831】ここは輪郭を「形」として投影するだけ。前後関係は一切見ない。
+             手前の山に隠れる分は、描き終わったあとに帯マスクで切り抜く（renderTerrainVariant）。
+             v826〜v830はここで遮蔽を掛けようとして3回失敗した。繰り返さないこと。
+               ・頂点を消す → 塗り潰しポリゴンは輪郭を消しても切り抜けず、湖の内側がえぐれた
+               ・高度を押さえ込む → 足元の地面自身が最初の遮蔽物になり、切り取り高度が-82°に張り付いた
+               ・形状ごと捨てる → 尾根をまたぐ形状が全部残った */
           const appendRing=ring=>{
             let started=false;
             for(const point of ring){
@@ -23770,10 +23689,6 @@ function drawPhoto(ctx,s){
               const altitude=Math.atan2(waterElevation-observerEyeElevation-drop,metres)*R2D;
               const screen=toXY(azimuth,altitude);
               if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1]))continue;
-              if(!skipOcclusion){
-                const blockingAlt=inlandTerrainMaxAltBefore(azimuth,distanceM/1000);
-                if(blockingAlt!==null&&blockingAlt>altitude+OCCLUSION_MARGIN_DEG)hidden++;
-              }
               if(!started){path.moveTo(screen[0],screen[1]);started=true;}else path.lineTo(screen[0],screen[1]);
               projected++;distanceTotal+=distanceM;
             }
@@ -23784,41 +23699,13 @@ function drawPhoto(ctx,s){
             const clippedHole=clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon);
             if(clippedHole.length>=3)appendRing(clippedHole);
           }
-          /* 【v830】3分の2を超えて隠れている形状は、尾根の裏にあるとみなして丸ごと捨てる。
-             これがv826の「山の向こうの川・池が透ける」対策の代わり。
-             尾根をまたぐ形状は丸ごと描かれるので、その分だけ透ける。割り切り。 */
-          if(projected>=3&&hidden<=projected*INLAND_HIDDEN_DROP_RATIO)
-            items.push({path,distanceKm:distanceTotal/projected/1000,hiddenRatio:hidden/projected});
+          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000});
         }
+        /* 【v835】観測者が水の上にいるときは、足元の水を受け持つ形状が1つも無い。
+           この状態で「Aより手前を消す」を掛けると、遠くの水域のAが足元の水まで消してしまい、
+           湖上で緑の柱が立つ（実測）。その場合は引き算そのものを行わない。 */
+        items.observerInsideRing=observerInsideRing;
         drawPhoto._directInlandWaterGeometry={key:cacheKey,rings,items};return items;
-      }
-      function taggedInlandWaterRings(){
-        const rings=realTerrainState&&realTerrainState._osmWaterRings;
-        if(!Array.isArray(rings))return [];
-        const cached=drawPhoto._taggedInlandWaterRings;
-        if(cached&&cached.source===rings)return cached.items;
-        const items=rings.filter(polygon=>polygon&&polygon.waterClass==="inland");
-        drawPhoto._taggedInlandWaterRings={source:rings,items};return items;
-      }
-      function coarseWaterBandIsTaggedInland(azDeg,distanceKm){
-        const inlandRings=taggedInlandWaterRings();
-        if(!inlandRings.length||!Number.isFinite(distanceKm))return false;
-        /* v809: この判定は観測地点と水域リングだけで決まり、方位・仰角・画角・時刻には依らない。
-           以前は terrainGeometryKey を鍵にしていたため、振り向くたび・画角を変えるたびに
-           丸ごと捨てて作り直していた。観測地点だけを鍵にして、移動しない限り使い回す。 */
-        const observerKey=`${(+el.lat.value).toFixed(6)},${(+el.lon.value).toFixed(6)}`;
-        let memo=drawPhoto._coarseInlandBandMemo;
-        if(!memo||memo.key!==observerKey||memo.rings!==inlandRings){
-          memo={key:observerKey,rings:inlandRings,values:new Map()};drawPhoto._coarseInlandBandMemo=memo;
-        }
-        const memoKey=Math.round(norm360(azDeg)*1000)*100000+Math.round(distanceKm*1000);
-        const memoHit=memo.values.get(memoKey);
-        if(memoHit!==undefined)return memoHit;
-        const coordinate=terrainDestination(+el.lat.value,+el.lon.value,azDeg,distanceKm);
-        const result=cachedWaterRingClassAt(coordinate[0],coordinate[1],inlandRings)===2;
-        memo.values.set(memoKey,result);
-        if(memo.values.size>180000)memo.values.clear();
-        return result;
       }
       function drawDirectInlandVectorWater(maskContext,colorContext){
         const items=directInlandWaterGeometry();if(!items.length)return false;
@@ -23833,6 +23720,63 @@ function drawPhoto(ctx,s){
           target.restore();
         };
         refineContext(maskContext,false);refineContext(colorContext,true);return true;
+      }
+      /* 【v831】ひとつながりの水面を、色の霞を残すために何枚まで割るか。 */
+      const BAND_MERGE_MAX_SLICES=8;
+      /* 【v831】マスクを数画素ぶん太らせる。
+         輪郭ポリゴンの代表水位はOSM輪郭上のDEMから推定するので、帯マスク（DEMそのもの）とは
+         数mずれる。精進湖では代表水位907.2mに対しDEMの湖面は900.0m。
+         そのまま交差させると岸に隙間や階段が残るので、先に太らせてから重ねる。
+         本物の尾根による切り取りはこれよりずっと大きいので、太らせても効き目は落ちない。
+         戻り値は使い回しのCanvas。次に呼ぶまでに描き終えること。 */
+      const GROWN_WATER_MASK_SCALE=.25;
+      /* 【v835】Aと、その画面下（＝手前）ぜんぶを覆うマスク。Bを作るときの引き算に使う。
+         意味は「ポリゴンがある列では、水際はポリゴンだけが決める」。
+         v831〜v834は「Aを太らせた分」を引いていたが、太らせ幅がそのまま
+         最終マスクの穴になり、水際に緑の線として残っていた
+         （実測: 穴の高さ33px ＝ subtractPx 32px）。
+         上へは太らせない。上へ太らせると、今度は遠い岸の側に同じ穴が出来る。
+         戻り値は使い回しのCanvas。次に呼ぶまでに描き終えること。 */
+      function smearedDownMask(source,sideGrowPx){
+        const sw=Math.max(1,Math.round(W*GROWN_WATER_MASK_SCALE));
+        const sh=Math.max(1,Math.round(H*GROWN_WATER_MASK_SCALE));
+        const first=drawPhoto._smearMaskA||(drawPhoto._smearMaskA=document.createElement("canvas"));
+        const second=drawPhoto._smearMaskB||(drawPhoto._smearMaskB=document.createElement("canvas"));
+        for(const canvas of [first,second]){if(canvas.width!==sw||canvas.height!==sh){canvas.width=sw;canvas.height=sh;}}
+        const reset=context=>{context.setTransform(1,0,0,1,0,0);context.globalCompositeOperation="source-over";
+          context.globalAlpha=1;context.filter="none";context.clearRect(0,0,sw,sh);};
+        let current=first,other=second;
+        let currentContext=first.getContext("2d"),otherContext=second.getContext("2d");
+        reset(currentContext);
+        /* 横だけ少し太らせて、列の取りこぼしを防ぐ。 */
+        const side=Math.max(1,Math.round(sideGrowPx*GROWN_WATER_MASK_SCALE));
+        for(let dx=-side;dx<=side;dx++)currentContext.drawImage(source,dx,0,sw,sh);
+        /* 画面下方向へ引き伸ばす。ずらし幅を倍々にすると log2(高さ) 回で下端まで届く。
+           Canvasを自分自身へ描くと読み戻しが起きて桁違いに遅いので、2枚で往復する。 */
+        for(let offset=1;offset<sh;offset*=2){
+          reset(otherContext);
+          otherContext.drawImage(current,0,0);
+          otherContext.drawImage(current,0,offset);
+          const swapCanvas=current;current=other;other=swapCanvas;
+          const swapContext=currentContext;currentContext=otherContext;otherContext=swapContext;
+        }
+        return current;
+      }
+      function grownWaterMask(source,radiusPx){
+        /* 太らせるだけなので、原寸で処理する必要がない。1/4で作ると画素数が16分の1になる。
+           使う側が drawImage(mask,0,0,W,H) で拡大して重ねること。 */
+        const sw=Math.max(1,Math.round(W*GROWN_WATER_MASK_SCALE)),sh=Math.max(1,Math.round(H*GROWN_WATER_MASK_SCALE));
+        const grown=drawPhoto._grownWaterMaskCanvas||(drawPhoto._grownWaterMaskCanvas=document.createElement("canvas"));
+        if(grown.width!==sw||grown.height!==sh){grown.width=sw;grown.height=sh;}
+        const g=grown.getContext("2d");
+        g.setTransform(1,0,0,1,0,0);g.globalCompositeOperation="source-over";g.globalAlpha=1;
+        g.clearRect(0,0,sw,sh);
+        const r=Math.max(1,Math.round(radiusPx*GROWN_WATER_MASK_SCALE));
+        /* 8方向へずらして重ねるだけ。ぼかし＋自分自身の重ね書きでも作れるが、
+           Canvasを自分自身へ描くと毎回読み戻しが起きて桁違いに遅い（実測で1コマ1000ms）。 */
+        for(const offset of [[0,0],[r,0],[-r,0],[0,r],[0,-r],[r,r],[r,-r],[-r,r],[-r,-r]])
+          g.drawImage(source,offset[0],offset[1],sw,sh);
+        return grown;
       }
       /* v790: 通常地形とは独立した、常時4倍密度の水面マスク。
          地形用altGrid/waterGridは作らず、各画面短冊で実際に見えている水の帯だけを
@@ -23855,7 +23799,7 @@ function drawPhoto(ctx,s){
         const halfSpan=rayHalfSpanDeg();
         /* v809: 列の方位を「0度から stepDeg 刻み」の固定格子へ乗せる。
            以前は facingAz を基点にしていたため、わずかに振り向くだけで全列の方位がずれ、
-           normalCachedWaterAt / coarseWaterBandIsTaggedInland のメモが毎コマ全滅していた。
+           normalCachedWaterAt のメモが毎コマ全滅していた。
            格子に乗せると、パン中もほとんどの列が前のコマと同じ方位になって使い回せる。
            添字から方位を作るのは、加算を繰り返して誤差がたまるのを避けるため。 */
         const rawStartAz=s.facingAz-halfSpan-stepDeg,endAz=s.facingAz+halfSpan+stepDeg;
@@ -23870,33 +23814,53 @@ function drawPhoto(ctx,s){
             const azRight=Math.min(endAz,azLeft+stepDeg);
             const bands=azimuthVisibleBands((azLeft+azRight)/2,bottomAlt,false,true);
             if(!bands)continue;
+            /* 【v831】内水面の帯も必ず作る。これが「どこまで見えているか」の正になる。
+               v826はここで内水面を読み飛ばしていたが、その判定（coarseWaterBandIsTaggedInland）は
+               細い川を内水面と断定できず素通りさせるため、川が階段状のまま残っていた。
+               いまは帯を型紙として使い、見える形は輪郭ポリゴンが決める。
+               【v824】内水面（湖・川・池）もこの水面マスクへ入れる。
+               v791以降は内水面を除外し、輪郭ポリゴンの直接投影だけに任せていたが、
+               **湖の中に立つと輪郭が観測者を取り囲むため、投影が成立せずマスクが空になる。**
+               その結果、反射が最後の destination-in で全部消え、湖が「ただの平らな面」になっていた
+               （精進湖の湖上で確認）。
+               帯は遮蔽込みで作られているので、山の向こうの水がマスクへ入ることもない。
+
+               【v831】ただし1枚ずつ塗ってはいけない。
+               帯は10km以内493段の距離刻みで返ってくるので、精進湖のような広い水面では
+               約200列×493段＝約10万枚になり、ここだけで1コマ600msを超えた（実測）。
+               高度がつながっている帯はひとつながりの水面なので、まとめてから塗る。
+               色は距離ごとの霞を残したいので、ひとつながりを最大8枚までに割る。 */
+            const waterRuns=[];
+            let waterRun=null;
             for(const band of bands){
-              if(!band.water||!(band.hi>band.lo))continue;
-              /* 【v826】内水面は輪郭ポリゴンの直接投影（滑らかな岸）に任せる。
-                 帯の階段が滑らかな岸へ混ざらないようにするため、通常はここで読み飛ばす。
-                 ただし観測地点が水の上にいるときだけは、輪郭が自分を取り囲んで投影が
-                 成立しないため、この帯のマスクを使う。 */
-              if(!realTerrainState.observerWaterNearby&&
-                 coarseWaterBandIsTaggedInland((azLeft+azRight)/2,band.distanceKm))continue;
-              /* 【v824】内水面（湖・川・池）もこの水面マスクへ入れる。
-                 v791以降は内水面を除外し、輪郭ポリゴンの直接投影だけに任せていたが、
-                 **湖の中に立つと輪郭が観測者を取り囲むため、投影が成立せずマスクが空になる。**
-                 その結果、反射が最後の destination-in で全部消え、湖が「ただの平らな面」になっていた
-                 （精進湖の湖上で確認。反射は runs=1 で描かれているのに画面に残らない）。
-                 帯は遮蔽込みで作られているので、山の向こうの水がマスクへ入ることもない。 */
-              const p0=toXY(azLeft,band.lo),p1=toXY(azLeft,band.hi);
-              const p2=toXY(azRight,band.hi),p3=toXY(azRight,band.lo);
-              if(!p0||!p1||!p2||!p3)continue;
-              const path=new Path2D();path.moveTo(p0[0],p0[1]);path.lineTo(p1[0],p1[1]);
-              path.lineTo(p2[0],p2[1]);path.lineTo(p3[0],p3[1]);path.closePath();
-              const meanAlt=(band.lo+band.hi)*.5;
-              segments.push({path,distanceKm:band.distanceKm,alt:meanAlt});
-              if(targetContext){targetContext.fill(path);targetContext.stroke(path);}
-              if(colorContext){
-                const color=`rgb(${rayBandColor(true,band.distanceKm,meanAlt).join(",")})`;
-                colorContext.fillStyle=color;colorContext.strokeStyle=color;colorContext.fill(path);colorContext.stroke(path);
+              if(!band.water||!(band.hi>band.lo)){waterRun=null;continue;}
+              if(waterRun&&band.lo<=waterRun.hi+1e-3){waterRun.push(band);waterRun.hi=Math.max(waterRun.hi,band.hi);}
+              else{waterRun=[band];waterRun.hi=band.hi;waterRuns.push(waterRun);}
+            }
+            for(const run of waterRuns){
+              const groups=Math.min(BAND_MERGE_MAX_SLICES,run.length),per=run.length/groups;
+              for(let gi=0;gi<groups;gi++){
+                const from=Math.floor(gi*per);
+                const to=Math.max(from,Math.min(run.length-1,Math.floor((gi+1)*per)-1));
+                const lo=run[from].lo,hi=run[to].hi;
+                if(!(hi>lo))continue;
+                let distanceSum=0;
+                for(let i=from;i<=to;i++)distanceSum+=run[i].distanceKm;
+                const distanceKm=distanceSum/(to-from+1);
+                const p0=toXY(azLeft,lo),p1=toXY(azLeft,hi);
+                const p2=toXY(azRight,hi),p3=toXY(azRight,lo);
+                if(!p0||!p1||!p2||!p3)continue;
+                const path=new Path2D();path.moveTo(p0[0],p0[1]);path.lineTo(p1[0],p1[1]);
+                path.lineTo(p2[0],p2[1]);path.lineTo(p3[0],p3[1]);path.closePath();
+                const meanAlt=(lo+hi)*.5;
+                segments.push({path,distanceKm,alt:meanAlt});
+                if(targetContext){targetContext.fill(path);targetContext.stroke(path);}
+                if(colorContext){
+                  const color=`rgb(${rayBandColor(true,distanceKm,meanAlt).join(",")})`;
+                  colorContext.fillStyle=color;colorContext.strokeStyle=color;colorContext.fill(path);colorContext.stroke(path);
+                }
+                painted++;
               }
-              painted++;
             }
           }
           if(targetContext)targetContext.restore();
@@ -24634,36 +24598,91 @@ function drawPhoto(ctx,s){
                 /* 海が画角にない内陸地点でも、直接投影する川・池・湖を必ず実行する。 */
                 drawNormalFineWaterMaskOnly(fineContext,colorContext);
                 {
-                  /* 川・池・湖は輪郭ポリゴンを直接投影した形状そのものを最終マスクにする。
-                     従来の距離走査による可視範囲では切り抜かない。海は別経路のまま。 */
+                  /* 【v831】水面は「形」と「前後関係」を別々の担当から取り、ここで重ねる。
+                       形     … 輪郭ポリゴンの直接投影（滑らか・前後関係を持たない）
+                       前後関係 … 距離走査で作った帯マスク（階段状・手前の山に隠れる分が除いてある）
+
+                       A ＝ ポリゴン ∩ 太らせた帯   … 見えている内水面（滑らか）
+                       B ＝ 帯 − 太らせたA         … ポリゴンが無い水域（海など）はそのまま
+                       最終マスク ＝ A ∪ B
+
+                     湖の上に立って輪郭が観測者を取り囲む場面ではAが空になり、
+                     B＝帯そのものへ自動的に退避する（v824の「反射が全部消える」を構造で回避）。 */
+                  /* 帯でポリゴンを切り抜くときの余裕。輪郭とDEMの数mのずれを吸収する。 */
+                  const growPx=clamp(Math.round(H/150),3,12);
+
                   const inlandMask=drawPhoto._directInlandMaskCanvas||(drawPhoto._directInlandMaskCanvas=document.createElement("canvas"));
                   if(inlandMask.width!==W||inlandMask.height!==H){inlandMask.width=W;inlandMask.height=H;}
                   const inlandMaskContext=inlandMask.getContext("2d");
+                  inlandMaskContext.setTransform(1,0,0,1,0,0);
+                  inlandMaskContext.globalCompositeOperation="source-over";
                   inlandMaskContext.clearRect(0,0,W,H);
-                  /* 【v829】輪郭ポリゴンに「色」も塗らせる。
-                     v826で帯パスが内水面を読み飛ばすようになった（階段状の岸を消すため）のに、
-                     ここが colorContext=null のままだったので、
-                     **通常表示で内水面に水色を塗る経路がどこにも無くなっていた**。
-                     地形の帯は normalSeparateWaterColorPass で水域を陸の色に塗るので、
-                     湖が緑のまま残り「後から陸が被さった」ように見えていた（精進湖で確認）。
-                     投影は滑らかなので、v822の岸のなめらかさは保たれる。 */
-                  if(drawDirectInlandVectorWater(inlandMaskContext,colorContext)){
+                  const inlandColor=drawPhoto._directInlandColorCanvas||(drawPhoto._directInlandColorCanvas=document.createElement("canvas"));
+                  if(inlandColor.width!==W||inlandColor.height!==H){inlandColor.width=W;inlandColor.height=H;}
+                  const inlandColorContext=inlandColor.getContext("2d");
+                  inlandColorContext.setTransform(1,0,0,1,0,0);
+                  inlandColorContext.globalCompositeOperation="source-over";
+                  inlandColorContext.clearRect(0,0,W,H);
+                  if(drawDirectInlandVectorWater(inlandMaskContext,inlandColorContext)){
+                    /* A: 見えている帯で輪郭ポリゴンを切り抜く。 */
+                    inlandMaskContext.save();
+                    inlandMaskContext.globalCompositeOperation="destination-in";
+                    inlandMaskContext.drawImage(grownWaterMask(fineMask,growPx),0,0,W,H);
+                    inlandMaskContext.restore();
+                    /* 【v835】B: ポリゴンがある列では、水際はポリゴンだけが決める。
+                       Aより画面下（＝手前）の帯を丸ごと取り除く。
+                       v831〜v834は「Aを太らせた分」だけを取り除いていたため、
+                       その幅がそのまま最終マスクの穴になり、水際に緑の線が残っていた。
+
+                       ただし観測者が水の上にいるときは掛けない。
+                       足元の水を受け持つ形状が1つも無いので、遠くの水域のAが
+                       足元の水まで消してしまい、湖上で緑の柱が立つ（実測）。 */
+                    if(!directInlandWaterGeometry().observerInsideRing){
+                      fineContext.save();
+                      fineContext.globalCompositeOperation="destination-out";
+                      fineContext.drawImage(smearedDownMask(inlandMask,growPx),0,0,W,H);
+                      fineContext.restore();
+                    }
                     fineContext.drawImage(inlandMask,0,0);
+                    /* 色は帯（距離ごとの霞つき）を上に、ポリゴンの平らな色を下に敷く。
+                       最後に最終マスクで抜くので、見える形はマスクだけが決める。 */
+                    colorContext.save();
+                    colorContext.globalCompositeOperation="destination-over";
+                    colorContext.drawImage(inlandColor,0,0);
+                    colorContext.restore();
                   }
+                  colorContext.save();
+                  colorContext.globalCompositeOperation="destination-in";
+                  colorContext.drawImage(fineMask,0,0);
+                  colorContext.restore();
                   tctx.drawImage(colorLayer,0,0);
                   renderWaterMaskContext.clearRect(0,0,W,H);
                   renderWaterMaskContext.drawImage(fineMask,0,0);
                   redrawStoredBridgeOverlay(tctx,terrainDayFactor);
                 }
               }else{
-                /* 昼用は海の通常色だけを再利用する。川・湖・池はリフレのみ。 */
+                /* 【v831】昼用は夜側で完成した最終マスクをそのまま使い、色だけ塗り直す。 */
                 const colorLayer=drawPhoto._inlandVectorWaterColorCanvas;
+                const finalMask=drawPhoto._normalFineWaterMaskCanvas;
+                const inlandColor=drawPhoto._directInlandColorCanvas;
                 if(colorLayer){
-                  const colorContext=colorLayer.getContext("2d");colorContext.clearRect(0,0,W,H);
+                  const colorContext=colorLayer.getContext("2d");
+                  colorContext.setTransform(1,0,0,1,0,0);
+                  colorContext.globalCompositeOperation="source-over";
+                  colorContext.clearRect(0,0,W,H);
                   drawNormalFineWaterMaskOnly(null,colorContext);
-                  /* 【v829】昼用の再利用パスも海の色しか塗り直していなかった。
-                     川・池・湖も同じ輪郭ポリゴンで塗り直す。 */
-                  drawDirectInlandVectorWater(null,colorContext);
+                  if(inlandColor&&inlandColor.width===W&&inlandColor.height===H){
+                    colorContext.save();
+                    colorContext.globalCompositeOperation="destination-over";
+                    colorContext.drawImage(inlandColor,0,0);
+                    colorContext.restore();
+                  }
+                  if(finalMask&&finalMask.width===W&&finalMask.height===H){
+                    colorContext.save();
+                    colorContext.globalCompositeOperation="destination-in";
+                    colorContext.drawImage(finalMask,0,0);
+                    colorContext.restore();
+                  }
                   tctx.drawImage(colorLayer,0,0);
                 }
                 redrawStoredBridgeOverlay(tctx,terrainDayFactor);
@@ -25000,7 +25019,7 @@ function drawPhoto(ctx,s){
         }
       }
       // 深度メッシュが成立している場合は、近距離メッシュ自身が持つ複数距離点の
-      // 地表形状をそのまま最終形とする。旧drawForegroundFooting()は方位ごとの最短1点を
+      // 地表形状をそのまま最終形とする。旧drawForegroundFooting()（v834で削除）は方位ごとの最短1点を
       // 画面下まで延長していたため、水際で左右に巨大な台形・柱状の陸を作り、
       // その下にある本来の足元メッシュを覆っていた。
       // メッシュ不成立時のフォールバックは直前のif(!meshDrawn)側に残しているため、
