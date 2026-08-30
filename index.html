@@ -5181,7 +5181,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="842-map-label-holes";
+const APP_VERSION="843-bridge-distance-fade";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14283,56 +14283,12 @@ function worldMapLevelMap(z){
   if(!level){ level=new Map(); worldMapLevels.set(z,level); }
   return level;
 }
-/* 【v842】淡色地図には地名の注記（文字）が描かれている。
-   文字の画素は水色ではないので、そのままだと「陸」と判定され、
-   湖の上に文字の形をした陸が浮かぶ（精進湖の「精進湖」「富士五湖」で確認）。
-   等高線・境界線・橋の線も同じ理由で水に穴を開ける。
-
-   **水に完全に囲まれた小さな塊だけ**を注記とみなして埋める。
-   タイルの縁につながる非水域は隣のタイルへ続く本物の陸なので、大きさに関わらず残す。
-   岬や半島は必ず陸につながっているため埋まらない。
-   湖の中の本物の島も、外接する箱が上限を超えていれば残る。
-   （最初は「細い連なりを埋める」方式にしたが、横に長い画線が残った。実際に見て作り直した）
-   タイルを読み込んだ直後に1回だけ通すので、描画時間は増えない。 */
-function worldMapFillLabelHoles(out,maxBox){
-  const N=256,size=N*N,visited=new Uint8Array(size),stack=new Int32Array(size),comp=new Int32Array(size);
-  let sp=0;
-  const push=i=>{if(!visited[i]&&out[i]!==1){visited[i]=1;stack[sp++]=i;}};
-  /* 1) タイルの縁につながる非水域に印をつける。これは隣のタイルへ続く本物の陸。 */
-  for(let x=0;x<N;x++){push(x);push((N-1)*N+x);}
-  for(let y=0;y<N;y++){push(y*N);push(y*N+N-1);}
-  while(sp>0){
-    const i=stack[--sp],x=i%N,y=(i/N)|0;
-    if(x>0)push(i-1);if(x<N-1)push(i+1);
-    if(y>0)push(i-N);if(y<N-1)push(i+N);
-  }
-  /* 2) 残った非水域＝水に完全に囲まれた塊。小さいものだけを注記とみなして埋める。 */
-  for(let start=0;start<size;start++){
-    if(out[start]===1||visited[start])continue;
-    let count=0,minX=N,maxX=-1,minY=N,maxY=-1;
-    sp=0;stack[sp++]=start;visited[start]=1;
-    while(sp>0){
-      const i=stack[--sp];comp[count++]=i;
-      const x=i%N,y=(i/N)|0;
-      if(x<minX)minX=x;if(x>maxX)maxX=x;
-      if(y<minY)minY=y;if(y>maxY)maxY=y;
-      if(x>0)push(i-1);if(x<N-1)push(i+1);
-      if(y>0)push(i-N);if(y<N-1)push(i+N);
-    }
-    if(maxX-minX+1<=maxBox&&maxY-minY+1<=maxBox)for(let k=0;k<count;k++)out[comp[k]]=1;
-  }
-  return out;
-}
-function worldMapDecodeTile(pixels,z){
+function worldMapDecodeTile(pixels){
   const out=new Uint8Array(256*256),d=pixels.data||pixels;
   for(let i=0,q=0;i<out.length;i++,q+=4){
     if(Math.abs(d[q]-190)<=6&&Math.abs(d[q+1]-210)<=6&&Math.abs(d[q+2]-255)<=6) out[i]=1;
   }
-  /* 埋める塊の大きさの上限。手前ほど文字が大きく写るので大きめに、
-     遠景は1画素の実距離が大きいので小さめにして、本物の島を残す。
-     z17は約1m/pxなので56px＝約56m四方まで。 */
-  const maxBox=z>=16?56:(z>=14?32:16);
-  return worldMapFillLabelHoles(out,maxBox);
+  return out;
 }
 function worldMapRequestTile(z,x,y){
   const level=worldMapLevelMap(z),key=worldTileKey(x,y);
@@ -14342,7 +14298,7 @@ function worldMapRequestTile(z,x,y){
   fetch(`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,{mode:"cors",cache:"force-cache"})
     .then(r=>{ if(!r.ok) throw new Error(`map ${r.status}`); return r.blob(); })
     .then(imageBlobToPixels)
-    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels,z):null);worldMapMemo.delete(z);worldMapTiles++; })
+    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels):null);worldMapMemo.delete(z);worldMapTiles++; })
     .catch(()=>{ level.set(key,null); })
     .finally(()=>{
       worldMapPending--;
@@ -18729,6 +18685,16 @@ function drawRealMilkyWay(ctx,s,toXY,W,H,vis){
 
 /* 星座・惑星・恒星・太陽・月の名称クリック検出用の領域(このフレームの描画内容に合わせて毎回作り直す) */
 let photoClickRegions=[];
+/* 【v843】橋の距離による濃さ。**必ずここ1か所を使うこと。**
+   橋は3か所で塗られる。
+     1. 地形レイヤー（bridgeFadeOfBucket）
+     2. 反射のあとの描き戻し（restoreBridgeForegroundAboveWater）… 水の上の橋はこちら
+     3. 昼夜の再描画（redrawStoredBridgeOverlay）
+   以前は3か所とも同じ式をベタ書きしていたため、1か所だけ直しても薄くならなかった（実際に踏んだ）。
+   道路・線路と同じ曲線。1.5kmまで100%、5kmで11%まで落ちる。 */
+function bridgeDistanceFade(index,buckets){
+  return Math.min(1,1.3*Math.pow(1-(index+.5)/buckets,.8));
+}
 function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
@@ -23105,9 +23071,13 @@ function drawPhoto(ctx,s){
         const activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
         const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
-        /* v776: 橋は遠景でも撮影構図の目印になるため、5km内では一定以下に薄くしない。
-           地形に隠れる判定は残すので、山越しの橋まで透けて見えることはない。 */
-        const bridgeFadeOfBucket=index=>Math.max(.64,Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8)));
+        /* 【v843】橋も道路・線路と同じ曲線で薄くする。
+           v776は「遠景でも撮影構図の目印になる」として下限0.64で止めていたが、
+           そのぶん5kmの切れ目で**突然消える**ことになっていた。
+           下限を外すと 1.5kmまで100%のまま、そこから少しずつ薄くなり、
+           5kmでは11%まで落ちて切れ目が見えなくなる。手前の橋の見え方は変わらない。
+           地形に隠れる判定は従来どおりなので、山越しの橋が透けることはない。 */
+        const bridgeFadeOfBucket=index=>bridgeDistanceFade(index,FADE_BUCKETS);
 
         if(gridPaths){
           /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
@@ -23790,7 +23760,7 @@ function drawPhoto(ctx,s){
         const markRGB=mixRGB([198,194,180],[178,166,132],dayFactor);
         const bridgeSurfaceBaseAlpha=lerp(.82,.97,dayFactor);
         for(let i=0;i<overlay.buckets;i++){
-          const fade=Math.max(.64,Math.min(1,1.3*Math.pow(1-(i+.5)/overlay.buckets,.8)));
+          const fade=bridgeDistanceFade(i,overlay.buckets);
           const alpha=bridgeSurfaceBaseAlpha*fade;
           restoreCtx.fillStyle=`rgba(${pierShadeRGB.join(",")},${(alpha*.92).toFixed(3)})`;restoreCtx.fill(overlay.pierShade[i]);
           restoreCtx.fillStyle=`rgba(${pierRGB.join(",")},${(alpha*.96).toFixed(3)})`;restoreCtx.fill(overlay.pier[i]);
@@ -23820,7 +23790,7 @@ function drawPhoto(ctx,s){
         const markRGB=mixRGB([198,194,180],[178,166,132],factor),baseAlpha=lerp(.82,.97,factor);
         targetContext.save();targetContext.lineJoin="round";targetContext.lineCap="round";
         for(let i=0;i<overlay.buckets;i++){
-          const fade=Math.max(.64,Math.min(1,1.3*Math.pow(1-(i+.5)/overlay.buckets,.8))),alpha=baseAlpha*fade;
+          const fade=bridgeDistanceFade(i,overlay.buckets),alpha=baseAlpha*fade;
           targetContext.fillStyle=`rgba(${pierShadeRGB.join(",")},${(alpha*.92).toFixed(3)})`;targetContext.fill(overlay.pierShade[i]);
           targetContext.fillStyle=`rgba(${pierRGB.join(",")},${(alpha*.96).toFixed(3)})`;targetContext.fill(overlay.pier[i]);
           targetContext.strokeStyle=`rgba(${pierEdgeRGB.join(",")},${(alpha*.58).toFixed(3)})`;targetContext.lineWidth=Math.max(.7,1.05*fade);targetContext.stroke(overlay.pierEdge[i]);
