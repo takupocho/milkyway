@@ -4242,8 +4242,11 @@
           <div class="kmz-building-panel">
             <input id="kmzBuildingInput" class="kmz-building-file" type="file" accept=".kmz,application/vnd.google-earth.kmz">
             <button id="kmzBuildingSelectBtn" type="button" class="toggle-btn"><span>🏰 KMZファイルを読み込む</span><span>選択</span></button>
-            <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込み、建物のシルエットとして配置します。</div>
+            <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込んで配置します。既定は色付き。「シルエットで描く」をONにすると黒い影絵になります。</div>
             <button id="kmzBuildingVisibleBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>建物を表示する</span><span id="kmzBuildingVisibleState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+            <button id="kmzBuildingSilhouetteBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🖤 シルエットで描く</span><span id="kmzBuildingSilhouetteState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+            <button id="kmzBuildingGlowBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>✨ 自ら光る（花火・イルミ）</span><span id="kmzBuildingGlowState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+            <p class="map-hint" style="margin-top:6px;">「自ら光る」をONにすると、昼夜の暗転も太陽の陰影も掛けずに、そのままの色で加算合成します。夜でも明るいままです。強さは下の「建物の濃さ」で調整します。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
               <input id="kmzBuildingCoordinatePaste" type="text" inputmode="decimal" placeholder="例：34.849123, 134.693456">
@@ -4252,6 +4255,23 @@
             <div class="row2" style="margin-top:8px;">
               <div class="field"><label class="top">建物の緯度</label><input id="kmzBuildingLat" type="number" step="0.000001" value="35.000000"></div>
               <div class="field"><label class="top">建物の経度</label><input id="kmzBuildingLon" type="number" step="0.000001" value="135.000000"></div>
+            </div>
+            <div class="field" style="margin-top:8px;">
+              <label class="top">置き場所の微調整（カメラの向き基準） <span class="val mono" id="kmzBuildingNudgeVal">ずれ 0m</span></label>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                <button id="kmzBuildingNudgeStepBtn" type="button" class="ghost" style="flex:0 0 62px;">1m</button>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;flex:1;">
+                  <span></span>
+                  <button id="kmzBuildingNudgeFwdBtn" type="button" class="ghost">▲ 奥</button>
+                  <span></span>
+                  <button id="kmzBuildingNudgeLeftBtn" type="button" class="ghost">◀ 左</button>
+                  <button id="kmzBuildingNudgeResetBtn" type="button" class="ghost">戻す</button>
+                  <button id="kmzBuildingNudgeRightBtn" type="button" class="ghost">右 ▶</button>
+                  <span></span>
+                  <button id="kmzBuildingNudgeBackBtn" type="button" class="ghost">▼ 手前</button>
+                  <span></span>
+                </div>
+              </div>
             </div>
             <div class="row2">
               <div class="field"><label class="top">基部の標高（m）</label><input id="kmzBuildingAltitude" type="number" step="0.1" value="0"></div>
@@ -4262,7 +4282,7 @@
               <input id="kmzBuildingScale" type="range" min="0.1" max="20" step="0.1" value="1">
             </div>
             <div class="field">
-              <label class="top">シルエットの濃さ <span class="val mono" id="kmzBuildingOpacityVal">100%</span></label>
+              <label class="top">建物の濃さ <span class="val mono" id="kmzBuildingOpacityVal">100%</span></label>
               <input id="kmzBuildingOpacity" type="range" min="10" max="100" step="5" value="100">
             </div>
             <div class="kmz-building-actions">
@@ -5181,7 +5201,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="843-bridge-distance-fade";
+const APP_VERSION="854-kmz-nudge";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6294,6 +6314,12 @@ const el={
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
   kmzBuildingInput:$("kmzBuildingInput"), kmzBuildingSelectBtn:$("kmzBuildingSelectBtn"), kmzBuildingStatus:$("kmzBuildingStatus"),
   kmzBuildingVisibleBtn:$("kmzBuildingVisibleBtn"), kmzBuildingVisibleState:$("kmzBuildingVisibleState"),
+  kmzBuildingSilhouetteBtn:$("kmzBuildingSilhouetteBtn"), kmzBuildingSilhouetteState:$("kmzBuildingSilhouetteState"),
+  kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
+  kmzBuildingNudgeVal:$("kmzBuildingNudgeVal"), kmzBuildingNudgeStepBtn:$("kmzBuildingNudgeStepBtn"),
+  kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
+  kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
+  kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"),
   kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
@@ -6346,6 +6372,12 @@ populateSelect(el.lp, LP_LEVELS, l=>l.name);
 // KMZ操作画面の初期化より前に状態を用意する。宣言前アクセスによる起動停止を防ぐ。
 let kmzBuildingModel=null;
 let kmzBuildingVisible=true;
+/* 【v851】既定はOFF＝色付きで描く。ONにすると今までどおりの黒いシルエット。 */
+let kmzBuildingSilhouette=false;
+/* 【v852】自ら光るもの（花火・イルミネーション）用。
+   昼夜の暗転も太陽の陰影も掛けず、そのままの色で加算合成する。
+   シルエットより優先する（両方ONなら発光）。 */
+let kmzBuildingGlow=false;
 let kmzBuildingKmlLocation=null;
 let kmzBuildingSourceDataUrl="";
 let kmzBuildingRestoreToken=0;
@@ -6356,6 +6388,9 @@ function setKmzBuildingStatus(message,type=""){
 }
 function refreshKmzBuildingControls(redraw=true){
   el.kmzBuildingVisibleBtn.classList.toggle("active",kmzBuildingVisible);el.kmzBuildingVisibleState.textContent=kmzBuildingVisible?"ON":"OFF";
+  el.kmzBuildingSilhouetteBtn.classList.toggle("active",kmzBuildingSilhouette);el.kmzBuildingSilhouetteState.textContent=kmzBuildingSilhouette?"ON":"OFF";
+  el.kmzBuildingGlowBtn.classList.toggle("active",kmzBuildingGlow);el.kmzBuildingGlowState.textContent=kmzBuildingGlow?"ON":"OFF";
+  if(el.kmzBuildingNudgeStepBtn){el.kmzBuildingNudgeStepBtn.textContent=`${kmzNudgeStepM}m`;el.kmzBuildingNudgeVal.textContent=kmzNudgeLabel();}
   el.kmzBuildingScaleVal.textContent=`${(+el.kmzBuildingScale.value||1).toFixed(2)}倍`;el.kmzBuildingOpacityVal.textContent=`${Math.round(+el.kmzBuildingOpacity.value||100)}%`;
   if(redraw&&typeof update==="function")update();
 }
@@ -6394,6 +6429,57 @@ el.kmzBuildingInput.addEventListener("change",async()=>{
   }catch(error){kmzBuildingModel=null;setKmzBuildingStatus(`読み込み失敗：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();}
 });
 el.kmzBuildingVisibleBtn.addEventListener("click",()=>{kmzBuildingVisible=!kmzBuildingVisible;refreshKmzBuildingControls();});
+el.kmzBuildingSilhouetteBtn.addEventListener("click",()=>{kmzBuildingSilhouette=!kmzBuildingSilhouette;refreshKmzBuildingControls();});
+el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuildingGlow;refreshKmzBuildingControls();});
+
+/* 【v854】KMZの置き場所を前後左右へ動かす。
+
+   **向きはカメラ基準**。画面を見ながら「もう少し右」と押せるようにするため。
+   向きの決め方は観測地点を動かす `stepObserver` とまったく同じにしてある。
+   ここを揃えないと、同じ「右」でも観測地点とKMZで動く向きが食い違う。
+
+   押した合計を覚えて「ずれ」として出す。どれだけ動かしたか分からないと戻せないため。
+   上限は設けない（1m刻みで押せるなら、上限は詰まる場面を作るだけ）。 */
+let kmzNudgeStepM=1;
+let kmzNudgeForwardTotal=0,kmzNudgeRightTotal=0;
+function kmzNudgeLabel(){
+  const f=Math.round(kmzNudgeForwardTotal),r=Math.round(kmzNudgeRightTotal);
+  if(!f&&!r)return "ずれ 0m";
+  const parts=[];
+  if(f)parts.push(`${f>0?"奥":"手前"}${Math.abs(f)}m`);
+  if(r)parts.push(`${r>0?"右":"左"}${Math.abs(r)}m`);
+  return `ずれ ${parts.join(" ")}`;
+}
+function nudgeKmzBuilding(forwardM,strafeM){
+  const lat=+el.kmzBuildingLat.value,lon=+el.kmzBuildingLon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const az=state?state.facingAz:+el.facingAz.value;
+  const sinAz=sin(az),cosAz=cos(az);
+  // 前方向=(sin,cos)、右方向はそれを90度回した(cos,-sin)。stepObserver と同じ。
+  const eastM=forwardM*sinAz+strafeM*cosAz;
+  const northM=forwardM*cosAz-strafeM*sinAz;
+  const metrePerDegLon=Math.max(1,111320*Math.cos(lat*D2R));
+  el.kmzBuildingLat.value=(lat+northM/111320).toFixed(6);
+  el.kmzBuildingLon.value=(lon+eastM/metrePerDegLon).toFixed(6);
+  kmzNudgeForwardTotal+=forwardM;kmzNudgeRightTotal+=strafeM;
+  refreshKmzBuildingControls();
+}
+el.kmzBuildingNudgeStepBtn.addEventListener("click",()=>{
+  kmzNudgeStepM=kmzNudgeStepM===1?5:1;refreshKmzBuildingControls();
+});
+el.kmzBuildingNudgeFwdBtn.addEventListener("click",()=>nudgeKmzBuilding(kmzNudgeStepM,0));
+el.kmzBuildingNudgeBackBtn.addEventListener("click",()=>nudgeKmzBuilding(-kmzNudgeStepM,0));
+el.kmzBuildingNudgeRightBtn.addEventListener("click",()=>nudgeKmzBuilding(0,kmzNudgeStepM));
+el.kmzBuildingNudgeLeftBtn.addEventListener("click",()=>nudgeKmzBuilding(0,-kmzNudgeStepM));
+el.kmzBuildingNudgeResetBtn.addEventListener("click",()=>{
+  /* 押した合計をそのまま打ち消す。押した時と今とで方位が違っても、
+     一回ずつ逆向きに戻すのではなく合計を反対向きに1回で戻す。 */
+  const f=kmzNudgeForwardTotal,r=kmzNudgeRightTotal;
+  if(!f&&!r)return;
+  nudgeKmzBuilding(-f,-r);
+  kmzNudgeForwardTotal=0;kmzNudgeRightTotal=0;
+  refreshKmzBuildingControls();
+});
 function applyKmzPastedCoordinate(){
   const text=String(el.kmzBuildingCoordinatePaste.value||"").trim();
   // Googleマップの右クリックでコピーされる「緯度, 経度」を基本とし、全角記号や余分な文字も許容する。
@@ -6416,7 +6502,7 @@ el.kmzBuildingUseKmlBtn.addEventListener("click",()=>{
   el.kmzBuildingLat.value=kmzBuildingKmlLocation.lat.toFixed(6);el.kmzBuildingLon.value=kmzBuildingKmlLocation.lon.toFixed(6);
   el.kmzBuildingAltitude.value=Number.isFinite(kmzBuildingKmlLocation.altitude)?kmzBuildingKmlLocation.altitude:0;el.kmzBuildingHeading.value=Number.isFinite(kmzBuildingKmlLocation.heading)?kmzBuildingKmlLocation.heading:0;refreshKmzBuildingControls();
 });
-el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzBuildingRestoreToken++;kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";setKmzBuildingStatus("建物を削除しました。別のKMZを読み込めます。");refreshKmzBuildingControls();});
+el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzNudgeForwardTotal=0;kmzNudgeRightTotal=0;kmzBuildingRestoreToken++;kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";setKmzBuildingStatus("建物を削除しました。別のKMZを読み込めます。");refreshKmzBuildingControls();});
 refreshKmzBuildingControls(false);
 
 /* 時刻スライダーの表示モード。
@@ -12298,7 +12384,8 @@ function captureKmzBuildingForPlan(){
   const cfg=currentKmzBuildingSettings();
   return {
     version:1,fileName:kmzBuildingModel.fileName||"building.kmz",sourceDataUrl:kmzBuildingSourceDataUrl,
-    lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,heading:cfg.heading,scale:cfg.scale,opacity:cfg.opacity,visible:kmzBuildingVisible
+    lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,heading:cfg.heading,scale:cfg.scale,opacity:cfg.opacity,visible:kmzBuildingVisible,
+    silhouette:kmzBuildingSilhouette,glow:kmzBuildingGlow
   };
 }
 async function restoreKmzBuildingFromPlan(saved){
@@ -12320,6 +12407,8 @@ async function restoreKmzBuildingFromPlan(saved){
     if(Number.isFinite(+saved.scale))el.kmzBuildingScale.value=clamp(+saved.scale,+el.kmzBuildingScale.min,+el.kmzBuildingScale.max);
     if(Number.isFinite(+saved.opacity))el.kmzBuildingOpacity.value=clamp(Math.round(+saved.opacity*100),+el.kmzBuildingOpacity.min,+el.kmzBuildingOpacity.max);
     kmzBuildingVisible=saved.visible!==false;
+    kmzBuildingSilhouette=saved.silhouette===true;   // 【v851】古い保存には無いので既定OFF
+    kmzBuildingGlow=saved.glow===true;                // 【v852】同上
     setKmzBuildingStatus(`${saved.fileName||"KMZ建物"} を撮影計画から復元しました。`,"ready");refreshKmzBuildingControls();return true;
   }catch(error){
     if(token!==kmzBuildingRestoreToken)return false;
@@ -15133,7 +15222,8 @@ function normalCachedWaterAt(azDeg,distanceKm){
   const observerLat=+el.lat.value,observerLon=+el.lon.value;
   if(!Number.isFinite(observerLat)||!Number.isFinite(observerLon))return null;
   const rings=realTerrainState&&realTerrainState._osmWaterRings;
-  const signature=`${observerLat.toFixed(5)},${observerLon.toFixed(5)}|${worldMapTiles}`;
+  const signature=`${observerLat.toFixed(5)},${observerLon.toFixed(5)}|${worldMapTiles}|`+
+    `${realTerrainState&&realTerrainState._osmWaterRingsRadiusKm}`;   // 【v850】範囲が広がったら作り直す
   if(normalFineWaterMemo.signature!==signature||normalFineWaterMemo.rings!==rings){
     normalFineWaterMemo={signature,rings,values:new Map()};
   }
@@ -15147,7 +15237,22 @@ function normalCachedWaterAt(azDeg,distanceKm){
   const mapWater=worldMapWaterForDistance(coordinate[0],coordinate[1],distanceKm*1000);
   let result=null;
   if(mapWater!==null)result={lat:coordinate[0],lon:coordinate[1],water:mapWater};
-  else if(Array.isArray(rings)&&rings.length)result={lat:coordinate[0],lon:coordinate[1],water:pointInWaterRings(coordinate[0],coordinate[1],rings)};
+  /* 【v850】リングは「取れた範囲の中だけ」信じる。
+
+     ここは以前、リングの外側を無条件に「陸」と答えていた。
+     そのため
+       ・移動直後に前の地点のリングが残っている
+       ・手前だけ先に取った途中の状態
+     のどちらでも、**届いていない範囲の水が全部消えて緑になった**
+     （姫路市上空139mで画面全部が緑になったのがこれ。§3-10）。
+
+     範囲の外は null（判定材料なし）を返す。呼び出し側は帯マスクの
+     DEM判定へ落ちるので、粗いが正しい水がちゃんと出る。 */
+  else if(Array.isArray(rings)&&rings.length){
+    const ringRadiusKm=realTerrainState&&realTerrainState._osmWaterRingsRadiusKm;
+    if(!Number.isFinite(ringRadiusKm)||distanceKm<=ringRadiusKm)
+      result={lat:coordinate[0],lon:coordinate[1],water:pointInWaterRings(coordinate[0],coordinate[1],rings)};
+  }
   normalFineWaterMemo.values.set(memoKey,result);
   if(normalFineWaterMemo.values.size>180000)normalFineWaterMemo.values.clear();
   return result;
@@ -17648,6 +17753,43 @@ async function buildRealTerrainProfile(lat,lon,token){
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
 // 静的ベクトルタイルの取得には数秒かかることがあるため、地形本体の描画は待たずに行い、
 // 取得でき次第、水面らしさをその距離帯・方位だけ底上げして再描画する(取得できなくても標高ベースの結果は残る)。
+/* 【v847】地点を移すときに、前の地点の水域まわりの状態を白紙へ戻す。
+
+   地点を移す3か所はどれも
+
+     Object.assign(realTerrainState,{key,...,...result});
+
+   としているが、`result` は新しい地点の素の地形なので `_osm*` を1つも持たない。
+   `Object.assign` は**無いキーを消さない**ため、前の地点の
+   `_osmWaterRings`・`_osmRefinePending`・`_osmRefineStatus` などが生き残る。
+
+   そのあと `normalCachedWaterAt` が古いリングを信じ、
+   新しい地点のどの点も「輪の外＝陸」になって**水面マスクが丸ごと空になる**。
+   実測（姫路市上空139m）: リングの経度範囲が134.846〜135.044＝**三木市・17km東**、
+   観測地点2km以内の輪郭は**0個**、種別は inland 1537個で ocean が**0個**。
+   海も川も1つも描かれず画面全部が緑になった。
+   `_osmWaterRings` を外して描き直すと水がそのまま出たので、原因はこれで確定。
+
+   さらに `_osmRefinePending=true` が残ると
+   `refineTerrainWaterWithOsm` が早期returnし、新しい地点の水域を取りに行かない。
+   ランプは前の地点の「ready・1537形状」を出し続けるので気づけない。
+
+   鍵は**水域の取得単位そのもの**（緯度経度2桁＝約1.1km四方＋描画半径）にする。
+   歩いて動くときの「同じポリゴンを新しいグリッドへ当て直す」工夫は残したいので、
+   1歩ごとではなく取得し直す単位で切る。 */
+function dropStaleWaterState(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const waterKey=`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`;
+  if(realTerrainState._osmWaterKey===waterKey)return;
+  realTerrainState._osmWaterKey=waterKey;
+  realTerrainState._osmWaterRings=null;
+  realTerrainState._osmWaterRingsRadiusKm=null;   // 【v850】届く範囲も一緒に忘れる
+  realTerrainState._osmCoastlineWays=null;
+  realTerrainState._osmRefinePending=false;
+  realTerrainState._osmRefineStatus="";
+  realTerrainState._osmRefineDetail="";
+  realTerrainState._osmObserverApplied=false;
+}
 function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
   if(!resultObj) return;
   /* v802: v798以前の地形キャッシュには海/内水面分類がない。
@@ -17677,10 +17819,18 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     setExternalDataStatus("water",resultObj._osmRefineStatus==="ready"?"ready":"loading",resultObj._osmRefineDetail||"");
     return;
   }
+  /* 【v850】移動先の水域は z14 で121枚・約28MBあり、実測で47秒かかる（§3-12）。
+     その間ずっと手前の水までDEM任せの粗いままなので、**まず手前2kmだけ取って一度当てる**。
+
+     タイルは staticVectorTileCache で共有されるため、
+     1回目の9枚は2回目でそのまま使い回される。**通信は増えない。**
+     中身は1行も変えず、半径だけ替えて同じ処理を2回通す。 */
+  const fullKm=waterDrawRadiusKm();
+  const useKm=(resultObj._osmNearPassDone||!(fullKm>WATER_NEAR_FIRST_KM))?fullKm:WATER_NEAR_FIRST_KM;
   resultObj._osmRefinePending=true;
   resultObj._osmRefineStatus="loading";
   setExternalDataStatus("water","loading");
-  fetchOsmWaterRings(lat,lon,waterDrawRadiusKm()).then(async rings=>{
+  fetchOsmWaterRings(lat,lon,useKm).then(async rings=>{
     if(!rings||!resultObj.terrainLayers){
       resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
       setExternalDataStatus("water","error",waterFailureStatusDetail());
@@ -17725,6 +17875,9 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
        新しい地点のグリッドへ当て直すだけで済み、水域の再取得が要らない。 */
     resultObj._osmWaterRings=rings;
     realTerrainState._osmWaterRings=rings;
+    /* 【v850】このリングが届く範囲。これより遠くはリングで陸と決めてはいけない。 */
+    resultObj._osmWaterRingsRadiusKm=useKm;
+    realTerrainState._osmWaterRingsRadiusKm=useKm;
     // レイマーチ用グリッドも同じ規則で確定させる。水/陸の判定元を1箇所に保つ。
     [resultObj.nearSurfaceGrid,resultObj.rayGrid].forEach(grid=>{
       if(!grid) return;
@@ -17847,9 +18000,21 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       realTerrainState._renderRevision=resultObj._renderRevision;
       if(typeof update==="function") update();
     }
+    /* 【v850】手前だけの下ごしらえだったときは、ここで本番を始める。
+       **「ready」にも保存にも進まない。**
+       ここで保存すると、次に開いたとき「取得済み（手前だけ）」として読まれ、
+       遠くの水域が永久に来なくなる。 */
+    if(useKm!==fullKm){
+      resultObj._osmNearPassDone=true;
+      resultObj._osmRefinePending=false;
+      resultObj._osmObserverApplied=false;
+      setExternalDataStatus("water","loading",`手前${useKm}kmを先に反映（${rings.length}形状）`);
+      refineTerrainWaterWithOsm(lat,lon,key,resultObj);
+      return;
+    }
     resultObj._osmRefineStatus="ready";
     resultObj._waterDataSource="shortbread-v1";
-    const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`;
+    const waterCacheKey=`${lat.toFixed(2)},${lon.toFixed(2)},${fullKm}`;
     const waterSource=osmWaterCacheSources.get(waterCacheKey);
     const savedLabel=waterSource==="plan"?"・撮影計画の保存水域":(waterSource==="persistent"?"・保存済みキャッシュ":(waterSource==="static-vector"?"・OSM静的ベクトル":""));
     const coastLabel=Array.isArray(coastlineWays)&&coastlineWays.length?`・海岸線${coastlineWays.length}本`:"";
@@ -17861,6 +18026,11 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     setExternalDataStatus("water","error",waterFailureStatusDetail());
   });
 }
+/* 【v850】移動先でまず取りに行く手前の半径。
+   z14タイルで 2km四方 ≒ 9枚。実測の1枚あたり所要（中央値1.7秒）から数秒で届く。
+   本番の10km（121枚・約28MB・47秒）を待たずに手前の水が出る。
+   小さくしすぎると先行の意味が無く、大きくすると先行が遅くなる。 */
+const WATER_NEAR_FIRST_KM=2;
 /* 【v838】メモリに置く地形プロファイルの数。
      1件は rayGrid 51,120点＋nearSurfaceGrid 32,400点＝83,520点。
      **実測でJSヒープが1件あたり約15MB増える**（新しい地点を3つ作って +45.5MB）。
@@ -17887,6 +18057,7 @@ function requestRealTerrainProfile(lat,lon){
   if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
   if(cached){
+    dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
@@ -17965,6 +18136,7 @@ function requestRealTerrainProfile(lat,lon){
     }
     realTerrainProfileCache.set(key,result);
     while(realTerrainProfileCache.size>terrainProfileCacheLimit()) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
+    dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
@@ -18133,7 +18305,43 @@ function parseColladaBuilding(daeText){
   if(xml.getElementsByTagName("parsererror").length) throw new Error("DAEを解析できませんでした。");
   const asset=xmlFirstByLocalName(xml,"asset"),unitNode=asset&&xmlFirstByLocalName(asset,"unit"),unitMeter=unitNode&&Number(unitNode.getAttribute("meter"));
   const unit=Number.isFinite(unitMeter)&&unitMeter>0?unitMeter:1,upAxis=((asset&&xmlFirstByLocalName(asset,"up_axis"))?.textContent||"Y_UP").trim().toUpperCase();
-  const triangles=[];
+  /* 【v851】色を読む。いままでは座標だけを読んでいたので必ず黒一色になっていた。
+
+       <library_effects>  <effect id="E"> … <diffuse><color>r g b a</color>
+       <library_materials><material id="M"><instance_effect url="#E"/>
+       <triangles material="シンボル" …>
+       <instance_material symbol="シンボル" target="#M"/>   ← 場面側の結び付け
+
+     シンボル→マテリアル→エフェクト→diffuse色 とたどる。
+     結び付けが無いファイルもあるので、**シンボル名をそのままマテリアルidとしても引く**。
+     テクスチャ（画像）は読まない。画像で色を付けたモデルは既定の灰色になる。 */
+  const effectColors=new Map();
+  for(const effect of xmlChildrenByLocalName(xml,"effect")){
+    const id=effect.getAttribute("id");if(!id)continue;
+    const diffuse=xmlFirstByLocalName(effect,"diffuse");if(!diffuse)continue;
+    const colorNode=xmlFirstByLocalName(diffuse,"color");if(!colorNode)continue;
+    const v=xmlNumbers(colorNode.textContent);
+    if(v.length<3||!v.slice(0,3).every(Number.isFinite))continue;
+    /* COLLADAのcolorは0〜1。ガンマは掛けず、そのまま0〜255へ写す。 */
+    effectColors.set(id,v.slice(0,3).map(c=>clamp(Math.round(c*255),0,255)));
+  }
+  const materialToEffect=new Map();
+  for(const material of xmlChildrenByLocalName(xml,"material")){
+    const id=material.getAttribute("id");const instance=xmlFirstByLocalName(material,"instance_effect");
+    if(id&&instance)materialToEffect.set(id,(instance.getAttribute("url")||"").replace(/^#/,""));
+  }
+  const symbolToMaterial=new Map();
+  for(const instance of xmlChildrenByLocalName(xml,"instance_material")){
+    const symbol=instance.getAttribute("symbol"),target=(instance.getAttribute("target")||"").replace(/^#/,"");
+    if(symbol&&target)symbolToMaterial.set(symbol,target);
+  }
+  const colorOfSymbol=symbol=>{
+    if(!symbol)return null;
+    const material=symbolToMaterial.get(symbol)||symbol;   // 結び付けが無いファイルへの保険
+    const effect=materialToEffect.get(material);
+    return (effect&&effectColors.get(effect))||null;
+  };
+  const triangles=[],triangleColors=[];
   for(const geometry of xmlChildrenByLocalName(xml,"geometry")){
     const mesh=xmlFirstByLocalName(geometry,"mesh");if(!mesh)continue;const sources=new Map(),verticesMap=new Map();
     for(const source of xmlChildrenByLocalName(mesh,"source")){const array=xmlFirstByLocalName(source,"float_array");if(array)sources.set(source.getAttribute("id"),xmlNumbers(array.textContent));}
@@ -18147,13 +18355,15 @@ function parseColladaBuilding(daeText){
       const vertexSource=(vertexInput.getAttribute("source")||"").replace(/^#/,""),positions=sources.get(verticesMap.get(vertexSource));if(!positions)continue;
       const indices=xmlNumbers((xmlFirstByLocalName(triNode,"p")||{}).textContent);
       const vertexAt=index=>{const x=(positions[index*3]||0)*unit,y=(positions[index*3+1]||0)*unit,z=(positions[index*3+2]||0)*unit;if(upAxis==="Z_UP")return[x,y,z];if(upAxis==="X_UP")return[y,z,x];return[x,z,y];};
-      for(let i=0;i+stride*3<=indices.length;i+=stride*3){const tri=[vertexAt(indices[i+vertexOffset]),vertexAt(indices[i+stride+vertexOffset]),vertexAt(indices[i+stride*2+vertexOffset])];if(tri.flat().every(Number.isFinite))triangles.push(tri);}
+      const groupColor=colorOfSymbol(triNode.getAttribute("material"));
+      for(let i=0;i+stride*3<=indices.length;i+=stride*3){const tri=[vertexAt(indices[i+vertexOffset]),vertexAt(indices[i+stride+vertexOffset]),vertexAt(indices[i+stride*2+vertexOffset])];if(tri.flat().every(Number.isFinite)){triangles.push(tri);triangleColors.push(groupColor);}}
     }
   }
   if(!triangles.length)throw new Error("DAE内に表示可能な三角形メッシュがありません。");
   const all=triangles.flat(),minX=Math.min(...all.map(v=>v[0])),maxX=Math.max(...all.map(v=>v[0])),minY=Math.min(...all.map(v=>v[1])),maxY=Math.max(...all.map(v=>v[1])),minZ=Math.min(...all.map(v=>v[2])),maxZ=Math.max(...all.map(v=>v[2]));
   const cx=(minX+maxX)/2,cy=(minY+maxY)/2;triangles.forEach(tri=>tri.forEach(v=>{v[0]-=cx;v[1]-=cy;v[2]-=minZ;}));
-  return{triangles,width:maxX-minX,depth:maxY-minY,height:maxZ-minZ,vertexCount:all.length};
+  const coloredCount=triangleColors.filter(Boolean).length;
+  return{triangles,triangleColors,coloredCount,width:maxX-minX,depth:maxY-minY,height:maxZ-minZ,vertexCount:all.length};
 }
 function currentKmzBuildingSettings(){return{lat:+el.kmzBuildingLat.value,lon:+el.kmzBuildingLon.value,altitude:+el.kmzBuildingAltitude.value||0,heading:+el.kmzBuildingHeading.value||0,scale:+el.kmzBuildingScale.value||1,opacity:(+el.kmzBuildingOpacity.value||100)/100};}
 function kmzDestinationPoint(lat,lon,bearing,distanceKm){
@@ -18229,21 +18439,33 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
   /* 手前の地形だけの稜線が作れるなら地形のあとに描く（奥の山に隠されない）。
      作れないときだけ、従来どおり地形の前に描いて全部に隠させる。 */
-  const nearSky=kmzNearTerrainSkyline(s,toXY,W,H,base.distanceKm);
-  if(phase==="before"?!!nearSky:!nearSky) return;
+  /* 【v853】水面へ映すための段。
+     「手前の地形の稜線より上だけ残す」切り抜きは掛けない。
+     反射は water マスクで抜かれるので二重に切る必要がなく、
+     掛けると水面に映るべき部分まで消えてしまう。 */
+  const reflectionPass=phase==="reflection";
+  const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,base.distanceKm);
+  if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
-  for(const triangle of kmzBuildingModel.triangles){
-    const points=[];let depth=0,valid=true;
+  /* 【v851】シルエットで描かないときは、面の向きから明るさを出す。
+     そのために投影のついでに、東・北・上の実寸座標も控えておく。 */
+  /* 【v852】発光のときは面の向きを使わないので、法線用の座標も控えない。 */
+  const needShading=!kmzBuildingSilhouette&&!kmzBuildingGlow;
+  const triangleColors=kmzBuildingModel.triangleColors;
+  for(let triIndex=0;triIndex<kmzBuildingModel.triangles.length;triIndex++){
+    const triangle=kmzBuildingModel.triangles[triIndex];
+    const points=[];let depth=0,valid=true;const local=needShading?[]:null;
     for(const vertex of triangle){
       const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
       const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
       const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
       const altitude=Math.atan2(cfg.altitude+vertex[2]*cfg.scale-eye-curvature,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
       if(!point||!point.every(Number.isFinite)){valid=false;break;}points.push(point);depth+=distanceM;
+      if(local)local.push([east,north,vertex[2]*cfg.scale]);
     }
-    if(valid)projected.push({points,depth:depth/3});
+    if(valid)projected.push({points,depth:depth/3,local,color:triangleColors?triangleColors[triIndex]:null});
   }
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52],rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)));
   targetCtx.save();
@@ -18256,8 +18478,83 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     clip.lineTo(W,-H);clip.lineTo(0,-H);clip.closePath();
     targetCtx.clip(clip);
   }
-  targetCtx.globalAlpha=cfg.opacity;targetCtx.fillStyle=`rgb(${rgb.join(",")})`;targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
-  for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
+  targetCtx.globalAlpha=cfg.opacity;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
+  if(kmzBuildingGlow){
+    /* 【v852】自ら光るもの（花火・イルミネーション）。
+
+       ・`daylight` を一切見ない → **夜でも明るいまま**。
+         ふつうの描き方は景色に馴染ませるため夜にシルエット色へ寄せるので、
+         花火を置くと真っ黒になってしまう。それを避けるための描き方。
+       ・太陽の陰影も掛けない。自ら光るものに影の向きは無い。
+       ・加算合成（"lighter"）。夜空に光として乗り、重なるほど明るくなる。
+
+       強さは「建物の濃さ」スライダー（globalAlpha）でそのまま効く。
+       昼間に使うと明るい空の上でさらに加算されて白く飛ぶが、
+       花火は夜に使うものなのでそのままにしてある。 */
+    targetCtx.globalCompositeOperation="lighter";
+    const GLOW_DEFAULT=[255,214,150];   // 色を持たないモデル用。暖色の火の粉。
+    for(const face of projected){
+      const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
+      const color=face.color||GLOW_DEFAULT;
+      /* 【v852】発光では**縁取りをしない**。
+         加算合成では縁が塗りの上へさらに足されるので、
+         三角形の辺が明るい網目として浮いてしまう（濃さ50%以下で顕著）。
+         隙間は「わずかに暗い線」になるだけで、網目よりずっと目立たない。 */
+      targetCtx.fillStyle=`rgb(${color.join(",")})`;
+      targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();
+    }
+  }else if(kmzBuildingSilhouette){
+    // 今までどおりの影絵。面の向きに関係なく1色。
+    targetCtx.fillStyle=`rgb(${rgb.join(",")})`;
+    targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;
+    for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
+  }else{
+    /* 【v851】色と陰影を付けて描く。
+
+       ・色 … KMZ（COLLADA）のマテリアルの diffuse。無ければコンクリートらしい灰色。
+       ・明るさ … 面の法線と太陽の向きの内積。
+         三角形の表裏はファイルによってまちまちなので**絶対値**を使う。
+         そのままだと裏返った面が真っ黒になり、建物に穴が空いたように見える。
+       ・夜 … 景色そのものが暗いので、昼夜の度合いでシルエット色へ寄せる。
+         夜の見え方は今までとほぼ同じになる。 */
+    const DEFAULT_COLOR=[198,194,186];
+    const sunAz=(s.sunAltAz&&Number.isFinite(s.sunAltAz.az))?s.sunAltAz.az:150;
+    const sunAlt=(s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?clamp(s.sunAltAz.alt,5,90):45;
+    const sunVec=[sin(sunAz)*cos(sunAlt),cos(sunAz)*cos(sunAlt),sin(sunAlt)];
+    /* 面ごとに文字列を作ると数万回になるので、明るさを16段に丸めて使い回す。
+       段差は目に見えない一方、fillStyleへ渡す文字列の作成が桁で減る。 */
+    const styleCache=new Map();
+    const styleFor=(color,shade)=>{
+      const step=Math.round(clamp(shade,0,1)*15);
+      const key=(color[0]<<20)|(color[1]<<12)|(color[2]<<4)|step;
+      let hit=styleCache.get(key);
+      if(!hit){
+        const k=0.35+0.65*(step/15);   // 環境光0.35＋太陽ぶん
+        const lit=color.map(c=>c*k);
+        const out=lit.map((c,i)=>Math.round(lerp(rgb[i],c,daylight)));
+        hit=`rgb(${out.join(",")})`;
+        styleCache.set(key,hit);
+      }
+      return hit;
+    };
+    for(const face of projected){
+      const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
+      let shade=.6;
+      const L=face.local;
+      if(L&&L.length===3){
+        const ax=L[1][0]-L[0][0],ay=L[1][1]-L[0][1],az=L[1][2]-L[0][2];
+        const bx=L[2][0]-L[0][0],by=L[2][1]-L[0][1],bz=L[2][2]-L[0][2];
+        const nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx;
+        const len=Math.hypot(nx,ny,nz);
+        if(len>1e-9)shade=Math.abs((nx*sunVec[0]+ny*sunVec[1]+nz*sunVec[2])/len);
+      }
+      /* 隣り合う三角形のあいだには半画素の隙間ができ、背景が細い筋として透ける。
+         同じ色で縁取りしてその隙間を埋める（縁を目立たせるためではない）。 */
+      const style=styleFor(face.color||DEFAULT_COLOR,shade);
+      targetCtx.fillStyle=style;targetCtx.strokeStyle=style;
+      targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();
+    }
+  }
   targetCtx.restore();
 }
 function buildSkylineYArray(samples,W,H){
@@ -20690,6 +20987,33 @@ function drawPhoto(ctx,s){
           ctx.restore();
         }
         ctx.restore();
+        /* 【v853】KMZ（花火・建物）を水面へ映す。
+
+           反射は画面の反転ではなく描き直しなので、KMZも別途描く必要がある。
+           KMZは反射より後に描かれるため `terrainCanvas` には入っておらず、
+           山の反射（terrainCanvasの反転貼り）にも含まれない。
+
+           山と同じ手で、KMZだけを別Canvasへ描いてから上下反転して貼る。
+           このあとの「水域マスクで抜く」がそのまま効くので、
+           岸や陸地へ映り込みが漏れることはない。 */
+        if(kmzBuildingVisible&&kmzBuildingModel&&!arActive){
+          const kmzReflection=drawPhoto._kmzReflectionCanvas||(drawPhoto._kmzReflectionCanvas=document.createElement("canvas"));
+          if(kmzReflection.width!==W||kmzReflection.height!==H){kmzReflection.width=W;kmzReflection.height=H;}
+          const kmzReflectionContext=kmzReflection.getContext("2d");
+          kmzReflectionContext.setTransform(1,0,0,1,0,0);
+          kmzReflectionContext.globalCompositeOperation="source-over";
+          kmzReflectionContext.globalAlpha=1;
+          kmzReflectionContext.clearRect(0,0,W,H);
+          drawKmzBuildingLayer(kmzReflectionContext,s,toXY,W,H,"reflection");
+          ctx.save();
+          /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。
+             濃さは水面らしく少し落とす（山の反射は0.96、空中の光はもう少し弱い）。 */
+          if(kmzBuildingGlow)ctx.globalCompositeOperation="lighter";
+          ctx.globalAlpha=.72;
+          ctx.translate(0,mirrorHorizonY*2);ctx.scale(1,-1);
+          ctx.drawImage(kmzReflection,0,0);
+          ctx.restore();
+        }
         // 最終段階で、実際に水色として残った画素だけを通す。方位マスクの外形ではなく
         // 地形描画と共通の水域マスクなので、入り江・岸・手前の陸地へ反射が漏れない。
         ctx.save();ctx.globalCompositeOperation="destination-in";ctx.drawImage(waterSurfaceMaskCanvas,0,0,W,H);ctx.restore();
@@ -22566,8 +22890,30 @@ function drawPhoto(ctx,s){
           }else if(Number.isFinite(point.baseElevation)){
             alt=apparentAltOf(point);
           }else{
+            /* 【v845】標高が分からない点にも視点の上下ぶんの補正を掛ける。
+
+               point.alt は地形データを作った時点の**視点高1.6m**で計算された値。
+               上の apparentAltOf は同じ補正を持っているが、呼ばれるのは
+               「局所高精細点」と「標高が分かる点」だけで、
+               **補正を最も必要とするこの分岐だけが素の point.alt を使っていた。**
+
+               その結果、ドローンで上げると海の上の「標高なし」の点が
+               1.6m時代の高い見かけ高度のまま残り、そこから先の水面が
+               「手前の地形に隠れている」として全部捨てられていた。
+
+               実測（鳴門・視点海抜85m・az 91.4度）:
+                 20m先の標高なし点が highest を -64.98度 → -4.57度 へ押し上げる。
+                 -4.57度 ＝ atan(1.6/20)。正しくは atan(85/20) ＝ -76.8度。
+                 以降 1.06km より手前の海が全部消え、地形の緑が縦柱として出ていた
+                 （187列中121列で「捨てた水帯 > 出した水帯」）。
+
+               隣の方位との補間（mateAlt）も同じ1.6m基準なので、
+               **補間してから**補正を掛ける。順序を逆にすると二重補正になる。
+               三脚のままなら eyeShiftM は0.05mで、20m先でも0.14度しか動かない。 */
             const mateAlt=blend>0?altAtDistance(mateRow,point.distanceKm):null;
-            alt=Number.isFinite(mateAlt)?lerp(point.alt,mateAlt,blend):point.alt;
+            const storedAlt=Number.isFinite(mateAlt)?lerp(point.alt,mateAlt,blend):point.alt;
+            alt=eyeShiftM===0?storedAlt
+              :storedAlt-Math.atan2(eyeShiftM,Math.max(.1,point.distanceKm*1000))*R2D;
           }
           if(!(alt>highest)) continue; // 手前の地形に隠れている
           if(!skylineOnly) bands.push({lo:highest,hi:alt,distanceKm:point.distanceKm,water:isWater,cloud:!!point.cloud});
@@ -23044,31 +23390,65 @@ function drawPhoto(ctx,s){
            薄くなるぶん手前が弱く見えるので、下の基準の濃さを少し上げて釣り合わせている。 */
         const fadeOfBucket=index=>Math.pow(1-(index+.5)/FADE_BUCKETS,1.2);
         const newPaths=()=>Array.from({length:FADE_BUCKETS},()=>new Path2D());
-        const gridPaths=worldGridVisible?newPaths():null;
-        const contourPaths=contourLinesVisible?newPaths():null;
         /* 道路は足元の補助表示より遠くまで出す。距離の目盛りが1km以遠で急に粗くなり、
            それ以上は地面にめり込むので、取得半径と同じ1.2kmで打ち切る。 */
         const roadRangeM=OSM_ROAD_RADIUS_KM*1000;
         const bridgeRangeM=OSM_BRIDGE_RADIUS_KM*1000;
         const roadBucketOf=distanceM=>clamp(Math.floor(distanceM/roadRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
         const bridgeBucketOf=distanceM=>clamp(Math.floor(distanceM/bridgeRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
+
+        /* 【v844】この関数は1コマに2回走る。夜用（"commands"）と昼用（"replay"）で
+           地形を2枚作って混ぜているため。実測ではここだけで110.5ms＝コマの43%を使っていた
+           （橋のリボン60.6ms・道路31.2ms・格子8.4ms・線路5.1ms・等高線3.4ms、いずれも2回ぶん）。
+
+           **リボンの形はカメラと地形だけで決まり、昼夜には一切依存しない。**
+           昼夜で変わるのは色と濃さで、それは下の塗る段（実測0.8ms）にある。
+           そこで夜用で作った Path2D 一式を預け、昼用は同じ形をそのまま塗り直す。
+           同じ形を同じ順で同じ色で塗るので**絵は1画素も変わらない**。
+           地形本体が layeredGeometry でやっているのと同じ仕組みを広げただけ。
+
+           鍵に terrainGeometryKey を添えて、一致するときだけ使い回す。
+           同じコマの中では必ず一致するが、将来 pass の順序が変わったときに
+           黙って古い形を描き続けないための保険。 */
+        const overlayCache=(sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
+          &&sharedTerrainProjectionCache.groundOverlayPaths
+          &&sharedTerrainProjectionCache.groundOverlayPaths.key===terrainGeometryKey)
+          ?sharedTerrainProjectionCache.groundOverlayPaths:null;
+
         /* 道路は「線」ではなく実寸の幅を持った面(リボン)として貼る。
            左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
            路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
            破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
-        const roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
-        const roadCentrePaths=roadPaths?newPaths():null;
-        const railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
-        const railTiePaths=railPaths?newPaths():null;
-        const bridgeWaysForDisplay=(bridgeLinesVisible&&osmBridgeState.ways)?visibleBridgeWays(osmBridgeState.ways):[];
-        const bridgePaths=bridgeWaysForDisplay.length?newPaths():null;
-        const bridgeSidePaths=bridgePaths?newPaths():null;
-        const bridgeEdgePaths=bridgePaths?newPaths():null;
-        const bridgePierPaths=bridgePaths?newPaths():null;
-        const bridgePierShadePaths=bridgePaths?newPaths():null;
-        const bridgePierEdgePaths=bridgePaths?newPaths():null;
-        const bridgeRailMarkPaths=bridgePaths?newPaths():null;
-        const activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
+        let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
+            bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
+        let bridgeWaysForDisplay=[],activeBridgeSignatures=null;
+        if(overlayCache){
+          gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
+          roadPaths=overlayCache.roadPaths;roadCentrePaths=overlayCache.roadCentrePaths;
+          railPaths=overlayCache.railPaths;railTiePaths=overlayCache.railTiePaths;
+          bridgePaths=overlayCache.bridgePaths;bridgeSidePaths=overlayCache.bridgeSidePaths;
+          bridgeEdgePaths=overlayCache.bridgeEdgePaths;bridgePierPaths=overlayCache.bridgePierPaths;
+          bridgePierShadePaths=overlayCache.bridgePierShadePaths;
+          bridgePierEdgePaths=overlayCache.bridgePierEdgePaths;
+          bridgeRailMarkPaths=overlayCache.bridgeRailMarkPaths;
+        }else{
+          gridPaths=worldGridVisible?newPaths():null;
+          contourPaths=contourLinesVisible?newPaths():null;
+          roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
+          roadCentrePaths=roadPaths?newPaths():null;
+          railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
+          railTiePaths=railPaths?newPaths():null;
+          bridgeWaysForDisplay=(bridgeLinesVisible&&osmBridgeState.ways)?visibleBridgeWays(osmBridgeState.ways):[];
+          bridgePaths=bridgeWaysForDisplay.length?newPaths():null;
+          bridgeSidePaths=bridgePaths?newPaths():null;
+          bridgeEdgePaths=bridgePaths?newPaths():null;
+          bridgePierPaths=bridgePaths?newPaths():null;
+          bridgePierShadePaths=bridgePaths?newPaths():null;
+          bridgePierEdgePaths=bridgePaths?newPaths():null;
+          bridgeRailMarkPaths=bridgePaths?newPaths():null;
+          activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
+        }
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
         const roadFadeOfBucket=index=>Math.min(1,1.3*Math.pow(1-(index+.5)/FADE_BUCKETS,.8));
         /* 【v843】橋も道路・線路と同じ曲線で薄くする。
@@ -23079,7 +23459,7 @@ function drawPhoto(ctx,s){
            地形に隠れる判定は従来どおりなので、山越しの橋が透けることはない。 */
         const bridgeFadeOfBucket=index=>bridgeDistanceFade(index,FADE_BUCKETS);
 
-        if(gridPaths){
+        if(gridPaths&&!overlayCache){
           /* 東西方向・南北方向それぞれの線を、観測地点を原点とする世界座標で辿る。
              10mの倍数に固定するので、歩いても線は地面に残ったままになる。 */
           const spacing=spacingM, sampleM=clamp(spacing/5,2,20);
@@ -23125,7 +23505,7 @@ function drawPhoto(ctx,s){
           }
         }
 
-        if(contourPaths){
+        if(contourPaths&&!overlayCache){
           /* 標高が等高線の間隔の倍数をまたぐ位置を、レイ上で拾って線にする。
              隣り合う方位の同じ標高どうしを繋ぐ。距離が大きく離れる組は繋がない
              （谷を挟んだ別の斜面と誤って結ばないため）。 */
@@ -23183,7 +23563,7 @@ function drawPhoto(ctx,s){
           }
         }
 
-        if(roadPaths||railPaths||bridgePaths){
+        if(!overlayCache&&(roadPaths||railPaths||bridgePaths)){
           /* OSMの節点は直線区間だと100m以上離れているので、5mごとに刻んで
              地形の起伏に沿わせる。高さはグリッドと同じくDEMの標高から計算する。 */
           const originLat=+el.lat.value,originLon=+el.lon.value;
@@ -23623,6 +24003,15 @@ function drawPhoto(ctx,s){
           }
           if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
         }
+        /* 【v844】昼用のために形を預ける。色は預けない（昼夜で変わるのは色だけ）。 */
+        if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
+          sharedTerrainProjectionCache.groundOverlayPaths={
+            key:terrainGeometryKey,
+            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
+            bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths
+          };
+        }
 
         tctx.save();
         tctx.lineWidth=1;tctx.lineJoin="round";
@@ -23840,13 +24229,28 @@ function drawPhoto(ctx,s){
         let observerInsideRing=false;   /* 【v835】観測者を囲むリングを飛ばしたか */
         const rings=realTerrainState&&realTerrainState._osmWaterRings;
         const originLat=+el.lat.value,originLon=+el.lon.value;
-        if(!Array.isArray(rings)||!rings.some(polygon=>polygon&&polygon.waterClass==="inland")||!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
-        const cacheKey=`${terrainGeometryKey}|inland|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
+        /* 【v848】海も対象にする。**関数名に inland とあるが、中身は海も含む。**
+
+           v791までは海が `natural=coastline` の**線**でしか来ておらず、
+           面として投影できなかったので除外していた。
+           いまは Shortbread の `ocean` **ポリゴン**が水域リングへ直接入っている（16230行）ので、
+           内水面とまったく同じ扱いにできる。除外は当時の名残だった。
+
+           除外を残すと、川・池・湖は「なめらかな輪郭あり＋引き算あり」、
+           海は「どちらも無し（5px柱の帯マスクがそのまま）」となり、
+           **河口＝その2つが直接隣り合う唯一の場所**で処理が切り替わって破れていた。
+           （加古川河口を真上から見ると、細い糸になった川が海と一点で触れている。
+             1画素11mの拡大図で確認） */
+        const waterRingWanted=polygon=>polygon&&(polygon.waterClass==="inland"||polygon.waterClass==="ocean");
+        if(!Array.isArray(rings)||!rings.some(waterRingWanted)||!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
+        /* 【v848】海を含めるようになったので鍵を変える。
+           前の版の覚え書き（海抜きの形）をそのまま拾わないようにする。 */
+        const cacheKey=`${terrainGeometryKey}|water2|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
         const cached=drawPhoto._directInlandWaterGeometry;
         if(cached&&cached.key===cacheKey&&cached.rings===rings)return cached.items;
         const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R)),limitM=waterDrawRadiusKm()*1000,items=[];
         for(const polygon of rings){
-          if(!polygon||polygon.waterClass!=="inland")continue;
+          if(!waterRingWanted(polygon))continue;
           const outer=polygon.outer||polygon,outerPoints=outer.points;
           if(!Array.isArray(outerPoints)||outerPoints.length<3)continue;
           const latMargin=limitM/111320,lonMargin=limitM/metrePerDegLon;
@@ -23899,7 +24303,8 @@ function drawPhoto(ctx,s){
             const clippedHole=clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon);
             if(clippedHole.length>=3)appendRing(clippedHole);
           }
-          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000});
+          /* 【v849】引き算の元から海を外すための印。 */
+          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean"});
         }
         /* 【v835】観測者が水の上にいるときは、足元の水を受け持つ形状が1つも無い。
            この状態で「Aより手前を消す」を掛けると、遠くの水域のAが足元の水まで消してしまい、
@@ -23907,8 +24312,44 @@ function drawPhoto(ctx,s){
         items.observerInsideRing=observerInsideRing;
         drawPhoto._directInlandWaterGeometry={key:cacheKey,rings,items};return items;
       }
-      function drawDirectInlandVectorWater(maskContext,colorContext){
+      /* 【v846】v835の「Aより手前の帯を消す」引き算を掛ける距離の上限。
+
+         v835が消したかったのは**近くの岸**にできる階段のはみ出し。
+         悪さをしていたのは**遠くの池**なので、距離で分ければ両立する。
+
+         実測（鳴門の緑の柱／精進湖の岸を無制限のときと画素で比べた差）
+
+         | 上限 | 鳴門 | 精進湖の岸（基準ノイズ2744画素） |
+         |---|---|---|
+         | 0.5km | 消える | 1045画素 |
+         | 1km | 完全に消える | 1201画素 |
+         | 2km | 完全に消える | 5106画素（ノイズと同程度） |
+
+         精進湖の湖は観測地点から500m以内なので2kmでも対象に残る。余裕を見て2km。
+         画素数で制限する案は、精進湖の岸が32〜64px必要・鳴門は16px以下でないと消えず、
+         **両立しなかった**（この表は §3-9 に残してある）。 */
+      const WATER_SUBTRACT_MAX_KM=2;
+      /* 【v846】`nearContext` を渡すと、`nearLimitKm` より近い形状だけを白で塗った
+         別マスクも一緒に作る。v835の引き算はこちらを元にする（下の呼び出し側を参照）。 */
+      function drawDirectInlandVectorWater(maskContext,colorContext,nearContext,nearLimitKm){
         const items=directInlandWaterGeometry();if(!items.length)return false;
+        if(nearContext){
+          nearContext.save();nearContext.globalCompositeOperation="source-over";nearContext.lineWidth=1;
+          nearContext.fillStyle="#fff";nearContext.strokeStyle="#fff";
+          for(const item of items){
+            /* 【v849】海はこの引き算の対象にしない。
+
+               引き算は「ポリゴンが決めた滑らかな水際より手前に、帯の階段がはみ出す」のを
+               消すためのもの。海にこれを掛けると、**地上のように視点が低い場面**で
+               海が水平線際の細い帯に潰れ、そこから下＝手前の海が丸ごと消える
+               （鳴門・視点高0mで実測。上空75mでは海が広く映るので出ない）。
+               海の水際は輪郭ポリゴンだけで十分に滑らかになる。 */
+            if(item.ocean)continue;
+            if(Number.isFinite(nearLimitKm)&&item.distanceKm>nearLimitKm)continue;
+            nearContext.fill(item.path,"evenodd");nearContext.stroke(item.path);
+          }
+          nearContext.restore();
+        }
         const refineContext=(target,isColor)=>{
           if(!target)return;
           /* v791と同じく、輪郭ポリゴンの全面を直接描画する。海はitemsへ入らない。 */
@@ -24823,7 +25264,16 @@ function drawPhoto(ctx,s){
                   inlandColorContext.setTransform(1,0,0,1,0,0);
                   inlandColorContext.globalCompositeOperation="source-over";
                   inlandColorContext.clearRect(0,0,W,H);
-                  if(drawDirectInlandVectorWater(inlandMaskContext,inlandColorContext)){
+                  /* 【v846】引き算専用に「近い形状だけ」のマスクを別に作る。
+                     A（見えている内水面の形）は今までどおり全形状から作るので、
+                     遠くの池が消えたり色が変わったりはしない。変わるのは引き算の元だけ。 */
+                  const nearInland=drawPhoto._nearInlandMaskCanvas||(drawPhoto._nearInlandMaskCanvas=document.createElement("canvas"));
+                  if(nearInland.width!==W||nearInland.height!==H){nearInland.width=W;nearInland.height=H;}
+                  const nearInlandContext=nearInland.getContext("2d");
+                  nearInlandContext.setTransform(1,0,0,1,0,0);
+                  nearInlandContext.globalCompositeOperation="source-over";
+                  nearInlandContext.clearRect(0,0,W,H);
+                  if(drawDirectInlandVectorWater(inlandMaskContext,inlandColorContext,nearInlandContext,WATER_SUBTRACT_MAX_KM)){
                     /* A: 見えている帯で輪郭ポリゴンを切り抜く。 */
                     inlandMaskContext.save();
                     inlandMaskContext.globalCompositeOperation="destination-in";
@@ -24838,9 +25288,17 @@ function drawPhoto(ctx,s){
                        足元の水を受け持つ形状が1つも無いので、遠くの水域のAが
                        足元の水まで消してしまい、湖上で緑の柱が立つ（実測）。 */
                     if(!directInlandWaterGeometry().observerInsideRing){
+                      /* 【v846】引き伸ばしは画面下端まで届くので、遠くの池のAが
+                         その手前の海を丸ごと消していた（鳴門・上空75mで実測）。
+                         引き算の元を「近い形状だけ」に差し替える。
+                         近いマスクも A と同じく帯マスクで切り抜いてから引き伸ばす。 */
+                      nearInlandContext.save();
+                      nearInlandContext.globalCompositeOperation="destination-in";
+                      nearInlandContext.drawImage(grownWaterMask(fineMask,growPx),0,0,W,H);
+                      nearInlandContext.restore();
                       fineContext.save();
                       fineContext.globalCompositeOperation="destination-out";
-                      fineContext.drawImage(smearedDownMask(inlandMask,growPx),0,0,W,H);
+                      fineContext.drawImage(smearedDownMask(nearInland,growPx),0,0,W,H);
                       fineContext.restore();
                     }
                     fineContext.drawImage(inlandMask,0,0);
@@ -24988,7 +25446,7 @@ function drawPhoto(ctx,s){
             highDetailWaterChecks=0;highDetailWaterHits=0;highDetailWaterTransitions=0;
             highDetailMapWaterChecks=0;highDetailMapWaterHits=0;
             highDetailExtendedWaterChecks=0;highDetailExtendedWaterHits=0;highDetailExtendedWaterTransitions=0;
-            sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,meshPaintedTriangles:0,waterGradientTopY:null};
+            sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,groundOverlayPaths:null,meshPaintedTriangles:0,waterGradientTopY:null};
             failureStage="夜用地形の形状計算";
             candidateMeshDrawn=renderTerrainVariant(candidateTerrain,0,clamp(s.lp.base*.2,0,1),"commands");
             if(!candidateMeshDrawn)throw new Error("夜用地形の描画結果が空になりました");
@@ -25054,7 +25512,7 @@ function drawPhoto(ctx,s){
         }else{
           // v752: 標高タイルの準備中、または全タイル失敗時は通常地形をそのまま描く。
           // 高精細候補は1枚以上の有効タイルがそろい、全取得が終わってからだけ作る。
-          sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,meshPaintedTriangles:0,waterGradientTopY:null};
+          sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,groundOverlayPaths:null,meshPaintedTriangles:0,waterGradientTopY:null};
           meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
           renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
           wmctx=realWaterMaskContext;
@@ -26759,6 +27217,9 @@ async function refreshTerrainWhileWalking(){
       const token=++realTerrainState.requestToken;
       const result=await buildRealTerrainProfile(lat,lon,token);
       if(result&&token===realTerrainState.requestToken){
+        /* 【v847】1.1km四方の取得単位をまたいだときだけ白紙に戻す。
+           同じ単位の中を歩いている間は、下の当て直しで前のポリゴンを使い回す。 */
+        dropStaleWaterState(lat,lon);
         applyCachedWaterRings(result);
         Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...result});
         applyDroneAltitudeHold(); // 新しい地面標高に合わせて飛行高度を保つ
