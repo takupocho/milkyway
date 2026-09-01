@@ -4567,6 +4567,7 @@
                 <button id="starGroupsToggleBtn" type="button" class="constellation-toggle-btn">星のグループ</button>
                 <button id="popupShowLabelsBtn" type="button" class="constellation-toggle-btn">名称表示</button>
                 <button id="popupMountainNamesBtn" type="button" class="constellation-toggle-btn">山名表示</button>
+                <button id="popupFujiDetailBtn" type="button" class="constellation-toggle-btn">富士山 精細</button>
                 <div class="display-popup-section-title">シミュレーション画面</div>
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
                 <button id="popupVignetteBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">周辺減光</button>
@@ -5205,7 +5206,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="856-kmz-placement-report";
+const APP_VERSION="860-water-zoom12";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -5644,6 +5645,32 @@ for(let b=-REAL_MW_B_LIMIT;b<=REAL_MW_B_LIMIT;b+=REAL_MW_B_STEP){
   for(let l=0;l<=360;l+=REAL_MW_L_STEP) row.push({l,b,...galacticToEquatorial(norm360(l),b)});
   REAL_MW_GRID.push(row);
 }
+/* 【v857】この2つの旗は、下の setExternalDataStatus から参照される。
+   **setExternalDataStatus は起動直後（天の川の読み込み開始）に呼ばれる**ので、
+   宣言がそれより後ろにあると「Cannot access ... before initialization」で起動が止まる。
+   `typeof` で守ろうとしても let/const の未初期化は回避できない（実際に踏んだ）。
+   だから、ここで先に宣言する。 */
+let mountainNamesVisible=false;
+/* 富士山まわりの標高タイルを余分に取るかどうか。既定OFF。
+
+   「富士山情報」という別の通信があるわけではない。実体は地形を作るときに、
+   観測地点が富士山から4〜92kmなら**富士山まわりだけ標高タイルを余分に取る**処理。
+   通常の遠景サンプルは15kmの次が20kmなので、精進湖など約18km地点では山頂を飛び越える。
+   そこを埋めるために半径最大8km・250m間隔・ズーム12の点を足している。 */
+let fujiDetailEnabled=false;
+/* 【v859】外部データのランプと読み直しボタンを出すかどうか。
+
+   もともとはOverpassの頃に「アクセス集中で拒否される」状況を見えるようにするために足したもの。
+   静的ベクトルタイルへ移行して拒否が起きなくなったので、一旦消してみる。
+
+   **内部の状態（externalDataStatuses など）は消さない。**
+   水域の見張り（v858）や再取得の判定がこれを見ているため、止めてはいけない。
+   消すのは見せ方だけなので、**戻すときは true にするだけ**。
+
+   計算の負荷はもともとほぼ無い（状態が変わったときだけ走る）。
+   実際に効くとすれば点滅のCSSアニメーションで、
+   これは**読み込み中ずっと動き続ける**ぶん、いちばん忙しいときに少し負担になる。 */
+const EXTERNAL_STATUS_UI_ENABLED=false;
 const EXTERNAL_DATA_STATUS_CONFIG={
   elevation:{id:"externalStatusElevation",label:"標高データ"},
   water:{id:"externalStatusWater",label:"湖・池・貯水池・河川などの水域形状"},
@@ -5653,18 +5680,40 @@ const EXTERNAL_DATA_STATUS_CONFIG={
 };
 const externalDataStatuses=Object.fromEntries(Object.keys(EXTERNAL_DATA_STATUS_CONFIG).map(key=>[key,"idle"]));
 let externalDataStatusDetails=Object.fromEntries(Object.keys(EXTERNAL_DATA_STATUS_CONFIG).map(key=>[key,""]));
+/* 【v857】いま働いていないランプは隠す。並んでいるだけで意味が無く、
+   「何か読み込み中かもしれない」と誤解させるため。
+
+   富士山 … 「富士山 精細」がOFFなら、そもそも余分な取得をしない
+   山頂 … 「山名表示」がOFFなら読みにも行かない（新規取得はv774で停止済み）
+   天の川 … 起動時に1回きり。取得済みなら出す意味が無い。
+            ただし**失敗したときは出す**（天の川の見た目が変わるため）。 */
+function externalDataStatusShown(key){
+  if(key==="fuji")return fujiDetailEnabled;
+  if(key==="mountain")return mountainNamesVisible;
+  if(key==="milkyway")return externalDataStatuses.milkyway!=="ready";
+  return true;
+}
 function setExternalDataStatus(key,status,detail=""){
   const config=EXTERNAL_DATA_STATUS_CONFIG[key];if(!config) return;
+  /* 状態そのものは必ず残す。水域の見張りや再取得の判定がこれを見ている。 */
   externalDataStatuses[key]=status;
   externalDataStatusDetails[key]=detail;
+  if(!EXTERNAL_STATUS_UI_ENABLED) return;   // 【v859】見せ方だけを止める
   const lamp=document.getElementById(config.id);
   const stateText=status==="ready"?"読み込み完了":(status==="loading"?"読み込み中":"未取得・取得失敗");
   const history=key==="water"&&typeof waterAcquisitionHistoryText==="function"?waterAcquisitionHistoryText(status):"";
   const text=`${config.label}：${stateText}${detail?`（${detail}）`:""}${history?`\n${history}`:""}`;
-  if(lamp){lamp.classList.toggle("ready",status==="ready");lamp.classList.toggle("loading",status==="loading");lamp.title=text;lamp.setAttribute("aria-label",text);}
+  if(lamp){
+    lamp.classList.toggle("ready",status==="ready");lamp.classList.toggle("loading",status==="loading");
+    lamp.title=text;lamp.setAttribute("aria-label",text);
+    lamp.hidden=!externalDataStatusShown(key);   // 【v857】使っていないランプは隠す
+  }
+  /* 隠したランプが「読み込み中」の色を残していると、下の再読み込みボタンが
+     いつまでも回り続ける。表に出ているものだけで判定する。 */
   if(typeof renderExternalDataStatusDialog==="function") renderExternalDataStatusDialog();
   const reload=document.getElementById("externalDataReloadBtn");
-  if(reload) reload.classList.toggle("loading",Object.values(externalDataStatuses).some(value=>value==="loading"));
+  if(reload) reload.classList.toggle("loading",
+    Object.keys(externalDataStatuses).some(k=>externalDataStatusShown(k)&&externalDataStatuses[k]==="loading"));
 }
 const realMilkyWayImage=new Image();
 realMilkyWayImage.crossOrigin="anonymous";
@@ -6336,7 +6385,7 @@ const el={
   cardTitleRow:$("cardTitleRow"), headerLeftGroup:$("headerLeftGroup"), headerRightGroup:$("headerRightGroup"), toggleBtnRow:$("toggleBtnRow"), todayDate:$("todayDate"), moonToday:$("moonToday"),
   dateCollapseToggle:$("dateCollapseToggle"), dateCollapseBody:$("dateCollapseBody"), dateCollapseArrow:$("dateCollapseArrow"),
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
-  namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"),
+  namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
   popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   popupBridgeBtn:$("popupBridgeBtn"),
@@ -6368,6 +6417,16 @@ function populateSelect(selectEl, items, labelFn){
     opt.value=idx; opt.textContent=labelFn(item);
     selectEl.appendChild(opt);
   });
+}
+/* 【v859】ランプ列と読み直しボタンを隠す。要素は残すので、
+   `EXTERNAL_STATUS_UI_ENABLED` を true にすればそのまま戻る。 */
+if(!EXTERNAL_STATUS_UI_ENABLED){
+  /* `hidden` 属性だけだと、要素側の `display:flex` に負けて場所が残る（実測: 高さ10pxと38px）。
+     `style.display` で確実に消す。 */
+  const lamps=document.querySelector(".external-data-lamps");
+  if(lamps){lamps.hidden=true;lamps.style.display="none";}
+  const reloadBtn=document.getElementById("externalDataReloadBtn");
+  if(reloadBtn){reloadBtn.hidden=true;reloadBtn.style.display="none";}
 }
 populateSelect(el.citySelect, CITIES, c=>c.name);
 populateSelect(el.sensor, SENSORS, s=>s.name);
@@ -11344,6 +11403,25 @@ function toggleShowSkyLabels(){
 }
 el.showSkyLabelsBtn.addEventListener("click",toggleShowSkyLabels);
 el.popupShowLabelsBtn.addEventListener("click",toggleShowSkyLabels);
+el.popupFujiDetailBtn.addEventListener("click",()=>{
+  fujiDetailEnabled=!fujiDetailEnabled;
+  el.popupFujiDetailBtn.classList.toggle("active",fujiDetailEnabled);
+  el.popupFujiDetailBtn.setAttribute("aria-pressed",String(fujiDetailEnabled));
+  /* ランプの出し入れを先に済ませる。下の作り直しで失敗しても、
+     ボタンの状態と表示がずれないようにするため。 */
+  setExternalDataStatus("fuji",externalDataStatuses.fuji||"idle",externalDataStatusDetails.fuji||"");
+  scheduleSaveSettings();
+  /* 【v857】地形はこの設定を織り込んで作ってあるので、切り替えたら作り直す。
+     これをしないと、ONにしても地点を移すまで精細にならない。 */
+  const lat=state?state.lat:+el.lat.value,lon=state?state.lon:+el.lon.value;
+  if(Number.isFinite(lat)&&Number.isFinite(lon)){
+    const terrainKey=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+    forcedTerrainRefreshKeys.add(terrainKey);
+    realTerrainProfileCache.delete(terrainKey);
+    realTerrainState.key="";
+    requestRealTerrainProfile(lat,lon);
+  }
+});
 el.popupMountainNamesBtn.addEventListener("click",()=>{
   mountainNamesVisible=!mountainNamesVisible;
   el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
@@ -11623,6 +11701,7 @@ function collectPersistedSettings(){
     sunPathVisible:sunPathVisible,
     moonPathVisible:moonPathVisible,
     mountainNamesVisible:mountainNamesVisible,
+    fujiDetailEnabled:fujiDetailEnabled,
     autoShowShowerConst:autoShowShowerConst,
     constellationsVisible:constellationsVisible,
     planetsVisible:planetsVisible,
@@ -11772,6 +11851,9 @@ async function loadPersistedSettings(){
     constellationLinesVisible=s.constellationLinesVisible!==false;
     sunPathVisible=s.sunPathVisible!==false;
     moonPathVisible=s.moonPathVisible!==false;
+    fujiDetailEnabled=s.fujiDetailEnabled===true;   // 【v857】古い保存には無いので既定OFF
+    el.popupFujiDetailBtn.classList.toggle("active",fujiDetailEnabled);
+    el.popupFujiDetailBtn.setAttribute("aria-pressed",String(fujiDetailEnabled));
     mountainNamesVisible=s.mountainNamesVisible!==false;
     el.popupMountainNamesBtn.classList.toggle("active",mountainNamesVisible);
     autoShowShowerConst=s.autoShowShowerConst!==false;
@@ -14086,7 +14168,8 @@ function seededSilhouette(){
 const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
 const realTerrainProfileCache=new Map();
 const gsiDemTileCache=new Map();
-let mountainNamesVisible=false;
+// 【v857】mountainNamesVisible と fujiDetailEnabled は、
+// 起動直後に呼ばれる setExternalDataStatus から参照されるため、上の方で宣言してある。
 const mountainNameState={key:"",loadingKey:"",failedKey:"",mountains:[],requestToken:0};
 const mountainNameCache=new Map();
 // 山頂ノードが「剣ヶ峰」「弥山」などの峰名でも、一般に知られた山名で案内する代表山域。
@@ -16162,6 +16245,25 @@ async function loadTilesWithLimit(tiles,limit=6){
 const STATIC_VECTOR_SOURCE_LABEL="OSM静的ベクトル";
 const STATIC_VECTOR_VERSION="shortbread_v1";
 const STATIC_VECTOR_ZOOM=14;
+/* 【v860】水域だけはこのズームで取る。
+
+   街ではz14の1枚が103KB（大阪湾岸・実測）あり、10km半径の121枚で**約12.5MB**になる。
+   これが「街だとなかなか動かない」の正体だった（1コマの時間はむしろ街のほうが軽い）。
+
+   z12へ落としても水域の形はほとんど変わらない。同じ範囲を塗り分けて画素を数えた実測:
+
+     大阪湾岸 99.90%一致 ／ 三木市（池が多い田園）99.64% ／ 精進湖 99.98% ／ 加古川河口 99.76%
+
+   しかも z12 のほうがわずかに水が**多い**（小さな池が消えるのではなく輪郭が少し太い）。
+   だから「遠くだけz12」と混ぜる必要は無く、全部z12でよい。
+   混ぜないので「同じ水域が2つ入って手前の水際が粗くなる」という厄介も起きない。
+
+   z12の1枚はz14の16枚ぶんの面積を覆うので、10km半径なら **121枚 → 9枚**。
+   大阪湾岸で **約12.5MB → 約1.25MB**。枚数が桁で減るぶん、取得が固まる機会も減る。
+
+   **道路・線路・橋は z14 のまま。** あちらは `streets` の線で幅や種別の細かさが要り、
+   取得半径も小さい（道路1.2km・橋5km）ので枚数は元から少ない。 */
+const STATIC_VECTOR_WATER_ZOOM=12;
 const STATIC_VECTOR_TILE_CACHE_LIMIT=192;
 const staticVectorTileCache=new Map();
 const staticVectorFetchQueue=[];
@@ -16332,8 +16434,8 @@ function staticTilesForRadius(lat,lon,radiusKm,z=STATIC_VECTOR_ZOOM){
   for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++)tiles.push({z,x,y,distance:(x+.5-centerX)**2+(y+.5-centerY)**2});
   tiles.sort((a,b)=>a.distance-b.distance);return tiles;
 }
-async function loadStaticVectorArea(lat,lon,radiusKm){
-  const refs=staticTilesForRadius(lat,lon,radiusKm);
+async function loadStaticVectorArea(lat,lon,radiusKm,z=STATIC_VECTOR_ZOOM){
+  const refs=staticTilesForRadius(lat,lon,radiusKm,z);
   return Promise.all(refs.map(async ref=>({...ref,layers:await fetchStaticVectorTile(ref.z,ref.x,ref.y)})));
 }
 function staticTilePointToLatLon(tile,point,extent){
@@ -16391,7 +16493,8 @@ function staticLineIntersectsRadius(points,lat,lon,radiusKm){
 }
 function staticTruthy(value){return value===true||value===1||value==="1"||value==="true"||value==="yes";}
 async function fetchStaticWaterRings(lat,lon,radiusKm){
-  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),rings=[];
+  /* 【v860】水域だけ z12。理由は STATIC_VECTOR_WATER_ZOOM の説明を参照。 */
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm,STATIC_VECTOR_WATER_ZOOM),rings=[];
   tiles.forEach(tile=>["ocean","water_polygons"].forEach(layerName=>{
     const layer=tile.layers.get(layerName);if(!layer)return;
     layer.features.forEach(feature=>{
@@ -17484,7 +17587,8 @@ async function buildRealTerrainProfile(lat,lon,token){
   // 富士山上部を含む半径最大8kmだけ、各方位の交差区間を250m間隔・ズーム12で追加取得する。
   const fujiInfo=terrainDistanceAndBearing(lat,lon,FUJI_VISUAL_PROFILE.lat,FUJI_VISUAL_PROFILE.lon);
   const fujiDetailRays=Array.from({length:360},()=>[]);
-  const useFujiDetail=fujiInfo.distanceKm>=4&&fujiInfo.distanceKm<=92;
+  // 【v857】「表示 → 富士山 精細」がONのときだけ、この余分な取得を行う。
+  const useFujiDetail=fujiDetailEnabled&&fujiInfo.distanceKm>=4&&fujiInfo.distanceKm<=92;
   if(useFujiDetail){
     const detailRadiusKm=Math.min(8,Math.max(2.5,fujiInfo.distanceKm*.45));
     for(let az=0;az<360;az++){
@@ -17876,7 +17980,17 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     resultObj._osmRefinePending=false;
   }
   if(resultObj._osmRefinePending){
-    setExternalDataStatus("water",resultObj._osmRefineStatus==="ready"?"ready":"loading",resultObj._osmRefineDetail||"");
+    /* 【v858】旗ではなく**事実**で判断する。
+
+       `_osmRefineStatus` は `dropStaleWaterState`・`resetWaterFetchState`・地点の入れ替えなど
+       複数の場所で個別に消される。「リングは手元にあるのに旗だけ空」という食い違いが起きると、
+       ここが永遠に "loading" を返し、ランプが点滅したままになる（利用者から報告あり）。
+       持っているものを持っていないことにしない。 */
+    const haveRings=Array.isArray(resultObj._osmWaterRings)&&resultObj._osmWaterRings.length>0
+      &&resultObj._osmWaterRingsRadiusKm>=waterDrawRadiusKm();
+    const done=resultObj._osmRefineStatus==="ready"||haveRings;
+    setExternalDataStatus("water",done?"ready":"loading",
+      resultObj._osmRefineDetail||(haveRings?`${resultObj._osmWaterRings.length}形状`:""));
     return;
   }
   /* 【v850】移動先の水域は z14 で121枚・約28MBあり、実測で47秒かかる（§3-12）。
@@ -17890,7 +18004,35 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
   resultObj._osmRefinePending=true;
   resultObj._osmRefineStatus="loading";
   setExternalDataStatus("water","loading");
+  /* 【v858】応答が返らない取得の見張り。
+
+     `fetchOsmWaterRings` は `osmWaterCache` に入っている約束を、**未決着でもそのまま返す**。
+     そのため一度でも決着しない取得が入ると、その地点は永久に待ち続ける。
+     長押し（`resetWaterFetchState`）が一瞬で緑になるのは、その約束を捨てているだけ。
+     同じ後始末を自動でやる。
+
+     120秒にした理由: 実測で初回取得は名古屋47秒・混雑時100秒前後（§3-12）。
+     正常な取得を途中で切らない値にしてある。
+     **繰り返しは2回まで。** それ以上は error にして、無限に回り続けないようにする。 */
+  const watchdogKey=`${lat.toFixed(2)},${lon.toFixed(2)},${useKm}`;
+  let waterSettled=false;
+  const watchdogRound=(resultObj._osmWatchdogRound||0);
+  const watchdog=setTimeout(()=>{
+    if(waterSettled)return;
+    osmWaterCache.delete(watchdogKey);osmWaterCacheSources.delete(watchdogKey);
+    resultObj._osmRefinePending=false;resultObj._osmRefineStatus="";
+    if(watchdogRound>=2){
+      resultObj._osmRefineStatus="error";
+      setExternalDataStatus("water","error","応答がありません。読み直してください");
+      return;
+    }
+    resultObj._osmWatchdogRound=watchdogRound+1;
+    setExternalDataStatus("water","loading",`応答が無いため取り直します（${watchdogRound+1}回目）`);
+    refineTerrainWaterWithOsm(lat,lon,key,resultObj);
+  },WATER_FETCH_WATCHDOG_MS);
+  const settleWatchdog=()=>{waterSettled=true;clearTimeout(watchdog);};
   fetchOsmWaterRings(lat,lon,useKm).then(async rings=>{
+    settleWatchdog();
     if(!rings||!resultObj.terrainLayers){
       resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
       setExternalDataStatus("water","error",waterFailureStatusDetail());
@@ -18082,10 +18224,22 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     externalGeoCacheSet(terrainCacheId(key),resultObj);
     setExternalDataStatus("water","ready",resultObj._osmRefineDetail);
   }).catch(()=>{
+    settleWatchdog();
     resultObj._osmRefinePending=false;resultObj._osmRefineStatus="error";
     setExternalDataStatus("water","error",waterFailureStatusDetail());
   });
 }
+/* 【v858】水域の取得が決着しないときに、自力で取り直すまでの待ち時間。
+
+   60秒にできる理由: 取り直しは**タイルを取り直さない**。
+   `fetchOsmWaterRings` の約束だけを捨てるので、再実行時の
+   `fetchStaticVectorTile` は `staticVectorTileCache` に残っている
+   **実行中の約束をそのまま拾う**。つまり進行中の取得を邪魔しない。
+   正常な取得が60秒を超えていても、取り直した側が同じ約束を待つだけで済む。
+
+   実測: 初回取得は名古屋47秒・混雑時100秒前後（§3-12）。
+   固まった取得は10秒で保存済みキャッシュから復帰することを確認済み。 */
+const WATER_FETCH_WATCHDOG_MS=60000;
 /* 【v850】移動先でまず取りに行く手前の半径。
    z14タイルで 2km四方 ≒ 9枚。実測の1枚あたり所要（中央値1.7秒）から数秒で届く。
    本番の10km（121枚・約28MB・47秒）を待たずに手前の水が出る。
@@ -18883,6 +19037,7 @@ function renderExternalDataStatusDialog(){
   if(!overlay||!list||!guidance||!overlay.classList.contains("show")) return;
   list.replaceChildren();
   Object.entries(EXTERNAL_DATA_STATUS_CONFIG).forEach(([key,config])=>{
+    if(!externalDataStatusShown(key))return;   // 【v857】使っていないものは一覧にも出さない
     const status=externalDataStatuses[key]||"idle";
     const row=document.createElement("div");row.className=`external-status-row ${status}`;
     const dot=document.createElement("span");dot.className="external-status-dot";dot.setAttribute("aria-hidden","true");
