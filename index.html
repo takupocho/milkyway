@@ -4292,6 +4292,7 @@
               <button id="kmzBuildingUseKmlBtn" type="button" class="ghost">KMZの座標を使用</button>
               <button id="kmzBuildingDeleteBtn" type="button" class="ghost">建物を削除</button>
             </div>
+            <p id="kmzBuildingPlacement" class="map-hint" style="margin-top:8px;white-space:pre-wrap;"></p>
             <p class="map-hint" style="margin-top:8px;">緯度・経度は建物中心、標高は建物の足元です。回転と大きさは読み込み後も調整できます。</p>
           </div>
         </div>
@@ -5204,7 +5205,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="855-kmz-ios-diagnose";
+const APP_VERSION="856-kmz-placement-report";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6322,7 +6323,7 @@ const el={
   kmzBuildingNudgeVal:$("kmzBuildingNudgeVal"), kmzBuildingNudgeStepBtn:$("kmzBuildingNudgeStepBtn"),
   kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
-  kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"),
+  kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"), kmzBuildingPlacement:$("kmzBuildingPlacement"),
   kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
@@ -6389,11 +6390,44 @@ let kmzBuildingRestoreToken=0;
 function setKmzBuildingStatus(message,type=""){
   el.kmzBuildingStatus.textContent=message;el.kmzBuildingStatus.classList.toggle("ready",type==="ready");el.kmzBuildingStatus.classList.toggle("error",type==="error");
 }
+/* 【v856】置き場所の状況。「読めているのに見えない」の理由をその場で示す。
+
+   `drawKmzBuildingLayer` が描かずに戻る条件は4つしかない。
+     1. 「建物を表示する」がOFF
+     2. モデルが無い
+     3. 距離が3m未満 または 120km超
+     4. 画角の外
+   とくに3が起きやすい。**KMZを読み込むと `applyKmlLocation` でKMZ自身の座標へ移る**ので、
+   遠い座標が書かれたファイルだと読めた瞬間に画面外へ飛ぶ。
+   読み込み自体は成功しているため、利用者からは「読めていない」ように見える。 */
+function kmzPlacementReport(){
+  if(!kmzBuildingModel)return "KMZはまだ読み込まれていません。";
+  const lat=+el.kmzBuildingLat.value,lon=+el.kmzBuildingLon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return "緯度・経度が数値として読めません。";
+  const here=state?{lat:state.lat,lon:state.lon}:{lat:+el.lat.value,lon:+el.lon.value};
+  if(!Number.isFinite(here.lat)||!Number.isFinite(here.lon))return "観測地点が未設定です。";
+  const base=terrainDistanceAndBearing(here.lat,here.lon,lat,lon);
+  const km=base.distanceKm,az=base.bearing;
+  const lines=[`観測地点から ${km<1?`${Math.round(km*1000)}m`:`${km.toFixed(2)}km`}・方位 ${Math.round(az)}°`];
+  if(!kmzBuildingVisible)lines.push("⚠ 「建物を表示する」がOFFです。");
+  if(km<.003)lines.push("⚠ 近すぎます（3m未満は描きません）。");
+  else if(km>120)lines.push("⚠ 遠すぎます（120kmまで）。KMZの座標が観測地点から離れています。");
+  else{
+    /* 画面の左右に入っているか。視野の半分＋少しの余裕で見る。 */
+    const facing=state?state.facingAz:+el.facingAz.value;
+    const half=(state&&Number.isFinite(state.fovH)?state.fovH:60)/2;
+    const diff=Math.abs(((az-facing+540)%360)-180);
+    if(diff>half+8)lines.push(`⚠ 画面の外です（カメラは${Math.round(facing)}°を向いています）。方位を${Math.round(az)}°へ向けてください。`);
+    else lines.push("画面の左右の範囲には入っています。見えないときは高さ（基部の標高）と大きさを確認してください。");
+  }
+  return lines.join("\n");
+}
 function refreshKmzBuildingControls(redraw=true){
   el.kmzBuildingVisibleBtn.classList.toggle("active",kmzBuildingVisible);el.kmzBuildingVisibleState.textContent=kmzBuildingVisible?"ON":"OFF";
   el.kmzBuildingSilhouetteBtn.classList.toggle("active",kmzBuildingSilhouette);el.kmzBuildingSilhouetteState.textContent=kmzBuildingSilhouette?"ON":"OFF";
   el.kmzBuildingGlowBtn.classList.toggle("active",kmzBuildingGlow);el.kmzBuildingGlowState.textContent=kmzBuildingGlow?"ON":"OFF";
   if(el.kmzBuildingNudgeStepBtn){el.kmzBuildingNudgeStepBtn.textContent=`${kmzNudgeStepM}m`;el.kmzBuildingNudgeVal.textContent=kmzNudgeLabel();}
+  if(el.kmzBuildingPlacement)el.kmzBuildingPlacement.textContent=kmzPlacementReport();
   el.kmzBuildingScaleVal.textContent=`${(+el.kmzBuildingScale.value||1).toFixed(2)}倍`;el.kmzBuildingOpacityVal.textContent=`${Math.round(+el.kmzBuildingOpacity.value||100)}%`;
   if(redraw&&typeof update==="function")update();
 }
