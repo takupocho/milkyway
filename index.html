@@ -5206,7 +5206,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="860-water-zoom12";
+const APP_VERSION="861-distance-step";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -23893,6 +23893,30 @@ function drawPhoto(ctx,s){
              実寸のまま、遠距離だけ自然に視認性を補う。 */
           const minBridgeHalfMetresAt=(distanceM)=>1.6*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
           const minBridgeThicknessMetresAt=(distanceM)=>1.35*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          /* 【v861】距離に応じて刻みを粗くするための道具。
+
+             道路・線路・橋のリボンは、線に沿って一定間隔で断面を作り、
+             隣り合う断面のあいだを四角形として塗っている。
+             その刻み幅が **これまで距離を見ていなかった**。
+
+             5km先の橋でも2〜5m刻みで断面を作り、そのたびに
+             標高照会・3D投影・水域判定をしていた。
+             ところが5km先の2mは画面上で0.3画素しかない（800px・27mm相当で約7.3m/画素）。
+             1画素に満たないものを何個作っても、出てくる絵は同じ。
+
+             実測（大阪湾岸・橋107本）で **1コマ9,538断面・41.3ms**。
+             その大半が遠方の、画素に出ない断面だった。
+
+             1歩が最低 STEP_TARGET_PX 画素になるところまで粗くする。
+             **これまでの刻みを下限にするので、近いところは変わらない。**
+
+             上限20mは橋脚のため。橋脚は24〜48m間隔で、
+             「1歩で間隔の境界をまたいだか」で置き場所を決めている。
+             刻みが間隔を超えると橋脚を取りこぼすので、最小間隔24mより手前で止める。 */
+          const STEP_TARGET_PX=1.5;
+          const STEP_MAX_M=20;
+          const metrePerPixelAt=(distanceM)=>Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          const coarseStepM=(baseStepM,distanceM)=>Math.max(baseStepM,Math.min(STEP_MAX_M,metrePerPixelAt(distanceM)*STEP_TARGET_PX));
           const NEAR_BLEND_M=25;
           const CROSS_SLOPE_BASE_M=10;
           /* 1つの断面を、左右の縁と中心の「実寸の3次元ベクトル」で返す。
@@ -23977,7 +24001,8 @@ function drawPhoto(ctx,s){
               const perpEast=dirNorth, perpNorth=-dirEast;
               /* 足元は1歩ぶんの距離で見かけが大きく変わるので、近い区間だけ細かく刻む。 */
               const nearestM=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
-              const stepM=nearestM<30?1.5:sampleM;
+              // 【v861】遠いところだけ粗くする。近い区間（30m未満）はこれまでどおり1.5m。
+              const stepM=nearestM<30?1.5:coarseStepM(sampleM,nearestM);
               const steps=Math.max(1,Math.ceil(segmentM/stepM));
               for(let s=(i>0?1:0);s<=steps;s++){
                 const f=s/steps;
@@ -24160,7 +24185,8 @@ function drawPhoto(ctx,s){
                 const dirEast=(b.east-a.east)/segmentM,dirNorth=(b.north-a.north)/segmentM;
                 const perpEast=dirNorth,perpNorth=-dirEast;
                 const nearestM=Math.min(Math.hypot(a.east,a.north),Math.hypot(b.east,b.north));
-                const stepM=nearestM<30?1.5:Math.min(5,Math.max(2,totalM/120));
+                // 【v861】橋も同じ。橋長から決めた刻みを下限にして、遠い区間だけ粗くする。
+                const stepM=nearestM<30?1.5:coarseStepM(Math.min(5,Math.max(2,totalM/120)),nearestM);
                 const steps=Math.max(1,Math.ceil(segmentM/stepM));
                 for(let sample=(i>0?1:0);sample<=steps;sample++){
                   const f=sample/steps,travelM=cumulative[i]+segmentM*f,t=clamp(travelM/totalM,0,1);
