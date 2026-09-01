@@ -2040,7 +2040,7 @@
   .kmz-building-panel{border:1px solid rgba(126,154,208,.38);border-radius:10px;padding:10px;background:rgba(17,24,48,.38);}
   .kmz-building-file{display:none;}
   .kmz-building-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px;}
-  .kmz-building-status{min-height:34px;margin:8px 0 0;padding:7px 8px;border-radius:7px;background:rgba(5,10,24,.42);color:var(--dim-2);font-size:10px;line-height:1.45;word-break:break-word;}
+  .kmz-building-status{min-height:34px;margin:8px 0 0;padding:7px 8px;border-radius:7px;background:rgba(5,10,24,.42);color:var(--dim-2);font-size:10px;line-height:1.45;word-break:break-word;white-space:pre-wrap;}
   .kmz-building-status.ready{color:#aee8c4;border:1px solid rgba(90,210,140,.28);}
   .kmz-building-status.error{color:#ffb2ac;border:1px solid rgba(255,100,90,.28);}
   .plan-load-list{display:flex;flex-direction:column;gap:9px;}
@@ -4240,7 +4240,10 @@
         <h2 class="ctrl-group-toggle">KMZ建物<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <div class="kmz-building-panel">
-            <input id="kmzBuildingInput" class="kmz-building-file" type="file" accept=".kmz,application/vnd.google-earth.kmz">
+            <!-- 【v855】iOSは拡張子をUTIへ対応付けて accept と突き合わせるため、
+         `.kmz` だけだとGoogle Earthが入っていない端末で薄く表示されて選べないことがある。
+         KMZの実体はZIPなので、ZIPと種別不明も通しておく。実害は無い。 -->
+            <input id="kmzBuildingInput" class="kmz-building-file" type="file" accept=".kmz,.zip,application/vnd.google-earth.kmz,application/zip,application/octet-stream">
             <button id="kmzBuildingSelectBtn" type="button" class="toggle-btn"><span>🏰 KMZファイルを読み込む</span><span>選択</span></button>
             <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込んで配置します。既定は色付き。「シルエットで描く」をONにすると黒い影絵になります。</div>
             <button id="kmzBuildingVisibleBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>建物を表示する</span><span id="kmzBuildingVisibleState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -5201,7 +5204,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="854-kmz-nudge";
+const APP_VERSION="855-kmz-ios-diagnose";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6420,13 +6423,36 @@ async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,
     setKmzBuildingStatus(`${fileName}：${kmzBuildingModel.triangles.length.toLocaleString()}面、${size}${locationWarning}`,"ready");refreshKmzBuildingControls();
     return kmzBuildingModel;
 }
+/* 【v855】読み込みに失敗したときの手がかり。
+
+   iPhoneが手元に無いので、これが無いと原因を絞れない。
+   先頭4バイトを出すのは、ZIPなら必ず `50 4B 03 04`（PK..）で始まるため。
+   違っていれば「KMZではないものを掴んでいる」と一目で分かる。 */
+function kmzFailureHint(file,arrayBuffer){
+  const parts=[];
+  if(file)parts.push(`${file.name||"名前不明"}・${Math.round((file.size||0)/1024).toLocaleString()}KB・種別"${file.type||"不明"}"`);
+  if(arrayBuffer&&arrayBuffer.byteLength>=4){
+    const head=[...new Uint8Array(arrayBuffer,0,4)].map(v=>v.toString(16).padStart(2,"0").toUpperCase()).join(" ");
+    parts.push(`先頭 ${head}${head.startsWith("50 4B")?"（ZIP）":"（ZIPではありません）"}`);
+  }
+  parts.push(`展開対応 ${typeof DecompressionStream==="function"?"あり":"なし"}`);
+  return parts.join(" ／ ");
+}
 el.kmzBuildingInput.addEventListener("change",async()=>{
   const file=el.kmzBuildingInput.files&&el.kmzBuildingInput.files[0];if(!file)return;
   setKmzBuildingStatus(`${file.name} を読み込んでいます…`);
+  let sniffedBuffer=null;
   try{
     const sourceDataUrl=await blobToDataUrl(file);
-    await loadKmzBuildingBytes(await file.arrayBuffer(),file.name,{applyKmlLocation:true,sourceDataUrl});
-  }catch(error){kmzBuildingModel=null;setKmzBuildingStatus(`読み込み失敗：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();}
+    sniffedBuffer=await file.arrayBuffer();
+    await loadKmzBuildingBytes(sniffedBuffer,file.name,{applyKmlLocation:true,sourceDataUrl});
+  }catch(error){
+    kmzBuildingModel=null;
+    /* 【v855】理由だけでは端末側の原因を絞れないので、手がかりを一緒に出す。 */
+    setKmzBuildingStatus(`読み込み失敗：${error&&error.message?error.message:error}
+${kmzFailureHint(file,sniffedBuffer)}`,"error");
+    refreshKmzBuildingControls();
+  }
 });
 el.kmzBuildingVisibleBtn.addEventListener("click",()=>{kmzBuildingVisible=!kmzBuildingVisible;refreshKmzBuildingControls();});
 el.kmzBuildingSilhouetteBtn.addEventListener("click",()=>{kmzBuildingSilhouette=!kmzBuildingSilhouette;refreshKmzBuildingControls();});
@@ -18268,7 +18294,9 @@ let meteorReflectionWaterPath=null;
 function kmzReadU16(view,offset){return view.getUint16(offset,true);}
 function kmzReadU32(view,offset){return view.getUint32(offset,true);}
 async function kmzInflateRaw(bytes){
-  if(typeof DecompressionStream!=="function") throw new Error("このブラウザはKMZの展開に対応していません。Chrome／Edge／Safariの最新版でお試しください。");
+  /* 【v855】`DecompressionStream("deflate-raw")` はSafari 16.4以降。
+     それ未満のiPhoneでは原理的に展開できないので、必要な版を文言に入れる。 */
+  if(typeof DecompressionStream!=="function") throw new Error("この端末のブラウザはKMZの展開に対応していません（iPhoneはiOS 16.4以降が必要です）。");
   const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
