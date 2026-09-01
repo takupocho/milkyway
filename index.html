@@ -5206,7 +5206,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="861-distance-step";
+const APP_VERSION="862-elevation-memo";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14166,6 +14166,26 @@ function seededSilhouette(){
 /* 国土地理院の標高PNGから、観測地点を中心とした360°の実地形スカイラインを作る。
    描画中に通信は行わず、場所が変わった時だけ非同期取得して結果をキャッシュする。 */
 const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
+/* 【v862】標高照会（rayBaseElevationAt）の答えの取り置き。
+
+   **ここ（いちばん外側）に置くことが肝心。**
+   rayBaseElevationAt そのものは drawPhoto の中で宣言されていて、
+   drawPhoto は毎コマ走る。取り置きを関数のそばに置くと、
+   **取り置きごと毎コマ作り直されて、当たりが一度も出ない**
+   （実際にそれをやってしまい、12コマで12回捨てていた）。
+
+   highDetailTarget は中身を書き換えて使い回されるので、
+   オブジェクトの同一性では変化を拾えない。
+   highDetailBaseElevation が実際に見る4つの値を1つの数にまとめて比べる。 */
+const RAY_BASE_ELEV_CACHE_MAX=400000;
+let rayBaseElevCache=new Map();
+let rayBaseElevCacheGrid=null,rayBaseElevCacheKey=null,
+    rayBaseElevCacheHD=null,rayBaseElevCacheTiles=-1,rayBaseElevCacheTarget=null;
+function highDetailTargetSignature(){
+  const h=typeof highDetailTarget==="undefined"?null:highDetailTarget;
+  if(!h) return 0;
+  return (h.bearing||0)*1e9+(h.nearKm||0)*1e5+(h.farKm||0)*1e2+(h.halfAngleDeg||0);
+}
 const realTerrainProfileCache=new Map();
 const gsiDemTileCache=new Map();
 // 【v857】mountainNamesVisible と fujiDetailEnabled は、
@@ -22694,10 +22714,42 @@ function drawPhoto(ctx,s){
         }
         return previous?previous.baseElevation:null;
       }
+/* 【v862】標高照会の答えの取り置き。
+
+   `rayBaseElevationAt(方位,距離)` は rayGrid（と高精細タイル）だけを見る**純粋な関数**で、
+   同じ方位・同じ距離なら必ず同じ答えを返す。にもかかわらず毎コマ引き直していた。
+
+   道路や橋は動かないので、**首を振っても・高度を上げても・時刻を変えても、
+   各断面の方位と距離は1ミリも変わらない**。つまり2コマ目以降は全部ここから返せる。
+   `groundVec` は目の高さを引き算しているだけなので、高度上昇もこれを壊さない。
+
+   実測（大阪湾岸）で道路の断面づくり53.7msのうち約36msがこの照会だった
+   （1断面につき3回・1回あたり約0.5マイクロ秒・断面23,676個）。
+
+   鍵は方位1e-4度・距離1cmまで丸めた1つの整数。
+   20km先で方位1e-4度は横に3.5cmで、DEMの粒（約8m）よりはるかに細かい。
+   丸めが絵に出ることはなく、整数のままなので取り違えも起きない。 */
       function rayBaseElevationAt(azDeg,distanceKm){
         const grid=realTerrainState.rayGrid;
         if(!grid) return null;
+        /* 中身が古くなる条件はこれだけ。どれも変数の読み出しで済み、DOMには触れない。
+           観測地点の移動は realTerrainState.key に出るので、これで拾える。 */
+        if(rayBaseElevCacheGrid!==grid||rayBaseElevCacheKey!==realTerrainState.key
+          ||rayBaseElevCacheHD!==highDetailOn||rayBaseElevCacheTiles!==highDetailTileCount
+          ||rayBaseElevCacheTarget!==highDetailTargetSignature()){
+          if(rayBaseElevCache) rayBaseElevCache.clear(); else rayBaseElevCache=new Map();
+          rayBaseElevCacheGrid=grid;rayBaseElevCacheKey=realTerrainState.key;
+          rayBaseElevCacheHD=highDetailOn;rayBaseElevCacheTiles=highDetailTileCount;
+          rayBaseElevCacheTarget=highDetailTargetSignature();
+        }
         const wrapped=((azDeg%360)+360)%360;
+        /* 鍵が整数の範囲に収まるときだけ取り置きを使う。外れ値は素通りさせる。 */
+        const useCache=distanceKm>=0&&distanceKm<1e4;
+        const cacheKey=useCache?Math.round(wrapped*1e4)*1e9+Math.round(distanceKm*1e5):0;
+        if(useCache){
+          const hit=rayBaseElevCache.get(cacheKey);
+          if(hit!==undefined) return hit;
+        }
         const i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
         const e0=baseElevationAtDistanceInRow(grid[i0],distanceKm),e1=baseElevationAtDistanceInRow(grid[i1],distanceKm);
         const coarse=(Number.isFinite(e0)&&Number.isFinite(e1))?lerp(e0,e1,t)
@@ -22705,9 +22757,18 @@ function drawPhoto(ctx,s){
         /* 高精細モードでは地形本体の面が上がるので、ここを揃えないと
            道路や線路が古い高さのままになり、「尾根の裏は出さない」判定で消える。
            元の値が無い所(海など)は触らない。道路を海の上へ出さないため。 */
-        if(!Number.isFinite(coarse)) return coarse;
-        const fine=highDetailBaseElevation(wrapped,distanceKm);
-        return fine===null?coarse:fine;
+        let result;
+        if(!Number.isFinite(coarse)) result=coarse;
+        else{
+          const fine=highDetailBaseElevation(wrapped,distanceKm);
+          result=fine===null?coarse:fine;
+        }
+        if(useCache){
+          // 際限なく増えないように。移動を繰り返しても膨らみ続けない。
+          if(rayBaseElevCache.size>=RAY_BASE_ELEV_CACHE_MAX) rayBaseElevCache.clear();
+          rayBaseElevCache.set(cacheKey,result);
+        }
+        return result;
       }
       /* 任意の方位・任意の距離における見かけ高度。方位は隣接2列を補間する。 */
       function rayAltAt(azDeg,distanceKm){
@@ -23952,17 +24013,30 @@ function drawPhoto(ctx,s){
             /* 路面を横断方向の傾きに合わせる。道幅より広い基線(片奥10m)で
                横断勾配だけを測り、その傾きを道幅分だけ適用する。
                DEMの粒より広く取るので値が安定する。 */
-            const elevAtOffset=(ox,oy)=>{
-              const d=Math.hypot(ox,oy);
-              if(d<.4) return NaN;
-              return rayBaseElevationAt(norm360(atan2d(ox,oy)),d/1000);
-            };
-            const upElev=elevAtOffset(eastM+perpEast*CROSS_SLOPE_BASE_M,northM+perpNorth*CROSS_SLOPE_BASE_M);
-            const downElev=elevAtOffset(eastM-perpEast*CROSS_SLOPE_BASE_M,northM-perpNorth*CROSS_SLOPE_BASE_M);
+            /* 【v862】ただし、これが画面に出ない距離では測らない。
+
+               横断勾配は路面を道幅ぶん傾けるだけで、傾きは±15%で頭打ち。
+               だから画面に出る高さの差は **最大でも 0.15 × 半幅**。
+               半幅4mの道なら0.6mで、1.2km先では0.34画素——半画素にも届かない。
+               その0.34画素のために左右10mの標高照会を2回している。
+
+               半画素に満たない距離ではこの2回をやめ、
+               **1断面あたりの照会を3回から1回にする。** 近いところは今までどおり。
+               取り置き（v862の直し1）が空の1コマ目にも効くので、両方が重なって効く。 */
             let crossGrade=0;
-            if(Number.isFinite(upElev)&&Number.isFinite(downElev)){
-              /* 道路としてありえる範囲(±15%)で頭打ちにする。 */
-              crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-.15,.15);
+            const crossSlopeShowsPx=.15*halfWidth/Math.max(1,distanceM)*(pixelsPerDegree*R2D);
+            if(crossSlopeShowsPx>=.5){
+              const elevAtOffset=(ox,oy)=>{
+                const d=Math.hypot(ox,oy);
+                if(d<.4) return NaN;
+                return rayBaseElevationAt(norm360(atan2d(ox,oy)),d/1000);
+              };
+              const upElev=elevAtOffset(eastM+perpEast*CROSS_SLOPE_BASE_M,northM+perpNorth*CROSS_SLOPE_BASE_M);
+              const downElev=elevAtOffset(eastM-perpEast*CROSS_SLOPE_BASE_M,northM-perpNorth*CROSS_SLOPE_BASE_M);
+              if(Number.isFinite(upElev)&&Number.isFinite(downElev)){
+                /* 道路としてありえる範囲(±15%)で頭打ちにする。 */
+                crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-.15,.15);
+              }
             }
             return {
               centre:groundVec(eastM,northM,elevation),
