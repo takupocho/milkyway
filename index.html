@@ -5213,7 +5213,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="870-akashi-bridge-toggle";
+const APP_VERSION="871-island-order-reflection";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -18810,6 +18810,9 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
   }
   return samples.length>=8?buildSkylineYArray(samples,W,H):null;
 }
+/* 【v871】KMZ建物の水面への映り込みの濃さ。
+   0.72では明石海峡大橋のような大きな構造物で水面が埋まってしまった。 */
+const KMZ_REFLECTION_ALPHA=.25;
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(!kmzBuildingVisible||!kmzBuildingModel||arActive)return;const cfg=currentKmzBuildingSettings();
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
@@ -21384,10 +21387,11 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.clearRect(0,0,W,H);
           drawKmzBuildingLayer(kmzReflectionContext,s,toXY,W,H,"reflection");
           ctx.save();
-          /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。
-             濃さは水面らしく少し落とす（山の反射は0.96、空中の光はもう少し弱い）。 */
+          /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
           if(kmzBuildingGlow)ctx.globalCompositeOperation="lighter";
-          ctx.globalAlpha=.72;
+          /* 【v871】映り込みの濃さ。0.72だと明石海峡大橋のような大きな構造物で
+             水面が埋まってしまうため下げた。 */
+          ctx.globalAlpha=KMZ_REFLECTION_ALPHA;
           ctx.translate(0,mirrorHorizonY*2);ctx.scale(1,-1);
           ctx.drawImage(kmzReflection,0,0);
           ctx.restore();
@@ -26045,6 +26049,17 @@ function drawPhoto(ctx,s){
          （水面は平らなので、切り口がまっすぐな帯になる）。
          建物より手前の地形での隠れは、この関数の中の切り抜きで処理しているので、
          描く順番を最後にしても手前の山にはきちんと隠れる。 */
+      /* 【v871】専用走査で確認した遠方の島影は、KMZ建物の**直前**に描く。
+
+         以前はこの関数のずっと後ろ（山名ラベルの直前）に置いていたため、
+         **島影がKMZモデルより手前に来ていた**。
+         島影は定義上「遠方の島」で、KMZは利用者が置いた被写体なので、
+         島影が手前の被写体を覆うことは無い。
+
+         水面の映り込みより後、という元の性質はそのまま
+         （映り込みはこれよりずっと前で描き終わっている）。 */
+      drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,clamp(s.twilight,0,1));
+
       drawKmzBuildingLayer(ctx,s,toXY,W,H,"after");
 
       /* 雲の中の霧（v605）。
@@ -26245,9 +26260,9 @@ function drawPhoto(ctx,s){
     ctx.restore();
   }
 
-  /* 専用走査で確認した遠方の島影を、通常地形・水面反射より手前へ重ねる。
-     通常地形が未完成でも、視点標高が確定して専用走査が成功していれば表示できる。 */
-  drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,clamp(s.twilight,0,1));
+  /* 【v871】遠方の島影はここではなく、KMZ建物の**直前**へ移した。
+     ここに置いていたため、島影がKMZモデルより手前に描かれていた
+     （明石海峡大橋のKMZが、それより奥にある島に隠されると報告あり）。 */
 
   // 実地形と照合して見えている主要な山を、重ならない範囲で最大6山表示する。
   drawMountainNameLabels(ctx,s,toXY,W,H);
