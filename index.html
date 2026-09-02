@@ -4154,6 +4154,12 @@
             <input type="range" id="tripodHeight" min="0" max="200" step="5" value="160">
           </div>
           <div class="field">
+            <label class="top">歩く速さ <span class="val mono" id="walkSpeedVal">10 m/s</span></label>
+            <input type="range" id="walkSpeed" min="2" max="16" step="1" value="10">
+            <div class="range-labels"><span>← 2 ゆっくり・滑らか</span><span>16 速い →</span></div>
+            <p class="range-hint">遅くすると1コマあたりの進む距離が小さくなり、動きの揺れが目に見えて減ります（そのぶん進むのはゆっくりになります）。Shift併用は常にこの4倍です。</p>
+          </div>
+          <div class="field">
             <label class="top" for="viewpointOffset">撮影場所の追加高さ（m）</label>
             <input type="number" id="viewpointOffset" min="0" max="500" step="0.1" value="0" inputmode="decimal">
             <p class="range-hint">視点標高＝地面標高＋追加高さ＋三脚。展望台・屋上・防波堤など、標高に含まれない高さを入力します。</p>
@@ -5206,7 +5212,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="865-sync-elevation";
+const APP_VERSION="867-walk-speed";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6316,6 +6322,7 @@ const el={
   isoSlider:$("isoSlider"), isoVal:$("isoVal"),
   shutter:$("shutter"), ssVal:$("ssVal"),
   tripodHeight:$("tripodHeight"), tripodHeightVal:$("tripodHeightVal"),
+  walkSpeed:$("walkSpeed"), walkSpeedVal:$("walkSpeedVal"),
   viewpointOffset:$("viewpointOffset"), observerEyeElevationVal:$("observerEyeElevationVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
@@ -9369,8 +9376,14 @@ async function updateSimAddress(lat,lon){
     simAddressPending.delete(key);
   }
 }
+el.walkSpeed.addEventListener("input",()=>{
+  syncWalkSpeedControl();
+  scheduleSaveSettings();
+});
 el.tripodHeight.addEventListener("input",()=>{
   syncTripodHeightControl();
+  syncWalkSpeedControl();   // 【v867】高度補正で飛び幅が変わるので表示を合わせる
+
   if(cameraRiseM>0) droneHoldElevation=observerEyeElevationM();
   invalidateCurrentEyeTerrainProfile();
   drawPhoto._terrainRenderKey=null; // 地形の見かけ高度が変わるので描き直す
@@ -11689,6 +11702,7 @@ function collectPersistedSettings(){
     focalLength:el.focalLength.value, aperture:el.aperture.value, isoSlider:el.isoSlider.value,
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
     tripodHeight:el.tripodHeight.value, viewpointOffset:el.viewpointOffset.value,
+    walkSpeed:el.walkSpeed.value,
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -11915,6 +11929,11 @@ async function loadPersistedSettings(){
       const saved=Math.round(+s.tripodHeight); // 0cmを160cmへ化けさせないため || は使わない
       el.tripodHeight.value=clamp(Number.isFinite(saved)?saved:160,0,200);
     }
+    if(s.walkSpeed!==undefined){
+      const saved=Number(s.walkSpeed);   // 【v867】古い保存には無いので既定10
+      el.walkSpeed.value=clamp(Number.isFinite(saved)?saved:WALK_SPEED_MPS,2,16);
+    }
+    syncWalkSpeedControl();
     if(s.viewpointOffset!==undefined){
       const saved=Number(s.viewpointOffset);
       el.viewpointOffset.value=clamp(Number.isFinite(saved)?saved:0,0,500);
@@ -27361,8 +27380,32 @@ const WALK_SPEED_MPS=10;        // 通常の移動速度（早歩き〜小走り
 const WALK_SPEED_FAST_MPS=40;   // Shift併用時
 /* 上空ほど同じ速度でも景色が動いて見えないので、上昇量に応じて速くする。
    地上で10m/s、150mでは40m/s、300mでは70m/s（Shiftでその4倍）。 */
+/* 【v867】歩く速さはスライダーから引く。既定は10で、触らなければ今までと同じ。
+
+   カクカクは「コマが少ない」と「1コマの飛びが大きい」の両方で起きている。
+   描画だけで110〜190msかかるので**9コマ/秒が上限**で、
+   削る方向では滑らかにならない（空・星の描画は合計3.2msしかなく、
+   遠い地形を毎歩作り直さない案も30〜45msにしかならない）。
+
+   飛び幅のほうは速さを下げれば即座に小さくなる。負荷ゼロ・壊れどころゼロ。
+   どこが心地よいかは好みなので、本人が決められるようにした。
+
+   Shift併用は今までどおり通常の4倍。高度補正もそのまま。 */
+function walkBaseSpeedMps(){
+  const value=+((el.walkSpeed&&el.walkSpeed.value)||WALK_SPEED_MPS);
+  return Number.isFinite(value)?clamp(value,2,16):WALK_SPEED_MPS;
+}
 function walkSpeedMps(fast){
-  return (fast?WALK_SPEED_FAST_MPS:WALK_SPEED_MPS)*(1+cameraRiseM/50);
+  const base=walkBaseSpeedMps();
+  return (fast?base*(WALK_SPEED_FAST_MPS/WALK_SPEED_MPS):base)*(1+cameraRiseM/50);
+}
+function syncWalkSpeedControl(){
+  if(!el.walkSpeed||!el.walkSpeedVal) return;
+  const base=walkBaseSpeedMps();
+  /* 1コマの飛び幅も一緒に出す。ここが「カクカク」の正体なので、
+     数字で見えたほうが決めやすい。dtは0.25秒で頭打ちなのでそれを使う。 */
+  const perFrame=base*(1+cameraRiseM/50)*.25;
+  el.walkSpeedVal.textContent=`${base} m/s（1コマ約${perFrame<10?perFrame.toFixed(1):Math.round(perFrame)}m）`;
 }
 const TURN_DEG_PER_SEC=45;      // A/D の方位の回る速さ
 const PITCH_DEG_PER_SEC=30;     // W/S の仰角の変わる速さ
