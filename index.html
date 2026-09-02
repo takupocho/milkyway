@@ -4595,6 +4595,7 @@
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" disabled title="リフレは常時ONです">リフレ 常時ON</button>
                 <button id="popupCloudSeaBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">雲海</button>
                 <button id="popupBridgeBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="橋だけを取得して簡易的な橋面と橋脚を表示します">橋</button>
+                <button id="popupAkashiBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="ONにすると、OSMが描く明石海峡大橋だけを隠します。実寸のKMZモデルと二重に描かれるのを防ぐためのものです">明石海峡大橋</button>
                 <div class="display-popup-slider" id="cloudSeaRow">
                   <label for="cloudSeaSlider">高度</label>
                   <button type="button" id="cloudSeaDownBtn" class="slider-step-btn" aria-label="雲海の高さを10m下げる" title="10m下げる">−</button>
@@ -4722,7 +4723,7 @@
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div id="simInfoPanel" class="sim-info-panel" hidden></div>
               <div class="sim-top-stack" id="simTopStack">
-                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと自動下降、長押しで上昇下降速度を調整"></div>
+                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降速度の調整、長押しで最速下降"></div>
                 <div id="droneAltitudeSpeedPanel" class="drone-altitude-speed-panel" hidden>
                   <div class="drone-altitude-speed-title"><span>上昇・下降速度</span><span id="droneAltitudeSpeedVal">下降 8m/秒</span></div>
                   <input id="droneAltitudeSpeedSlider" type="range" min="-30" max="30" step="1" value="-8" aria-label="ドローンの上昇下降速度">
@@ -5212,7 +5213,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="867-walk-speed";
+const APP_VERSION="870-akashi-bridge-toggle";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6394,7 +6395,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   popupBridgeBtn:$("popupBridgeBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
@@ -8563,6 +8564,38 @@ let worldGridVisible=true;
 let contourLinesVisible=true;
 let roadLinesVisible=false; // 通信を伴うので既定はOFF
 let bridgeLinesVisible=false; // 橋専用データも利用者がONにした時だけ取得する
+/* 【v870】ONのとき、OSMが描く明石海峡大橋だけを隠す。
+
+   実寸のKMZモデルを読み込むと、OSMの簡易的な橋と二重になるため。
+   **消えるのは明石海峡大橋の帯に入る way だけ**で、他の橋には触らない。 */
+let akashiBridgeHidden=false;
+/* 橋の軸。利用者が地図から拾った主塔2基から決めた。
+
+     北（本州側）主塔 34.62411176666325, 135.02731669829228
+     南（淡路側）主塔 34.6094045020162 , 135.01465751522466
+
+   丸い範囲ではなく**軸に沿った細長い帯**で判定する。
+   平行して走る別の道や橋を巻き込まないため。 */
+const AKASHI_CENTER_LAT=34.6167581,AKASHI_CENTER_LON=135.0209871;
+const AKASHI_AXIS_DEG=215.312;
+const AKASHI_ALONG_M=2050;   // 全長3,911mの半分1,955.5m ＋ 少しの余裕
+const AKASHI_ACROSS_M=220;
+function akashiBridgeWay(way){
+  const points=way&&way.points;
+  if(!Array.isArray(points)||!points.length) return false;
+  const cosLat=Math.cos(AKASHI_CENTER_LAT*D2R);
+  const axis=AKASHI_AXIS_DEG*D2R,sinA=Math.sin(axis),cosA=Math.cos(axis);
+  /* **すべての点**が帯に入っているときだけ隠す。
+     一部だけ掛かる長い高架を丸ごと消してしまわないため。 */
+  for(const point of points){
+    const north=(point[0]-AKASHI_CENTER_LAT)*111320;
+    const east=(point[1]-AKASHI_CENTER_LON)*111320*cosLat;
+    const along=east*sinA+north*cosA;      // 軸方向
+    const across=east*cosA-north*sinA;     // 直交方向
+    if(Math.abs(along)>AKASHI_ALONG_M||Math.abs(across)>AKASHI_ACROSS_M) return false;
+  }
+  return true;
+}
 let osmBridgeState={key:"",ways:null,loading:false,status:"idle",source:"",radiusKm:0};
 let lastBridgeFailure="";
 /* =========================================================
@@ -9163,6 +9196,12 @@ function syncTripodHeightControl(){
 }
 /* 【v730】高度表示の短押し／長押しから使う自動上昇・下降。 */
 let droneAutoVerticalRaf=0,droneAutoVerticalSpeedMps=-8,droneAutoVerticalLastTime=0,droneAutoVerticalLastDraw=0;
+/* 【v869】長押しの強制下降はいちばん速い -30m/秒。 */
+const DRONE_FORCED_DESCENT_MPS=-30;
+/* 【v869】強制下降は**緊急用の一時的な上書き**なので、終わったら元の速度へ戻す。
+   戻さないと、一度長押ししただけで普段使いの速度が -30 に置き換わってしまう。
+   null は「上書き中ではない」。 */
+let droneForcedDescentPreviousSpeed=null;
 function droneAutoVerticalActive(){ return !!droneAutoVerticalRaf; }
 function syncDroneAltitudeSpeedLabel(){
   if(!el.droneAltitudeSpeedVal) return;
@@ -9173,6 +9212,13 @@ function stopDroneAutoVertical(syncAll=true){
   const wasActive=!!droneAutoVerticalRaf;
   if(droneAutoVerticalRaf) cancelAnimationFrame(droneAutoVerticalRaf);
   droneAutoVerticalRaf=0;droneAutoVerticalLastTime=0;droneAutoVerticalLastDraw=0;
+  /* 【v869】強制下降が終わったら、長押し前の速度設定へ戻す。 */
+  if(wasActive&&droneForcedDescentPreviousSpeed!==null){
+    droneAutoVerticalSpeedMps=droneForcedDescentPreviousSpeed;
+    droneForcedDescentPreviousSpeed=null;
+    if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.value=droneAutoVerticalSpeedMps;
+    syncDroneAltitudeSpeedLabel();
+  }
   if(el.droneBadge) el.droneBadge.classList.remove("auto-moving");
   syncDroneBadge();
   /* 【v731】自動移動中は写真だけを更新し、停止した瞬間に全UIを1回同期する。 */
@@ -9230,23 +9276,39 @@ function syncDroneBadge(){
   if(typeof updateSimInfoPanel==="function") updateSimInfoPanel();
   syncSimTopStack();
 }
+/* 【v869】高度表示の押し分け。
+
+     短押し … 上昇・下降速度の画面を**開閉**
+     外をタップ … 閉じる
+     長押し … **強制的に最速で下降**
+
+   短押しを「開く」だけにしなかったのは、**自動下降を止める手段が無くなる**ため
+   （以前は短押しが停止を兼ねていた）。止めるときは画面の「停止」を使う。 */
+function toggleDroneAltitudeSpeedPanel(force){
+  if(!el.droneAltitudeSpeedPanel) return;
+  const next=force===undefined?!el.droneAltitudeSpeedPanel.hidden:!force;
+  el.droneAltitudeSpeedPanel.hidden=next;
+  syncDroneAltitudeSpeedLabel();syncSimTopStack();
+}
 if(el.droneBadge){
   let altitudeBadgePressTimer=0,altitudeBadgeLongPressed=false,altitudeBadgePointer=null;
   const endAltitudeBadgePress=event=>{
     if(altitudeBadgePointer===null||(event&&event.pointerId!==altitudeBadgePointer)) return;
     clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;altitudeBadgePointer=null;
-    if(!altitudeBadgeLongPressed){
-      if(droneAutoVerticalActive()) stopDroneAutoVertical();
-      else startDroneAutoVertical(-Math.max(1,Math.abs(droneAutoVerticalSpeedMps)||8));
-    }
+    // 長押しが成立していたら、離したときには何もしない（下降は続く）。
+    if(!altitudeBadgeLongPressed) toggleDroneAltitudeSpeedPanel();
   };
   el.droneBadge.addEventListener("pointerdown",event=>{
     if(arActive) return;
     altitudeBadgePointer=event.pointerId;altitudeBadgeLongPressed=false;
     altitudeBadgePressTimer=setTimeout(()=>{
       altitudeBadgePressTimer=0;altitudeBadgeLongPressed=true;
-      el.droneAltitudeSpeedPanel.hidden=!el.droneAltitudeSpeedPanel.hidden;
-      syncDroneAltitudeSpeedLabel();syncSimTopStack();
+      /* 【v869】長押しは強制的に最速で下降。別の操作なので速度画面は閉じる。
+         いまの速度を控えておき、着地して止まったら戻す。 */
+      toggleDroneAltitudeSpeedPanel(false);
+      const previous=droneForcedDescentPreviousSpeed!==null?droneForcedDescentPreviousSpeed:droneAutoVerticalSpeedMps;
+      startDroneAutoVertical(DRONE_FORCED_DESCENT_MPS);
+      droneForcedDescentPreviousSpeed=previous;   // startの中で書き換わるので後で入れる
     },550);
     event.preventDefault();event.stopPropagation();
   });
@@ -9256,11 +9318,28 @@ if(el.droneBadge){
   el.droneBadge.addEventListener("keydown",event=>{
     if(event.key!=="Enter"&&event.key!==" ") return;
     event.preventDefault();
-    if(droneAutoVerticalActive()) stopDroneAutoVertical();
-    else startDroneAutoVertical(-Math.max(1,Math.abs(droneAutoVerticalSpeedMps)||8));
+    toggleDroneAltitudeSpeedPanel();
+  });
+  /* 【v869】画面の外をタップしたら閉じる。
+
+     高度表示自身の pointerdown は stopPropagation() しているのでここへは届かない
+     （＝自分を押して即座に閉じてしまう事故は起きない）。
+
+     **イベントは止めない。** 止めると「閉じるための1回目のタップ」が
+     下のボタンに効かなくなり、操作が1回無駄になる。 */
+  document.addEventListener("pointerdown",event=>{
+    const panel=el.droneAltitudeSpeedPanel;
+    if(!panel||panel.hidden) return;
+    if(panel.contains(event.target)||el.droneBadge.contains(event.target)) return;
+    toggleDroneAltitudeSpeedPanel(false);
   });
 }
 if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.addEventListener("input",()=>{
+  /* 【v869】自分でスライダーを動かしたなら、それが最終の意思。
+     強制下降の「あとで元へ戻す」約束はここで破棄する。
+     破棄しないと、強制下降中に「停止」へ動かしたとき
+     停止ではなく元の速度へ戻ってしまう。 */
+  droneForcedDescentPreviousSpeed=null;
   const speed=clamp(Math.round(+el.droneAltitudeSpeedSlider.value||0),-30,30);
   if(speed) startDroneAutoVertical(speed);else{droneAutoVerticalSpeedMps=0;stopDroneAutoVertical();syncDroneAltitudeSpeedLabel();}
 });
@@ -10008,6 +10087,10 @@ function syncDisplayPopupControls(){
   el.popupRailBtn.setAttribute("aria-pressed",String(railLinesVisible));
   el.popupBridgeBtn.classList.toggle("active",bridgeLinesVisible);
   el.popupBridgeBtn.setAttribute("aria-pressed",String(bridgeLinesVisible));
+  if(el.popupAkashiBtn){
+    el.popupAkashiBtn.classList.toggle("active",akashiBridgeHidden);
+    el.popupAkashiBtn.setAttribute("aria-pressed",String(akashiBridgeHidden));
+  }
   syncBridgeButtonStatus();
   el.popupPlaceNameBtn.classList.toggle("active",placeNameVisible);
   el.popupPlaceNameBtn.setAttribute("aria-pressed",String(placeNameVisible));
@@ -10104,6 +10187,11 @@ el.popupRailBtn.addEventListener("click",()=>{
 el.popupBridgeBtn.addEventListener("click",()=>{
   bridgeLinesVisible=!bridgeLinesVisible;
   if(bridgeLinesVisible) requestOsmBridges(+el.lat.value,+el.lon.value);
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+el.popupAkashiBtn.addEventListener("click",()=>{
+  akashiBridgeHidden=!akashiBridgeHidden;
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
@@ -11731,6 +11819,7 @@ function collectPersistedSettings(){
     contourLinesVisible:contourLinesVisible,
     roadLinesVisible:roadLinesVisible,
     bridgeLinesVisible:bridgeLinesVisible,
+    akashiBridgeHidden:akashiBridgeHidden,
     cloudSeaVisible:cloudSeaVisible,
     pixelWalkerVisible:pixelWalkerVisible,
     compassBarVisible:compassBarVisible,
@@ -11904,6 +11993,7 @@ async function loadPersistedSettings(){
     if(Number.isFinite(+s.cloudSeaGapPct)) cloudSeaGapPct=clamp(Math.round(+s.cloudSeaGapPct),0,60);
     railLinesVisible=!!s.railLinesVisible;
     bridgeLinesVisible=!!s.bridgeLinesVisible;
+    akashiBridgeHidden=!!s.akashiBridgeHidden;   // 【v870】古い保存には無いので既定OFF
     placeNameVisible=s.placeNameVisible!==false;
     if(el.animationSpeedSelect&&Number.isFinite(+s.animationSpeed)){
       el.animationSpeedSelect.value=String(clamp(Math.round(+s.animationSpeed),1,ANIM_SPEED_MAX));
@@ -17490,6 +17580,8 @@ function bridgeCrossesKnownWater(way){
 function visibleBridgeWays(ways){
   if(!Array.isArray(ways))return [];
   return ways.filter(way=>{
+    // 【v870】明石海峡大橋だけを隠す。KMZの実寸モデルと二重にしないため。
+    if(akashiBridgeHidden&&akashiBridgeWay(way))return false;
     if(bridgeIsAlwaysVisibleHighway(way))return true;
     const crosses=bridgeCrossesKnownWater(way);
     return crosses===null?true:crosses;
