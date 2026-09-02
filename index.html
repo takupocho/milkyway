@@ -5206,7 +5206,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="860-water-zoom12";
+const APP_VERSION="865-sync-elevation";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -14166,6 +14166,29 @@ function seededSilhouette(){
 /* 国土地理院の標高PNGから、観測地点を中心とした360°の実地形スカイラインを作る。
    描画中に通信は行わず、場所が変わった時だけ非同期取得して結果をキャッシュする。 */
 const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
+/* 【v864】見通しの計算（azimuthVisibleBands）の答えの取り置き。
+
+   **ここ（いちばん外側）に置くことが肝心。**
+   `azimuthVisibleBands` は `drawPhoto` の中で宣言されていて、`drawPhoto` は毎コマ走る。
+   取り置きを関数のそばに置くと、**取り置きごと毎コマ作り直されて当たりが一度も出ない**。
+   v862で実際にそれをやり、12コマで12回捨てていた（効果はマイナスだった）。
+
+   実装前に数えた結果（大阪湾岸・海向き・0.35度きざみの首振り）
+
+     水域の細かい帯       当たり182 / 外れ28  → 87%
+     その他（地形の帯など） 当たり52 / 外れ157 → 25%
+
+   水域側が高いのは、v809で列の方位を「0度からの固定格子」に乗せてあるため。
+   地形側は列が固定格子に乗っていないので低い。**そこは触らない**
+   （列をずらすと稜線の位置が変わり、見た目が変わってしまう）。
+
+   **取り置きは同じ配列オブジェクトを返す。** 呼び出し側が中身を書き換えると壊れる。
+   実装時に全呼び出し箇所を確認し、書き換えが無いことを確かめた
+   （読むだけ、または別の配列へ push しているだけ）。
+   今後この帯を書き換える処理を足すときは、ここを思い出すこと。 */
+const VISIBLE_BANDS_CACHE_MAX=30000;
+let visibleBandsCache=new Map();
+let visibleBandsCacheGrid=null,visibleBandsCacheRings=null;
 const realTerrainProfileCache=new Map();
 const gsiDemTileCache=new Map();
 // 【v857】mountainNamesVisible と fujiDetailEnabled は、
@@ -17651,6 +17674,28 @@ async function buildRealTerrainProfile(lat,lon,token){
   const loadedTilePixels=await Promise.all(terrainTiles.map(tile=>loadGsiDemTile(tile)));
   const loadedTileCount=loadedTilePixels.reduce((count,pixels)=>count+(pixels?1:0),0);
   const tileLoadRatio=terrainTiles.length?loadedTileCount/terrainTiles.length:0;
+  /* 【v865】読み終わった画素を鍵で引ける表にする。
+
+     `gsiDemTileCache` は**画素ではなくPromiseを保存している**ので、
+     とっくに読み終わっているタイルでも `await loadGsiDemTile(ref)` は
+     マイクロタスクを1往復する。
+     この構築では 360方位 × 142距離 × (本体+下見) で **約19.7万回** それをしていた。
+     実測で構築1回3,238msのうち **3,076ms（95%）** がここ。通信待ちは21msしかない。
+
+     タイルは直前の `loadTilesWithLimit` と `Promise.all` で**全部解決済み**なので、
+     待つ必要が最初から無い。 */
+  const resolvedTilePixels=new Map();
+  terrainTiles.forEach((tile,index)=>resolvedTilePixels.set(tile.key,loadedTilePixels[index]));
+  /* 同期版。値は非同期版と完全に同じ（同じ画素へ同じ復号を適用するだけ）。
+     表に無い鍵のときだけ undefined を返し、呼び出し側が従来の経路へ落ちる。 */
+  function elevationFromRefsSync(refs){
+    for(const ref of refs){
+      if(!resolvedTilePixels.has(ref.key)) return undefined;
+      const elevation=decodeGsiElevationBilinear(resolvedTilePixels.get(ref.key),ref.pixelX,ref.pixelY);
+      if(Number.isFinite(elevation)) return elevation;
+    }
+    return null;
+  }
   async function elevationFromRefs(refs){
     for(const ref of refs){
       const elevation=decodeGsiElevationBilinear(await loadGsiDemTile(ref),ref.pixelX,ref.pixelY);
@@ -17682,12 +17727,17 @@ async function buildRealTerrainProfile(lat,lon,token){
     const peaks=new Array(nDist);
     for(let d=0;d<nDist;d++){
       const sample=samples[az][d];
-      const elevation=await elevationFromRefs(sample.refs);
+      /* 【v865】まず同期で引く。**`await 非同期関数()` は中身が即座に返しても
+         マイクロタスクを1往復する**ので、関数の中だけ直しても効かない。
+         呼び出し側をこう書き換えないと意味がない。 */
+      let elevation=elevationFromRefsSync(sample.refs);
+      if(elevation===undefined) elevation=await elevationFromRefs(sample.refs);
       row[d]=elevation; // 数値、または標高データなし(海など)ならnull
       if(Number.isFinite(elevation)) validCount++;
       let peak=Number.isFinite(elevation)?elevation:null;
       for(const sub of (sample.peakRefs||[])){
-        const value=await elevationFromRefs(sub);
+        let value=elevationFromRefsSync(sub);
+        if(value===undefined) value=await elevationFromRefs(sub);
         if(Number.isFinite(value)&&(peak===null||value>peak)) peak=value;
       }
       peaks[d]=peak;
@@ -22721,7 +22771,46 @@ function drawPhoto(ctx,s){
       }
       /* skylineOnly=true のときは帯を作らず「その方位の最高見かけ高度」だけを返す。
          稜線を別式で求めると帯とズレて隙間や食い違いが出るため、必ず同じ経路を通す。 */
+      /* 【v864】取り置きの入口。中身（azimuthVisibleBandsUncached）には一切触っていない。
+         返り口が複数あるので、包む形にして触らずに済ませている。
+
+         **丸めない。** v862では鍵を「方位1e-4度・距離1cm」に丸めて水際を壊した。
+         水際は「地面が水面より高いか」という極めて薄い境目で決まるので、
+         隣り合う標本が丸めで同じ答えになると境界が段状に飛ぶ。
+         ここでは数値が1ビットでも違えば別の鍵になり、素直に計算し直す。
+
+         鍵には、この関数が実際に読んでいて**コマごとに変わりうる値を全部**入れてある。
+         とくに `normalFineWaterMaskPass` は**1コマの中で切り替わる**ので、
+         捨てる条件ではなく**鍵の一部**にすること。
+         捨てる条件に入れると毎回捨てて当たり0%になる（計測中に実際にやった）。 */
       function azimuthVisibleBands(azDeg,bottomAlt,skylineOnly,rawBands){
+        const grid=realTerrainState.rayGrid;
+        if(!grid) return azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
+        const rings=realTerrainState._osmWaterRings;
+        if(visibleBandsCacheGrid!==grid||visibleBandsCacheRings!==rings){
+          visibleBandsCache.clear();
+          visibleBandsCacheGrid=grid;visibleBandsCacheRings=rings;
+        }
+        const eyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const key=azDeg+"|"+bottomAlt+"|"+(skylineOnly?1:0)+"|"+(rawBands?1:0)
+          +"|"+eyeElevation
+          +"|"+(normalFineWaterMaskPass?1:0)
+          +"|"+(highDetailOn?1:0)
+          /* 高精細の品質はDOMを読むので、高精細のときだけ引く。 */
+          +"|"+(highDetailOn?highDetailQualityValue():0)
+          +"|"+(cloudSeaVisible?1:0)
+          +"|"+worldMapTiles
+          +"|"+s.fovH
+          +"|"+(realTerrainState._osmWaterRingsRadiusKm||0);
+        const hit=visibleBandsCache.get(key);
+        if(hit!==undefined) return hit;
+        const result=azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
+        // 際限なく増えないように。あちこち向いても膨らみ続けない。
+        if(visibleBandsCache.size>=VISIBLE_BANDS_CACHE_MAX) visibleBandsCache.clear();
+        visibleBandsCache.set(key,result);
+        return result;
+      }
+      function azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands){
         const grid=realTerrainState.rayGrid;
         const wrapped=((azDeg%360)+360)%360;
         /* v752: 夜側の各列にある大量の帯オブジェクトは保持しない。
@@ -23893,6 +23982,44 @@ function drawPhoto(ctx,s){
              実寸のまま、遠距離だけ自然に視認性を補う。 */
           const minBridgeHalfMetresAt=(distanceM)=>1.6*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
           const minBridgeThicknessMetresAt=(distanceM)=>1.35*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
+          /* 【v863】画角の外にある標本を、断面を作る前に捨てる。
+
+             実測（大阪湾岸・海向き）で **道路の標本23,676個のうち20,705個（87.5%）が画角の外**。
+             それでも標高照会3回・隠れ判定・3次元断面づくり・四角形づくりを全部やってから、
+             最後に `clipToView` が「画面の外だから」と捨てていた。
+             作った四角形49,724個のうち41,350個（83%）が捨てられていた。
+
+             陸を向いていれば地形が遮って早い段階で捨てられるが、
+             **海の上は何にも遮られないので、この無駄が丸ごと最後まで残る**。
+             これが「海岸だけ重い」の正体。海そのものを描くのが重いのではない。
+
+             判定は atan2 が1回（約20ナノ秒）。飛ばす処理は1標本あたり約2,270ナノ秒。
+             捨てるのはどうせ最後に捨てていたものだけなので、絵は変わらない。
+
+             ── v648の失敗を繰り返さないための余裕 ──
+
+             過去に一度、角度で門前払いして失敗している（v648。すぐ上の長い注記を参照）。
+             道の上に立つと足元の路面が丸ごと消えた。
+             2m先の断面は中心が真後ろでも**道幅の半分が画面いっぱいに写る**ため。
+
+             そこで余裕を距離で決める。
+
+               距離2m・半幅4m   → 余裕が63度増える（近くは一切捨てない）
+               距離500m・半幅4m → 0.46度（実質そのまま捨てる）
+
+             `rayHalfSpanDeg()` は地形が方位の走査範囲を決めるのに使っている既存の関数。
+             魚眼（89.5度）も望遠も面倒を見てくれるうえ、
+             **地形と道路が同じ基準になる**ので食い違いが起きない。 */
+          const viewHalfSpanDeg=rayHalfSpanDeg();
+          const viewFacingAz=s.facingAz;
+          const outsideView=(eastM,northM,halfWidthM)=>{
+            const distanceM=Math.hypot(eastM,northM);
+            if(!(distanceM>1)) return false;      // 足元は絶対に捨てない
+            const az=norm360(atan2d(eastM,northM));
+            const diff=Math.abs(((az-viewFacingAz+540)%360)-180);
+            const widthPad=Math.atan2(Math.max(1,halfWidthM),distanceM)*R2D;
+            return diff>viewHalfSpanDeg+widthPad+1;
+          };
           const NEAR_BLEND_M=25;
           const CROSS_SLOPE_BASE_M=10;
           /* 1つの断面を、左右の縁と中心の「実寸の3次元ベクトル」で返す。
@@ -23980,9 +24107,14 @@ function drawPhoto(ctx,s){
               const stepM=nearestM<30?1.5:sampleM;
               const steps=Math.max(1,Math.ceil(segmentM/stepM));
               for(let s=(i>0?1:0);s<=steps;s++){
+                /* 注意: このループの `s` は数値で、**状態オブジェクトの `s` を影に隠している**。
+                   ここで `s.facingAz` と書いても数値の `.facingAz` を読むだけになる。
+                   判定に要る値は `outsideView` がループの外で捕まえてある。 */
                 const f=s/steps;
                 const eastM=ax+(bx-ax)*f, northM=ay+(by-ay)*f;
                 const here=travelM+segmentM*f;
+                // 【v863】画角の外は作らない。どうせ最後に捨てていたもの。
+                if(outsideView(eastM,northM,halfWidth)){previous=null;continue;}
                 const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth);
                 if(!current){previous=null;continue;}
                 if(previous){
@@ -24166,6 +24298,10 @@ function drawPhoto(ctx,s){
                   const f=sample/steps,travelM=cumulative[i]+segmentM*f,t=clamp(travelM/totalM,0,1);
                   const eastM=a.east+(b.east-a.east)*f,northM=a.north+(b.north-a.north)*f;
                   const distanceM=Math.hypot(eastM,northM);
+                  /* 【v863】画角の外は作らない。橋は幅の下限を距離で広げている
+                     （minBridgeHalfMetresAt）ので、その広げたあとの幅で余裕を測る。
+                     ここで捨てると、この下の標高照会・水域判定も丸ごと省ける。 */
+                  if(outsideView(eastM,northM,Math.max(halfWidth,minBridgeHalfMetresAt(distanceM)))){previous=null;continue;}
                   const terrainElevation=elevationAtXY(eastM,northM);
                   const deckElevation=lerp(startElevation,endElevation,t)+Math.sin(Math.PI*t)*camberM;
                   const displayHalfWidth=Math.max(halfWidth,minBridgeHalfMetresAt(distanceM));
