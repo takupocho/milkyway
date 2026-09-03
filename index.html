@@ -5213,7 +5213,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="873-daruma-season";
+const APP_VERSION="876-kmz-clip-alpha";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -8580,21 +8580,42 @@ const AKASHI_CENTER_LAT=34.6167581,AKASHI_CENTER_LON=135.0209871;
 const AKASHI_AXIS_DEG=215.312;
 const AKASHI_ALONG_M=2050;   // 全長3,911mの半分1,955.5m ＋ 少しの余裕
 const AKASHI_ACROSS_M=220;
+/* 【v875】帯の中に**この数以上の点**があれば橋の一部とみなす。
+
+   v870〜v874は「すべての点が帯の中」だったが、それでは**3本しか消えなかった**
+   （利用者から「1つ分しか消えていない」と報告）。
+
+   実測（橋のway 633本が読めていた地点）
+
+       帯の中に全点     3本
+       帯に一部でも触れる 10本
+
+   OSMのタイル（Shortbread）は**タイル境界でwayを切る**ので、
+   橋は10本ほどの断片で出来ていて、端の断片は取り付け部まで伸びている。
+   全点を要求すると、その端の断片が残って橋が虫食いになる。
+
+   1点だけ触れるもの（アンカレイジで接続するだけの取り付け道路）は残したいので、
+   **2点以上**を条件にした。橋の断片は帯の中に多くの点を持つので消える。
+
+   ちなみに軸方向を±2,400mまで広げると該当が50本に跳ね上がる。
+   それは取り付け高架・インターチェンジなので、±2,050mより広げてはいけない。 */
+const AKASHI_MIN_POINTS_IN_BAND=2;
 function akashiBridgeWay(way){
   const points=way&&way.points;
-  if(!Array.isArray(points)||!points.length) return false;
+  if(!Array.isArray(points)||points.length<AKASHI_MIN_POINTS_IN_BAND) return false;
   const cosLat=Math.cos(AKASHI_CENTER_LAT*D2R);
   const axis=AKASHI_AXIS_DEG*D2R,sinA=Math.sin(axis),cosA=Math.cos(axis);
-  /* **すべての点**が帯に入っているときだけ隠す。
-     一部だけ掛かる長い高架を丸ごと消してしまわないため。 */
+  let inside=0;
   for(const point of points){
     const north=(point[0]-AKASHI_CENTER_LAT)*111320;
     const east=(point[1]-AKASHI_CENTER_LON)*111320*cosLat;
     const along=east*sinA+north*cosA;      // 軸方向
     const across=east*cosA-north*sinA;     // 直交方向
-    if(Math.abs(along)>AKASHI_ALONG_M||Math.abs(across)>AKASHI_ACROSS_M) return false;
+    if(Math.abs(along)<=AKASHI_ALONG_M&&Math.abs(across)<=AKASHI_ACROSS_M){
+      if(++inside>=AKASHI_MIN_POINTS_IN_BAND) return true;
+    }
   }
-  return true;
+  return false;
 }
 let osmBridgeState={key:"",ways:null,loading:false,status:"idle",source:"",radiusKm:0};
 let lastBridgeFailure="";
@@ -18693,6 +18714,10 @@ function parseColladaBuilding(daeText){
      結び付けが無いファイルもあるので、**シンボル名をそのままマテリアルidとしても引く**。
      テクスチャ（画像）は読まない。画像で色を付けたモデルは既定の灰色になる。 */
   const effectColors=new Map();
+  /* 【v876】diffuse の4つ目は不透明度。これまで捨てていた。
+     読んでおくと、モデル側で部位ごとの濃さを決められる
+     （明石海峡大橋のハンガーを薄くするために足した）。 */
+  const effectAlphas=new Map();
   for(const effect of xmlChildrenByLocalName(xml,"effect")){
     const id=effect.getAttribute("id");if(!id)continue;
     const diffuse=xmlFirstByLocalName(effect,"diffuse");if(!diffuse)continue;
@@ -18701,6 +18726,7 @@ function parseColladaBuilding(daeText){
     if(v.length<3||!v.slice(0,3).every(Number.isFinite))continue;
     /* COLLADAのcolorは0〜1。ガンマは掛けず、そのまま0〜255へ写す。 */
     effectColors.set(id,v.slice(0,3).map(c=>clamp(Math.round(c*255),0,255)));
+    effectAlphas.set(id,(v.length>=4&&Number.isFinite(v[3]))?clamp(v[3],0,1):1);
   }
   const materialToEffect=new Map();
   for(const material of xmlChildrenByLocalName(xml,"material")){
@@ -18712,13 +18738,15 @@ function parseColladaBuilding(daeText){
     const symbol=instance.getAttribute("symbol"),target=(instance.getAttribute("target")||"").replace(/^#/,"");
     if(symbol&&target)symbolToMaterial.set(symbol,target);
   }
-  const colorOfSymbol=symbol=>{
+  const effectOfSymbol=symbol=>{
     if(!symbol)return null;
     const material=symbolToMaterial.get(symbol)||symbol;   // 結び付けが無いファイルへの保険
-    const effect=materialToEffect.get(material);
-    return (effect&&effectColors.get(effect))||null;
+    return materialToEffect.get(material)||null;
   };
-  const triangles=[],triangleColors=[];
+  const colorOfSymbol=symbol=>{const e=effectOfSymbol(symbol);return (e&&effectColors.get(e))||null;};
+  /* 【v876】そのマテリアルの不透明度。指定が無ければ1（不透明）。 */
+  const alphaOfSymbol=symbol=>{const e=effectOfSymbol(symbol);const a=e&&effectAlphas.get(e);return Number.isFinite(a)?a:1;};
+  const triangles=[],triangleColors=[],triangleAlphas=[];
   for(const geometry of xmlChildrenByLocalName(xml,"geometry")){
     const mesh=xmlFirstByLocalName(geometry,"mesh");if(!mesh)continue;const sources=new Map(),verticesMap=new Map();
     for(const source of xmlChildrenByLocalName(mesh,"source")){const array=xmlFirstByLocalName(source,"float_array");if(array)sources.set(source.getAttribute("id"),xmlNumbers(array.textContent));}
@@ -18733,14 +18761,15 @@ function parseColladaBuilding(daeText){
       const indices=xmlNumbers((xmlFirstByLocalName(triNode,"p")||{}).textContent);
       const vertexAt=index=>{const x=(positions[index*3]||0)*unit,y=(positions[index*3+1]||0)*unit,z=(positions[index*3+2]||0)*unit;if(upAxis==="Z_UP")return[x,y,z];if(upAxis==="X_UP")return[y,z,x];return[x,z,y];};
       const groupColor=colorOfSymbol(triNode.getAttribute("material"));
-      for(let i=0;i+stride*3<=indices.length;i+=stride*3){const tri=[vertexAt(indices[i+vertexOffset]),vertexAt(indices[i+stride+vertexOffset]),vertexAt(indices[i+stride*2+vertexOffset])];if(tri.flat().every(Number.isFinite)){triangles.push(tri);triangleColors.push(groupColor);}}
+      const groupAlpha=alphaOfSymbol(triNode.getAttribute("material"));
+      for(let i=0;i+stride*3<=indices.length;i+=stride*3){const tri=[vertexAt(indices[i+vertexOffset]),vertexAt(indices[i+stride+vertexOffset]),vertexAt(indices[i+stride*2+vertexOffset])];if(tri.flat().every(Number.isFinite)){triangles.push(tri);triangleColors.push(groupColor);triangleAlphas.push(groupAlpha);}}
     }
   }
   if(!triangles.length)throw new Error("DAE内に表示可能な三角形メッシュがありません。");
   const all=triangles.flat(),minX=Math.min(...all.map(v=>v[0])),maxX=Math.max(...all.map(v=>v[0])),minY=Math.min(...all.map(v=>v[1])),maxY=Math.max(...all.map(v=>v[1])),minZ=Math.min(...all.map(v=>v[2])),maxZ=Math.max(...all.map(v=>v[2]));
   const cx=(minX+maxX)/2,cy=(minY+maxY)/2;triangles.forEach(tri=>tri.forEach(v=>{v[0]-=cx;v[1]-=cy;v[2]-=minZ;}));
   const coloredCount=triangleColors.filter(Boolean).length;
-  return{triangles,triangleColors,coloredCount,width:maxX-minX,depth:maxY-minY,height:maxZ-minZ,vertexCount:all.length};
+  return{triangles,triangleColors,triangleAlphas,coloredCount,width:maxX-minX,depth:maxY-minY,height:maxZ-minZ,vertexCount:all.length};
 }
 function currentKmzBuildingSettings(){return{lat:+el.kmzBuildingLat.value,lon:+el.kmzBuildingLon.value,altitude:+el.kmzBuildingAltitude.value||0,heading:+el.kmzBuildingHeading.value||0,scale:+el.kmzBuildingScale.value||1,opacity:(+el.kmzBuildingOpacity.value||100)/100};}
 function kmzDestinationPoint(lat,lon,bearing,distanceKm){
@@ -18790,16 +18819,42 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
       const pt=row[i];
       if(!pt) continue;
       if(Number.isFinite(pt.distanceKm)&&pt.distanceKm>=limitKm) break;   // 行は距離順
-      let alt=pt.alt;
+      /* 【v876】**古い見かけ高度（pt.alt）を出発点にしない。**
+
+         pt.alt は地形を作った時点の視点（三脚1.6m）の値で、上昇しても更新されない。
+         標高も無く水面でもない点が1つでもあると、その古い値が
+         「その方位でいちばん高いもの」として残り、
+         上昇するほど高すぎる稜線になってKMZを食べてしまう
+         （利用者から「海にも島にも沈む」と報告。上空142m）。
+
+         計算できない点は稜線に参加させない。外れる方向は
+         「稜線が低い＝隠れなさすぎる」で、消えてしまうより安全な側。
+
+         v845（鳴門の緑の柱）・v874と同じ根っこ。 */
+      let alt=NaN;
       if(Number.isFinite(pt.baseElevation)&&Number.isFinite(pt.distanceKm)){
         const distanceM=Math.max(1,pt.distanceKm*1000);
         let elevation=pt.baseElevation;
         if(cloudFloor!==null&&elevation<cloudFloor) elevation=cloudFloor;
         alt=Math.atan2(elevation-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
-      }else if(cloudFloor!==null&&Number.isFinite(pt.distanceKm)&&pt.water){
-        // 標高不明の水面（海）も雲の下。
+      }else if(Number.isFinite(pt.distanceKm)&&pt.water){
+        /* 【v874】標高不明の水面＝海。**海抜0mと分かっている**ので、
+           雲海の有無にかかわらず今の視点の高さで計算し直す。
+
+           ここを雲海のときだけにしていたため、雲海を出していないと
+           `pt.alt`（地形を作った時点の視点1.6mでの値）がそのまま残っていた。
+           KMZ側は今の視点で計算し直しているので、
+           **上昇するほどKMZだけが動かない水平線に飲み込まれ、海に沈んで見えた**
+           （利用者から報告あり。ドローンで上空51m）。
+
+           v845（鳴門の緑の柱）とまったく同じ種類の間違い。
+           「標高が分からない点の見かけ高度を、古い値のまま使う」。
+
+           内水面（湖・池）はDEMに標高があるので上の枝に入る。
+           ここへ来るのは海だけなので0mでよい。 */
         const distanceM=Math.max(1,pt.distanceKm*1000);
-        alt=Math.atan2(cloudFloor-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
+        const surface=cloudFloor!==null?cloudFloor:0;
+        alt=Math.atan2(surface-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
       }
       if(Number.isFinite(alt)&&alt>best) best=alt;
     }
@@ -18837,6 +18892,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   /* 【v852】発光のときは面の向きを使わないので、法線用の座標も控えない。 */
   const needShading=!kmzBuildingSilhouette&&!kmzBuildingGlow;
   const triangleColors=kmzBuildingModel.triangleColors;
+  const triangleAlphas=kmzBuildingModel.triangleAlphas;   // 【v876】マテリアルごとの不透明度
   for(let triIndex=0;triIndex<kmzBuildingModel.triangles.length;triIndex++){
     const triangle=kmzBuildingModel.triangles[triIndex];
     const points=[];let depth=0,valid=true;const local=needShading?[]:null;
@@ -18848,7 +18904,8 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
       if(!point||!point.every(Number.isFinite)){valid=false;break;}points.push(point);depth+=distanceM;
       if(local)local.push([east,north,vertex[2]*cfg.scale]);
     }
-    if(valid)projected.push({points,depth:depth/3,local,color:triangleColors?triangleColors[triIndex]:null});
+    if(valid)projected.push({points,depth:depth/3,local,color:triangleColors?triangleColors[triIndex]:null,
+      alpha:(triangleAlphas&&Number.isFinite(triangleAlphas[triIndex]))?triangleAlphas[triIndex]:1});
   }
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52],rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)));
   targetCtx.save();
@@ -18879,6 +18936,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     for(const face of projected){
       const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
       const color=face.color||GLOW_DEFAULT;
+      targetCtx.globalAlpha=cfg.opacity*face.alpha;   // 【v876】マテリアルの不透明度
       /* 【v852】発光では**縁取りをしない**。
          加算合成では縁が塗りの上へさらに足されるので、
          三角形の辺が明るい網目として浮いてしまう（濃さ50%以下で顕著）。
@@ -18890,7 +18948,9 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     // 今までどおりの影絵。面の向きに関係なく1色。
     targetCtx.fillStyle=`rgb(${rgb.join(",")})`;
     targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;
-    for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
+    for(const face of projected){const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
+      targetCtx.globalAlpha=cfg.opacity*face.alpha;   // 【v876】マテリアルの不透明度
+      targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();}
   }else{
     /* 【v851】色と陰影を付けて描く。
 
@@ -18934,6 +18994,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
       /* 隣り合う三角形のあいだには半画素の隙間ができ、背景が細い筋として透ける。
          同じ色で縁取りしてその隙間を埋める（縁を目立たせるためではない）。 */
       const style=styleFor(face.color||DEFAULT_COLOR,shade);
+      targetCtx.globalAlpha=cfg.opacity*face.alpha;   // 【v876】マテリアルの不透明度
       targetCtx.fillStyle=style;targetCtx.strokeStyle=style;
       targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();
     }
