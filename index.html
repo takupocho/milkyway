@@ -5213,7 +5213,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="876-kmz-clip-alpha";
+const APP_VERSION="879-road-nodata-gap";
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -18882,7 +18882,21 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
      反射は water マスクで抜かれるので二重に切る必要がなく、
      掛けると水面に映るべき部分まで消えてしまう。 */
   const reflectionPass=phase==="reflection";
-  const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,base.distanceKm);
+  /* 【v877】稜線を作る範囲は「模型のいちばん手前」まで。
+
+     これまで中心までの距離を渡していたが、明石海峡大橋は**全長3.9km**ある。
+     中心が2.2km先なら手前の端は0.25km先で、
+     2.2kmまでの地形で作った稜線（≒ -atan(視点の高さ/2.2km)）より
+     **橋自身の手前側が下に来て切られていた**。
+     上昇するほど視点が高くなり、その線が下がって食い込みが増える
+     （利用者から「まだほんの少し沈む」と報告。上空114m）。
+
+     模型の水平方向の半径を引けば、
+     「模型のいちばん手前より、さらに手前の地形」だけが稜線に入る。
+     外れる方向は「あいだの地形に隠れなくなる」で、消えるより安全な側。 */
+  const modelHalfSpanKm=(Math.hypot(kmzBuildingModel.width||0,kmzBuildingModel.depth||0)/2)*cfg.scale/1000;
+  const skylineLimitKm=Math.max(.05,base.distanceKm-modelHalfSpanKm);
+  const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
   if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
@@ -22914,19 +22928,39 @@ function drawPhoto(ctx,s){
          標高そのものは視点に依存しないので、こちらを補間して見かけ角度は使う側で計算し直す。 */
       function baseElevationAtDistanceInRow(list,distanceKm){
         if(!list||!list.length) return null;
-        let previous=null;
+        /* 【v879】**欠測を飛ばしたことを覚えておく。**
+
+           海はDEMが欠測。これまでは `continue` で黙って飛ばしていたので、
+           **海峡をまたいで両岸の陸を直接つないで補間**していた。
+           方位ごとに拾う陸が違うため隣の標本と高さが激しく食い違い、
+           海の上に灰色の鋭いジグザグが立った（利用者の画像。明石海峡）。
+           最後の有効点より先も、その陸の高さを返し続けていた。
+
+           またいだら「分からない(null)」を返す。`sectionAt` は
+               if(!Number.isFinite(elevation)) return null;
+           と既に書いてあるので、**道路はそれだけで自動的に止まる**。
+           v877のように水の判定(`visibleWaterAt`)を呼ぶ必要は無かった。
+
+           外れる方向は「道路が描かれない」で、空へ突き出すジグザグより安全な側。 */
+        let previous=null,skipped=false;
         for(let k=0;k<list.length;k++){
           const point=list[k];
-          if(!point||!Number.isFinite(point.baseElevation)) continue;
+          if(!point||!Number.isFinite(point.baseElevation)){skipped=true;continue;}
           if(point.distanceKm>=distanceKm){
-            if(!previous||point.distanceKm===distanceKm) return point.baseElevation;
+            // 実測点そのもの。補間ではないので、飛ばしていても返してよい。
+            if(point.distanceKm===distanceKm) return point.baseElevation;
+            // 欠測をまたいでいる。両岸をつなぐ嘘の高さを作らない。
+            if(skipped) return null;
+            // 手前に実測が無いだけ（飛ばしてはいない）。最初の帯より近い道路のため。
+            if(!previous) return point.baseElevation;
             const span=point.distanceKm-previous.distanceKm;
             const f=span>0?(distanceKm-previous.distanceKm)/span:0;
             return lerp(previous.baseElevation,point.baseElevation,f);
           }
-          previous=point;
+          previous=point;skipped=false;
         }
-        return previous?previous.baseElevation:null;
+        // 最後の有効点より先。そこから欠測が続いているなら陸ではない。
+        return (previous&&!skipped)?previous.baseElevation:null;
       }
       function rayBaseElevationAt(azDeg,distanceKm){
         const grid=realTerrainState.rayGrid;
@@ -24213,6 +24247,17 @@ function drawPhoto(ctx,s){
             if(distanceM>roadRangeM) return null;
             const az=norm360(atan2d(eastM,northM));
             const distanceKm=distanceM/1000;
+            /* 【v879】海の上の道路がギザギザになる件は
+               `baseElevationAtDistanceInRow` 側で直した（欠測をまたいだらnull）。
+               下の `if(!Number.isFinite(elevation)) return null;` で
+               道路は自動的に止まるので、ここには何も足さない。
+
+               v877ではここへ `visibleWaterAt` を入れていたが、
+               **道路の不具合を直すのに水の仕組みを呼ぶ必要は無かった**。
+               そのv877はv878で撤回した——が、撤回しても水域が柱になる症状は
+               まったく直らなかったため、v877は無実だったと考えている。
+               症状自体が「出たり出なかったり」で不安定なので、
+               あのA/B比較は証拠になっていなかった。 */
             /* 足元の標高をDEMから引くと、見かけの高度が暴れる。
                高度角は atan(高さの差 ÷ 距離) なので、距離1mでは
                DEMの誤差30cmがそのまま17度の狂いになる。
