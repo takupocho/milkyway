@@ -5255,7 +5255,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="899-water-day-night-tone";
+const APP_VERSION="902-kmz-independent-detail";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14784,7 +14784,13 @@ const TERRAIN_DISTANCE_BANDS=[
 
    **今後も起きる落とし穴。** 地形の作り方を変えた版を渡すときは、
    番号を上げるか取り直しを頼むこと。 */
-const TERRAIN_CACHE_FORMAT=8; // v616: KMZ建物の周りを高密度で取るようにした
+/* 【v902】9→**8へ戻した。**
+
+   v902では KMZ由来の処理が地形の作り手（buildRealTerrainProfile）から
+   完全に無くなったので、地形の作り方は v893〜v900 と**同一**になった。
+   よって8が正しく、**すでに保存されている綺麗な地形がそのまま再利用される。**
+   （v901で9へ上げたのは、KMZの高密度点を rayGrid から出した＝作り方が変わったため） */
+const TERRAIN_CACHE_FORMAT=8;
 /* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
    保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
 function kmzTerrainSignature(){
@@ -14797,9 +14803,19 @@ function kmzTerrainSignature(){
       .join(";");
   }catch(e){ return ""; }
 }
+/* 【v902】**鍵にKMZの位置を入れない。**
+
+   v901まではKMZを1つ置くだけで鍵が変わり、地形キャッシュが総取っ替えになって
+   DEM・OSM水域・海岸線が丸ごと取り直しになっていた。
+   取り直しの結果は毎回同じとは限らないので、
+   **綺麗に描けていた川が、置いただけで粗くなり得た**
+   （利用者から「劣化した状態がデフォルトになった」と報告）。
+
+   KMZの位置が影響するのは「模型の足元の高密度点」だけで、
+   地形本体にも水域にも関係が無い。そちらは `ensureKmzDetailGrid` が
+   独立して用意する。 */
 function terrainCacheId(key){
-  const kmz=kmzTerrainSignature();
-  return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}${kmz?`|kmz${kmz}`:""}`;
+  return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}`;
 }
 function terrainDestination(lat,lon,bearingDeg,distanceKm){
   const R=6371,br=bearingDeg*D2R,p1=lat*D2R,l1=lon*D2R,d=distanceKm/R;
@@ -18191,49 +18207,8 @@ async function buildRealTerrainProfile(lat,lon,token){
       }
     }
   }
-  /* KMZ建物の足元だけを高密度で取る（v616）。
-
-     通常の目盛りは距離に比例して粗くなるので、2.4km先だと216m間隔。
-     v614で目盛りの間も下見するようにしたが、それでも
-     「たまたま頂に当たるか」に依存している。
-
-     建物を置いた場所は合わせ込みの要なので、そこを狙って
-     半径400m・25m間隔で地形を拾う。富士山にもとから入っている
-     仕組みと同じで、レイが円を横切る区間を実距離で刻む。
-     方位の目盛り（1°）にも縛られない。
-
-     範囲が狭いので、増える取得はわずか。 */
-  const kmzSignatureNow=kmzTerrainSignature();
-  const kmzDetailRays=Array.from({length:360},()=>[]);
-  /* 【v880】読み込んだ模型**すべて**の周りを高密度で取る。 */
-  for(const slot of kmzSlots){
-    if(!slot.model||!Number.isFinite(slot.lat)||!Number.isFinite(slot.lon)) continue;
-    const kmzInfo=terrainDistanceAndBearing(lat,lon,slot.lat,slot.lon);
-    if(!Number.isFinite(kmzInfo.distanceKm)||kmzInfo.distanceKm<.05||kmzInfo.distanceKm>60) continue;
-    const detailRadiusKm=.4, stepKm=.025;
-    for(let az=0;az<360;az++){
-      const offsetDeg=((az-kmzInfo.bearing+540)%360)-180;
-      const offsetRad=offsetDeg*D2R;
-      const lateralKm=Math.abs(kmzInfo.distanceKm*Math.sin(offsetRad));
-      if(lateralKm>detailRadiusKm) continue;
-      const alongCenterKm=kmzInfo.distanceKm*Math.cos(offsetRad);
-      const halfChordKm=Math.sqrt(Math.max(0,detailRadiusKm*detailRadiusKm-lateralKm*lateralKm));
-      const startKm=Math.max(.02,alongCenterKm-halfChordKm),endKm=alongCenterKm+halfChordKm;
-      for(let distanceKm=startKm;distanceKm<=endKm+1e-6;distanceKm+=stepKm){
-        const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
-        const refs=[terrainTilePoint(pLat,pLon,14),terrainTilePoint(pLat,pLon,12)];
-        refs.forEach(tile=>tilesByKey.set(tile.key,tile));
-        kmzDetailRays[az].push({distanceKm,refs});
-      }
-    }
-  }
-  /* 【v880】同じ方位に複数の模型が並ぶと距離が前後する。
-     この先の処理は**行が距離順であること**を前提にしているので並べ直す。 */
-  let useKmzDetail=false;
-  for(let az=0;az<360;az++){
-    if(kmzDetailRays[az].length>1)kmzDetailRays[az].sort((a,b)=>a.distanceKm-b.distanceKm);
-    if(kmzDetailRays[az].length)useKmzDetail=true;
-  }
+  /* 【v902】KMZ建物の足元の高密度取得は、**ここから完全に外した。**
+     `ensureKmzDetailGrid` が独立に走る。地形と水域はKMZに一切影響されない。 */
   const terrainTiles=[...tilesByKey.values()];
   await loadTilesWithLimit(terrainTiles);
   if(token!==realTerrainState.requestToken) return null;
@@ -18426,26 +18401,6 @@ async function buildRealTerrainProfile(lat,lon,token){
       }
     }
 
-    /* KMZ建物の足元の高密度点。富士山と全く同じ扱いで稜線へ入れる。 */
-    const kmzRayPoints=[];
-    if(useKmzDetail){
-      for(const detail of kmzDetailRays[az]){
-        const elevation=await elevationFromRefs(detail.refs);
-        if(!Number.isFinite(elevation)) continue;
-        const metres=detail.distanceKm*1000;
-        const curvatureDrop=metres*metres/(2*6371000*(7/6));
-        const apparentAlt=Math.atan2(elevation-eyeElevation-curvatureDrop,metres)*R2D;
-        kmzRayPoints.push({distanceKm:detail.distanceKm,alt:apparentAlt,water:false,
-          baseElevation:elevation,baseNoData:false,baseKnown:false});
-        const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>detail.distanceKm>=band.min&&detail.distanceKm<band.max);
-        if(apparentAlt>highest) highest=apparentAlt;
-        if(layerIndex>=0&&apparentAlt>layerHighest[layerIndex]){
-          const [detailLat,detailLon]=terrainDestination(lat,lon,az,detail.distanceKm);
-          layerHighest[layerIndex]=apparentAlt;
-          layerHighestSources[layerIndex]={lat:detailLat,lon:detailLon,distanceKm:detail.distanceKm,elevation,alt:apparentAlt};
-        }
-      }
-    }
 
     // 富士山周辺だけ追加した高密度点も、通常地形と同じ見かけ高度・曲率式で稜線へ統合する。
     const fujiRayPoints=[];
@@ -18490,8 +18445,10 @@ async function buildRealTerrainProfile(lat,lon,token){
     /* 富士山の高密度点を通常サンプルへ距離順に差し込む。
        レイマーチは手前から奥へ歩くため、距離で昇順に並んでいる必要がある。
        方位ごとに点数が変わるので、方位間の補間は添字ではなく距離で対応付ける。 */
-    if(fujiRayPoints.length||kmzRayPoints.length){
-      rayGrid[az]=rayGrid[az].concat(fujiRayPoints,kmzRayPoints)
+    /* 【v901】ここで合流させるのは富士山の点だけ。
+       KMZの高密度点は kmzDetailGrid にあり、rayGrid には入れない。 */
+    if(fujiRayPoints.length){
+      rayGrid[az]=rayGrid[az].concat(fujiRayPoints)
         .filter(Boolean)
         .sort((a,b)=>a.distanceKm-b.distanceKm);
     }
@@ -18529,7 +18486,7 @@ async function buildRealTerrainProfile(lat,lon,token){
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
-    _kmzSignature:kmzSignatureNow||""   // この地形を作ったときの建物位置
+    /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
   };
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
@@ -18880,11 +18837,10 @@ let terrainSettleTimer=0,terrainSettleArmed=false,terrainSettlePendingKey="";
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  /* 建物の位置が変わると、その周りを高密度で取り直す必要がある。
-     地点が同じでも、印が違えば作り直す。 */
-  const kmzSignature=kmzTerrainSignature();
-  const sameSpot=realTerrainState.key===key&&realTerrainState.profile
-    &&(realTerrainState._kmzSignature||"")===kmzSignature;
+  /* 【v902】**KMZの位置では作り直さない。**
+     模型の足元の高密度点は `ensureKmzDetailGrid` が独立に用意するので、
+     地形そのものを取り直す理由が無い。 */
+  const sameSpot=realTerrainState.key===key&&realTerrainState.profile;
   if(sameSpot){setExternalDataStatus("elevation","ready");setExternalDataStatus("fuji","ready","専用情報準備済み");return;}
   if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
@@ -19226,6 +19182,10 @@ function kmzDestinationPoint(lat,lon,bearing,distanceKm){
    こうすると手前の山は今までどおり建物を隠し、奥の山は隠さなくなる。 */
 function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
   const grid=realTerrainState.rayGrid||realTerrainState.nearSurfaceGrid;
+  /* 【v902】模型の周りの高密度点。地形とは別に用意されたものを見る。
+     まだ出来ていなければ null が返り、通常の地形だけで隠れ判定をする
+     （出来た時点で描き直される）。 */
+  const detailGrid=ensureKmzDetailGrid();
   if(!Array.isArray(grid)||grid.length<360||!Number.isFinite(limitKm)) return null;
   /* 地形グリッドが持っている alt は、グリッドを作った時点の視点の高さ（三脚の1.6m）
      で計算された見かけ高度で、上昇しても作り直されない。
@@ -19248,11 +19208,15 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
   const halfFov=Math.max(5,(Number.isFinite(s.fovH)?s.fovH:60)/2+8);
   for(let diff=-halfFov;diff<=halfFov;diff+=.25){
     const az=norm360(s.facingAz+diff);
-    const row=grid[Math.round(az)%360];
-    if(!row||!row.length) continue;
+    const azIndex=Math.round(az)%360;
+    const row=grid[azIndex];
+    const detailRow=(detailGrid&&detailGrid[azIndex])||null;
+    if(!(row&&row.length)&&!(detailRow&&detailRow.length)) continue;
     let best=-Infinity;
-    for(let i=0;i<row.length;i++){
-      const pt=row[i];
+    for(const scanRow of [row,detailRow]){
+    if(!scanRow||!scanRow.length) continue;
+    for(let i=0;i<scanRow.length;i++){
+      const pt=scanRow[i];
       if(!pt) continue;
       if(Number.isFinite(pt.distanceKm)&&pt.distanceKm>=limitKm) break;   // 行は距離順
       /* 【v876】**古い見かけ高度（pt.alt）を出発点にしない。**
@@ -19294,12 +19258,104 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
       }
       if(Number.isFinite(alt)&&alt>best) best=alt;
     }
+    }
     if(!Number.isFinite(best)) continue;
     const point=toXY(az,best);
     if(!point||!point.every(Number.isFinite)) continue;
     samples.push(point);
   }
   return samples.length>=8?buildSkylineYArray(samples,W,H):null;
+}
+/* 【v902】模型の足元の高密度点を、**地形とは独立して**用意する。
+
+   目的（v616）は「模型が地面から浮かない・手前の地形に正しく隠れる」こと。
+   通常の距離目盛りは距離に比例して粗くなり、2.4km先では約216m間隔なので、
+   模型を置いた場所の小さな起伏を取りこぼす。
+   そこで模型の周り半径400mだけを25m間隔で拾い直す。
+
+   v901まではこれを地形の作り手の中でやっていたため、
+   **KMZを置くだけで地形も水域も丸ごと取り直し**になっていた。
+   ここは読むタイルがごく少数（模型の周り400mぶんのDEMだけ）で、
+   OSMの水域にも海岸線にも一切触れない。
+
+   使うのは `kmzNearTerrainSkyline` だけ。描画本体の rayGrid には入れない
+   （入れると帯・稜線・道路の高さが全部動く。v901の §17-3 参照）。 */
+let kmzDetailGridState={signature:"",grid:null,building:""};
+function kmzDetailGridSignature(){
+  return `${realTerrainState.key||""}|${kmzTerrainSignature()}`;
+}
+/* 呼ぶたびに「今の地点＋今の模型の位置」に合うものがあるか見る。
+   無ければ裏で作り始め、出来た時点で描き直す。待たせない。 */
+function ensureKmzDetailGrid(){
+  const signature=kmzDetailGridSignature();
+  if(kmzDetailGridState.signature===signature) return kmzDetailGridState.grid;
+  // 模型が1つも無いときは作るものが無い。空で確定させる。
+  if(!kmzTerrainSignature()){
+    kmzDetailGridState={signature,grid:null,building:""};
+    return null;
+  }
+  if(kmzDetailGridState.building!==signature){
+    kmzDetailGridState.building=signature;
+    buildKmzDetailGrid(signature);
+  }
+  return null;
+}
+async function buildKmzDetailGrid(signature){
+  const done=()=>{ if(kmzDetailGridState.building===signature)kmzDetailGridState.building=""; };
+  const [lat,lon]=String(realTerrainState.key||"").split(",").map(Number);
+  const observerElevation=realTerrainState.observerElevation;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||!Number.isFinite(observerElevation)){done();return;}
+  /* レイが模型の円を横切る区間を実距離で刻む。方位の目盛り（1°）には縛られない。
+     富士山の高密度点と同じ考え方。 */
+  const rays=Array.from({length:360},()=>[]);
+  const tilesByKey=new Map();
+  for(const slot of kmzSlots){
+    if(!slot.model||!Number.isFinite(slot.lat)||!Number.isFinite(slot.lon)) continue;
+    const info=terrainDistanceAndBearing(lat,lon,slot.lat,slot.lon);
+    if(!Number.isFinite(info.distanceKm)||info.distanceKm<.05||info.distanceKm>60) continue;
+    const detailRadiusKm=.4,stepKm=.025;
+    for(let az=0;az<360;az++){
+      const offsetRad=(((az-info.bearing+540)%360)-180)*D2R;
+      const lateralKm=Math.abs(info.distanceKm*Math.sin(offsetRad));
+      if(lateralKm>detailRadiusKm) continue;
+      const alongCenterKm=info.distanceKm*Math.cos(offsetRad);
+      const halfChordKm=Math.sqrt(Math.max(0,detailRadiusKm*detailRadiusKm-lateralKm*lateralKm));
+      const startKm=Math.max(.02,alongCenterKm-halfChordKm),endKm=alongCenterKm+halfChordKm;
+      for(let distanceKm=startKm;distanceKm<=endKm+1e-6;distanceKm+=stepKm){
+        const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
+        const refs=[terrainTilePoint(pLat,pLon,14),terrainTilePoint(pLat,pLon,12)];
+        refs.forEach(tile=>tilesByKey.set(tile.key,tile));
+        rays[az].push({distanceKm,refs});
+      }
+    }
+  }
+  if(kmzDetailGridState.building!==signature) return;   // 途中で条件が変わった
+  await loadTilesWithLimit([...tilesByKey.values()]);
+  if(kmzDetailGridState.building!==signature) return;
+  /* 見かけ高度は三脚1.6mの基準で入れておく。
+     `kmzNearTerrainSkyline` は baseElevation から今の視点で計算し直すので
+     ここの値は使われないが、地形グリッドと形を揃えておく。 */
+  const eyeElevation=observerElevation+1.6,earthRadius=6371000*(7/6);
+  const grid=Array.from({length:360},()=>[]);
+  for(let az=0;az<360;az++){
+    for(const detail of rays[az]){
+      let elevation=null;
+      for(const ref of detail.refs){
+        const value=decodeGsiElevationBilinear(await loadGsiDemTile(ref),ref.pixelX,ref.pixelY);
+        if(Number.isFinite(value)){elevation=value;break;}
+      }
+      if(!Number.isFinite(elevation)) continue;
+      const metres=detail.distanceKm*1000;
+      grid[az].push({distanceKm:detail.distanceKm,
+        alt:Math.atan2(elevation-eyeElevation-metres*metres/(2*earthRadius),metres)*R2D,
+        water:false,baseElevation:elevation,baseNoData:false,baseKnown:false});
+    }
+    // 同じ方位に複数の模型が並ぶと距離が前後する。この先は距離順が前提。
+    if(grid[az].length>1)grid[az].sort((a,b)=>a.distanceKm-b.distanceKm);
+  }
+  if(kmzDetailGridState.building!==signature) return;
+  kmzDetailGridState={signature,grid,building:""};
+  if(typeof update==="function") update();   // 出来たので描き直す
 }
 /* 【v872】KMZ建物の水面への映り込みの濃さ。
 
