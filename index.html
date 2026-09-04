@@ -1433,7 +1433,8 @@
      画像そのものではなくDOMの重ね表示なので、保存した写真には写らない。 */
   .sim-info-panel{
     position:absolute;
-    top:50%;
+    /* 【v890】縦中央だと被写体に重なって邪魔なので下げた。 */
+    top:76%;
     right:calc(var(--sim-inset-x) + 12px);
     transform:translateY(-50%);
     z-index:12;
@@ -2043,6 +2044,26 @@
   .kmz-building-status{min-height:34px;margin:8px 0 0;padding:7px 8px;border-radius:7px;background:rgba(5,10,24,.42);color:var(--dim-2);font-size:10px;line-height:1.45;word-break:break-word;white-space:pre-wrap;}
   .kmz-building-status.ready{color:#aee8c4;border:1px solid rgba(90,210,140,.28);}
   .kmz-building-status.error{color:#ffb2ac;border:1px solid rgba(255,100,90,.28);}
+  /* 【v880】読み込み済みの模型の一覧。1行が1つ。 */
+  .kmz-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
+  .kmz-list:empty{display:none;}
+  .kmz-row{display:grid;grid-template-columns:20px 1fr 30px 26px;align-items:center;gap:6px;
+    padding:6px 7px;border-radius:7px;border:1px solid rgba(126,154,208,.26);
+    background:rgba(5,10,24,.34);cursor:pointer;}
+  .kmz-row.active{border-color:rgba(150,205,255,.8);background:rgba(30,62,112,.5);}
+  .kmz-row .kmz-num{font-size:10px;text-align:center;color:var(--dim-2);
+    font-variant-numeric:tabular-nums;}
+  .kmz-row.active .kmz-num{color:#bfe3ff;}
+  .kmz-row .kmz-name{font-size:11px;line-height:1.4;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;}
+  .kmz-row .kmz-sub{font-size:9px;color:var(--dim-2);}
+  .kmz-row.off .kmz-name{opacity:.42;}
+  .kmz-row button{background:none;border:none;padding:2px;cursor:pointer;
+    font-size:13px;line-height:1;color:var(--dim-2);}
+  .kmz-row button.on{color:#aee8c4;}
+  .kmz-row button.kmz-del{color:#ff9f98;font-size:14px;}
+  .kmz-active-label{font-size:10px;color:var(--dim-2);margin:2px 0 6px;
+    padding-top:8px;border-top:1px solid rgba(126,154,208,.2);}
   .plan-load-list{display:flex;flex-direction:column;gap:9px;}
   .plan-accordion{margin:0;border:1px solid rgba(127,200,255,.28);border-radius:11px;background:rgba(255,255,255,.025);overflow:hidden;}
   .plan-accordion>summary{display:flex;align-items:center;gap:8px;list-style:none;cursor:pointer;user-select:none;}
@@ -2458,6 +2479,15 @@
     letter-spacing:.01em;white-space:pre;pointer-events:none;
   }
   body.sea-diag-on .sea-diag-panel{display:block;}
+  /* 【v888】水域レイ診断。中央方位の水の帯をそのまま並べる。 */
+  .water-ray-diag{
+    display:none;position:absolute;left:calc(var(--sim-inset-x) + 7px);top:calc(var(--sim-inset-y) + 46px);z-index:9;
+    padding:6px 8px;border-radius:6px;background:rgba(3,5,14,.80);
+    color:rgba(226,234,250,.94);font:500 10px/1.5 'IBM Plex Mono',monospace;
+    letter-spacing:.01em;white-space:pre;pointer-events:none;max-width:76vw;
+  }
+  body.water-ray-diag-on .water-ray-diag{display:block;}
+  body.ar-active .water-ray-diag{display:none;}
   body.ar-active .sea-diag-panel{display:none;}
   body.hd-debug:not(.ar-active) .app-version-badge{display:block;}
   body.ar-active .app-version-badge{display:none;}
@@ -4250,8 +4280,11 @@
          `.kmz` だけだとGoogle Earthが入っていない端末で薄く表示されて選べないことがある。
          KMZの実体はZIPなので、ZIPと種別不明も通しておく。実害は無い。 -->
             <input id="kmzBuildingInput" class="kmz-building-file" type="file" accept=".kmz,.zip,application/vnd.google-earth.kmz,application/zip,application/octet-stream">
-            <button id="kmzBuildingSelectBtn" type="button" class="toggle-btn"><span>🏰 KMZファイルを読み込む</span><span>選択</span></button>
-            <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込んで配置します。既定は色付き。「シルエットで描く」をONにすると黒い影絵になります。</div>
+            <!-- 【v880】読み込み済みの一覧。行をタップで選択、👁で表示切替、×で削除。 -->
+            <div id="kmzBuildingList" class="kmz-list"></div>
+            <button id="kmzBuildingSelectBtn" type="button" class="toggle-btn"><span>🏰 KMZを追加</span><span>＋</span></button>
+            <div id="kmzBuildingStatus" class="kmz-building-status">COLLADA（.dae）を含むKMZを端末内で読み込んで配置します。何個でも追加できます。表示・シルエット・発光は模型ごとに設定できます。</div>
+            <p id="kmzBuildingActiveLabel" class="kmz-active-label"></p>
             <button id="kmzBuildingVisibleBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>建物を表示する</span><span id="kmzBuildingVisibleState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
             <button id="kmzBuildingSilhouetteBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🖤 シルエットで描く</span><span id="kmzBuildingSilhouetteState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
             <button id="kmzBuildingGlowBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>✨ 自ら光る（花火・イルミ）</span><span id="kmzBuildingGlowState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
@@ -4405,6 +4438,9 @@
             <input type="range" id="belowHorizonOpacitySlider" min="0" max="100" step="5" value="100">
           </div>
           <button id="showHorizonLineBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📏 水平線を表示させる</span><span id="showHorizonLineState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <!-- 【v881】海面線を視点の高さで下げる。既定はOFF（従来どおり仰角0°）。 -->
+          <button id="seaHorizonRealBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌊 水平線を視点の高さで下げる</span><span id="seaHorizonRealState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:6px;">高い場所ほど水平線は下がります（視点海抜232mで0.45°＝700mmなら184px）。ONにすると視点の高さから求めた本来の位置へ下げます。低い場所ではほとんど変わりません（1.6mで0.038°）。OFFは従来どおり仰角0°です。</p>
           <p class="map-hint" style="margin-top:8px;">実際の地平線(高度0°)の位置を、明るいグレーの点線で分かりやすく表示します。</p>
           <button id="showSkylineBoundaryBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>⛰ 山の稜線を表示する</span><span id="showSkylineBoundaryState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
           <button id="showWaterLandBoundaryBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>🌊 水際境界を表示する</span><span id="showWaterLandBoundaryState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -4583,6 +4619,8 @@
                 <button id="popupSunPathBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">太陽の軌跡</button>
                 <button id="popupMoonPathBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">月の軌跡</button>
                 <button id="popupHorizonLineBtn" type="button" class="constellation-toggle-btn display-control-btn">水平線</button>
+                <!-- 【v896】「水平線を下げる」は既定ONになったので表示パネルから外した。
+                     OFFにする道はサイドバーの設定画面に残してある。 -->
                 <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
                 <button id="popupWorldGridBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地面グリッド</button>
@@ -4592,6 +4630,8 @@
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
+                <!-- 【v888】表示パネルに置く。サイドバーにだけ足して押せなかったv883の反省。 -->
+                <button id="popupWaterRayDiagBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">水域レイ診断</button>
                 <button id="popupReflectionBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" disabled title="リフレは常時ONです">リフレ 常時ON</button>
                 <button id="popupCloudSeaBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">雲海</button>
                 <button id="popupBridgeBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="橋だけを取得して簡易的な橋面と橋脚を表示します">橋</button>
@@ -4765,6 +4805,8 @@
               </div>
               <div class="app-version-badge" id="appVersionBadge" aria-label="バージョン"></div>
               <div class="sea-diag-panel" id="seaDiagPanel" aria-label="水際判定の診断表示"></div>
+              <!-- 【v888】水域レイ診断。中央方位の水の帯を並べる。 -->
+              <div class="water-ray-diag" id="waterRayDiagPanel" aria-label="水域レイ診断"></div>
               <div class="high-detail-scan" id="highDetailScan" aria-hidden="true"></div>
               <div class="external-data-monitor" aria-label="シミュレーション用外部データの取得状況">
                 <button id="darumaTelephotoBtn" type="button" class="external-data-reload-btn icon-help-target sim-right-help" data-help="超望遠で朝陽・夕陽と遠方の島の重なりを判定" aria-pressed="false" aria-label="超望遠・だるま判定を開く" title="超望遠・だるま判定"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 15.5h17M5 18.5c2-1.2 4-1.2 6 0s4 1.2 8 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M12 2.5v1.2M6.8 4.2l.9.9M17.2 4.2l-.9.9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
@@ -5213,7 +5255,20 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="879-road-nodata-gap";
+const APP_VERSION="899-water-day-night-tone";
+/* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
+
+   持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
+   実写と一致することを確認できた（v886で解決）。
+   低い視点ではほとんど変わらない（三脚1.6mで0.038°）。
+   陸地・池の描画には触っていない。
+
+   OFFにする道はサイドバーの設定画面に残してある（「表示」パネルからは外した）。
+   どこかで問題が出たときの逃げ道。
+
+   宣言がここまで上がっているのは、情報表示が起動直後にも組み立てられるため
+   （v881では下の方にあり、宣言前アクセスで止まる恐れがあった）。 */
+let seaHorizonRealistic=true;
 
 /* 地形の描画方式。既定は新方式(レイマーチ)。
    URLに ?terrain=legacy を付けると従来の「距離帯シルエット+近距離メッシュ」へ切り替わり、
@@ -6370,10 +6425,12 @@ const el={
   mwTextureOffsetSlider:$("mwTextureOffsetSlider"), mwTextureOffsetVal:$("mwTextureOffsetVal"),
   mwTextureBOffsetSlider:$("mwTextureBOffsetSlider"), mwTextureBOffsetVal:$("mwTextureBOffsetVal"),
   showHorizonLineBtn:$("showHorizonLineBtn"), showHorizonLineState:$("showHorizonLineState"),
+  seaHorizonRealBtn:$("seaHorizonRealBtn"), seaHorizonRealState:$("seaHorizonRealState"),   // 【v881】
   showSkylineBoundaryBtn:$("showSkylineBoundaryBtn"), showSkylineBoundaryState:$("showSkylineBoundaryState"), skylineOpacitySlider:$("skylineOpacitySlider"), skylineOpacityVal:$("skylineOpacityVal"),
   showWaterLandBoundaryBtn:$("showWaterLandBoundaryBtn"), showWaterLandBoundaryState:$("showWaterLandBoundaryState"),
   normalStarOpacitySlider:$("normalStarOpacitySlider"), normalStarOpacityVal:$("normalStarOpacityVal"),
   kmzBuildingInput:$("kmzBuildingInput"), kmzBuildingSelectBtn:$("kmzBuildingSelectBtn"), kmzBuildingStatus:$("kmzBuildingStatus"),
+  kmzBuildingList:$("kmzBuildingList"), kmzBuildingActiveLabel:$("kmzBuildingActiveLabel"),   // 【v880】複数対応
   kmzBuildingVisibleBtn:$("kmzBuildingVisibleBtn"), kmzBuildingVisibleState:$("kmzBuildingVisibleState"),
   kmzBuildingSilhouetteBtn:$("kmzBuildingSilhouetteBtn"), kmzBuildingSilhouetteState:$("kmzBuildingSilhouetteState"),
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
@@ -6395,7 +6452,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupWaterRayDiagBtn:$("popupWaterRayDiagBtn"), waterRayDiagPanel:$("waterRayDiagPanel"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   popupBridgeBtn:$("popupBridgeBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
@@ -6441,6 +6498,34 @@ populateSelect(el.sensor, SENSORS, s=>s.name);
 populateSelect(el.lp, LP_LEVELS, l=>l.name);
 
 // KMZ操作画面の初期化より前に状態を用意する。宣言前アクセスによる起動停止を防ぐ。
+
+/* 【v880】読み込んだ模型の一覧。**これが真の状態**。
+
+   1つの要素が1つの模型。描画・保存はこの配列だけを見る。
+
+     {id, model, kmlLocation, sourceDataUrl, fileName,
+      lat, lon, altitude, heading, scale, opacity,
+      visible, silhouette, glow, nudgeForward, nudgeRight}
+
+   下の kmzBuildingModel などのグローバルは**選択中スロットの写し**。
+   状況表示・置き場所の診断・ナッジ・「KMZの座標を使用」といった
+   編集まわりのコードを書き換えずに済ませるために残してある。 */
+let kmzSlots=[];
+let kmzActiveId=null;
+let kmzSlotSeq=0;
+function kmzActiveSlot(){return kmzSlots.find(slot=>slot.id===kmzActiveId)||null;}
+function kmzSlotSettings(slot){
+  return {lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,
+          heading:slot.heading||0,scale:slot.scale||1,
+          opacity:Number.isFinite(slot.opacity)?slot.opacity:1};
+}
+
+/* 【v880】置き場所の微調整の量。**スロットごとに持つ**ので写しにも含める。
+   ここへ移したのは、`refreshKmzBuildingControls` の先頭で読むようになり、
+   宣言より前に触る危険を無くすため（元は下の方で宣言していた）。 */
+let kmzNudgeStepM=1;
+let kmzNudgeForwardTotal=0,kmzNudgeRightTotal=0;
+
 let kmzBuildingModel=null;
 let kmzBuildingVisible=true;
 /* 【v851】既定はOFF＝色付きで描く。ONにすると今までどおりの黒いシルエット。 */
@@ -6452,6 +6537,126 @@ let kmzBuildingGlow=false;
 let kmzBuildingKmlLocation=null;
 let kmzBuildingSourceDataUrl="";
 let kmzBuildingRestoreToken=0;
+
+/* 【v880】編集画面 → 選択中スロット。
+
+   `refreshKmzBuildingControls()` は**編集のたびに必ず呼ばれている**ので、
+   その先頭でこれを呼べば取りこぼしが無い。同期をこの1点に集約するのが肝。 */
+function kmzCommitEditor(){
+  const slot=kmzActiveSlot();if(!slot)return;
+  const lat=+el.kmzBuildingLat.value,lon=+el.kmzBuildingLon.value;
+  if(Number.isFinite(lat))slot.lat=lat;
+  if(Number.isFinite(lon))slot.lon=lon;
+  slot.altitude=+el.kmzBuildingAltitude.value||0;
+  slot.heading=+el.kmzBuildingHeading.value||0;
+  slot.scale=+el.kmzBuildingScale.value||1;
+  slot.opacity=(+el.kmzBuildingOpacity.value||100)/100;
+  slot.visible=kmzBuildingVisible;
+  slot.silhouette=kmzBuildingSilhouette;
+  slot.glow=kmzBuildingGlow;
+  slot.nudgeForward=kmzNudgeForwardTotal;
+  slot.nudgeRight=kmzNudgeRightTotal;
+}
+/* 【v880】選択中スロット → 編集画面。選択を切り替えたときと読み込み直後に呼ぶ。 */
+function kmzLoadEditor(){
+  const slot=kmzActiveSlot();
+  if(!slot){
+    kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";
+    kmzBuildingVisible=true;kmzBuildingSilhouette=false;kmzBuildingGlow=false;
+    kmzNudgeForwardTotal=0;kmzNudgeRightTotal=0;
+    return;
+  }
+  el.kmzBuildingLat.value=slot.lat.toFixed(6);
+  el.kmzBuildingLon.value=slot.lon.toFixed(6);
+  el.kmzBuildingAltitude.value=slot.altitude||0;
+  el.kmzBuildingHeading.value=slot.heading||0;
+  el.kmzBuildingScale.value=clamp(slot.scale||1,+el.kmzBuildingScale.min,+el.kmzBuildingScale.max);
+  el.kmzBuildingOpacity.value=clamp(Math.round((Number.isFinite(slot.opacity)?slot.opacity:1)*100),
+                                    +el.kmzBuildingOpacity.min,+el.kmzBuildingOpacity.max);
+  kmzBuildingModel=slot.model;
+  kmzBuildingKmlLocation=slot.kmlLocation||null;
+  kmzBuildingSourceDataUrl=slot.sourceDataUrl||"";
+  kmzBuildingVisible=slot.visible!==false;
+  kmzBuildingSilhouette=slot.silhouette===true;
+  kmzBuildingGlow=slot.glow===true;
+  kmzNudgeForwardTotal=slot.nudgeForward||0;
+  kmzNudgeRightTotal=slot.nudgeRight||0;
+}
+/* 【v880】別の模型に切り替える。今の編集内容を取りこぼさないよう、
+   **先に今のスロットへ書き戻してから**選択を移す。 */
+function kmzSelectSlot(id){
+  if(id===kmzActiveId)return;
+  kmzCommitEditor();
+  kmzActiveId=id;
+  kmzLoadEditor();
+  refreshKmzBuildingControls();
+}
+/* 【v880】読み込み済み一覧の描き直し。 */
+function renderKmzList(){
+  const list=el.kmzBuildingList;if(!list)return;
+  list.textContent="";
+  kmzSlots.forEach((slot,index)=>{
+    const row=document.createElement("div");
+    row.className="kmz-row"+(slot.id===kmzActiveId?" active":"")+(slot.visible===false?" off":"");
+    row.addEventListener("click",()=>kmzSelectSlot(slot.id));
+
+    const num=document.createElement("div");
+    num.className="kmz-num";num.textContent=String(index+1);
+    row.appendChild(num);
+
+    const name=document.createElement("div");
+    name.className="kmz-name";
+    name.textContent=slot.fileName||"建物";
+    name.title=slot.fileName||"建物";
+    row.appendChild(name);
+
+    const eye=document.createElement("button");
+    eye.type="button";eye.className="kmz-eye"+(slot.visible===false?"":" on");
+    eye.textContent=slot.visible===false?"🚫":"👁";
+    eye.title=slot.visible===false?"表示する":"隠す";
+    eye.addEventListener("click",event=>{
+      event.stopPropagation();          // 行の選択と二重に動かない
+      slot.visible=slot.visible===false;
+      if(slot.id===kmzActiveId)kmzBuildingVisible=slot.visible;
+      renderKmzList();
+      refreshKmzBuildingControls();
+    });
+    row.appendChild(eye);
+
+    const del=document.createElement("button");
+    del.type="button";del.className="kmz-del";del.textContent="×";del.title="この建物を削除";
+    del.addEventListener("click",event=>{
+      event.stopPropagation();
+      kmzRemoveSlot(slot.id);
+    });
+    row.appendChild(del);
+
+    list.appendChild(row);
+  });
+  if(el.kmzBuildingActiveLabel){
+    const slot=kmzActiveSlot();
+    el.kmzBuildingActiveLabel.textContent=kmzSlots.length
+      ? `▼ 下の操作は「${slot?slot.fileName||"建物":"—"}」に対して行われます`
+      : "";
+  }
+}
+/* 【v880】1つだけ削除する。消したら隣を選び直す。 */
+function kmzRemoveSlot(id){
+  const index=kmzSlots.findIndex(slot=>slot.id===id);
+  if(index<0)return;
+  const removed=kmzSlots[index];
+  kmzSlots.splice(index,1);
+  if(kmzActiveId===id){
+    const next=kmzSlots[Math.min(index,kmzSlots.length-1)];
+    kmzActiveId=next?next.id:null;
+    kmzLoadEditor();
+  }
+  el.kmzBuildingInput.value="";
+  setKmzBuildingStatus(kmzSlots.length
+    ? `${removed.fileName||"建物"} を削除しました。残り${kmzSlots.length}件です。`
+    : "建物をすべて削除しました。「KMZを追加」で読み込めます。");
+  renderKmzList();refreshKmzBuildingControls();
+}
 
 /* KMZ建物の読み込み・配置操作 */
 function setKmzBuildingStatus(message,type=""){
@@ -6490,16 +6695,23 @@ function kmzPlacementReport(){
   return lines.join("\n");
 }
 function refreshKmzBuildingControls(redraw=true){
+  /* 【v880】**ここが編集画面とスロットの唯一の合流点**。
+     入力欄の変更もボタンの切り替えも、必ずこの関数を通るので、
+     先頭で書き戻せば取りこぼしが起きない。 */
+  kmzCommitEditor();
   el.kmzBuildingVisibleBtn.classList.toggle("active",kmzBuildingVisible);el.kmzBuildingVisibleState.textContent=kmzBuildingVisible?"ON":"OFF";
   el.kmzBuildingSilhouetteBtn.classList.toggle("active",kmzBuildingSilhouette);el.kmzBuildingSilhouetteState.textContent=kmzBuildingSilhouette?"ON":"OFF";
   el.kmzBuildingGlowBtn.classList.toggle("active",kmzBuildingGlow);el.kmzBuildingGlowState.textContent=kmzBuildingGlow?"ON":"OFF";
   if(el.kmzBuildingNudgeStepBtn){el.kmzBuildingNudgeStepBtn.textContent=`${kmzNudgeStepM}m`;el.kmzBuildingNudgeVal.textContent=kmzNudgeLabel();}
   if(el.kmzBuildingPlacement)el.kmzBuildingPlacement.textContent=kmzPlacementReport();
   el.kmzBuildingScaleVal.textContent=`${(+el.kmzBuildingScale.value||1).toFixed(2)}倍`;el.kmzBuildingOpacityVal.textContent=`${Math.round(+el.kmzBuildingOpacity.value||100)}%`;
+  renderKmzList();   // 【v880】表示ON/OFFや選択の見た目を一覧へ反映
   if(redraw&&typeof update==="function")update();
 }
 el.kmzBuildingSelectBtn.addEventListener("click",()=>{el.kmzBuildingInput.value="";el.kmzBuildingInput.click();});
-async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,sourceDataUrl=""}={}){
+/* 【v880】読み込むと**新しいスロットを足して選択する**（上書きしない）。
+   `slotId` を渡すと、そのスロットの中身を差し替える（撮影計画からの復元で使う）。 */
+async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,sourceDataUrl="",slotId=null}={}){
   const entries=await readKmzEntries(arrayBuffer),decoder=new TextDecoder("utf-8");
     const kmlName=[...entries.keys()].find(name=>name.toLowerCase()==="doc.kml")||[...entries.keys()].find(name=>name.toLowerCase().endsWith(".kml"));
     let daeName=null,kmlText="";
@@ -6511,17 +6723,37 @@ async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,
     }
     if(!daeName)daeName=[...entries.keys()].find(name=>name.toLowerCase().endsWith(".dae"));
     if(!daeName)throw new Error("KMZ内に.dae形式の3Dモデルが見つかりません。");
-    kmzBuildingModel=parseColladaBuilding(decoder.decode(entries.get(daeName)));kmzBuildingModel.fileName=fileName;kmzBuildingModel.daeName=daeName;
-    if(sourceDataUrl)kmzBuildingSourceDataUrl=sourceDataUrl;
-    if(applyKmlLocation&&kmzBuildingKmlLocation){
-      el.kmzBuildingLat.value=kmzBuildingKmlLocation.lat.toFixed(6);el.kmzBuildingLon.value=kmzBuildingKmlLocation.lon.toFixed(6);
-      if(Number.isFinite(kmzBuildingKmlLocation.altitude))el.kmzBuildingAltitude.value=kmzBuildingKmlLocation.altitude;
-      if(Number.isFinite(kmzBuildingKmlLocation.heading))el.kmzBuildingHeading.value=kmzBuildingKmlLocation.heading;
+    const model=parseColladaBuilding(decoder.decode(entries.get(daeName)));model.fileName=fileName;model.daeName=daeName;
+    const kmlLocation=kmzBuildingKmlLocation;
+
+    /* 【v880】置き場所の初期値。
+       KMZ自身の座標があればそれを使い、無ければ**今の観測地点**に置く。
+       0,0（アフリカ沖）へ飛ばすと「読めたのに見えない」になるため。 */
+    let slot=slotId?kmzSlots.find(s=>s.id===slotId):null;
+    if(!slot){
+      slot={id:++kmzSlotSeq,lat:0,lon:0,altitude:0,heading:0,scale:1,opacity:1,
+            visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0};
+      const here=kmzActiveSlot();
+      slot.lat=here?here.lat:(+el.lat.value||35);
+      slot.lon=here?here.lon:(+el.lon.value||135);
+      kmzSlots.push(slot);
     }
-    kmzBuildingVisible=true;
+    slot.model=model;slot.fileName=fileName;slot.kmlLocation=kmlLocation;
+    if(sourceDataUrl)slot.sourceDataUrl=sourceDataUrl;
+    if(applyKmlLocation&&kmlLocation){
+      slot.lat=kmlLocation.lat;slot.lon=kmlLocation.lon;
+      if(Number.isFinite(kmlLocation.altitude))slot.altitude=kmlLocation.altitude;
+      if(Number.isFinite(kmlLocation.heading))slot.heading=kmlLocation.heading;
+    }
+    slot.visible=true;
+    kmzActiveId=slot.id;
+    kmzLoadEditor();
+    const kmzBuildingModel=slot.model;   // 以降の表示文で使う（写しは kmzLoadEditor が入れた）
     const size=`${kmzBuildingModel.width.toFixed(1)}×${kmzBuildingModel.depth.toFixed(1)}×高さ${kmzBuildingModel.height.toFixed(1)}m`;
     const locationWarning=kmzBuildingKmlLocation?`／KMZ座標 ${kmzBuildingKmlLocation.lat.toFixed(6)}, ${kmzBuildingKmlLocation.lon.toFixed(6)}`:"／座標情報なし";
-    setKmzBuildingStatus(`${fileName}：${kmzBuildingModel.triangles.length.toLocaleString()}面、${size}${locationWarning}`,"ready");refreshKmzBuildingControls();
+    setKmzBuildingStatus(`${fileName}：${kmzBuildingModel.triangles.length.toLocaleString()}面、${size}${locationWarning}`+
+      (kmzSlots.length>1?`／読み込み済み${kmzSlots.length}件`:""),"ready");
+    renderKmzList();refreshKmzBuildingControls();
     return kmzBuildingModel;
 }
 /* 【v855】読み込みに失敗したときの手がかり。
@@ -6567,8 +6799,8 @@ el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuilding
 
    押した合計を覚えて「ずれ」として出す。どれだけ動かしたか分からないと戻せないため。
    上限は設けない（1m刻みで押せるなら、上限は詰まる場面を作るだけ）。 */
-let kmzNudgeStepM=1;
-let kmzNudgeForwardTotal=0,kmzNudgeRightTotal=0;
+/* 【v880】kmzNudgeStepM / kmzNudgeForwardTotal / kmzNudgeRightTotal は
+   スロットの状態と一緒に上の方で宣言するように移した。 */
 function kmzNudgeLabel(){
   const f=Math.round(kmzNudgeForwardTotal),r=Math.round(kmzNudgeRightTotal);
   if(!f&&!r)return "ずれ 0m";
@@ -6629,7 +6861,13 @@ el.kmzBuildingUseKmlBtn.addEventListener("click",()=>{
   el.kmzBuildingLat.value=kmzBuildingKmlLocation.lat.toFixed(6);el.kmzBuildingLon.value=kmzBuildingKmlLocation.lon.toFixed(6);
   el.kmzBuildingAltitude.value=Number.isFinite(kmzBuildingKmlLocation.altitude)?kmzBuildingKmlLocation.altitude:0;el.kmzBuildingHeading.value=Number.isFinite(kmzBuildingKmlLocation.heading)?kmzBuildingKmlLocation.heading:0;refreshKmzBuildingControls();
 });
-el.kmzBuildingDeleteBtn.addEventListener("click",()=>{kmzNudgeForwardTotal=0;kmzNudgeRightTotal=0;kmzBuildingRestoreToken++;kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";setKmzBuildingStatus("建物を削除しました。別のKMZを読み込めます。");refreshKmzBuildingControls();});
+/* 【v880】**選択中の1件だけ**削除する（以前は唯一の建物を消していた）。 */
+el.kmzBuildingDeleteBtn.addEventListener("click",()=>{
+  const slot=kmzActiveSlot();
+  if(!slot){setKmzBuildingStatus("削除できる建物がありません。");return;}
+  kmzBuildingRestoreToken++;
+  kmzRemoveSlot(slot.id);
+});
 refreshKmzBuildingControls(false);
 
 /* 時刻スライダーの表示モード。
@@ -7562,6 +7800,19 @@ let placeNameVisible=true; // 画面内の地名表示
 /* 水際の判定がどの層で決まっているかを画面に出す。原因の切り分け用。
    既定は非表示で、描画にも触らない（数え上げだけ）。 */
 let seaDiagVisible=false;
+/* 【v888】水域レイ診断。中央方位の水の帯をそのまま並べる。
+   描画には影響しない。OFFなら1行も余分に走らない。 */
+let waterRayDiagVisible=false;
+let waterRayDiagWantAz=null;      // 診断したい方位（update()が毎コマ入れる）
+let waterRayDiagBestDiff=Infinity; // そのコマでいちばん近かった方位の差
+let waterRayDiagStoreThis=false;   // いま走っている呼び出しを採用するか
+let waterRayDiagCapturing=false;  // いま診断用に走っているか
+let waterRayDiagData=null;        // 直近の結果（中央方位の内訳）
+let waterRayDiagTallest=null;     // 【v889】画角内でいちばん高い水の帯
+/* 【v894】3つ目の経路（drawNormalFineWaterMaskOnly）の、いちばん縦に長い水の塊。
+   柱を実際に塗っているのはこの経路。 */
+let waterFineDiagTallest=null;
+let waterFineDiagRuns=0;
 let droneModeOn=true;   // 【v696】コントローラーは既定で出す
 /* ドローンモード。ONの間だけ画面内コントローラーを出す。
    構図(縦・横)には連動させない。OFFにしたら着地させる——
@@ -7661,6 +7912,82 @@ function syncSimInfoPanelVisibility(){
     if(simInfoPanelVisible) updateSimInfoPanel();
   }
 }
+/* 【v888】水域レイ診断の表示。
+
+   中央方位の光線が作った「水の帯」をそのまま並べる。
+   **柱は「1本の帯の高さ(hi-lo)が異常に大きい」として必ず現れる。**
+   距離・上下の見かけ高度・水面の基準標高がその場で読めるので、
+   どの水がどこに置かれて柱になったかが推測なしで分かる。 */
+function renderWaterRayDiagPanel(){
+  const box=el.waterRayDiagPanel;if(!box) return;
+  if(!waterRayDiagVisible) return;
+  const d=waterRayDiagData;
+  if(!d){box.textContent="水域レイ診断  計測待ち…";return;}
+  const n=(v,digits=2,width=0)=>{
+    const s=Number.isFinite(v)?v.toFixed(digits):"—";
+    return width?s.padStart(width," "):s;
+  };
+  const m=v=>Number.isFinite(v)?`${Math.round(v)}m`:"なし";
+  const all=d.bands||[];
+  const water=all.filter(b=>b&&b.water);
+  const lines=[
+    `水域レイ診断  方位 ${n(d.az,1)}°`,
+    `視点海抜 ${m(d.eye)}   光線の点 ${d.pointCount}`,
+    `水面基準 ${m(d.waterElevation)}   目線差 ${m(d.eyeAboveWater)}`
+      +(d.waterBodyCount?`   水域${d.waterBodyCount}個`:""),
+    `水の帯 ${water.length}本 ／ 全${all.length}本`,
+  ];
+  if(!water.length) lines.push("  （この方位に水の帯はありません）");
+  water.slice(0,12).forEach(b=>{
+    const height=b.hi-b.lo;
+    lines.push(`  ${n(b.distanceKm,2,7)}km ${n(b.lo,2,8)}° →${n(b.hi,2,8)}°  高${n(height,2,6)}°`
+      +(height>1?"  ★柱":""));
+  });
+  if(water.length>12) lines.push(`  …ほか${water.length-12}本`);
+  /* 【v891】水域ポリゴン（OSMの形状をそのまま投影する経路）。
+
+     v890までの診断は `azimuthVisibleBands` の帯だけを見ていたが、
+     利用者の画面で「水の帯 0本」なのに水が描かれていた。
+     **描いていたのはこちら。** 縦に伸びた形状がそのまま柱。 */
+  const polyItems=(typeof drawPhoto==="function"&&drawPhoto._directInlandWaterGeometry
+    &&drawPhoto._directInlandWaterGeometry.items)||[];
+  const polys=polyItems
+    .filter(item=>item&&Number.isFinite(item.diagMinAlt)&&Number.isFinite(item.diagMaxAlt))
+    .map(item=>({...item,span:item.diagMaxAlt-item.diagMinAlt}))
+    .sort((a,b)=>b.span-a.span);
+  lines.push(`水域ポリゴン ${polyItems.length}個（縦に長い順）`);
+  if(!polys.length) lines.push("  （画角内に水域ポリゴンはありません）");
+  polys.slice(0,8).forEach(item=>{
+    lines.push(`  ${n(item.diagNearKm,2,6)}〜${n(item.diagFarKm,2)}km`
+      +`  水位${Math.round(item.diagWaterElevation)}m`
+      +(Number.isFinite(item.diagElevLo)
+        ?`(標高${Math.round(item.diagElevLo)}〜${Math.round(item.diagElevHi)}m${item.diagByDistance?"/距離別":""})`
+        :"")
+      +`  ${n(item.diagMinAlt,2,8)}°→${n(item.diagMaxAlt,2,8)}°`
+      +`  高${n(item.span,2,6)}°${item.span>1.5?"  ★柱":""}`
+      +(item.diagKind?`  ${item.diagKind}`:""));
+  });
+  if(polys.length>8) lines.push(`  …ほか${polys.length-8}個`);
+  /* 【v889】画角内でいちばん高い水の帯。狙いを付けなくても柱が拾える。 */
+  /* 【v894】3つ目の経路。**柱を実際に塗っているのはここ。** */
+  const fine=waterFineDiagTallest;
+  lines.push(`細密マスク 水の塊 ${waterFineDiagRuns}個`);
+  lines.push(fine
+    ? `  方位${n(fine.az,1)}° ${n(fine.nearKm,2)}〜${n(fine.farKm,2)}km 帯${fine.bands}枚`
+      +`  ${n(fine.lo,2)}°→${n(fine.hi,2)}°  高${n(fine.span,2)}°${fine.span>2?"  ★柱":""}`
+    : "  （水の塊はありません）");
+  if(fine&&Array.isArray(fine.detail)){
+    fine.detail.slice(0,8).forEach(d=>lines.push(
+      `    ${n(d.km,3,8)}km ${n(d.lo,2,8)}°→${n(d.hi,2,8)}° 高${n(d.hi-d.lo,2,6)}°`));
+  }
+  const tall=waterRayDiagTallest;
+  lines.push("画角内で最も高い水の帯");
+  lines.push(tall
+    ? `  方位${n(tall.az,1)}° ${n(tall.distanceKm,2)}km ${n(tall.lo,2)}°→${n(tall.hi,2)}°`
+      +`  高${n(tall.height,2)}°${tall.height>1?"  ★柱":""}`
+    : "  （画角内に水の帯はありません）");
+  box.textContent=lines.join("\n");
+}
 function updateSimInfoPanel(){
   if(!el.simInfoPanel||!simInfoPanelVisible) return;
   const lat=+el.lat.value,lon=+el.lon.value;
@@ -7682,6 +8009,9 @@ function updateSimInfoPanel(){
     heightText,
     `方位 ${Math.round(+el.facingAz.value)}°、仰角 ${Math.round(+el.facingAlt.value)}°`,
     `焦点距離 ${focalText||"—"}`,
+    /* 【v882】海面線をいま何度に置いているか。スイッチの状態を画面で読めるようにする。 */
+    /* 【v896】既定がONなので毎回[ON]と出す意味がない。OFFのときだけ印を付ける。 */
+    `海面線 ${renderedSeaHorizonAltDeg().toFixed(3)}°${seaHorizonRealistic?"":" [OFF]"}`,
     `v${APP_VERSION}`
   ].filter(Boolean).join("\n");
 }
@@ -10004,6 +10334,29 @@ el.mwTextureBOffsetSlider.addEventListener("input",()=>{
   scheduleSaveSettings();
 });
 /* 水平線(高度0°)を点線で表示するON/OFF */
+/* 【v881】OFFのあいだは、下の2つの関数が従来とまったく同じ値を返す。
+   見比べられない直しは入れない、という方針のためのスイッチ。
+   `seaHorizonRealistic` の宣言はファイル先頭へ移した（v882）。 */
+/* 描画上の海面線（水平線）の高度。 */
+function renderedSeaHorizonAltDeg(){
+  return seaHorizonRealistic?currentSeaHorizonAltitudeDeg():0;
+}
+/* 水際（水域の手前側）の高度。
+   従来は視点高1.6m決め打ち・曲率なしだった。ONのときだけ実際の視点海抜と曲率を使う。 */
+function renderedShorelineAltDeg(shorelineKm){
+  const metres=Math.max(1,shorelineKm*1000);
+  if(!seaHorizonRealistic) return -Math.atan2(1.6,metres)*R2D;
+  const eye=Math.max(.05,observerEyeElevationM()||1.6);
+  const drop=metres*metres/(2*6371000*(7/6));
+  return -Math.atan2(eye+drop,metres)*R2D;
+}
+el.seaHorizonRealBtn.addEventListener("click",()=>{
+  seaHorizonRealistic=!seaHorizonRealistic;
+  el.seaHorizonRealBtn.classList.toggle("active",seaHorizonRealistic);
+  el.seaHorizonRealState.textContent=seaHorizonRealistic?"ON":"OFF";
+  drawPhoto._terrainRenderKey=null;   // 地形の投影をやり直させる
+  update();
+});
 let showHorizonLine=false;
 el.showHorizonLineBtn.addEventListener("click",()=>{
   showHorizonLine=!showHorizonLine;
@@ -10178,6 +10531,18 @@ if(el.popupWorldTerrainBtn) el.popupWorldTerrainBtn.addEventListener("click",()=
   drawPhoto._terrainRenderKey=null;      // 方式が変わるので描き直す
   drawPhoto._confirmedWaterAzCache=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+/* 【v888】水域レイ診断の切り替え。描画には影響しないので地形の作り直しは不要。 */
+if(el.popupWaterRayDiagBtn) el.popupWaterRayDiagBtn.addEventListener("click",()=>{
+  waterRayDiagVisible=!waterRayDiagVisible;
+  el.popupWaterRayDiagBtn.classList.toggle("active",waterRayDiagVisible);
+  el.popupWaterRayDiagBtn.setAttribute("aria-pressed",String(waterRayDiagVisible));
+  document.body.classList.toggle("water-ray-diag-on",waterRayDiagVisible);
+  if(waterRayDiagVisible&&el.waterRayDiagPanel&&!el.waterRayDiagPanel.textContent){
+    el.waterRayDiagPanel.textContent="水域レイ診断  計測待ち…";
+  }
+  if(typeof drawPhoto==="function") drawPhoto._terrainRenderKey=null;   // 一度作り直して控えを取る
+  update();
 });
 if(el.popupSeaDiagBtn) el.popupSeaDiagBtn.addEventListener("click",()=>{
   seaDiagVisible=!seaDiagVisible;
@@ -11832,6 +12197,7 @@ function collectPersistedSettings(){
     starGroupsVisible:starGroupsVisible,
     showSkyLabels:showSkyLabels,
     showHorizonLine:showHorizonLine,
+    seaHorizonRealistic:seaHorizonRealistic,   // 【v881】
     showSkylineBoundary:showSkylineBoundary,
     waterLandBoundaryVisible:waterLandBoundaryVisible,
     waterReflectionEnabled:waterReflectionEnabled,
@@ -11855,6 +12221,7 @@ function collectPersistedSettings(){
     placeNameVisible:placeNameVisible,
     animationSpeed:el.animationSpeedSelect?el.animationSpeedSelect.value:20,
     seaDiagVisible:seaDiagVisible,
+    waterRayDiagVisible:waterRayDiagVisible,   // 【v888】
     terrainRendererWorld:TERRAIN_RENDERER==="world",
     controllerVisible:droneModeOn,   // v696: 旧droneModeOnと別の名前にして、既定ONへ切り替える
     droneModeOn:droneModeOn,
@@ -11989,6 +12356,8 @@ async function loadPersistedSettings(){
     starGroupsVisible=!!s.starGroupsVisible;
     showSkyLabels=s.showSkyLabels!==false;
     showHorizonLine=!!s.showHorizonLine;
+    /* 【v896】既定がONになったので、保存に無ければON。明示的にOFFのときだけOFF。 */
+    seaHorizonRealistic=s.seaHorizonRealistic!==false;
     showSkylineBoundary=s.showSkylineBoundary!==false;
     waterLandBoundaryVisible=s.waterLandBoundaryVisible!==false;
     waterReflectionEnabled=true;
@@ -12022,6 +12391,12 @@ async function loadPersistedSettings(){
       syncAnimationSpeedLabel();
     }
     seaDiagVisible=s.seaDiagVisible===true;
+    waterRayDiagVisible=s.waterRayDiagVisible===true;   // 【v888】古い保存には無いので既定OFF
+    document.body.classList.toggle("water-ray-diag-on",waterRayDiagVisible);
+    if(el.popupWaterRayDiagBtn){
+      el.popupWaterRayDiagBtn.classList.toggle("active",waterRayDiagVisible);
+      el.popupWaterRayDiagBtn.setAttribute("aria-pressed",String(waterRayDiagVisible));
+    }
     // 設定の読み込みは初回描画より後なので、ONなら一度描き直して数値を埋める。
     if(seaDiagVisible&&typeof drawPhoto==="function") drawPhoto._terrainRenderKey=null;
     // URLで明示された場合はそちらを優先する（従来の切り替え方も残す）
@@ -12087,6 +12462,8 @@ async function loadPersistedSettings(){
     el.showSkyLabelsState.textContent=showSkyLabels?"ON":"OFF";
     el.popupShowLabelsBtn.classList.toggle("active",showSkyLabels);
     el.showHorizonLineBtn.classList.toggle("active",showHorizonLine);
+    el.seaHorizonRealBtn.classList.toggle("active",seaHorizonRealistic);
+    el.seaHorizonRealState.textContent=seaHorizonRealistic?"ON":"OFF";
     el.showHorizonLineState.textContent=showHorizonLine?"ON":"OFF";
     el.showBelowHorizonBtn.classList.toggle("active",showBelowHorizon);
     el.showBelowHorizonState.textContent=showBelowHorizon?"ON":"OFF";
@@ -12651,40 +13028,64 @@ async function persistPlanPhotoForLocation(location){
     location.photoExif=planSaveExistingPhotoRecord.exif||null;await saveObservingLocations();
   }
 }
+/* 【v880】読み込んだ模型を**配列で**保存する。
+   保存の直前に編集内容をスロットへ書き戻しておく（入力欄をいじった直後の保存対策）。 */
 function captureKmzBuildingForPlan(){
-  if(!kmzBuildingModel||!kmzBuildingSourceDataUrl)return null;
-  const cfg=currentKmzBuildingSettings();
-  return {
-    version:1,fileName:kmzBuildingModel.fileName||"building.kmz",sourceDataUrl:kmzBuildingSourceDataUrl,
-    lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,heading:cfg.heading,scale:cfg.scale,opacity:cfg.opacity,visible:kmzBuildingVisible,
-    silhouette:kmzBuildingSilhouette,glow:kmzBuildingGlow
-  };
+  kmzCommitEditor();
+  const saved=kmzSlots
+    .filter(slot=>slot.model&&slot.sourceDataUrl)
+    .map(slot=>({
+      version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl,
+      lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
+      scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
+      visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true
+    }));
+  return saved.length?saved:null;
 }
+/* 【v880】複数まとめて復元する。
+   **古い保存（単体オブジェクト）も読める**ように、配列でなければ1件の配列として扱う。 */
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
-  if(!saved||!String(saved.sourceDataUrl||"").startsWith("data:")){
-    kmzBuildingModel=null;kmzBuildingKmlLocation=null;kmzBuildingSourceDataUrl="";el.kmzBuildingInput.value="";
-    setKmzBuildingStatus("この撮影計画にはKMZ建物が登録されていません。");refreshKmzBuildingControls();return false;
+  const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
+    .filter(item=>item&&String(item.sourceDataUrl||"").startsWith("data:"));
+  // 復元は総入れ替え。前の計画の建物が残らないようにする。
+  kmzSlots=[];kmzActiveId=null;kmzLoadEditor();el.kmzBuildingInput.value="";
+  if(!list.length){
+    setKmzBuildingStatus("この撮影計画にはKMZ建物が登録されていません。");
+    renderKmzList();refreshKmzBuildingControls();return false;
   }
-  setKmzBuildingStatus(`${saved.fileName||"KMZ建物"} を撮影計画から復元しています…`);
+  setKmzBuildingStatus(`KMZ建物 ${list.length}件 を撮影計画から復元しています…`);
+  let restored=0;
   try{
-    const response=await fetch(saved.sourceDataUrl),buffer=await response.arrayBuffer();
-    if(token!==kmzBuildingRestoreToken)return false;
-    await loadKmzBuildingBytes(buffer,saved.fileName||"building.kmz",{applyKmlLocation:false,sourceDataUrl:saved.sourceDataUrl});
-    if(token!==kmzBuildingRestoreToken)return false;
-    if(Number.isFinite(+saved.lat))el.kmzBuildingLat.value=(+saved.lat).toFixed(6);
-    if(Number.isFinite(+saved.lon))el.kmzBuildingLon.value=(+saved.lon).toFixed(6);
-    if(Number.isFinite(+saved.altitude))el.kmzBuildingAltitude.value=+saved.altitude;
-    if(Number.isFinite(+saved.heading))el.kmzBuildingHeading.value=+saved.heading;
-    if(Number.isFinite(+saved.scale))el.kmzBuildingScale.value=clamp(+saved.scale,+el.kmzBuildingScale.min,+el.kmzBuildingScale.max);
-    if(Number.isFinite(+saved.opacity))el.kmzBuildingOpacity.value=clamp(Math.round(+saved.opacity*100),+el.kmzBuildingOpacity.min,+el.kmzBuildingOpacity.max);
-    kmzBuildingVisible=saved.visible!==false;
-    kmzBuildingSilhouette=saved.silhouette===true;   // 【v851】古い保存には無いので既定OFF
-    kmzBuildingGlow=saved.glow===true;                // 【v852】同上
-    setKmzBuildingStatus(`${saved.fileName||"KMZ建物"} を撮影計画から復元しました。`,"ready");refreshKmzBuildingControls();return true;
+    for(const item of list){
+      const response=await fetch(item.sourceDataUrl),buffer=await response.arrayBuffer();
+      if(token!==kmzBuildingRestoreToken)return false;
+      await loadKmzBuildingBytes(buffer,item.fileName||"building.kmz",
+        {applyKmlLocation:false,sourceDataUrl:item.sourceDataUrl});
+      if(token!==kmzBuildingRestoreToken)return false;
+      const slot=kmzActiveSlot();
+      if(slot){
+        if(Number.isFinite(+item.lat))slot.lat=+item.lat;
+        if(Number.isFinite(+item.lon))slot.lon=+item.lon;
+        if(Number.isFinite(+item.altitude))slot.altitude=+item.altitude;
+        if(Number.isFinite(+item.heading))slot.heading=+item.heading;
+        if(Number.isFinite(+item.scale))slot.scale=+item.scale;
+        if(Number.isFinite(+item.opacity))slot.opacity=+item.opacity;
+        slot.visible=item.visible!==false;
+        slot.silhouette=item.silhouette===true;   // 【v851】古い保存には無いので既定OFF
+        slot.glow=item.glow===true;                // 【v852】同上
+      }
+      restored++;
+    }
+    // 最初の1つを選んだ状態にしておく。並び順どおりに見えるようにするため。
+    if(kmzSlots.length){kmzActiveId=kmzSlots[0].id;}
+    kmzLoadEditor();
+    setKmzBuildingStatus(`KMZ建物 ${restored}件 を撮影計画から復元しました。`,"ready");
+    renderKmzList();refreshKmzBuildingControls();return true;
   }catch(error){
     if(token!==kmzBuildingRestoreToken)return false;
-    kmzBuildingModel=null;kmzBuildingSourceDataUrl="";setKmzBuildingStatus(`KMZ建物を復元できませんでした：${error&&error.message?error.message:error}`,"error");refreshKmzBuildingControls();return false;
+    setKmzBuildingStatus(`KMZ建物を復元できませんでした（${restored}/${list.length}件）：${error&&error.message?error.message:error}`,"error");
+    kmzLoadEditor();renderKmzList();refreshKmzBuildingControls();return false;
   }
 }
 /* v746 撮影計画専用の水域スナップショット。
@@ -14368,15 +14769,32 @@ const TERRAIN_DISTANCE_BANDS=[
    v2: レイマーチ用の rayGrid を追加。欠損もnullで詰めて添字=距離番号に揃えた。
    v3: rayGrid へ富士山の高密度点と既知の山頂標高を距離順に差し込むようにした。
        方位ごとに点数が変わるため、方位間の補間は距離で対応付ける。 */
-const TERRAIN_CACHE_FORMAT=7; // v616: KMZ建物の周りを高密度で取るようにした
+/* 【v893】7 → 8。**v885/v886が書いた地形キャッシュを捨てるため。**
+
+   v885で「標高が分からない点は全部、海面の高さに置く」を、
+   v886で「空との境目の下限を水平線まで下げる」を入れた。
+   v887で撤回したが、**その間に書かれた地形キャッシュはそのまま残る。**
+   `terrainCacheId` の鍵にアプリのバージョンが入っていないため。
+
+   利用者の症状（水域の柱）が
+     ・振っても残る／建物を削除しても残る → 地形データに焼き付いている
+     ・更新1回目は出て、2回目で消える     → 古いキャッシュが読まれている
+   だったのはこのため。こちらで再現しなかったのは、
+   **キャッシュが新しい版で作り直されていたから。**
+
+   **今後も起きる落とし穴。** 地形の作り方を変えた版を渡すときは、
+   番号を上げるか取り直しを頼むこと。 */
+const TERRAIN_CACHE_FORMAT=8; // v616: KMZ建物の周りを高密度で取るようにした
 /* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
    保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
 function kmzTerrainSignature(){
   try{
-    if(!kmzBuildingModel) return "";
-    const kmzLat=+el.kmzBuildingLat.value,kmzLon=+el.kmzBuildingLon.value;
-    if(!Number.isFinite(kmzLat)||!Number.isFinite(kmzLon)) return "";
-    return `${kmzLat.toFixed(5)},${kmzLon.toFixed(5)}`;
+    /* 【v880】読み込んだ模型**すべて**の位置を並べる。
+       1つでも動けば鍵が変わり、地形を取り直す。 */
+    return kmzSlots
+      .filter(slot=>slot.model&&Number.isFinite(slot.lat)&&Number.isFinite(slot.lon))
+      .map(slot=>`${slot.lat.toFixed(5)},${slot.lon.toFixed(5)}`)
+      .join(";");
   }catch(e){ return ""; }
 }
 function terrainCacheId(key){
@@ -15565,13 +15983,15 @@ try{
         const a=w/2,tri=[],box=[[-a,-a,0],[a,-a,0],[a,a,0],[-a,a,0],[-a,-a,hgt],[a,-a,hgt],[a,a,hgt],[-a,a,hgt]];
         const faces=[[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7],[4,5,6],[4,6,7]];
         for(const f of faces) tri.push([box[f[0]],box[f[1]],box[f[2]]]);
-        kmzBuildingModel={triangles:tri,fileName:"debug-box"};
-        kmzBuildingVisible=true;
-        el.kmzBuildingLat.value=lat;el.kmzBuildingLon.value=lon;
-        el.kmzBuildingAltitude.value=0;el.kmzBuildingHeading.value=0;
-        el.kmzBuildingScale.value=1;el.kmzBuildingOpacity.value=100;
+        /* 【v880】スロットを1つ足す形にした。何度でも呼べば箱が増える。 */
+        const slot={id:++kmzSlotSeq,model:{triangles:tri,fileName:"debug-box"},
+          fileName:"debug-box",kmlLocation:null,sourceDataUrl:"",
+          lat,lon,altitude:0,heading:0,scale:1,opacity:1,
+          visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0};
+        kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
+        renderKmzList();
         drawPhoto._terrainRenderKey=null;update();
-        return true;
+        return kmzSlots.length;
       },
       /* スライドショーは動きが時刻で決まるので、手でコマを送って確かめられるようにする。 */
       slideshow:{
@@ -16326,9 +16746,18 @@ function darumaTelephotoBlockingAltitudeAt(az,s){
   return best;
 }
 function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor){
+  /* 【v889】島の足元は**描画上の海面線**に置く。
+
+     これまでは「物理的な水平線からどれだけ高いか」を求めたあと、
+     **仰角0°から立ち上げて**いた。海面線が0°だった時代の辻褄合わせで、
+     海面を本来の水平線へ下げたあとは島だけが高いまま残っていた
+     （利用者から「島は最初の時と同じ高い位置に描かれている」と報告）。
+
+     OFFのときは seaLine=0 なので従来と1ビットも変わらない。 */
+  const seaLine=renderedSeaHorizonAltDeg();
   const points=profile.map(point=>{
     if(!point||point.altitude<=physicalHorizon+.002)return null;
-    const top=toXY(point.az,point.altitude-physicalHorizon),base=toXY(point.az,0);
+    const top=toXY(point.az,seaLine+(point.altitude-physicalHorizon)),base=toXY(point.az,seaLine);
     return top&&base&&[...top,...base].every(Number.isFinite)?{top,base}:null;
   });
   let start=0;
@@ -17775,12 +18204,12 @@ async function buildRealTerrainProfile(lat,lon,token){
 
      範囲が狭いので、増える取得はわずか。 */
   const kmzSignatureNow=kmzTerrainSignature();
-  const kmzInfo=kmzSignatureNow
-    ? terrainDistanceAndBearing(lat,lon,+el.kmzBuildingLat.value,+el.kmzBuildingLon.value) : null;
   const kmzDetailRays=Array.from({length:360},()=>[]);
-  const useKmzDetail=!!kmzInfo&&Number.isFinite(kmzInfo.distanceKm)
-    &&kmzInfo.distanceKm>=.05&&kmzInfo.distanceKm<=60;
-  if(useKmzDetail){
+  /* 【v880】読み込んだ模型**すべて**の周りを高密度で取る。 */
+  for(const slot of kmzSlots){
+    if(!slot.model||!Number.isFinite(slot.lat)||!Number.isFinite(slot.lon)) continue;
+    const kmzInfo=terrainDistanceAndBearing(lat,lon,slot.lat,slot.lon);
+    if(!Number.isFinite(kmzInfo.distanceKm)||kmzInfo.distanceKm<.05||kmzInfo.distanceKm>60) continue;
     const detailRadiusKm=.4, stepKm=.025;
     for(let az=0;az<360;az++){
       const offsetDeg=((az-kmzInfo.bearing+540)%360)-180;
@@ -17797,6 +18226,13 @@ async function buildRealTerrainProfile(lat,lon,token){
         kmzDetailRays[az].push({distanceKm,refs});
       }
     }
+  }
+  /* 【v880】同じ方位に複数の模型が並ぶと距離が前後する。
+     この先の処理は**行が距離順であること**を前提にしているので並べ直す。 */
+  let useKmzDetail=false;
+  for(let az=0;az<360;az++){
+    if(kmzDetailRays[az].length>1)kmzDetailRays[az].sort((a,b)=>a.distanceKm-b.distanceKm);
+    if(kmzDetailRays[az].length)useKmzDetail=true;
   }
   const terrainTiles=[...tilesByKey.values()];
   await loadTilesWithLimit(terrainTiles);
@@ -18871,8 +19307,14 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
    利用者が実写と見比べながら2度下げた。
    明石海峡大橋のような大きな構造物だと、少し映るくらいが実写に近い。 */
 const KMZ_REFLECTION_ALPHA=.10;
+/* 【v880】ここは**全スロットを回す入口**。1つ描く中身は drawKmzOneBuilding。
+   分けただけで、描き方そのものは変えていない。 */
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
-  if(!kmzBuildingVisible||!kmzBuildingModel||arActive)return;const cfg=currentKmzBuildingSettings();
+  if(arActive)return;
+  for(const slot of kmzSlots)drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
+}
+function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
+  if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
   /* 手前の地形だけの稜線が作れるなら地形のあとに描く（奥の山に隠されない）。
@@ -18894,7 +19336,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
      模型の水平方向の半径を引けば、
      「模型のいちばん手前より、さらに手前の地形」だけが稜線に入る。
      外れる方向は「あいだの地形に隠れなくなる」で、消えるより安全な側。 */
-  const modelHalfSpanKm=(Math.hypot(kmzBuildingModel.width||0,kmzBuildingModel.depth||0)/2)*cfg.scale/1000;
+  const modelHalfSpanKm=(Math.hypot(slot.model.width||0,slot.model.depth||0)/2)*cfg.scale/1000;
   const skylineLimitKm=Math.max(.05,base.distanceKm-modelHalfSpanKm);
   const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
   if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
@@ -18904,11 +19346,11 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   /* 【v851】シルエットで描かないときは、面の向きから明るさを出す。
      そのために投影のついでに、東・北・上の実寸座標も控えておく。 */
   /* 【v852】発光のときは面の向きを使わないので、法線用の座標も控えない。 */
-  const needShading=!kmzBuildingSilhouette&&!kmzBuildingGlow;
-  const triangleColors=kmzBuildingModel.triangleColors;
-  const triangleAlphas=kmzBuildingModel.triangleAlphas;   // 【v876】マテリアルごとの不透明度
-  for(let triIndex=0;triIndex<kmzBuildingModel.triangles.length;triIndex++){
-    const triangle=kmzBuildingModel.triangles[triIndex];
+  const needShading=!slot.silhouette&&!slot.glow;
+  const triangleColors=slot.model.triangleColors;
+  const triangleAlphas=slot.model.triangleAlphas;   // 【v876】マテリアルごとの不透明度
+  for(let triIndex=0;triIndex<slot.model.triangles.length;triIndex++){
+    const triangle=slot.model.triangles[triIndex];
     const points=[];let depth=0,valid=true;const local=needShading?[]:null;
     for(const vertex of triangle){
       const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
@@ -18933,7 +19375,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     targetCtx.clip(clip);
   }
   targetCtx.globalAlpha=cfg.opacity;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
-  if(kmzBuildingGlow){
+  if(slot.glow){
     /* 【v852】自ら光るもの（花火・イルミネーション）。
 
        ・`daylight` を一切見ない → **夜でも明るいまま**。
@@ -18958,7 +19400,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
       targetCtx.fillStyle=`rgb(${color.join(",")})`;
       targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();
     }
-  }else if(kmzBuildingSilhouette){
+  }else if(slot.silhouette){
     // 今までどおりの影絵。面の向きに関係なく1色。
     targetCtx.fillStyle=`rgb(${rgb.join(",")})`;
     targetCtx.strokeStyle=`rgba(${Math.min(255,rgb[0]+18)},${Math.min(255,rgb[1]+18)},${Math.min(255,rgb[2]+18)},.34)`;
@@ -20214,7 +20656,10 @@ function drawPhoto(ctx,s){
            一方、遠方の島が地球の丸みで隠れたかは、現在の視点高から求めた
            物理的な水平線で判定する。両者を混ぜると、高所では太陽だけが
            描画上の海面より下へ移動し、だるま形になる前に隠れてしまう。 */
-        const renderedSeaHorizonAlt=0,physicalSeaHorizonAlt=currentSeaHorizonAltitudeDeg();
+        /* 【v881】スイッチONのときは描画上の海面線＝物理的な水平線になるので、両者は一致する。
+           OFFのときは従来どおり0°。**ここを一緒に下げないと、
+           海面だけ下がって太陽が海面より上に浮いたまま沈まなくなる。** */
+        const renderedSeaHorizonAlt=renderedSeaHorizonAltDeg(),physicalSeaHorizonAlt=currentSeaHorizonAltitudeDeg();
         const foldAlt=renderedSeaHorizonAlt+.045;
         const dedicatedMatched=darumaTelephotoResultMatches(s);
         const dedicatedBlocking=darumaTelephotoBlockingAltitudeAt(s.sunAltAz.az,s);
@@ -20824,7 +21269,9 @@ function drawPhoto(ctx,s){
           for(let diff=-half-2;diff<=half+2;diff+=reflectionStep){
             const az=norm360(s.facingAz+diff);
             if(!directInlandReflectionAvailable&&!isConfirmedWaterDirection(az)){samples.push(null);continue;}
-            const horizon=toXY(az,0);
+            /* 【v881】映り込みの上端も海面線へ。ここの平均が鏡の線 mirrorHorizonY になるので、
+               海面だけ下げて反射を0°のままにすると、水面と映り込みがずれる。 */
+            const horizon=toXY(az,renderedSeaHorizonAltDeg());
             if(!horizon||![...horizon].every(Number.isFinite)){samples.push(null);continue;}
             // 水域として色分けされた方位は、水平線から画面下端までを反射候補にする。
             const safeShoreline=[horizon[0],H+2];
@@ -21423,6 +21870,26 @@ function drawPhoto(ctx,s){
             mountainCtx.globalAlpha=terrainDisplayAlpha*.96*dayFactor;
             mountainCtx.drawImage(dayTerrainCanvas,0,0,W,H);
           }
+          /* 【v897】**水は水に映らない。**
+
+             地形カンバスの海の上端(y606)が鏡の線(y608)より上にあるため、
+             その2pxが反転して水面へ写り込み、
+             水平線のすぐ下に**細い濃紺の線**として出ていた
+             （神戸・港島南町・視点海抜4m・250mmで実測。
+               y=610→y'=606→海、y=611→y'=605→透明、という鏡の対応まで一致）。
+
+             海の上端は空との境目で決まるので、水面の高度を頭打ちにしても動かない
+             （実測で確認済み）。鏡の線をずらす対症療法も筋が悪い。
+
+             ここは反転した座標系のままなので、水面マスクで destination-out すると
+             **「元が水だった画素」だけ**が消える。空と山の映り込みはそのまま残る。 */
+          const waterMaskForMirror=drawPhoto._waterSurfaceMaskCanvas;
+          if(waterMaskForMirror&&waterMaskForMirror.width===W&&waterMaskForMirror.height===H){
+            mountainCtx.globalAlpha=1;
+            mountainCtx.globalCompositeOperation="destination-out";
+            mountainCtx.drawImage(waterMaskForMirror,0,0,W,H);
+            mountainCtx.globalCompositeOperation="source-over";
+          }
           mountainCtx.restore();
           // 完全な夜で約78%暗くし、薄明〜昼へ向かうほど補正を連続的に弱める。
           const nightMountainDarken=.78*(1-dayFactor);
@@ -21460,7 +21927,12 @@ function drawPhoto(ctx,s){
            山と同じ手で、KMZだけを別Canvasへ描いてから上下反転して貼る。
            このあとの「水域マスクで抜く」がそのまま効くので、
            岸や陸地へ映り込みが漏れることはない。 */
-        if(kmzBuildingVisible&&kmzBuildingModel&&!arActive){
+        /* 【v880】模型ごとに映す。**発光は模型ごとの設定**なので、
+           まとめて1枚に描いてしまうと合成のしかたを切り替えられない
+           （花火は加算、城はふつうに重ねる、が同時に成り立たない）。
+           スロットは数個なので、1枚ずつ描いても費用は小さい。 */
+        for(const slot of kmzSlots){
+          if(!slot.visible||!slot.model||arActive)continue;
           const kmzReflection=drawPhoto._kmzReflectionCanvas||(drawPhoto._kmzReflectionCanvas=document.createElement("canvas"));
           if(kmzReflection.width!==W||kmzReflection.height!==H){kmzReflection.width=W;kmzReflection.height=H;}
           const kmzReflectionContext=kmzReflection.getContext("2d");
@@ -21468,10 +21940,10 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.globalCompositeOperation="source-over";
           kmzReflectionContext.globalAlpha=1;
           kmzReflectionContext.clearRect(0,0,W,H);
-          drawKmzBuildingLayer(kmzReflectionContext,s,toXY,W,H,"reflection");
+          drawKmzOneBuilding(kmzReflectionContext,s,toXY,W,H,"reflection",slot);
           ctx.save();
           /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
-          if(kmzBuildingGlow)ctx.globalCompositeOperation="lighter";
+          if(slot.glow)ctx.globalCompositeOperation="lighter";
           /* 【v871】映り込みの濃さ。0.72だと明石海峡大橋のような大きな構造物で
              水面が埋まってしまうため下げた。 */
           ctx.globalAlpha=KMZ_REFLECTION_ALPHA;
@@ -21491,6 +21963,7 @@ function drawPhoto(ctx,s){
       }
       function fillTerrainBand(layer,colors){
         const WATER_RUN_THRESHOLD=0.5; // 距離帯ごとの水面らしさが、これ以上の方位だけを「水面」として塗る
+        const seaHorizonAlt=renderedSeaHorizonAltDeg();   // 【v881】海面線の高度（OFFなら0）
         const OPEN_SEA_CAP_MIN_ALT_DEG=0.22; // 海方向では、これ未満のDEM隆起を水平線ノイズとして描かない
         const bandSlot=farTerrainBandIndex++;
         let points=sharedTerrainProjectionPass==="replay"&&sharedTerrainProjectionCache
@@ -21501,19 +21974,30 @@ function drawPhoto(ctx,s){
           for(let diff=-half;diff<=half;diff+=step){
             const az=norm360(s.facingAz+diff);
             const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
-            const altitude=lerp(layer.profile[i0]||0,layer.profile[i1]||0,t);
+            const wp=layer.waterProfile;
+            const water=wp?lerp(wp[i0]||0,wp[i1]||0,t):0;
+            const confirmedWaterHere=isConfirmedWaterDirection(az);
+            /* 【v881】水の方向の上端を海面線へ下げる。
+
+               `layer.profile` は clamp(...,0,45) で**0が下限**なので、
+               地形が無い海の方向はずっと0のままだった。つまり海の上端＝仰角0°。
+               高所ではこれが水平線より最大0.45°高く、海が高すぎて見えていた。
+
+               **地形のある方向(profile>0)は触らない。** 下げるのは
+               「水と判定されていて、かつ地形が何も出ていない」方向だけ。 */
+            const waterHere=water>=WATER_RUN_THRESHOLD||confirmedWaterHere;
+            let altitude=lerp(layer.profile[i0]||0,layer.profile[i1]||0,t);
+            if(waterHere&&altitude<=0) altitude=seaHorizonAlt;
             const p=toXY(az,altitude);
             if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])) continue;
-            const horizonP=toXY(az,0);
+            const horizonP=toXY(az,seaHorizonAlt);
             if(!horizonP||!Number.isFinite(horizonP[0])||!Number.isFinite(horizonP[1])) continue;
             const shorelineIndex=((Math.round(az)%360)+360)%360;
             const shorelineKm=realTerrainState.waterNearKm&&realTerrainState.waterNearKm[shorelineIndex];
             const shorelineAlt=Number.isFinite(shorelineKm)
-              ? -Math.atan2(1.6,Math.max(1,shorelineKm*1000))*R2D
+              ? renderedShorelineAltDeg(shorelineKm)
               : -89;
             const shorelineP=toXY(az,shorelineAlt);
-            const wp=layer.waterProfile;
-            const water=wp?lerp(wp[i0]||0,wp[i1]||0,t):0;
             let highRidgeNeighbors=0;
             for(let offset=-2;offset<=2;offset++){
               if((layer.profile[(shorelineIndex+offset+360)%360]||0)>=.55) highRidgeNeighbors++;
@@ -21521,7 +22005,7 @@ function drawPhoto(ctx,s){
             const protectedHighMountain=altitude>=.8&&highRidgeNeighbors>=3;
             // 高い山体ではv317の山頂キャップを許可する。低い海上DEMでは従来どおり抑止する。
             const openSea=!!(realTerrainState.coastlineOpenSeaAz&&realTerrainState.coastlineOpenSeaAz[shorelineIndex])&&!protectedHighMountain;
-            points.push({x:p[0],y:p[1],az,altitude,horizonX:horizonP[0],horizonY:horizonP[1],shorelineX:shorelineP?shorelineP[0]:horizonP[0],shorelineY:shorelineP?shorelineP[1]:H+2,water,confirmedWater:isConfirmedWaterDirection(az),openSea,mountainBridge:false});
+            points.push({x:p[0],y:p[1],az,altitude,horizonX:horizonP[0],horizonY:horizonP[1],shorelineX:shorelineP?shorelineP[0]:horizonP[0],shorelineY:shorelineP?shorelineP[1]:H+2,water,confirmedWater:confirmedWaterHere,openSea,mountainBridge:false});
           }
         }
         if(points.length<2) return;
@@ -21775,7 +22259,7 @@ function drawPhoto(ctx,s){
           const i0=Math.floor(wrapped),i1=(i0+1)%360;
           // 1度刻みの境界では、近い側の確定判定を使って細い縦の隙間を作らない。
           if(!confirmedWaterAz[i0]&&!confirmedWaterAz[i1]){samples.push(null);continue;}
-          const horizon=toXY(az,0);
+          const horizon=toXY(az,renderedSeaHorizonAltDeg());   // 【v881】海面線へ合わせる
           samples.push(horizon&&Number.isFinite(horizon[0])&&Number.isFinite(horizon[1])?horizon:null);
         }
         /* 水は「水域の向こう端(遠い側)」と「水際(近い側)」に挟まれた帯にしか存在しない。
@@ -21798,7 +22282,11 @@ function drawPhoto(ctx,s){
           }
           // ここも視点の高さで変わる。上昇すると水面を見下ろす角度が深くなる。
           const eyeAboveWater=Math.max(.05,(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM()-waterElevation);
-          return Math.atan2(eyeAboveWater,Math.max(1,km*1000))*R2D;
+          /* 【v884】①と同じ理由で地球の丸みを引く。ここは水域の遠近端の伏角で、
+             水面マスクの上下の境目に効く。①だけ直すとマスクと色がずれる。 */
+          const edgeMetres=Math.max(1,km*1000);
+          const edgeDrop=seaHorizonRealistic?edgeMetres*edgeMetres/(2*6371000*(7/6)):0;
+          return Math.atan2(eyeAboveWater+edgeDrop,edgeMetres)*R2D;
         }
         const waterFarEdge=[],waterNearEdge=[];
         for(let diff=-waterHalf;diff<=waterHalf;diff+=waterStep){
@@ -22717,7 +23205,7 @@ function drawPhoto(ctx,s){
           const horizonSamples=[];
           const horizonStep=Math.max(.35,Math.min(1,step));
           for(let diff=-half;diff<=half;diff+=horizonStep){
-            const point=toXY(norm360(s.facingAz+diff),0);
+            const point=toXY(norm360(s.facingAz+diff),renderedSeaHorizonAltDeg());   // 【v882】海面線へ合わせる
             if(point&&Number.isFinite(point[1])) horizonSamples.push(point[1]);
           }
           topY=horizonSamples.length?clamp(Math.min(...horizonSamples),0,H-1):H*.48;
@@ -22843,9 +23331,33 @@ function drawPhoto(ctx,s){
       const rayLandNightNear=[10,12,10],rayLandNightFar=[25,30,28];
       const rayLandDayNear=[62,78,48],rayLandDayFar=[104,118,92];
       const rayLandNightHaze=[35,47,64],rayLandDayHaze=[196,208,218];
-      const rayWaterNightNear=[8,14,31],rayWaterNightFar=[5,8,20];
-      const rayWaterDayNear=[34,55,103],rayWaterDayFar=[24,38,86];
-      const rayWaterNightHaze=[18,26,46],rayWaterDayHaze=[120,146,186];
+      /* 【v899】夜の水の基本色。利用者の指定 ≒ [48,43,61]（暗い紫グレー）。
+         Near と Far にわずかな差を残してあるのは距離の奥行き感のため。 */
+      const rayWaterNightNear=[54,49,69],rayWaterNightFar=[44,40,57];
+      /* 【v898】昼の水の基本色。利用者の指定でスレートブルー寄りへ。
+
+         水平線のすぐ上に残る2pxが、この色の素のまま出て**細い濃紺の線**に見える。
+         明るくしすぎると夜の海に響くため、暗さを保ったまま灰色寄りにした色味。
+
+             変更前  Near=[34,55,103]  Far=[24,38,86]
+             変更後  Near=[60,72,102]  Far=[52,63,93]
+
+         **夜側（rayWaterNight*）と霞（rayWaterDayHaze）は触っていない。**
+         昼間の池・川、および映り込みOFFのときの海も同じぶん灰色寄りになる。 */
+      /* 【v899】昼の水の基本色。利用者の指定 ≒ [138,165,210]。
+
+         見えている海の色に合わせることで、水平線に残る2pxがほぼ紛れる。
+         （v898では [60,72,102] まで寄せたが、まだ暗くて線として見えていた） */
+      const rayWaterDayNear=[146,172,215],rayWaterDayFar=[132,159,205];
+      /* 【v899】霞（遠方の水）。
+
+         昼はそのまま。新しい昼の色に近く、遠くほどわずかに落ち着く自然な出方。
+
+         **夜は [18,26,46] → [52,47,66] へ上げた。**
+         ここだけ据え置くと、遠方＝水平線付近の水が夜だけ暗いまま残り、
+         「線を目立たなくする」という依頼の目的が夜に達成できないため。
+         指定色と同じ系統でわずかに明るい値。据え置きたい場合は戻せる。 */
+      const rayWaterNightHaze=[52,47,66],rayWaterDayHaze=[120,146,186];
       const RAY_HAZE_SCALE_KM=16;
       const cloudNightNear=[96,108,132],cloudNightFar=[62,72,94];
       const cloudDayNear=[240,243,248],cloudDayFar=[208,216,228];
@@ -23017,9 +23529,25 @@ function drawPhoto(ctx,s){
           /* 高精細の品質はDOMを読むので、高精細のときだけ引く。 */
           +"|"+(highDetailOn?highDetailQualityValue():0)
           +"|"+(cloudSeaVisible?1:0)
+          +"|"+(seaHorizonRealistic?1:0)   /* 【v884】入れないと切り替えても古い帯が返る */
           +"|"+worldMapTiles
           +"|"+s.fovH
           +"|"+(realTerrainState._osmWaterRingsRadiusKm||0);
+        /* 【v888】診断したい方位だけキャッシュを迂回する。
+           キャッシュに当たると中身を控える機会が無いため。
+
+           走査は `stepDeg` 刻みなので中央方位ちょうどの呼び出しがあるとは限らない。
+           **そのコマでいちばん近かった呼び出しを採る。** */
+        if(waterRayDiagVisible&&!skylineOnly&&waterRayDiagWantAz!==null){
+          const diff=Math.abs(((azDeg-waterRayDiagWantAz+540)%360)-180);
+          if(diff<2){
+            waterRayDiagStoreThis=diff<waterRayDiagBestDiff;
+            if(waterRayDiagStoreThis) waterRayDiagBestDiff=diff;
+            waterRayDiagCapturing=true;
+            try{ return azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands); }
+            finally{ waterRayDiagCapturing=false;waterRayDiagStoreThis=false; }
+          }
+        }
         const hit=visibleBandsCache.get(key);
         if(hit!==undefined) return hit;
         const result=azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
@@ -23375,14 +23903,55 @@ function drawPhoto(ctx,s){
           }
           cloudProf.sub+=performance.now()-__t0;cloudProf.subN++;
         }
-        let waterElevation=null;
-        for(let i=0;i<walk.length;i++){
-          const point=walk[i];
-          if(point&&waterFlags[i]&&Number.isFinite(point.baseElevation)){waterElevation=point.baseElevation;break;}
+        /* 【v895】**水面の高さを「水域ごと」に分ける。**
+
+           これまでは「その光線で最初に見つけた水の標高」を、
+           **その先の水すべてに使い回して**いた。
+
+               let waterElevation=null;
+               for(...){ if(水 && 標高あり){ waterElevation=...; break; } }
+
+           近くに標高210mの池があり、その先に標高112mの川がある場合、
+           川まで210mの平面に置かれる。98m浮くので**画面では縦の柱**になる
+           （河南町・方位287.7°で実測。1枚の帯が6.68°飛んでいた）。
+
+           連続する水の点をひとつの水域とみなし、水域ごとに水位を出す。
+           元の狙い（DEMのばらつきで岸が乱れないよう水域を1つの平面として扱う）は
+           そのまま。**変わるのは「1本の光線に水域が複数あるとき」だけ。**
+           水域が1つの光線では、これまでとまったく同じ値になる。
+
+           §13-3で指摘し v892 でポリゴン側を直したのと同じ間違いが、
+           こちらの経路にも残っていた。 */
+        const eyeElevationForWater=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const waterEyeAbove=new Array(walk.length).fill(null);
+        let waterElevation=null,waterBodyCount=0;
+        for(let i=0;i<walk.length;){
+          if(!waterFlags[i]){i++;continue;}
+          let j=i;const levels=[];
+          while(j<walk.length&&waterFlags[j]){
+            const point=walk[j];
+            if(point&&Number.isFinite(point.baseElevation))levels.push(point.baseElevation);
+            j++;
+          }
+          if(levels.length){
+            levels.sort((a,b)=>a-b);
+            const level=levels[Math.floor((levels.length-1)*.10)];
+            const above=Math.max(.05,eyeElevationForWater-level);
+            for(let k=i;k<j;k++)waterEyeAbove[k]=above;
+            if(waterElevation===null)waterElevation=level;   // 診断の表示用（最初の水域）
+            waterBodyCount++;
+          }
+          i=j;
         }
         const eyeAboveWater=Number.isFinite(waterElevation)
-          ? Math.max(.05,(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM()-waterElevation)
-          : null;
+          ? Math.max(.05,eyeElevationForWater-waterElevation) : null;
+        if(waterRayDiagCapturing&&waterRayDiagStoreThis){
+          /* 【v888】この光線が「水面の高さ」をどう決めたかを控える。
+             waterElevation は**最初に見つけた水点の標高**を全部の水に使い回している。 */
+          waterRayDiagData={az:azDeg,waterElevation,eyeAboveWater,
+            eye:eyeElevationForWater,
+            bands:null,pointCount:walk.length,waterBodyCount};
+        }
         /* 三脚の高さを変えたときに地形を取り直さなくて済むよう、
            保存済みの見かけ高度(1.6m基準)ではなく、各点の実標高から計算し直す。
            標高が分からない点(海のnodataなど)だけは保存値との差分で近似補正する。 */
@@ -23408,9 +23977,26 @@ function drawPhoto(ctx,s){
           if(point.local){
             // 局所高精細点は取得時の視点高さで作ってあるので、ここで作り直す。
             alt=apparentAltOf(point);
-          }else if(isWater&&eyeAboveWater!==null){
+          }else if(isWater&&waterEyeAbove[i]!==null){
             // 水面は方位に依らず同じ平面なので、方位間の補間も不要。
-            alt=-Math.atan2(eyeAboveWater,Math.max(1,point.distanceKm*1000))*R2D;
+            /* 【v884】**地球の丸みを引く。ここが「海が高すぎる」の本体だった。**
+
+               陸は同じ関数の中で `- curvatureDrop` を引いているのに、
+               水面だけ引いていなかった。丸みが無いと
+               `-atan(視点高/距離)` は距離が伸びるほど0°へ近づくので、
+               **いちばん遠い帯が仰角0°まで上がってきて、そこが海の上端になる。**
+               視点海抜232mでは本来の水平線(-0.453°)より0.45°高く、
+               700mmで184px、800mmで211px高い位置に海が描かれていた
+               （利用者が持尾展望台の実写と見比べて発見）。
+
+               丸みを入れると見かけ高度は距離 √(2R'h) で最大になり、
+               そこから先は下がる。この経路は「手前の何よりも高く見える点だけを残す」
+               隠面処理なので、**水平線より遠い海は自動的に隠れる**。
+               水平線のための特別な定数は要らない。 */
+            const waterMetres=Math.max(1,point.distanceKm*1000);
+            const waterDrop=seaHorizonRealistic?waterMetres*waterMetres/(2*6371000*(7/6)):0;
+            /* 【v895】この点が属する水域の水位を使う（光線全体で1つではない）。 */
+            alt=-Math.atan2(waterEyeAbove[i]+waterDrop,waterMetres)*R2D;
           }else if(Number.isFinite(point.baseElevation)){
             alt=apparentAltOf(point);
           }else{
@@ -23436,25 +24022,76 @@ function drawPhoto(ctx,s){
                三脚のままなら eyeShiftM は0.05mで、20m先でも0.14度しか動かない。 */
             const mateAlt=blend>0?altAtDistance(mateRow,point.distanceKm):null;
             const storedAlt=Number.isFinite(mateAlt)?lerp(point.alt,mateAlt,blend):point.alt;
-            alt=eyeShiftM===0?storedAlt
-              :storedAlt-Math.atan2(eyeShiftM,Math.max(.1,point.distanceKm*1000))*R2D;
+            /* 【v886】**`isWater` の条件を外した。**
+
+               v885では「水と判定された点」だけを海面として計算していたが、
+               水域の判定はOSMの水域ポリゴンやDEM欠測の連なりから作るため、
+               **同じ場所でも取得状況によって付いたり付かなかったりする**。
+               判定が付かなかった点が -atan(視点海抜/距離)（丸み無し）のまま残り、
+               利用者の画面では海の上端が -0.144° になっていた
+               （85km先で -0.156°。丸みを入れれば -0.4527° が正しい）。
+
+               この分岐へ来るのは「標高が分からない点」だけ。
+               DEMで標高が分からないのは海（nodata）なので、海抜0mとしてよい。
+               v874で `kmzNearTerrainSkyline` にも同じ判断を入れてある。 */
+            if(seaHorizonRealistic){
+              /* 【v885】**標高が分からない水面＝海。海抜0mと分かっている。**
+
+                 従来はここも storedAlt（視点高1.6mで作った値）から
+                 `eyeShiftM = 地面からの高さ − 1.6m` を引くだけだった。
+                 **観測地点の標高がどこにも入らない**ため、
+                 50km先で ほぼ 0° になり、海が仰角0°まで上がっていた
+                 （持尾展望台・標高223mで本来 -0.453°）。
+
+                 v884では「水面の分岐」を直したが、**海はそこに来ない**。
+                 waterElevation は baseElevation を持つ点からしか作られず、
+                 海はDEMが欠測なので eyeAboveWater が null になるため。
+
+                 陸と同じ式にする（水面標高0 − 視点海抜 − 丸み）。 */
+              const seaM=Math.max(1,point.distanceKm*1000);
+              const seaDrop=seaM*seaM/(2*6371000*(7/6));
+              alt=-Math.atan2(eyeElevationNow+seaDrop,seaM)*R2D;
+            }else{
+              alt=eyeShiftM===0?storedAlt
+                :storedAlt-Math.atan2(eyeShiftM,Math.max(.1,point.distanceKm*1000))*R2D;
+            }
           }
           if(!(alt>highest)) continue; // 手前の地形に隠れている
           if(!skylineOnly) bands.push({lo:highest,hi:alt,distanceKm:point.distanceKm,water:isWater,cloud:!!point.cloud});
           highest=alt;
         }
-        // 標高が全く無い方位でも水平線までは地表がある(下の受け皿と同じ扱い)。
+        const seaTopAlt=seaHorizonRealistic?currentSeaHorizonAltitudeDeg():0;
+        /* 標高が全く無い方位でも水平線までは地表がある(下の受け皿と同じ扱い)。
+
+           【v887】**下限は 0° のまま。v886でここを水平線へ下げたのは誤りだった。**
+
+           この戻り値（skyLeft / skyRight）は短冊ごとに
+           `Math.min(band.hi, skyLeft)` として**帯の上端を切る**のに使われる。
+           地形がある方位は `highest` のまま、地形が無い方位だけ下がるので、
+           隣り合う短冊で切られる高さが食い違い、**海が矩形に割れた**
+           （利用者が v880 と同一画角で撮り比べて確認。v880は1枚の平らな帯）。
+
+           海面の上端は下の受け皿が `hi:seaTopAlt` で決めるので、ここは触らなくてよい。 */
         if(skylineOnly) return highest<0?0:highest;
         /* 標高データが全く無い方位(外洋など)でも、水平線までは必ず「地表」がある。
            ここを空欄にすると縦一列ぶんの抜けになるため、水平線までを1枚の帯で埋める。
            海と確認できていれば水面色、そうでなければ地面色にする。 */
-        if(highest<0){
+        /* 【v885】**受け皿の上端。ここが外洋方向の海の上端そのものだった。**
+
+           大阪湾のようにDEMが全く無い方位はここへ来る。`hi:0` と書いてあったので
+           海が必ず仰角0°まで届いていた。視点海抜232mでは本来 -0.453° で、
+           800mmで211px高い位置に水平線が出ていた。
+
+           上端を視点の高さから求めた水平線にする。
+           OFFのときは `currentSeaHorizonAltitudeDeg()` を使わず0のままで、従来と同じ。 */
+        if(highest<seaTopAlt){   /* seaTopAlt は skylineOnly の手前で用意済み（v886） */
           const water=!!(realTerrainState.waterNearKm&&Number.isFinite(realTerrainState.waterNearKm[idx]));
           /* 雲海がONなら、標高データが全く無い方位も雲で埋める。
              ここを水面色のままにすると、沖の方向だけ雲が途切れる。 */
           const cloudFill=cloudSeaVisible&&cloudSeaSurfaceFade()>.01;
-          bands.push({lo:highest,hi:0,distanceKm:cloudFill?40:(water?60:20),water:cloudFill?false:water,cloud:cloudFill});
+          bands.push({lo:highest,hi:cloudFill?0:seaTopAlt,distanceKm:cloudFill?40:(water?60:20),water:cloudFill?false:water,cloud:cloudFill});
         }
+        if(waterRayDiagCapturing&&waterRayDiagStoreThis&&waterRayDiagData) waterRayDiagData.bands=bands.slice();
         if(!bands.length){
           return null;
         }
@@ -24851,13 +25488,61 @@ function drawPhoto(ctx,s){
              7m浮くと水面が本来より上へ寄り、手前の岸に階段状の帯が残る。
              標本を増やし、下から10%点を採って湖面へ寄せる。 */
           const elevationSamples=[],stride=Math.max(1,Math.floor(clippedOuter.length/48));
+          /* 【v892】距離ごとの水位を出すため、標高と一緒に距離も控える。 */
+          const elevationByDistance=[];
           for(let i=0;i<clippedOuter.length;i+=stride){
             const point=clippedOuter[i],distanceM=Math.hypot(point.x,point.y);if(distanceM<1)continue;
             const elevation=rayBaseElevationAt(norm360(atan2d(point.x,point.y)),distanceM/1000);
-            if(Number.isFinite(elevation))elevationSamples.push(elevation);
+            if(Number.isFinite(elevation)){elevationSamples.push(elevation);elevationByDistance.push({m:distanceM,e:elevation});}
           }
           elevationSamples.sort((a,b)=>a-b);
           const waterElevation=elevationSamples.length?elevationSamples[Math.floor((elevationSamples.length-1)*.10)]:0;
+          const diagElevLo=elevationSamples.length?elevationSamples[0]:null;
+          const diagElevHi=elevationSamples.length?elevationSamples[elevationSamples.length-1]:null;
+
+          /* 【v892】**距離ごとの水位。** §13-6のB案。
+
+             これまでは輪郭全体で代表水位1つ（下から10%）だった。
+             池は水平なのでそれで正しいが、**川は上流ほど高い**ので合わない。
+
+             実測（隅田町山内・方位129°）:
+               池   1.02〜1.18km  標高202〜209m（差 7m）   ← 1つで正しい
+               川   5.53〜 8.28km 標高 98〜200m（差102m）  ← 1つでは合わない
+             103m固定だと上流端が本来より **0.67°（37mmで約19px）低い**。
+
+             **標高差が10m以下の形状は、これまでどおり1つのまま**（池は無変更）。
+
+             点ごとにDEMをそのまま使わないのは、下のコメントにある通り
+             「水面標高には数十cmのばらつきがあり、岸の形が乱れる」ため。
+             区間ごとに下から10%を取れば、ばらつきは均され傾きだけが残る。 */
+          let waterLevelAt=null;
+          if(elevationByDistance.length>=8&&Number.isFinite(diagElevLo)&&(diagElevHi-diagElevLo)>10){
+            const byDistance=elevationByDistance.slice().sort((a,b)=>a.m-b.m);
+            const bucketCount=Math.min(8,Math.max(2,Math.floor(byDistance.length/6)));
+            const nodes=[];
+            for(let b=0;b<bucketCount;b++){
+              const from=Math.floor(b*byDistance.length/bucketCount);
+              const to=Math.floor((b+1)*byDistance.length/bucketCount);
+              const part=byDistance.slice(from,to);
+              if(!part.length)continue;
+              const levels=part.map(p=>p.e).sort((x,y)=>x-y);
+              nodes.push({m:part.reduce((sum,p)=>sum+p.m,0)/part.length,
+                          e:levels[Math.floor((levels.length-1)*.10)]});
+            }
+            if(nodes.length>=2){
+              waterLevelAt=metres=>{
+                if(metres<=nodes[0].m)return nodes[0].e;
+                for(let i=1;i<nodes.length;i++){
+                  if(metres<=nodes[i].m){
+                    const span=nodes[i].m-nodes[i-1].m;
+                    const f=span>1e-6?(metres-nodes[i-1].m)/span:0;
+                    return lerp(nodes[i-1].e,nodes[i].e,f);
+                  }
+                }
+                return nodes[nodes.length-1].e;
+              };
+            }
+          }
           const path=new Path2D();let projected=0,distanceTotal=0;
           const observerEyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
           /* 【v831】ここは輪郭を「形」として投影するだけ。前後関係は一切見ない。
@@ -24866,13 +25551,24 @@ function drawPhoto(ctx,s){
                ・頂点を消す → 塗り潰しポリゴンは輪郭を消しても切り抜けず、湖の内側がえぐれた
                ・高度を押さえ込む → 足元の地面自身が最初の遮蔽物になり、切り取り高度が-82°に張り付いた
                ・形状ごと捨てる → 尾根をまたぐ形状が全部残った */
+          /* 【v891】診断用。この形状が画面の上下どこまで伸びたかを控える。
+             **輪郭の全点を同じ水位で投影している**ので、奥へ伸びる細長い水域は
+             距離が伸びるほど見かけ高度が水平線へ向かって上がり、縦縞になる。
+             その伸びを数字で見えるようにする。 */
+          let diagMinAlt=Infinity,diagMaxAlt=-Infinity,diagNearM=Infinity,diagFarM=0;
           const appendRing=ring=>{
             let started=false;
             for(const point of ring){
               const distanceM=Math.hypot(point.x,point.y);if(distanceM<.3)continue;
               const metres=Math.max(.3,distanceM),drop=metres*metres/(2*6371000*(7/6));
               const azimuth=norm360(atan2d(point.x,point.y));
-              const altitude=Math.atan2(waterElevation-observerEyeElevation-drop,metres)*R2D;
+              /* 【v892】距離ごとの水位。作れなかった形状（池など）は従来どおり1つ。 */
+              const levelHere=waterLevelAt?waterLevelAt(metres):waterElevation;
+              const altitude=Math.atan2(levelHere-observerEyeElevation-drop,metres)*R2D;
+              if(altitude<diagMinAlt)diagMinAlt=altitude;
+              if(altitude>diagMaxAlt)diagMaxAlt=altitude;
+              if(metres<diagNearM)diagNearM=metres;
+              if(metres>diagFarM)diagFarM=metres;
               const screen=toXY(azimuth,altitude);
               if(!screen||!Number.isFinite(screen[0])||!Number.isFinite(screen[1]))continue;
               if(!started){path.moveTo(screen[0],screen[1]);started=true;}else path.lineTo(screen[0],screen[1]);
@@ -24886,7 +25582,15 @@ function drawPhoto(ctx,s){
             if(clippedHole.length>=3)appendRing(clippedHole);
           }
           /* 【v849】引き算の元から海を外すための印。 */
-          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean"});
+          if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean",
+            /* 【v891】診断用。描画には使わない。 */
+            diagWaterElevation:waterElevation,
+            diagMinAlt:Number.isFinite(diagMinAlt)?diagMinAlt:null,
+            diagMaxAlt:Number.isFinite(diagMaxAlt)?diagMaxAlt:null,
+            diagNearKm:Number.isFinite(diagNearM)?diagNearM/1000:null,
+            diagFarKm:diagFarM/1000,
+            diagKind:polygon.waterKind||"",diagClass:polygon.waterClass||"",
+            diagElevLo,diagElevHi,diagByDistance:!!waterLevelAt});
         }
         /* 【v835】観測者が水の上にいるときは、足元の水を受け持つ形状が1つも無い。
            この状態で「Aより手前を消す」を掛けると、遠くの水域のAが足元の水まで消してしまい、
@@ -25020,6 +25724,7 @@ function drawPhoto(ctx,s){
         const bottomAlt=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
         const stepDeg=clamp(5/(W/Math.max(1,s.fovH)),.03,1.5);
         const halfSpan=rayHalfSpanDeg();
+        let diagFineTallest=null,diagFineRuns=0;   // 【v894】診断用
         /* v809: 列の方位を「0度から stepDeg 刻み」の固定格子へ乗せる。
            以前は facingAz を基点にしていたため、わずかに振り向くだけで全列の方位がずれ、
            normalCachedWaterAt のメモが毎コマ全滅していた。
@@ -25060,6 +25765,21 @@ function drawPhoto(ctx,s){
               if(waterRun&&band.lo<=waterRun.hi+1e-3){waterRun.push(band);waterRun.hi=Math.max(waterRun.hi,band.hi);}
               else{waterRun=[band];waterRun.hi=band.hi;waterRuns.push(waterRun);}
             }
+            /* 【v894】診断: いちばん縦に長い水の塊を控える。**柱はこれ。**
+               距離の範囲と帯の枚数も一緒に出すので、
+               その方位で水がどこからどこまで連なっているかが読める。 */
+            if(waterRayDiagVisible){
+              diagFineRuns+=waterRuns.length;
+              for(const run of waterRuns){
+                const runLo=run[0].lo,runHi=run.hi,span=runHi-runLo;
+                if(!diagFineTallest||span>diagFineTallest.span){
+                  diagFineTallest={az:(azLeft+azRight)*.5,lo:runLo,hi:runHi,span,
+                    bands:run.length,nearKm:run[0].distanceKm,farKm:run[run.length-1].distanceKm,
+                    /* 【v894】柱の中身。どの距離でどれだけ飛んでいるかを1枚ずつ出す。 */
+                    detail:run.map(b=>({km:b.distanceKm,lo:b.lo,hi:b.hi}))};
+                }
+              }
+            }
             for(const run of waterRuns){
               const groups=Math.min(BAND_MERGE_MAX_SLICES,run.length),per=run.length/groups;
               for(let gi=0;gi<groups;gi++){
@@ -25090,6 +25810,7 @@ function drawPhoto(ctx,s){
           if(colorContext)colorContext.restore();
         }finally{normalFineWaterMaskPass=false;}
         if(targetContext)drawPhoto._normalFineWaterSegments=segments;
+        if(waterRayDiagVisible){waterFineDiagTallest=diagFineTallest;waterFineDiagRuns=diagFineRuns;}   // 【v894】
         return painted>0;
       }
       function drawLayeredTerrain(){
@@ -25142,6 +25863,26 @@ function drawPhoto(ctx,s){
               const bands=azimuthVisibleBands(a,bottomAlt,false,true);
               columns.push({az:a,bands:bands||[]});
             }
+          }
+          /* 【v889】水域レイ診断: **画角内でいちばん高い水の帯**を拾う。
+
+             柱に方位を合わせるのは面倒で、細い柱だと難しい。
+             `columns` には各方位の帯が既に入っているので、
+             **見るだけ**で済む（走査のやり直しは不要、費用もほぼ無い）。 */
+          if(waterRayDiagVisible){
+            let tallest=null;
+            for(let ci=0;ci<columns.length;ci++){
+              const column=columns[ci],list=column.bands||[];
+              for(let bi=0;bi<list.length;bi++){
+                const band=list[bi];
+                if(!band||!band.water)continue;
+                const height=band.hi-band.lo;
+                if(!tallest||height>tallest.height){
+                  tallest={az:column.az,distanceKm:band.distanceKm,lo:band.lo,hi:band.hi,height};
+                }
+              }
+            }
+            waterRayDiagTallest=tallest;
           }
           if(columns.length<2)return false;
 
@@ -26352,24 +27093,32 @@ function drawPhoto(ctx,s){
     }
   }
 
-  // 水平線(高度0°)を明るいグレーの点線で表示(トグルON時のみ)
+  // 水平線を点線で表示(トグルON時のみ)
   if(showHorizonLine){
     ctx.save();
-    ctx.strokeStyle="rgba(210,213,225,0.85)";
     ctx.lineWidth=1.6;
     ctx.setLineDash([7,6]);
-    ctx.beginPath();
-    let started=false;
     const horizonHalf=useDiagonalFisheye ? 89.5 : s.fovH/2+6;
     const horizonStep=useDiagonalFisheye ? 1 : 3;
-    for(let diff=-horizonHalf;diff<=horizonHalf;diff+=horizonStep){
-      const az=norm360(s.facingAz+diff);
-      const p=toXY(az,0);
-      if(!p){ started=false; continue; }
-      if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
-      else ctx.lineTo(p[0],p[1]);
+    /* 【v896】1本に戻した。
+
+       v882で「0°」と「本来の水平線」を色分けして2本引いたのは
+       **海の上端がどちらに付いているかを見るための診断**で、
+       原因を特定した今は役目を終えた。混乱の元なので1本にする。 */
+    const horizonLines=[[renderedSeaHorizonAltDeg(),"rgba(210,213,225,0.85)"]];
+    for(const [lineAltDeg,lineColor] of horizonLines){
+      ctx.strokeStyle=lineColor;
+      ctx.beginPath();
+      let started=false;
+      for(let diff=-horizonHalf;diff<=horizonHalf;diff+=horizonStep){
+        const az=norm360(s.facingAz+diff);
+        const p=toXY(az,lineAltDeg);
+        if(!p){ started=false; continue; }
+        if(!started){ ctx.moveTo(p[0],p[1]); started=true; }
+        else ctx.lineTo(p[0],p[1]);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
   }
@@ -27247,8 +27996,20 @@ function updateCameraViewOnly(){
 
   updateOsmFovOverlay(state);
   syncDroneMap(state);
+  /* 【v890】水域レイ診断の方位も、カメラだけの更新で追随させる。
+     ここを入れないと、振っても診断が前の方位のまま止まる。 */
+  waterRayDiagWantAz=waterRayDiagVisible?((facingAz%360)+360)%360:null;
+  waterRayDiagBestDiff=Infinity;
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
+  /* 【v890】**情報パネルはここでも書き替える。**
+
+     v887で `update()` からは呼ぶようにしたが、
+     **方位・仰角・焦点距離を変える操作はこの軽い経路を通る**ので、
+     情報パネルだけ前の値のまま止まっていた
+     （利用者の画面で「情報 方位182°／方位バー 132°」と食い違っていた）。 */
+  if(typeof updateSimInfoPanel==="function") updateSimInfoPanel();
+  if(typeof renderWaterRayDiagPanel==="function") renderWaterRayDiagPanel();
   // カメラ値に関係する小さな表示だけ更新し、日時系UIは触らない。
   if(updateCameraViewOnly._lastCameraInfoKey!==cameraInfoKey){
     updateCameraViewOnly._lastCameraInfoKey=cameraInfoKey;
@@ -27269,6 +28030,14 @@ function update(){
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
   state=computeState();
+  /* 【v888】水域レイ診断。診断したい方位（画面中央）をここで入れる。
+
+     最初は ray march 側に置いていたが、**既定の描画方式は layered** で
+     あの関数は呼ばれていなかった。`azimuthVisibleBands` は layered からも
+     呼ばれるので、方式に依存しないこの場所で入れる。
+     OFFのときは null なので、キャッシュ迂回の条件が成立せず何も走らない。 */
+  waterRayDiagWantAz=waterRayDiagVisible?((state.facingAz%360)+360)%360:null;
+  waterRayDiagBestDiff=Infinity;
   syncDarumaTelephotoUi(state);
   updateOsmFovOverlay(state);
   syncDroneMap(state);
@@ -27277,6 +28046,15 @@ function update(){
   drawDial(dialCtx,state);
   if(!suppressPhotoDrawForUpdate) drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
+  /* 【v887】情報の一覧をここでも書き替える。
+
+     これまで `updateSimInfoPanel()` は時計の更新とドローンの高度表示からしか
+     呼ばれておらず、**方位・仰角・焦点距離を変えても書き替わらなかった**。
+     出しっぱなしのまま動かすと古い値が残り、
+     切り分け用のスクリーンショットに誤った条件が写って判断を誤らせていた。
+     出していない間は先頭で return するので費用はほぼ無い。 */
+  if(typeof updateSimInfoPanel==="function") updateSimInfoPanel();
+  if(typeof renderWaterRayDiagPanel==="function") renderWaterRayDiagPanel();   // 【v888】
   const timeDisplayRange=getTimeDisplayRange();
   drawTimelineBar(el.moonTimelineBar, state.moonUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:6, colorRGB:"205,208,228", risePrefix:"月出", setPrefix:"月入", singleRow:true});
   drawTimelineBar(el.sunTimelineBar, state.sunUpIntervals, {rangeStart:timeDisplayRange.start, rangeEnd:timeDisplayRange.end, gradientMin:90, colorRGB:"242,180,90", risePrefix:"日出", setPrefix:"日入", singleRow:true, labelsBelow:true});
