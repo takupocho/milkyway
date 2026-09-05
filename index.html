@@ -4423,6 +4423,24 @@
             </div>
             <p id="photoToneReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
           </div>
+          <!-- 【v912】カメラワーク。向きとズームをなめらかに動かす。 -->
+          <div id="cameraMovePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:10px;margin-top:12px;">
+            <p class="map-hint" style="margin:0 0 8px;color:var(--ink);font-weight:700;">🎬 カメラワーク</p>
+            <p class="map-hint" style="margin:0 0 8px;">景色から星座へ振るような動きを作ります。見せたい向きに合わせてから、下のボタンで覚えさせてください。</p>
+            <button id="cameraMoveSetFromBtn" type="button" class="ghost" style="width:100%;">開始をいまの向きにする</button>
+            <p id="cameraMoveFromLabel" class="map-hint mono" style="margin:4px 0 8px;">開始：未設定</p>
+            <button id="cameraMoveSetToBtn" type="button" class="ghost" style="width:100%;">終了をいまの向きにする</button>
+            <p id="cameraMoveToLabel" class="map-hint mono" style="margin:4px 0 8px;">終了：未設定</p>
+            <div class="field"><label class="top">秒数 <span class="val mono" id="cameraMoveSecondsVal">6.0秒</span></label><input type="range" id="cameraMoveSeconds" min="10" max="300" step="1" value="60"></div>
+            <button id="cameraMoveEasingBtn" type="button" class="toggle-btn active" style="margin-top:6px;"><span>ゆっくり始めてゆっくり止まる</span><span id="cameraMoveEasingState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+            <button id="cameraMovePanoBtn" type="button" class="toggle-btn active" style="margin-top:6px;"><span>先に焼いて貼り直す（なめらか）</span><span id="cameraMovePanoState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+            <p class="map-hint" style="margin-top:6px;">再生前に経路ぶんの地形を数枚だけ焼いておき、再生中はそれを今の画角へ貼り直します。視点が動かないので、貼り直しは射影変換1回で厳密に一致します。OFFにすると毎コマ描き直す従来の再生になります。</p>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button id="cameraMoveRewindBtn" type="button" class="ghost" style="flex:1;">開始の向きへ</button>
+              <button id="cameraMovePlayBtn" type="button" class="toggle-btn" style="flex:1;"><span>▶ 再生</span></button>
+            </div>
+            <p id="cameraMoveReadout" class="map-hint mono" style="margin-top:8px;white-space:pre-wrap;"></p>
+          </div>
           <button id="showBelowHorizonBtn" type="button" class="toggle-btn"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
           <button id="realSunMoonBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>☀️🌙 太陽・月をリアル表示する</span><span id="realSunMoonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -5295,7 +5313,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="911-night-single-layer";
+const APP_VERSION="920-pano-bridge";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6462,6 +6480,12 @@ const el={
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
   photoToneBtn:$("photoToneBtn"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
+  cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
+  cameraMoveFromLabel:$("cameraMoveFromLabel"), cameraMoveToLabel:$("cameraMoveToLabel"),
+  cameraMoveSeconds:$("cameraMoveSeconds"), cameraMoveSecondsVal:$("cameraMoveSecondsVal"),
+  cameraMoveEasingBtn:$("cameraMoveEasingBtn"), cameraMoveEasingState:$("cameraMoveEasingState"),
+  cameraMovePanoBtn:$("cameraMovePanoBtn"), cameraMovePanoState:$("cameraMovePanoState"),
+  cameraMoveRewindBtn:$("cameraMoveRewindBtn"), cameraMovePlayBtn:$("cameraMovePlayBtn"), cameraMoveReadout:$("cameraMoveReadout"),
   toneGroundBlue:$("toneGroundBlue"), toneGroundBlueVal:$("toneGroundBlueVal"), groundBlueDesatMatrix:$("groundBlueDesatMatrix"),
   toneGroundBrightness:$("toneGroundBrightness"), toneGroundBrightnessVal:$("toneGroundBrightnessVal"), toneGroundContrast:$("toneGroundContrast"), toneGroundContrastVal:$("toneGroundContrastVal"), toneGroundSaturate:$("toneGroundSaturate"), toneGroundSaturateVal:$("toneGroundSaturateVal"), toneGroundLift:$("toneGroundLift"), toneGroundLiftVal:$("toneGroundLiftVal"),
   toneDayBrightness:$("toneDayBrightness"), toneDayBrightnessVal:$("toneDayBrightnessVal"), toneDayContrast:$("toneDayContrast"), toneDayContrastVal:$("toneDayContrastVal"), toneDaySaturate:$("toneDaySaturate"), toneDaySaturateVal:$("toneDaySaturateVal"), toneDayBlack:$("toneDayBlack"), toneDayBlackVal:$("toneDayBlackVal"), toneDayWhite:$("toneDayWhite"), toneDayWhiteVal:$("toneDayWhiteVal"),
@@ -10590,6 +10614,183 @@ if(el.photoToneCopyBtn)el.photoToneCopyBtn.addEventListener("click",()=>{
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
 });
 syncPhotoToneControls();
+
+/* 【v912】カメラワーク。向きとズームをなめらかに動かす。
+
+   ふだんの入力ハンドラは rAF でまとめる作り（scheduleCameraViewUpdate）なので、
+   そこへ乗せると**コマを落としても気付けない**。
+   ここでは自前で回し、実測のfpsを出す。次の段（パノラマ）の効果を
+   同じ経路で見比べるための物差しにする。 */
+const cameraMove={from:null,to:null,seconds:6,easing:true};
+const cameraMoveState={playing:false,raf:0,frames:null};
+function cameraMoveViewNow(){
+  return {az:+el.facingAz.value,alt:+el.facingAlt.value,focal:clamp(+el.focalLength.value||24,8,FOCAL_MAX_MM)};
+}
+function cameraMoveLabel(view){
+  return view?`方位 ${view.az.toFixed(1)}° / 仰角 ${view.alt.toFixed(1)}° / ${Math.round(view.focal)}mm`:"未設定";
+}
+function syncCameraMoveControls(){
+  if(!el.cameraMovePanel)return;
+  cameraMove.seconds=clamp((+el.cameraMoveSeconds.value||60)/10,1,30);
+  el.cameraMoveSecondsVal.textContent=`${cameraMove.seconds.toFixed(1)}秒`;
+  el.cameraMoveFromLabel.textContent=`開始：${cameraMoveLabel(cameraMove.from)}`;
+  el.cameraMoveToLabel.textContent=`終了：${cameraMoveLabel(cameraMove.to)}`;
+  el.cameraMoveEasingBtn.classList.toggle("active",cameraMove.easing);
+  el.cameraMoveEasingState.textContent=cameraMove.easing?"ON":"OFF";
+  const ready=!!(cameraMove.from&&cameraMove.to);
+  el.cameraMovePlayBtn.disabled=!ready&&!cameraMoveState.playing;
+  el.cameraMovePlayBtn.classList.toggle("active",cameraMoveState.playing);
+  el.cameraMovePlayBtn.firstElementChild.textContent=cameraMoveState.playing?"■ 停止":"▶ 再生";
+  el.cameraMoveRewindBtn.disabled=!cameraMove.from;
+}
+/* 向きを直接入れて、その場で描き直す。
+   input を発火させると rAF へ回されてコマがまとめられるので使わない。 */
+function cameraMoveApplyView(az,alt,focalMm,smooth){
+  const azNow=norm360(az),focal=clamp(focalMm,8,FOCAL_MAX_MM);
+  /* 【v916】描画には**小数のまま**渡す。スライダーは step="1" で丸められるため。 */
+  cameraMoveOverride=smooth?{az:azNow,alt,focal}:null;
+  el.facingAz.value=String(Math.round(azNow)%360);
+  el.facingAlt.value=String(Math.round(alt));
+  const mm=clamp(Math.round(focal),8,FOCAL_MAX_MM);
+  if(String(mm)!==String(el.focalLength.value)){
+    el.focalLength.value=String(mm);
+    if(mobileLensMode==="fisheye")fisheyeLensFocalLength=mm;else normalLensFocalLength=mm;
+    if(typeof syncFocalRangeFromValue==="function")syncFocalRangeFromValue();
+  }
+  try{updateCameraViewOnly();}
+  finally{cameraMoveOverride=null;}   /* 例外が出ても必ず外す */
+}
+function stopCameraMove(){
+  if(cameraMoveState.raf)cancelAnimationFrame(cameraMoveState.raf);
+  cameraMoveState.raf=0;cameraMoveState.playing=false;
+  cameraPano.playing=false;cameraPanoClear();
+  syncCameraMoveControls();
+}
+function reportCameraMove(times,draws,terrains){
+  if(!el.cameraMoveReadout)return;
+  if(!times||times.length<3){el.cameraMoveReadout.textContent="";return;}
+  const gaps=[];
+  for(let i=1;i<times.length;i++)gaps.push(times[i]-times[i-1]);
+  const total=times[times.length-1]-times[0];
+  const average=gaps.length/(total/1000);
+  const worst=1000/Math.max(...gaps);
+  const sorted=[...gaps].sort((a,b)=>a-b);
+  const median=1000/sorted[sorted.length>>1];
+  /* 【v913】内訳。中央値と最大値で出す。 */
+  const stat=list=>{
+    if(!list||!list.length)return null;
+    const s=[...list].sort((a,b)=>a-b);
+    return {median:s[s.length>>1],max:s[s.length-1],total:list.reduce((a,b)=>a+b,0)};
+  };
+  const draw=stat(draws),terrain=stat(terrains);
+  const outsides=(draws&&draws.length===times.length)
+    ?gaps.map((gap,i)=>Math.max(0,gap-draws[i+1])):null;
+  const outside=stat(outsides);
+  const lines=[
+    `${times.length}コマ / ${(total/1000).toFixed(1)}秒`,
+    `平均 ${average.toFixed(1)}fps・中央 ${median.toFixed(1)}fps・最低 ${worst.toFixed(1)}fps`
+  ];
+  if(draw)lines.push(`描画　　 中央 ${draw.median.toFixed(1)}ms・最大 ${draw.max.toFixed(0)}ms・合計 ${(draw.total/1000).toFixed(1)}秒`);
+  if(terrain){
+    const rebuilt=terrains.filter(v=>v>1).length;
+    lines.push(`うち地形 中央 ${terrain.median.toFixed(1)}ms・最大 ${terrain.max.toFixed(0)}ms・合計 ${(terrain.total/1000).toFixed(1)}秒`);
+    lines.push(`　地形を作り直したコマ ${rebuilt}/${terrains.length}`);
+  }
+  if(outside)lines.push(`描画の外 中央 ${outside.median.toFixed(1)}ms・最大 ${outside.max.toFixed(0)}ms・合計 ${(outside.total/1000).toFixed(1)}秒`);
+  if(cameraMoveState.panoError)lines.push(`先に焼く：使えず（${cameraMoveState.panoError}）`);
+  else if(cameraPano.prepared){
+    lines.push(`先に焼いた枚数 ${cameraPano.prepared}・ボケ量 ×${cameraPano.softness.toFixed(2)}`);
+    lines.push(`　水面マスク ${cameraPano.withMask}枚・水面上の橋 ${cameraPano.withBridge}枚`);
+  }
+  el.cameraMoveReadout.textContent=lines.join("\n");
+}
+/* 正規化した t（0〜1）での向き。再生と検証入口の両方から使う。 */
+function cameraMoveViewAt(raw){
+  const from=cameraMove.from,to=cameraMove.to;
+  if(!from||!to)return null;
+  const clamped=clamp(raw,0,1);
+  /* ゆっくり始まってゆっくり止まる（2次の ease-in-out）。 */
+  const t=cameraMove.easing?(clamped<.5?2*clamped*clamped:1-Math.pow(-2*clamped+2,2)/2):clamped;
+  /* 方位は**近いほうへ回る**。350°→10°で340°戻らないように。 */
+  const azDelta=((to.az-from.az+540)%360)-180;
+  return {az:norm360(from.az+azDelta*t),alt:from.alt+(to.alt-from.alt)*t,
+    /* ズームは対数で補間。24→48と 48→96 が同じ速さに見える。 */
+    focal:from.focal*Math.pow(to.focal/from.focal,t)};
+}
+function playCameraMove(){
+  if(cameraMoveState.playing){stopCameraMove();return;}
+  if(!cameraMove.from||!cameraMove.to)return;
+  const durationMs=Math.max(200,cameraMove.seconds*1000);
+  const times=[],draws=[],terrains=[];
+  /* 【v917】先に焼く。数百ms止まるので、押した直後に一度だけ。 */
+  cameraPano.playing=false;
+  const panoError=cameraMovePanoOn?cameraPanoPrepare():null;
+  cameraPano.playing=!!(cameraPano.tiles&&cameraPano.tiles.length);
+  cameraMoveState.panoError=panoError;
+  cameraMoveState.playing=true;
+  syncCameraMoveControls();
+  let startedAt=0;
+  const step=now=>{
+    if(!cameraMoveState.playing)return;
+    if(!startedAt)startedAt=now;
+    const raw=clamp((now-startedAt)/durationMs,0,1);
+    const view=cameraMoveViewAt(raw);
+    /* 【v913】このコマの内訳を控える。 */
+    terrainRenderMsAccum=0;
+    const drawStartedAt=performance.now();
+    cameraMoveApplyView(view.az,view.alt,view.focal,true);   // 【v916】小数のまま
+    const drawMs=performance.now()-drawStartedAt;
+    times.push(now);
+    draws.push(drawMs);
+    terrains.push(terrainRenderMsAccum);
+    if(raw>=1){cameraMoveState.playing=false;cameraMoveState.raf=0;cameraPano.playing=false;syncCameraMoveControls();reportCameraMove(times,draws,terrains);cameraPanoClear();return;}
+    cameraMoveState.raf=requestAnimationFrame(step);
+  };
+  cameraMoveState.raf=requestAnimationFrame(step);
+}
+
+let cameraMovePanoOn=true;
+/* 【v917】このコマを「焼いた地形の貼り直し」で済ませられたら true を返す。
+   済ませられなければ false を返し、呼び出し側は今までどおり地形を作り直す。 */
+function cameraPanoWarpFrame(terrainCanvas,maskCanvas,s,W,H,renderKey,dayFactor){
+  if(!cameraPano.playing||!cameraPano.tiles||!cameraPano.tiles.length)return false;
+  if(dayFactor>0)return false;              /* 昼は昼用レイヤーが要るので今までどおり */
+  if(mobileLensMode==="fisheye")return false;
+  const tile=cameraPanoPick(s.facingAz,s.facingAlt);
+  if(!tile)return false;
+  const dstView={az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,w:W,h:H};
+  const srcView={az:tile.az,alt:tile.alt,fovH:tile.fovH,w:tile.w,h:tile.h};
+  if(!cameraWarpApply(tile.terrain,srcView,dstView,terrainCanvas))return false;
+  if(tile.mask&&maskCanvas&&maskCanvas.width===W&&maskCanvas.height===H){
+    cameraWarpApply(tile.mask,srcView,dstView,maskCanvas);
+  }
+  drawPhoto._terrainRenderKey=renderKey;
+  return true;
+}
+if(el.cameraMovePanoBtn)el.cameraMovePanoBtn.addEventListener("click",()=>{
+  cameraMovePanoOn=!cameraMovePanoOn;
+  el.cameraMovePanoBtn.classList.toggle("active",cameraMovePanoOn);
+  el.cameraMovePanoState.textContent=cameraMovePanoOn?"ON":"OFF";
+  scheduleSaveSettings();
+});
+if(el.cameraMoveSetFromBtn)el.cameraMoveSetFromBtn.addEventListener("click",()=>{
+  cameraMove.from=cameraMoveViewNow();syncCameraMoveControls();scheduleSaveSettings();
+});
+if(el.cameraMoveSetToBtn)el.cameraMoveSetToBtn.addEventListener("click",()=>{
+  cameraMove.to=cameraMoveViewNow();syncCameraMoveControls();scheduleSaveSettings();
+});
+if(el.cameraMoveSeconds)el.cameraMoveSeconds.addEventListener("input",()=>{syncCameraMoveControls();scheduleSaveSettings();});
+if(el.cameraMoveEasingBtn)el.cameraMoveEasingBtn.addEventListener("click",()=>{
+  cameraMove.easing=!cameraMove.easing;syncCameraMoveControls();scheduleSaveSettings();
+});
+if(el.cameraMoveRewindBtn)el.cameraMoveRewindBtn.addEventListener("click",()=>{
+  if(!cameraMove.from)return;
+  stopCameraMove();
+  cameraMoveApplyView(cameraMove.from.az,cameraMove.from.alt,cameraMove.from.focal);
+  if(el.cameraMoveReadout)el.cameraMoveReadout.textContent="";
+});
+if(el.cameraMovePlayBtn)el.cameraMovePlayBtn.addEventListener("click",playCameraMove);
+syncCameraMoveControls();
 el.mwTextureOffsetSlider.addEventListener("input",()=>{
   mwTextureLOffsetDeg=+el.mwTextureOffsetSlider.value;
   el.mwTextureOffsetVal.textContent=`${mwTextureLOffsetDeg}°`;
@@ -12501,6 +12702,7 @@ function collectPersistedSettings(){
     photoToneOn:photoToneOn,
     photoTone:{day:{...photoTone.day},night:{...photoTone.night}},   // 【v905】
     groundTone:{...groundTone},   // 【v906】
+    cameraMove:{from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing},   // 【v912】
     photoToneRevision:PHOTO_TONE_REVISION,   // 【v908】
     mwTextureLOffsetDeg:mwTextureLOffsetDeg,
     mwTextureBOffsetDeg:mwTextureBOffsetDeg,
@@ -12730,6 +12932,15 @@ async function loadPersistedSettings(){
     }
     syncGroundToneControls();
     syncPhotoToneControls();
+    if(s.cameraMove&&typeof s.cameraMove==="object"){
+      const pick=v=>(v&&Number.isFinite(+v.az)&&Number.isFinite(+v.alt)&&Number.isFinite(+v.focal))
+        ?{az:+v.az,alt:+v.alt,focal:+v.focal}:null;
+      cameraMove.from=pick(s.cameraMove.from);
+      cameraMove.to=pick(s.cameraMove.to);
+      if(Number.isFinite(+s.cameraMove.seconds))el.cameraMoveSeconds.value=String(Math.round(clamp(+s.cameraMove.seconds,1,30)*10));
+      cameraMove.easing=s.cameraMove.easing!==false;
+    }
+    syncCameraMoveControls();
     if(s.mwTextureLOffsetDeg!==undefined){
       mwTextureLOffsetDeg=s.mwTextureLOffsetDeg;
       el.mwTextureOffsetSlider.value=mwTextureLOffsetDeg;
@@ -16289,6 +16500,13 @@ try{
     document.body.classList.add("hd-debug");   // 版番号バッジなど、確認用の表示を出す
     window.__hd={
       elevationAt:highDetailElevationAt,tiles:highDetailTiles,
+      /* 【v914】地形の作り直しを1コマずつ外から確かめるための入口。 */
+      terrainProfile:()=>({ms:terrainRenderMsAccum,key:drawPhoto._terrainRenderKey,skip:{...cameraViewSkip}}),
+      skipReset:()=>{cameraViewSkip={pending:0,noState:0,drawn:0};},
+      terrainProfileReset:()=>{terrainRenderMsAccum=0;},
+      /* 【v912】カメラワークの検証用。t=0〜1 で途中の向きを直接出せる。 */
+      camera:(t,smooth)=>{const v=cameraMoveViewAt(t);if(!v)return null;cameraMoveApplyView(v.az,v.alt,v.focal,smooth!==false);return v;},
+      cameraPath:()=>({from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing}),
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       injectKmz:(lat,lon,w,hgt)=>{
@@ -20469,6 +20687,9 @@ let photoClickRegions=[];
 function bridgeDistanceFade(index,buckets){
   return Math.min(1,1.3*Math.pow(1-(index+.5)/buckets,.8));
 }
+/* 【v913】地形（renderTerrainVariant）に消えた時間を数えるだけの入れ物。
+   カメラワークの計測でしか読まないので、ふだんの描画には影響しない。 */
+let terrainRenderMsAccum=0;
 function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
@@ -25932,6 +26153,20 @@ function drawPhoto(ctx,s){
          描き、水域画素との共通部分に限定して反射後へ戻す。陸上部分は二重描画せず、
          地形遮蔽済みPath2Dを使うため山越しに透けることもない。 */
       function restoreBridgeForegroundAboveWater(){
+        /* 【v920】貼り直しの再生中は、投影済みPath2Dが今の画角と合わない。
+           焼いておいた「水面の上の橋」の絵を、地形と同じ射影変換で貼り直す。 */
+        if(cameraPano.playing&&bridgeLinesVisible){
+          const tile=cameraPanoPick(s.facingAz,s.facingAlt);
+          if(!tile||!tile.bridge)return false;
+          const restoreCanvas=drawPhoto._bridgeWaterRestoreCanvas||(drawPhoto._bridgeWaterRestoreCanvas=document.createElement("canvas"));
+          if(restoreCanvas.width!==W||restoreCanvas.height!==H){restoreCanvas.width=W;restoreCanvas.height=H;}
+          const warped=cameraWarpApply(tile.bridge,
+            {az:tile.az,alt:tile.alt,fovH:tile.fovH,w:tile.w,h:tile.h},
+            {az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,w:W,h:H},restoreCanvas);
+          if(!warped)return false;
+          ctx.drawImage(restoreCanvas,0,0);
+          return true;
+        }
         const overlay=drawPhoto._bridgeForegroundOverlay;
         if(!bridgeLinesVisible||!overlay||overlay.key!==terrainGeometryKey||!waterSurfaceMaskCanvas.width) return false;
         const restoreCanvas=drawPhoto._bridgeWaterRestoreCanvas||(drawPhoto._bridgeWaterRestoreCanvas=document.createElement("canvas"));
@@ -27111,7 +27346,14 @@ function drawPhoto(ctx,s){
         return painted>0;
       }
 
+      /* 【v913】中身は触らず、包みで時間だけ数える。
+         try/finally なので途中で return しても数え漏れない。 */
       function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
+        const startedAt=performance.now();
+        try{return renderTerrainVariantInner(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass);}
+        finally{terrainRenderMsAccum+=performance.now()-startedAt;}
+      }
+      function renderTerrainVariantInner(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
         tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
         // commands（夜）だけ実マスクと昼用描画命令を構築し、replay（昼）は完成済み結果を参照する。
         wmctx=projectionPass==="replay"?sharedWaterMaskNoopContext:renderWaterMaskContext;
@@ -27328,7 +27570,8 @@ function drawPhoto(ctx,s){
         }
         rctx.globalCompositeOperation="source-over";
       }
-      if(terrainNeedsRender){
+      /* 【v917】カメラワーク再生中は、焼いた地形を貼り直すだけで済ませる。 */
+      if(terrainNeedsRender&&!cameraPanoWarpFrame(terrainCanvas,waterSurfaceMaskCanvas,s,W,H,terrainRenderKey,dayFactor)){
         // 地形形状が変わった時だけ、完全な夜と完全な昼の2枚を生成する。
         // 時刻再生中はこの高密度メッシュを作り直さず、下で2枚を合成するだけにする。
         if(highDetailOn&&highDetailPending<=0&&highDetailTileCount>0){
@@ -28529,12 +28772,221 @@ function updateArFrame(){
 /* 方位角・仰角・焦点距離だけが変わった場合の軽量更新。
    日時・天体位置・ベストタイム・月/太陽タイムライン・日付表示は前回stateを再利用し、
    カメラ画角とシミュレーション画像に必要な値だけを更新する。 */
+let cameraViewSkip={pending:0,noState:0,drawn:0};
+
+/* 【v917】焼いた地形を今の画角へ貼り直す（射影変換）。
+
+   視点が動かないので、焼いた絵と今の画角は同じ点から見た同じ景色。
+   目的の画素 (x,y) から方向 P を作り、焼いた絵のどこを見ればよいかを直接引く：
+
+       P = Rt*dx + Upt*dy + Ft        dx=(x-W/2)/scale_t, dy=-(y-H/2)/scale_t
+       u = Ws/2 + scale_s*(P·Rs)/(P·Fs)
+       v = Hs/2 - scale_s*(P·Ups)/(P·Fs)
+
+   これは近似ではなく厳密。Canvas 2D はアフィンまでしか扱えないので WebGL で行う。 */
+/* 【v918】テクスチャは2枚（0=地形・1=水面マスク）持ち、
+   「いま載っている絵」を覚えて、変わったときだけ送り直す。 */
+const cameraWarp={canvas:null,gl:null,program:null,loc:null,failed:false};
+function cameraWarpReady(){
+  if(cameraWarp.failed)return false;
+  if(cameraWarp.gl)return true;
+  try{
+    const canvas=document.createElement("canvas");
+    const gl=canvas.getContext("webgl",{alpha:true,premultipliedAlpha:false,antialias:false,depth:false,stencil:false});
+    if(!gl){cameraWarp.failed=true;return false;}
+    const vs=gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs,"attribute vec2 aPos;varying vec2 vUv;void main(){vUv=aPos*0.5+0.5;gl_Position=vec4(aPos,0.0,1.0);}");
+    gl.compileShader(vs);
+    const fs=gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs,[
+      "precision highp float;",
+      "varying vec2 vUv;",
+      "uniform sampler2D uTex;",
+      "uniform vec3 uDstR,uDstUp,uDstF,uSrcR,uSrcUp,uSrcF;",
+      "uniform float uDstScale,uSrcScale;",
+      "uniform vec2 uDstSize,uSrcSize;",
+      "void main(){",
+      "  vec2 px=vec2(vUv.x*uDstSize.x,(1.0-vUv.y)*uDstSize.y);",
+      "  float dx=(px.x-uDstSize.x*0.5)/uDstScale;",
+      "  float dy=-(px.y-uDstSize.y*0.5)/uDstScale;",
+      "  vec3 P=uDstR*dx+uDstUp*dy+uDstF;",
+      "  float h=dot(P,uSrcF);",
+      "  if(h<=0.0001){gl_FragColor=vec4(0.0);return;}",
+      "  float u=uSrcSize.x*0.5+uSrcScale*dot(P,uSrcR)/h;",
+      "  float v=uSrcSize.y*0.5-uSrcScale*dot(P,uSrcUp)/h;",
+      "  vec2 uv=vec2(u/uSrcSize.x,v/uSrcSize.y);",
+      "  if(uv.x<0.0||uv.x>1.0||uv.y<0.0||uv.y>1.0){gl_FragColor=vec4(0.0);return;}",
+      "  gl_FragColor=texture2D(uTex,uv);",
+      "}"].join("\n"));
+    gl.compileShader(fs);
+    const program=gl.createProgram();
+    gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){cameraWarp.failed=true;return false;}
+    gl.useProgram(program);
+    const buffer=gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+    const aPos=gl.getAttribLocation(program,"aPos");
+    gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+    const names=["uTex","uDstR","uDstUp","uDstF","uSrcR","uSrcUp","uSrcF","uDstScale","uSrcScale","uDstSize","uSrcSize"];
+    const loc={};
+    for(const name of names)loc[name]=gl.getUniformLocation(program,name);
+    Object.assign(cameraWarp,{canvas,gl,program,loc});
+    return true;
+  }catch(error){cameraWarp.failed=true;return false;}
+}
+/* 【v919】焼いた絵をGPUへ載せて、以後は貼るだけにする。
+   再生中に送り直すと、そのコマだけ40ms級の山が立つ（v918の実測 最大44.2ms）。 */
+function cameraWarpUpload(source){
+  if(!cameraWarpReady())return null;
+  const {gl}=cameraWarp;
+  const texture=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,texture);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source);
+  return texture;
+}
+function cameraWarpRelease(texture){
+  if(texture&&cameraWarp.gl)cameraWarp.gl.deleteTexture(texture);
+}
+/* view = {az,alt,fovH,w,h} */
+function cameraWarpBasis(view){
+  const F=toVec(view.az,view.alt);
+  const R=[cos(view.az),-sin(view.az),0];
+  return {F,R,Up:cross(R,F),scale:(view.w/2)/tan(view.fovH/2)};
+}
+/* 焼いた絵 source を、今の画角 dstView へ貼り直して target へ書き戻す。 */
+/* source は「載せ済みのテクスチャ」。載っていないものは貼らない。 */
+function cameraWarpApply(texture,srcView,dstView,target){
+  if(!cameraWarpReady()||!texture)return false;
+  const {gl,loc}=cameraWarp;
+  const w=Math.max(1,Math.round(dstView.w)),h=Math.max(1,Math.round(dstView.h));
+  if(cameraWarp.canvas.width!==w||cameraWarp.canvas.height!==h){
+    cameraWarp.canvas.width=w;cameraWarp.canvas.height=h;
+  }
+  gl.viewport(0,0,w,h);
+  gl.bindTexture(gl.TEXTURE_2D,texture);
+  const src=cameraWarpBasis(srcView),dst=cameraWarpBasis(dstView);
+  gl.uniform1i(loc.uTex,0);
+  gl.uniform3fv(loc.uDstR,dst.R);gl.uniform3fv(loc.uDstUp,dst.Up);gl.uniform3fv(loc.uDstF,dst.F);
+  gl.uniform3fv(loc.uSrcR,src.R);gl.uniform3fv(loc.uSrcUp,src.Up);gl.uniform3fv(loc.uSrcF,src.F);
+  gl.uniform1f(loc.uDstScale,dst.scale);gl.uniform1f(loc.uSrcScale,src.scale);
+  gl.uniform2f(loc.uDstSize,dstView.w,dstView.h);
+  gl.uniform2f(loc.uSrcSize,srcView.w,srcView.h);
+  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  const context=target.getContext("2d");
+  context.setTransform(1,0,0,1,0,0);
+  context.clearRect(0,0,target.width,target.height);
+  context.drawImage(cameraWarp.canvas,0,0,target.width,target.height);
+  return true;
+}
+/* 【v917】焼いた地形の束。再生中だけ中身が入る。 */
+const cameraPano={tiles:null,active:null,softness:1,prepared:0,withMask:0,withBridge:0};
+function cameraPanoClear(){
+  if(cameraPano.tiles)for(const tile of cameraPano.tiles){
+    cameraWarpRelease(tile.terrain);cameraWarpRelease(tile.mask);cameraWarpRelease(tile.bridge);
+  }
+  cameraPano.tiles=null;cameraPano.active=null;cameraPano.prepared=0;
+}
+function cameraPanoAngularSpan(){
+  const from=cameraMove.from,to=cameraMove.to;
+  if(!from||!to)return 0;
+  const azDelta=((to.az-from.az+540)%360)-180;
+  return Math.hypot(azDelta*cos((from.alt+to.alt)/2),to.alt-from.alt);
+}
+/* 経路に沿って地形を焼く。1枚あたりの画角は「本番＋刻み」。 */
+function cameraPanoPrepare(){
+  cameraPanoClear();
+  if(!cameraMovePanoOn)return null;
+  if(mobileLensMode==="fisheye")return "魚眼では使えません";
+  if(!cameraWarpReady())return "この端末ではWebGLが使えません";
+  const from=cameraMove.from,to=cameraMove.to;
+  if(!from||!to)return "経路が未設定です";
+  const canvas=el.photoCanvas;
+  const W=canvas.width,H=canvas.height;
+  if(!(W>0&&H>0))return "画面の大きさが取れません";
+  const sensorCrop=state&&state.sensor?state.sensor.crop:1;
+  const halfW=(state&&state.orientation==="portrait")?12:18;
+  const frameFov=2*Math.atan(halfW/(sensorCrop*Math.max(8,Math.min(from.focal,to.focal))))*R2D;
+  const span=cameraPanoAngularSpan();
+  /* 刻み。ボケ量は 1+刻み/画角 なので、1割以内に収まるところから始める。
+     枚数は端末のメモリを考えて上限を切る（1枚あたり画面2枚ぶん）。 */
+  const MAX_TILES=12;
+  let step=Math.max(2,frameFov*.1);
+  let count=Math.max(1,Math.ceil(span/step)+1);
+  if(count>MAX_TILES){count=MAX_TILES;step=span/Math.max(1,count-1);}
+  const tileFov=Math.min(150,frameFov+step);
+  cameraPano.softness=tileFov/frameFov;
+  const azDelta=((to.az-from.az+540)%360)-180;
+  const tiles=[];
+  const previousKey=drawPhoto._terrainRenderKey;
+  for(let i=0;i<count;i++){
+    const t=count===1?0:i/(count-1);
+    const az=norm360(from.az+azDelta*t),alt=from.alt+(to.alt-from.alt)*t;
+    /* この向き・この画角で地形を作らせる。焼くのは既存の描画そのまま。 */
+    const focal=halfW/tan(tileFov/2)/sensorCrop;
+    cameraMoveOverride={az,alt,focal};
+    drawPhoto._terrainRenderKey=null;
+    /* 【v920】「水面の上の橋」の描き戻し用キャンバスを先に空にしておく。
+       橋が無い画角ではそのまま空で残るので、貼っても何も出ない。 */
+    const bridgeRestore=drawPhoto._bridgeWaterRestoreCanvas;
+    if(bridgeRestore&&bridgeRestore.width>1){
+      const bridgeContext=bridgeRestore.getContext("2d");
+      bridgeContext.setTransform(1,0,0,1,0,0);
+      bridgeContext.clearRect(0,0,bridgeRestore.width,bridgeRestore.height);
+    }
+    try{updateCameraViewOnly();}finally{cameraMoveOverride=null;}
+    const terrainLayer=drawPhoto._terrainLayerCanvas,maskLayer=drawPhoto._waterSurfaceMaskCanvas;
+    if(!terrainLayer||terrainLayer.width!==W||terrainLayer.height!==H){cameraPanoClear();return "地形の下絵を取れませんでした";}
+    /* 【v919】焼いたその場でGPUへ載せ、キャンバスは捨てる。
+       再生中は「貼るだけ」になり、切り替えの山が立たない。 */
+    const terrain=cameraWarpUpload(terrainLayer);
+    if(!terrain){cameraPanoClear();return "焼いた地形をGPUへ載せられませんでした";}
+    let mask=null;
+    if(maskLayer&&maskLayer.width===W&&maskLayer.height===H)mask=cameraWarpUpload(maskLayer);
+    /* 【v920】水面反射のあとに描き戻す「水面の上の橋」も焼く。
+       Path2D は貼り直せないので、絵そのものを持っておく。 */
+    let bridge=null;
+    const bridgeLayer=drawPhoto._bridgeWaterRestoreCanvas;
+    if(bridgeLinesVisible&&bridgeLayer&&bridgeLayer.width===W&&bridgeLayer.height===H)bridge=cameraWarpUpload(bridgeLayer);
+    tiles.push({az,alt,fovH:tileFov,w:W,h:H,terrain,mask,bridge});
+  }
+  drawPhoto._terrainRenderKey=previousKey;
+  cameraPano.tiles=tiles;cameraPano.prepared=tiles.length;
+  cameraPano.withMask=tiles.filter(tile=>tile.mask).length;
+  cameraPano.withBridge=tiles.filter(tile=>tile.bridge).length;
+  return null;
+}
+/* いまの向きにいちばん近い1枚を選ぶ。 */
+function cameraPanoPick(az,alt){
+  if(!cameraPano.tiles||!cameraPano.tiles.length)return null;
+  let best=null,bestGap=Infinity;
+  for(const tile of cameraPano.tiles){
+    const azGap=Math.abs(((tile.az-az+540)%360)-180)*cos((tile.alt+alt)/2);
+    const gap=Math.hypot(azGap,tile.alt-alt);
+    if(gap<bestGap){bestGap=gap;best=tile;}
+  }
+  return best;
+}
+/* 【v916】カメラワーク再生中だけ、**小数のままの向き**をここへ入れる。
+
+   方位・仰角のスライダーは step="1" なので、小数を書き込むと整数へ丸められる。
+   スライダー越しに渡すと1°刻みのカクカクした動きになってしまう。
+   再生中はここを見て描き、スライダーには見た目用に丸めた値を入れる。 */
+let cameraMoveOverride=null;
 function updateCameraViewOnly(){
-  if(scheduledUpdateRaf) return;
+  if(scheduledUpdateRaf){cameraViewSkip.pending++;return;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
-  if(!state){update();return;}
-  const focalLength=+el.focalLength.value;
-  const facingAz=+el.facingAz.value,facingAlt=+el.facingAlt.value;
+  if(!state){cameraViewSkip.noState++;update();return;}
+  const focalLength=cameraMoveOverride?cameraMoveOverride.focal:+el.focalLength.value;
+  const facingAz=cameraMoveOverride?cameraMoveOverride.az:+el.facingAz.value;
+  const facingAlt=cameraMoveOverride?cameraMoveOverride.alt:+el.facingAlt.value;
   const sensor=state.sensor;
   if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
   else normalLensFocalLength=clamp(focalLength,8,50);
@@ -28578,6 +29030,7 @@ function updateCameraViewOnly(){
      ここを入れないと、振っても診断が前の方位のまま止まる。 */
   waterRayDiagWantAz=waterRayDiagVisible?((facingAz%360)+360)%360:null;
   waterRayDiagBestDiff=Infinity;
+  cameraViewSkip.drawn++;
   drawPhoto(photoCtx,state);
   drawCompassStrip(compassCtx,state);
   /* 【v890】**情報パネルはここでも書き替える。**
