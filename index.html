@@ -4381,14 +4381,21 @@
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">シミュレーション画面<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
-          <div class="field">
-            <label class="top">夜の明るさ <span class="val mono" id="nightBrightnessVal">標準</span></label>
-            <input type="range" id="nightBrightnessSlider" min="0" max="5" step="1" value="5">
-          </div>
-          <p class="map-hint" style="margin-top:4px;">明るい場所で画面を見る場合に、星空と地上景色を夜らしさを保ったまま少し明るくします。昼間の表示には影響しません。</p>
           <!-- 【v905】画面全体のトーン。絵を描き終えた最後に一段掛ける。 -->
           <button id="photoToneBtn" type="button" class="toggle-btn active" style="margin-top:12px;"><span>🎚 画面のトーン調整</span><span id="photoToneState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
           <p class="map-hint" style="margin-top:6px;">できあがった絵の最後に、写真の現像と同じ調整を一段掛けます。<b>OFFにすれば1画素も変わらない状態</b>に戻るので、同じ画角のまま見比べられます。昼と夜で別の値を持ち、夕暮れではなめらかに混ざります。</p>
+          <!-- 【v907】青の成分だけを輝度へ寄せる色の行列。
+               地形を重ねるときの filter から url(#...) で参照する。
+               color-interpolation-filters="sRGB" は必須。
+               既定のlinearRGBのままだと行列と関係なく色が変わる。 -->
+          <svg id="toneFilterDefs" width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;">
+            <filter id="groundBlueDesatFilter" color-interpolation-filters="sRGB">
+              <feColorMatrix id="groundBlueDesatMatrix" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+            </filter>
+            <filter id="toneFilterProbe" color-interpolation-filters="sRGB">
+              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+            </filter>
+          </svg>
           <div id="photoTonePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
             <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">昼</p>
             <div class="field"><label class="top">明るさ <span class="val mono" id="toneDayBrightnessVal">100%</span></label><input type="range" id="toneDayBrightness" min="50" max="200" step="1" value="100"></div>
@@ -4403,6 +4410,13 @@
             <div class="field"><label class="top">黒レベル <span class="val mono" id="toneNightBlackVal">-5</span></label><input type="range" id="toneNightBlack" min="-100" max="100" step="1" value="-5"></div>
             <div class="field"><label class="top">白レベル <span class="val mono" id="toneNightWhiteVal">20</span></label><input type="range" id="toneNightWhite" min="-100" max="100" step="1" value="20"></div>
             <p class="map-hint" style="margin-top:8px;">黒レベルをマイナスにすると影が締まり、白レベルをプラスにすると明るいところが伸びます（現像ソフトと同じ向き）。</p>
+            <p class="map-hint" style="margin:12px 0 2px;color:var(--ink);font-weight:700;">夜の地上だけ（空は変わりません）</p>
+            <div class="field"><label class="top">明るさ <span class="val mono" id="toneGroundBrightnessVal">220</span></label><input type="range" id="toneGroundBrightness" min="50" max="250" step="1" value="220"></div>
+            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneGroundContrastVal">104</span></label><input type="range" id="toneGroundContrast" min="50" max="200" step="1" value="104"></div>
+            <div class="field"><label class="top">彩度 <span class="val mono" id="toneGroundSaturateVal">125</span></label><input type="range" id="toneGroundSaturate" min="50" max="250" step="1" value="125"></div>
+            <div class="field"><label class="top">持ち上げ <span class="val mono" id="toneGroundLiftVal">10</span></label><input type="range" id="toneGroundLift" min="0" max="100" step="1" value="10"></div>
+            <div class="field"><label class="top">青の彩度 <span class="val mono" id="toneGroundBlueVal">40</span></label><input type="range" id="toneGroundBlue" min="0" max="100" step="1" value="40"></div>
+            <p class="map-hint" style="margin-top:6px;">地形の層だけに掛けるので、星・天の川・空の色は一切変わりません。「持ち上げ」は影を潰さずに底上げする分です。昼は素通しなので、夕暮れにかけてなめらかに効いてきます。</p>
             <div style="display:flex;gap:8px;margin-top:8px;">
               <button id="photoToneResetBtn" type="button" class="ghost" style="flex:1;">調整前の値へ</button>
               <button id="photoToneCopyBtn" type="button" class="ghost" style="flex:1;">いまの値を書き出す</button>
@@ -5281,7 +5295,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="905-photo-tone";
+const APP_VERSION="909-tone-only";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6446,9 +6460,10 @@ const el={
   cacheManagerAllBtn:$("cacheManagerAllBtn"), cacheManagerMountainBtn:$("cacheManagerMountainBtn"),
   highDetailQualitySlider:$("highDetailQualitySlider"), highDetailQualityVal:$("highDetailQualityVal"),
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
-  nightBrightnessSlider:$("nightBrightnessSlider"), nightBrightnessVal:$("nightBrightnessVal"),
   photoToneBtn:$("photoToneBtn"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
+  toneGroundBlue:$("toneGroundBlue"), toneGroundBlueVal:$("toneGroundBlueVal"), groundBlueDesatMatrix:$("groundBlueDesatMatrix"),
+  toneGroundBrightness:$("toneGroundBrightness"), toneGroundBrightnessVal:$("toneGroundBrightnessVal"), toneGroundContrast:$("toneGroundContrast"), toneGroundContrastVal:$("toneGroundContrastVal"), toneGroundSaturate:$("toneGroundSaturate"), toneGroundSaturateVal:$("toneGroundSaturateVal"), toneGroundLift:$("toneGroundLift"), toneGroundLiftVal:$("toneGroundLiftVal"),
   toneDayBrightness:$("toneDayBrightness"), toneDayBrightnessVal:$("toneDayBrightnessVal"), toneDayContrast:$("toneDayContrast"), toneDayContrastVal:$("toneDayContrastVal"), toneDaySaturate:$("toneDaySaturate"), toneDaySaturateVal:$("toneDaySaturateVal"), toneDayBlack:$("toneDayBlack"), toneDayBlackVal:$("toneDayBlackVal"), toneDayWhite:$("toneDayWhite"), toneDayWhiteVal:$("toneDayWhiteVal"),
   toneNightBrightness:$("toneNightBrightness"), toneNightBrightnessVal:$("toneNightBrightnessVal"), toneNightContrast:$("toneNightContrast"), toneNightContrastVal:$("toneNightContrastVal"), toneNightSaturate:$("toneNightSaturate"), toneNightSaturateVal:$("toneNightSaturateVal"), toneNightBlack:$("toneNightBlack"), toneNightBlackVal:$("toneNightBlackVal"), toneNightWhite:$("toneNightWhite"), toneNightWhiteVal:$("toneNightWhiteVal"),
   belowHorizonOpacitySlider:$("belowHorizonOpacitySlider"), belowHorizonOpacityVal:$("belowHorizonOpacityVal"),
@@ -10346,18 +10361,6 @@ el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   syncDisplayPopupControls();
   scheduleSaveSettings();
 });
-const NIGHT_BRIGHTNESS_LABELS=["標準","明るさ1","明るさ2","明るさ3","明るさ4","明るさ5"];
-function syncNightBrightnessControl(){
-  const level=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,5);
-  el.nightBrightnessSlider.value=level;
-  el.nightBrightnessVal.textContent=NIGHT_BRIGHTNESS_LABELS[level];
-}
-el.nightBrightnessSlider.addEventListener("input",()=>{
-  syncNightBrightnessControl();
-  update();
-  scheduleSaveSettings();
-});
-syncNightBrightnessControl();
 
 /* 【v905】画面全体のトーン（写真の現像の一段）。
 
@@ -10463,9 +10466,101 @@ function applyPhotoTone(ctx,s){
   }
   ctx.putImageData(image,0,0);
 }
+
+/* 【v906】夜の地上だけを持ち上げる。
+
+   空・星・天の川は地形キャンバスに入っていないので、
+   地形を写真キャンバスへ重ねるときだけ filter を掛ければ
+   **空は1画素も変わらない**。透明な画素は透明のままなので境目も濁らない。
+
+   夜だけ効かせる（1-dayFactor で重み付け）ので、昼は素通し。 */
+/* 【v908】既定値を焼き直したときに上げる。
+   利用者の端末に古い保存値が残っていても、
+   **焼き直した項目だけ**は新しい既定値を採る。
+   明るさ・コントラストなど、利用者が触ったかもしれない項目には手を出さない。 */
+const PHOTO_TONE_REVISION=908;
+const PHOTO_TONE_REBAKED_KEYS=["Blue"];
+const GROUND_TONE_KEYS=["Brightness", "Contrast", "Saturate", "Lift", "Blue"];
+const GROUND_TONE_PLAIN={brightness:100, contrast:100, saturate:100, lift:0, blue:100};
+const groundTone={brightness:220, contrast:104, saturate:125, lift:10, blue:40};
+function readGroundToneControls(){
+  for(const name of GROUND_TONE_KEYS){
+    const input=el["toneGround"+name];
+    if(!input)continue;
+    const value=+input.value;
+    if(Number.isFinite(value))groundTone[photoToneKey(name)]=value;
+  }
+}
+function syncGroundToneControls(){
+  readGroundToneControls();
+  for(const name of GROUND_TONE_KEYS){
+    const out=el["toneGround"+name+"Val"];
+    if(out)out.textContent=String(groundTone[photoToneKey(name)]);
+  }
+}
+/* 【v907】ctx.filter で url(#...) の SVG フィルタが使えるか。
+   1×1の白を「RGBを全部0にする行列」へ通して、本当に黒くなるか見る。
+   使えない環境では青の段だけ黙って外す（他の調整はそのまま効く）。 */
+const photoToneSvgFilterSupported=(()=>{
+  try{
+    if(!photoToneCanvasFilterSupported)return false;
+    const white=document.createElement("canvas");white.width=1;white.height=1;
+    const whiteCtx=white.getContext("2d");
+    whiteCtx.fillStyle="#ffffff";whiteCtx.fillRect(0,0,1,1);
+    const probe=document.createElement("canvas");probe.width=1;probe.height=1;
+    const probeCtx=probe.getContext("2d",{willReadFrequently:true});
+    probeCtx.filter="url(#toneFilterProbe)";
+    probeCtx.drawImage(white,0,0);
+    const pixel=probeCtx.getImageData(0,0,1,1).data;
+    return pixel[0]<8&&pixel[1]<8&&pixel[2]<8&&pixel[3]>200;
+  }catch(error){return false;}
+})();
+/* 【v907】青の成分だけを輝度へ寄せる。赤と緑はそのままなので、
+   青い遠景だけが落ちて、手前の緑は残る。 */
+function updateGroundBlueMatrix(strength){
+  const node=el.groundBlueDesatMatrix;
+  if(!node)return false;
+  const s=clamp(strength,0,1);
+  if(s>=.999)return false;
+  const k=1-s;
+  const values=[
+    1,0,0,0,0,
+    0,1,0,0,0,
+    (k*.2126).toFixed(5),(k*.7152).toFixed(5),(s+k*.0722).toFixed(5),0,0,
+    0,0,0,1,0
+  ].join(" ");
+  if(node.getAttribute("values")!==values)node.setAttribute("values",values);
+  return true;
+}
+/* 地形を重ねるときに使う filter の文字列。掛けないときは "none"。 */
+function groundToneFilter(dayFactor){
+  if(!photoToneOn||arActive)return "none";
+  const weight=clamp(1-clamp(dayFactor,0,1),0,1);
+  if(weight<=.001)return "none";
+  const brightness=1+(groundTone.brightness/100-1)*weight;
+  const contrast=1+(groundTone.contrast/100-1)*weight;
+  const saturate=1+(groundTone.saturate/100-1)*weight;
+  const lift=groundTone.lift/100*weight;
+  /* 【v907】青の成分だけを落とす段。夜だけ効かせるのは他と同じ。 */
+  const blue=1+(groundTone.blue/100-1)*weight;
+  const bluePrefix=(photoToneSvgFilterSupported&&updateGroundBlueMatrix(blue))?"url(#groundBlueDesatFilter) ":"";
+  const gain=brightness*contrast;
+  const offset=.5*(1-contrast)+lift;
+  if(!bluePrefix&&Math.abs(gain-1)<1e-4&&Math.abs(offset)<1e-4&&Math.abs(saturate-1)<1e-4)return "none";
+  const contrastCss=1-2*offset;
+  if(!photoToneCanvasFilterSupported||!(contrastCss>.02&&contrastCss<20)||!(gain>0))return "none";
+  return `${bluePrefix}saturate(${saturate.toFixed(4)}) brightness(${(gain/contrastCss).toFixed(5)}) contrast(${contrastCss.toFixed(5)})`;
+}
+for(const name of GROUND_TONE_KEYS){
+  const input=el["toneGround"+name];
+  if(!input)continue;
+  input.addEventListener("input",()=>{syncGroundToneControls();update();scheduleSaveSettings();});
+}
+syncGroundToneControls();
 function photoToneReadoutText(){
   const line=source=>PHOTO_TONE_KEYS.map(name=>`${photoToneKey(name)}:${source[photoToneKey(name)]}`).join(",");
-  return `day  {${line(photoTone.day)}}\nnight{${line(photoTone.night)}}`;
+  const groundLine=GROUND_TONE_KEYS.map(name=>`${photoToneKey(name)}:${groundTone[photoToneKey(name)]}`).join(",");
+  return `day   {${line(photoTone.day)}}\nnight {${line(photoTone.night)}}\nground{${groundLine}}`;
 }
 for(const scope of ["Day","Night"])for(const name of PHOTO_TONE_KEYS){
   const input=el["tone"+scope+name];
@@ -10483,7 +10578,11 @@ if(el.photoToneResetBtn)el.photoToneResetBtn.addEventListener("click",()=>{
     const input=el["tone"+scope+name];
     if(input)input.value=PHOTO_TONE_PLAIN[photoToneKey(name)];
   }
-  syncPhotoToneControls();update();scheduleSaveSettings();
+  for(const name of GROUND_TONE_KEYS){
+    const input=el["toneGround"+name];
+    if(input)input.value=GROUND_TONE_PLAIN[photoToneKey(name)];
+  }
+  syncPhotoToneControls();syncGroundToneControls();update();scheduleSaveSettings();
 });
 if(el.photoToneCopyBtn)el.photoToneCopyBtn.addEventListener("click",()=>{
   const text=photoToneReadoutText();
@@ -12399,9 +12498,10 @@ function collectPersistedSettings(){
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
-    nightBrightness:el.nightBrightnessSlider.value,
     photoToneOn:photoToneOn,
     photoTone:{day:{...photoTone.day},night:{...photoTone.night}},   // 【v905】
+    groundTone:{...groundTone},   // 【v906】
+    photoToneRevision:PHOTO_TONE_REVISION,   // 【v908】
     mwTextureLOffsetDeg:mwTextureLOffsetDeg,
     mwTextureBOffsetDeg:mwTextureBOffsetDeg,
     autoJumpToBestTimeOnDateNav:autoJumpToBestTimeOnDateNav,
@@ -12604,8 +12704,6 @@ async function loadPersistedSettings(){
     showBelowHorizon=s.showBelowHorizon!==false;
     if(s.belowHorizonOpacity!==undefined) el.belowHorizonOpacitySlider.value=s.belowHorizonOpacity;
     el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
-    if(s.nightBrightness!==undefined) el.nightBrightnessSlider.value=clamp(+s.nightBrightness,0,5);
-    syncNightBrightnessControl();
     if(s.photoToneOn!==undefined)photoToneOn=s.photoToneOn!==false;
     if(s.photoTone&&typeof s.photoTone==="object"){
       for(const scope of ["day","night"]){
@@ -12619,6 +12717,18 @@ async function loadPersistedSettings(){
         }
       }
     }
+    if(s.groundTone&&typeof s.groundTone==="object"){
+      const toneRebaked=s.photoToneRevision!==PHOTO_TONE_REVISION;
+      for(const name of GROUND_TONE_KEYS){
+        /* 【v908】焼き直した項目は、古い保存値で上書きしない。 */
+        if(toneRebaked&&PHOTO_TONE_REBAKED_KEYS.includes(name))continue;
+        const value=+s.groundTone[photoToneKey(name)];
+        if(!Number.isFinite(value))continue;
+        const input=el["toneGround"+name];
+        if(input)input.value=value;
+      }
+    }
+    syncGroundToneControls();
     syncPhotoToneControls();
     if(s.mwTextureLOffsetDeg!==undefined){
       mwTextureLOffsetDeg=s.mwTextureLOffsetDeg;
@@ -27314,7 +27424,11 @@ function drawPhoto(ctx,s){
       tctx=terrainCanvas.getContext("2d");terrainDayFactor=dayFactor;terrainAtmosphere=atmosphere;
       seaRGB=mixRGB(nightSeaRGB,inlandWaterScene?dayLakeRGB:daySeaRGB,terrainDayFactor);
       const terrainDisplayAlpha=showBelowHorizon?belowHorizonAlpha:1;
-      ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0,W,H);
+      /* 【v906】夜の地上だけを持ち上げる。**この2枚にしか掛からない**ので、
+         空・星・天の川は一切変わらない。 */
+      const groundFilter=groundToneFilter(dayFactor);
+      ctx.save();ctx.filter=groundFilter;
+      ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0,W,H);
       if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0,W,H);}
       ctx.restore();
       /* 【v734】方位操作中に再投影した水面が一時的に陸へ覆われても消えないよう、
@@ -27346,7 +27460,7 @@ function drawPhoto(ctx,s){
           const azDelta=((hold.az-s.facingAz+540)%360)-180;
           const dx=azDelta/Math.max(1,hold.fovH)*W;
           const dy=(s.facingAlt-hold.alt)/Math.max(1,hold.fovV)*H;
-          ctx.save();ctx.globalAlpha=terrainDisplayAlpha;
+          ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.filter=groundFilter;   // 【v906】ドラッグ中も同じトーンで
           ctx.drawImage(aimWaterHoldCanvas,dx,dy);
           ctx.restore();
         }
@@ -27680,12 +27794,18 @@ function drawPhoto(ctx,s){
     ctx.restore();
   }
 
-  // 明るい場所で画面を見るための夜間表示補正。昼間は変えず、星空と地上を一緒に穏やかに持ち上げる。
-  // screen合成により黒つぶれを和らげつつ、最大レベルでも夜のコントラストと青みを残す。
+  /* 夜の黒つぶれを和らげる持ち上げ。昼間は変えない。
+
+     【v909】「夜の明るさ」のスライダーを削除し、**既定だったレベル5相当の 0.25 に固定**した。
+
+     一度これを夜のトーンへ畳み込んで消そうとしたが、screen合成は
+     チャンネルごとに係数が違う（R 0.9294 / G 0.9196 / B 0.8922）ため、
+     全チャンネル共通の明るさ・コントラストでは青みを再現できない。
+     実測で画面全体が暖色へ R+6.6 / B-8.1 階調振れたので、畳み込みはやめた。
+     （全部をパネルへ出したいなら、v907で使った feColorMatrix へ置き換えれば可能） */
   if(!arActive){
-    const nightBrightnessLevel=clamp(Math.round(+el.nightBrightnessSlider.value||0),0,5);
     const nightFactor=clamp(1-s.twilight,0,1);
-    const nightBrightnessAlpha=[0,0.05,0.10,0.15,0.20,0.25][nightBrightnessLevel]*nightFactor;
+    const nightBrightnessAlpha=.25*nightFactor;
     if(nightBrightnessAlpha>0){
       ctx.save();
       ctx.globalCompositeOperation="screen";
