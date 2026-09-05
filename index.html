@@ -5295,7 +5295,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="909-tone-only";
+const APP_VERSION="911-night-single-layer";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -21634,7 +21634,11 @@ function drawPhoto(ctx,s){
         (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
-      const terrainRenderKey=terrainGeometryKey;
+      /* 【v911】夜は昼用レイヤーを作らない。
+         作ったかどうかを鍵へ入れておかないと、
+         **夜のまま焼いた地形を朝になってから使い回して、古い昼用レイヤーが出てしまう**。 */
+      const dayTerrainLayerNeeded=dayFactor>0;
+      const terrainRenderKey=terrainGeometryKey+"|"+(dayTerrainLayerNeeded?"day":"night-only");
       const terrainNeedsRender=terrainCanvasResized||dayTerrainCanvasResized||waterMaskResized||drawPhoto._terrainRenderKey!==terrainRenderKey;
       const bandStyles={
         immediate:{top:[4,5,7],bottom:[20,22,28],boost:4},
@@ -27365,9 +27369,12 @@ function drawPhoto(ctx,s){
                高精細マスクに合う水面色を最終段階で直接確定する。 */
             commitHighDetailWaterColor(candidateTerrain,candidateWaterMask,terrainCanvas,waterSurfaceMaskCanvas);
             failureStage="昼用地形への圧縮形状の再利用";
-            const candidateDayPainted=renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+            /* 【v911】夜は昼用レイヤーを作らない。作らないので空でも失敗ではない。 */
+            const candidateDayPainted=dayTerrainLayerNeeded
+              ?renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay")
+              :true;
             if(!candidateDayPainted)throw new Error("昼用地形の描画結果が空になりました");
-            commitHighDetailWaterColor(dayTerrainCanvas,candidateWaterMask);
+            if(dayTerrainLayerNeeded)commitHighDetailWaterColor(dayTerrainCanvas,candidateWaterMask);
             failureStage="完成した高精細地形への交換";
             terrainCanvas.width=W;terrainCanvas.height=H;
             terrainCanvas.getContext("2d").drawImage(candidateTerrain,0,0);
@@ -27413,7 +27420,10 @@ function drawPhoto(ctx,s){
           // 高精細候補は1枚以上の有効タイルがそろい、全取得が終わってからだけ作る。
           sharedTerrainProjectionCache={confirmedWaterRuns:null,farBands:[],farBandRuns:[],farBandRidgeY:[],groundTexturePoints:new WeakMap(),drawCommands:[],layeredGeometry:null,groundOverlayPaths:null,meshPaintedTriangles:0,waterGradientTopY:null};
           meshDrawn=renderTerrainVariant(terrainCanvas,0,clamp(s.lp.base*.2,0,1),"commands");
-          renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
+          /* 【v911】昼用レイヤーは dayFactor>0 のときしか画面へ出ない（下の合成を参照）。
+             完全な夜では作るだけ無駄なので飛ばす。
+             山の映り込みも同じ if(dayFactor>0) で守られている。 */
+          if(dayTerrainLayerNeeded)renderTerrainVariant(dayTerrainCanvas,1,clamp(.65+s.lp.base*.2,0,1),"replay");
           wmctx=realWaterMaskContext;
           sharedTerrainProjectionPass="off";sharedTerrainProjectionCache=null;
           drawPhoto._terrainRenderKey=terrainRenderKey;
@@ -27431,40 +27441,18 @@ function drawPhoto(ctx,s){
       ctx.globalAlpha=terrainDisplayAlpha;ctx.drawImage(terrainCanvas,0,0,W,H);
       if(dayFactor>0){ctx.globalAlpha=terrainDisplayAlpha*dayFactor;ctx.drawImage(dayTerrainCanvas,0,0,W,H);}
       ctx.restore();
-      /* 【v734】方位操作中に再投影した水面が一時的に陸へ覆われても消えないよう、
-         通常表示で完成した「実際の水面画素だけ」を別Canvasへ保持する。
-         操作中は方位・仰角の差だけ平行移動して重ね、停止後は通常描画へ戻す。 */
-      const aimWaterHoldActive=photoDragging||compassDragActive||aimControlDragging;
-      let aimWaterHoldCanvas=drawPhoto._aimWaterHoldCanvas;
-      if(!aimWaterHoldCanvas){
-        aimWaterHoldCanvas=document.createElement("canvas");
-        drawPhoto._aimWaterHoldCanvas=aimWaterHoldCanvas;
-      }
-      if(aimWaterHoldCanvas.width!==W||aimWaterHoldCanvas.height!==H){
-        aimWaterHoldCanvas.width=W;aimWaterHoldCanvas.height=H;
-        drawPhoto._aimWaterHoldState=null;
-      }
-      if(!aimWaterHoldActive){
-        const holdCtx=aimWaterHoldCanvas.getContext("2d");
-        holdCtx.clearRect(0,0,W,H);
-        holdCtx.globalAlpha=terrainDisplayAlpha;holdCtx.globalCompositeOperation="source-over";
-        holdCtx.drawImage(terrainCanvas,0,0,W,H);
-        if(dayFactor>0){holdCtx.globalAlpha=terrainDisplayAlpha*dayFactor;holdCtx.drawImage(dayTerrainCanvas,0,0,W,H);}
-        holdCtx.globalAlpha=1;holdCtx.globalCompositeOperation="destination-in";
-        holdCtx.drawImage(waterSurfaceMaskCanvas,0,0,W,H);
-        holdCtx.globalCompositeOperation="source-over";
-        drawPhoto._aimWaterHoldState={az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,fovV:s.fovV,terrainKey:realTerrainState.key};
-      }else{
-        const hold=drawPhoto._aimWaterHoldState;
-        if(hold&&hold.terrainKey===realTerrainState.key&&mobileLensMode!=="fisheye"){
-          const azDelta=((hold.az-s.facingAz+540)%360)-180;
-          const dx=azDelta/Math.max(1,hold.fovH)*W;
-          const dy=(s.facingAlt-hold.alt)/Math.max(1,hold.fovV)*H;
-          ctx.save();ctx.globalAlpha=terrainDisplayAlpha;ctx.filter=groundFilter;   // 【v906】ドラッグ中も同じトーンで
-          ctx.drawImage(aimWaterHoldCanvas,dx,dy);
-          ctx.restore();
-        }
-      }
+      /* 【v910】ここにあった「方位操作中の水面保持」（v734の aimWaterHoldCanvas）は削除した。
+
+         ドラッグしていない間に水面の画素だけを別Canvasへ取っておき、
+         ドラッグ中はそれを**方位・仰角の差だけ平行移動して重ねて**いた。
+         平行移動は本当の再投影とは違うので、動かすほど本来の水面とずれる。
+         利用者が見ていた「残像」はこれ。離すと普通の描画へ戻るので消えていた。
+
+         キーボードで起きなかったのは、photoDragging などが
+         **ポインタ操作のときだけ**真になるから。
+
+         元々の目的は「操作中に再投影が間に合わず水面が一瞬消えるのを隠す」こと。
+         その後水面の作り方が入れ替わっており、隠す必要がなくなっている。 */
       /* 地形を重ねたあとにKMZ建物を描く。建物より手前の地形だけで切り抜くので、
          手前の山には隠れ、奥の山には隠されない。 */
       // 水面・地形を描いた後、手前の足元を重ねる前に反射レイヤーを挿入する。
