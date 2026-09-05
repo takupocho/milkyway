@@ -1892,6 +1892,7 @@
   .mobile-clock-toggle-btn{display:none;}
   .mobile-map-toggle-btn{display:none;}
   .mobile-shot-plan-btn{display:none;}
+  .mobile-camera-cut-btn{display:none;}
   .plan-quick-actions{
     position:absolute;top:9px;right:9px;z-index:13;display:flex;flex-direction:column;gap:8px;
   }
@@ -2260,6 +2261,20 @@
        地図だけは右の「外部情報読み直し」と同じ高さへ下げる。 */
     .mobile-sky-search-control{top:9px;}
     .mobile-shot-plan-btn{top:53px;}
+    /* 【v925】カメラワーク再生。撮影計画のひとつ下に同じ大きさで並べる。 */
+    .mobile-camera-cut-btn{
+      display:flex;position:absolute;top:97px;left:9px;z-index:12;
+      width:36px;height:36px;padding:0;align-items:center;justify-content:center;
+      border:1px solid var(--line);border-radius:50%;
+      background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
+      box-shadow:0 2px 8px rgba(0,0,0,.28);
+    }
+    .mobile-camera-cut-btn svg{width:20px;height:20px;pointer-events:none;}
+    /* 次のカットが残っている間は、色を変えて「続きがある」と分かるようにする。 */
+    .mobile-camera-cut-btn.has-next{color:var(--core-amber);border-color:var(--core-amber);opacity:.95;}
+    .mobile-camera-cut-btn.playing{color:#ff8a97;border-color:#ff8a97;opacity:.95;}
+    body.ar-active .mobile-camera-cut-btn{display:none;}
+
     .mobile-map-toggle-btn{top:auto;bottom:53px;}
     body.drone-mode .mobile-map-toggle-btn{bottom:127px;}
     .mobile-sky-search-control svg{width:20px;height:20px;pointer-events:none;}
@@ -3772,6 +3787,20 @@
       background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
       box-shadow:0 2px 8px rgba(0,0,0,.28);
     }
+    /* 【v925】カメラワーク再生。撮影計画のひとつ下に同じ大きさで並べる。 */
+    .mobile-camera-cut-btn{
+      display:flex;position:absolute;top:97px;left:9px;z-index:12;
+      width:36px;height:36px;padding:0;align-items:center;justify-content:center;
+      border:1px solid var(--line);border-radius:50%;
+      background:rgba(18,21,43,.88);color:var(--star-white);opacity:.7;
+      box-shadow:0 2px 8px rgba(0,0,0,.28);
+    }
+    .mobile-camera-cut-btn svg{width:20px;height:20px;pointer-events:none;}
+    /* 次のカットが残っている間は、色を変えて「続きがある」と分かるようにする。 */
+    .mobile-camera-cut-btn.has-next{color:var(--core-amber);border-color:var(--core-amber);opacity:.95;}
+    .mobile-camera-cut-btn.playing{color:#ff8a97;border-color:#ff8a97;opacity:.95;}
+    body.ar-active .mobile-camera-cut-btn{display:none;}
+
     .osm-map-actions{top:50%;right:6px;gap:6px;}
     .osm-map-actions button{width:43px;height:40px;border-radius:12px;}
     .osm-map-actions button svg{width:24px;height:24px;}
@@ -4426,7 +4455,12 @@
           <!-- 【v912】カメラワーク。向きとズームをなめらかに動かす。 -->
           <div id="cameraMovePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:10px;margin-top:12px;">
             <p class="map-hint" style="margin:0 0 8px;color:var(--ink);font-weight:700;">🎬 カメラワーク</p>
-            <p class="map-hint" style="margin:0 0 8px;">景色から星座へ振るような動きを作ります。見せたい向きに合わせてから、下のボタンで覚えさせてください。</p>
+            <p class="map-hint" style="margin:0 0 8px;">景色から星座へ振るような動きを作ります。見せたい向きに合わせてから、下のボタンで覚えさせてください。カットを足すと、シミュレーション画面のボタンで順に再生できます。</p>
+            <div id="cameraCutList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;"></div>
+            <div style="display:flex;gap:8px;margin-bottom:8px;">
+              <button id="cameraCutAddBtn" type="button" class="ghost" style="flex:1;">＋ カットを追加</button>
+              <button id="cameraCutDeleteBtn" type="button" class="ghost" style="flex:1;">このカットを削除</button>
+            </div>
             <button id="cameraMoveSetFromBtn" type="button" class="ghost" style="width:100%;">開始をいまの向きにする</button>
             <p id="cameraMoveFromLabel" class="map-hint mono" style="margin:4px 0 8px;">開始：未設定</p>
             <button id="cameraMoveSetToBtn" type="button" class="ghost" style="width:100%;">終了をいまの向きにする</button>
@@ -4905,6 +4939,8 @@
                   <circle cx="12" cy="12.5" r="3.4" stroke="currentColor" stroke-width="1.6"/>
                 </svg>
               </button>
+              <!-- 【v925】カメラワーク再生。押すたびに次のカットへ進む。 -->
+              <button id="cameraCutPlayBtn" type="button" class="mobile-camera-cut-btn icon-help-target sim-left-help" data-help="カメラワーク再生" aria-label="カメラワークを再生" title="カメラワーク再生"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6.5v11l8.5-5.5L9 6.5Z" fill="currentColor"/></svg></button>
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="地図をタップして観測地点を選択するOpenStreetMap"></div>
                 <button id="mapMeasureEndBtn" type="button" class="map-measure-end-btn">距離測定を終了する</button>
@@ -5313,7 +5349,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="920-pano-bridge";
+const APP_VERSION="925-camera-cuts";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6481,6 +6517,7 @@ const el={
   photoToneBtn:$("photoToneBtn"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
+  cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
   cameraMoveFromLabel:$("cameraMoveFromLabel"), cameraMoveToLabel:$("cameraMoveToLabel"),
   cameraMoveSeconds:$("cameraMoveSeconds"), cameraMoveSecondsVal:$("cameraMoveSecondsVal"),
   cameraMoveEasingBtn:$("cameraMoveEasingBtn"), cameraMoveEasingState:$("cameraMoveEasingState"),
@@ -10642,13 +10679,20 @@ function syncCameraMoveControls(){
   el.cameraMovePlayBtn.classList.toggle("active",cameraMoveState.playing);
   el.cameraMovePlayBtn.firstElementChild.textContent=cameraMoveState.playing?"■ 停止":"▶ 再生";
   el.cameraMoveRewindBtn.disabled=!cameraMove.from;
+  /* 【v925】入力欄の内容を、選んでいるカットへ書き戻す。 */
+  cameraCutStore();
+  renderCameraCutList();
+  syncCameraCutButton();
 }
 /* 向きを直接入れて、その場で描き直す。
    input を発火させると rAF へ回されてコマがまとめられるので使わない。 */
 function cameraMoveApplyView(az,alt,focalMm,smooth){
   const azNow=norm360(az),focal=clamp(focalMm,8,FOCAL_MAX_MM);
-  /* 【v916】描画には**小数のまま**渡す。スライダーは step="1" で丸められるため。 */
+  /* 【v916】描画には**小数のまま**渡す。スライダーは step="1" で丸められるため。
+     【v924】描いた向きはそのまま記憶へ残す。こうしないと、あとで全体が
+     描き直されたときに0.5°飛ぶ。整数で描くときは記憶を捨てる。 */
   cameraMoveOverride=smooth?{az:azNow,alt,focal}:null;
+  aimFineView=smooth?{az:azNow,alt,focal}:null;
   el.facingAz.value=String(Math.round(azNow)%360);
   el.facingAlt.value=String(Math.round(alt));
   const mm=clamp(Math.round(focal),8,FOCAL_MAX_MM);
@@ -10660,10 +10704,18 @@ function cameraMoveApplyView(az,alt,focalMm,smooth){
   try{updateCameraViewOnly();}
   finally{cameraMoveOverride=null;}   /* 例外が出ても必ず外す */
 }
+/* 【v924】v923の「終わるときにスライダーの値へ揃える」は削除した。
+   ずれる場所を早めただけで、0.5°飛ぶこと自体は変わらず、
+   再生の終わりに画面が動いて見た目が悪かった。
+   いまは aimFineView が小数の向きを保つので、揃える必要がない。 */
 function stopCameraMove(){
   if(cameraMoveState.raf)cancelAnimationFrame(cameraMoveState.raf);
   cameraMoveState.raf=0;cameraMoveState.playing=false;
   cameraPano.playing=false;cameraPanoClear();
+  /* 【v922】最後のコマは貼り直しの絵なので、次の描画で本物を作り直させる。 */
+  drawPhoto._terrainRenderKey=null;
+  /* 【v925】途中で止めたときは、そのカットをもう一度やり直せるようにする。 */
+  cameraMoveState.fromCut=false;
   syncCameraMoveControls();
 }
 function reportCameraMove(times,draws,terrains){
@@ -10743,7 +10795,13 @@ function playCameraMove(){
     times.push(now);
     draws.push(drawMs);
     terrains.push(terrainRenderMsAccum);
-    if(raw>=1){cameraMoveState.playing=false;cameraMoveState.raf=0;cameraPano.playing=false;syncCameraMoveControls();reportCameraMove(times,draws,terrains);cameraPanoClear();return;}
+    if(raw>=1){
+      cameraMoveState.playing=false;cameraMoveState.raf=0;cameraPano.playing=false;
+      cameraPanoClear();drawPhoto._terrainRenderKey=null;
+      syncCameraMoveControls();reportCameraMove(times,draws,terrains);
+      cameraCutAdvance();
+      return;
+    }
     cameraMoveState.raf=requestAnimationFrame(step);
   };
   cameraMoveState.raf=requestAnimationFrame(step);
@@ -10756,7 +10814,7 @@ function cameraPanoWarpFrame(terrainCanvas,maskCanvas,s,W,H,renderKey,dayFactor)
   if(!cameraPano.playing||!cameraPano.tiles||!cameraPano.tiles.length)return false;
   if(dayFactor>0)return false;              /* 昼は昼用レイヤーが要るので今までどおり */
   if(mobileLensMode==="fisheye")return false;
-  const tile=cameraPanoPick(s.facingAz,s.facingAlt);
+  const tile=cameraPanoPick(s.facingAz,s.facingAlt,s.fovH);
   if(!tile)return false;
   const dstView={az:s.facingAz,alt:s.facingAlt,fovH:s.fovH,w:W,h:H};
   const srcView={az:tile.az,alt:tile.alt,fovH:tile.fovH,w:tile.w,h:tile.h};
@@ -10773,6 +10831,122 @@ if(el.cameraMovePanoBtn)el.cameraMovePanoBtn.addEventListener("click",()=>{
   el.cameraMovePanoState.textContent=cameraMovePanoOn?"ON":"OFF";
   scheduleSaveSettings();
 });
+
+/* 【v925】カメラワークの「カット」。
+
+   設定パネルは**選んでいる1カットを編集する**（今までの入力欄がそのまま使える）。
+   シミュレーション画面のボタンは cameraPlayCursor を進めながら順に再生する。 */
+let cameraCuts=[];
+let cameraCutIndex=0;
+let cameraPlayCursor=0;
+const CAMERA_CUT_PLAY_ICON='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 6.5v11l8.5-5.5L9 6.5Z" fill="currentColor"/></svg>';
+/* 次のカットが残っている間のアイコン。再生の三角に「次へ」の棒を足したもの。 */
+const CAMERA_CUT_NEXT_ICON='<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 6.5v11l7.5-5.5L6 6.5Z" fill="currentColor"/><rect x="15.6" y="6.2" width="2.2" height="11.6" rx="1" fill="currentColor"/></svg>';
+function cameraCutSnapshot(){
+  return {from:cameraMove.from?{...cameraMove.from}:null,to:cameraMove.to?{...cameraMove.to}:null,
+    seconds:cameraMove.seconds,easing:cameraMove.easing};
+}
+function cameraCutsEnsure(){
+  if(!cameraCuts.length){cameraCuts=[cameraCutSnapshot()];cameraCutIndex=0;}
+  cameraCutIndex=clamp(cameraCutIndex,0,cameraCuts.length-1);
+}
+/* 入力欄の内容を、選んでいるカットへ書き戻す。 */
+function cameraCutStore(){
+  if(cameraMoveState.playing)return;   /* 再生中は触らない */
+  cameraCutsEnsure();
+  cameraCuts[cameraCutIndex]=cameraCutSnapshot();
+}
+/* カットを選び直して入力欄へ入れる。 */
+function cameraCutLoad(index){
+  cameraCutsEnsure();
+  cameraCutIndex=clamp(index,0,cameraCuts.length-1);
+  const cut=cameraCuts[cameraCutIndex];
+  cameraMove.from=cut.from?{...cut.from}:null;
+  cameraMove.to=cut.to?{...cut.to}:null;
+  cameraMove.easing=cut.easing!==false;
+  if(el.cameraMoveSeconds)el.cameraMoveSeconds.value=String(Math.round(clamp(cut.seconds||6,1,30)*10));
+  syncCameraMoveControls();
+}
+function cameraCutSummary(cut){
+  if(!cut||!cut.from||!cut.to)return "未設定";
+  const zoom=Math.round(cut.from.focal)===Math.round(cut.to.focal)
+    ?`${Math.round(cut.from.focal)}mm`
+    :`${Math.round(cut.from.focal)}→${Math.round(cut.to.focal)}mm`;
+  return `${cut.from.az.toFixed(0)}°→${cut.to.az.toFixed(0)}° / ${zoom} / ${(cut.seconds||6).toFixed(1)}秒`;
+}
+function renderCameraCutList(){
+  if(!el.cameraCutList)return;
+  cameraCutsEnsure();
+  el.cameraCutList.innerHTML="";
+  cameraCuts.forEach((cut,index)=>{
+    const row=document.createElement("button");
+    row.type="button";
+    const active=index===cameraCutIndex,next=index===cameraPlayCursor&&cameraCuts.length>1;
+    row.style.cssText="display:flex;justify-content:space-between;gap:8px;width:100%;padding:6px 8px;"
+      +"border:1px solid "+(active?"var(--core-amber,#e6b422)":"var(--line,#2a3345)")+";border-radius:8px;"
+      +"background:"+(active?"rgba(230,180,34,.12)":"rgba(255,255,255,.03)")+";"
+      +"color:var(--ink,#eef1f6);font:inherit;font-size:12px;text-align:left;cursor:pointer;";
+    row.innerHTML=`<span>${next?"▶ ":""}カット${index+1}</span>`
+      +`<span class="mono" style="opacity:.8">${cameraCutSummary(cut)}</span>`;
+    row.addEventListener("click",()=>{cameraCutLoad(index);scheduleSaveSettings();});
+    el.cameraCutList.appendChild(row);
+  });
+  if(el.cameraCutDeleteBtn)el.cameraCutDeleteBtn.disabled=cameraCuts.length<=1;
+}
+/* シミュレーション画面のボタンの見た目。 */
+function syncCameraCutButton(){
+  const button=el.cameraCutPlayBtn;
+  if(!button)return;
+  const playing=!!cameraMoveState.playing;
+  const hasNext=!playing&&cameraPlayCursor>0&&cameraPlayCursor<cameraCuts.length;
+  const icon=hasNext?CAMERA_CUT_NEXT_ICON:CAMERA_CUT_PLAY_ICON;
+  if(button._cameraCutIcon!==icon){button._cameraCutIcon=icon;button.innerHTML=icon;}
+  button.classList.toggle("has-next",hasNext);
+  button.classList.toggle("playing",playing);
+  button.title=playing?"カメラワークを止める"
+    :(hasNext?`カメラワーク再生（次はカット${cameraPlayCursor+1}／全${cameraCuts.length}）`
+      :(cameraCuts.length>1?`カメラワーク再生（全${cameraCuts.length}カット）`:"カメラワーク再生"));
+  button.setAttribute("aria-label",button.title);
+}
+/* 1カット再生し終わったら次へ進める。最後まで行ったら先頭へ戻す。 */
+function cameraCutAdvance(){
+  if(!cameraMoveState.fromCut)return;
+  cameraMoveState.fromCut=false;
+  cameraPlayCursor+=1;
+  if(cameraPlayCursor>=cameraCuts.length)cameraPlayCursor=0;
+  renderCameraCutList();syncCameraCutButton();
+}
+function playCameraCutFromSim(){
+  if(cameraMoveState.playing){stopCameraMove();return;}
+  cameraCutsEnsure();
+  if(cameraPlayCursor>=cameraCuts.length)cameraPlayCursor=0;
+  const cut=cameraCuts[cameraPlayCursor];
+  if(!cut||!cut.from||!cut.to){
+    if(el.cameraMoveReadout)el.cameraMoveReadout.textContent="カメラワークの開始と終了を先に決めてください。";
+    return;
+  }
+  cameraCutLoad(cameraPlayCursor);
+  cameraMoveState.fromCut=true;
+  /* 頭出ししてから再生する。前のカットの終わりから始まると飛んで見えるため。 */
+  cameraMoveApplyView(cut.from.az,cut.from.alt,cut.from.focal,false);
+  playCameraMove();
+  syncCameraCutButton();
+}
+if(el.cameraCutAddBtn)el.cameraCutAddBtn.addEventListener("click",()=>{
+  cameraCutStore();
+  cameraCuts.splice(cameraCutIndex+1,0,cameraCutSnapshot());
+  cameraPlayCursor=0;
+  cameraCutLoad(cameraCutIndex+1);
+  renderCameraCutList();syncCameraCutButton();scheduleSaveSettings();
+});
+if(el.cameraCutDeleteBtn)el.cameraCutDeleteBtn.addEventListener("click",()=>{
+  if(cameraCuts.length<=1)return;
+  cameraCuts.splice(cameraCutIndex,1);
+  cameraPlayCursor=0;
+  cameraCutLoad(Math.min(cameraCutIndex,cameraCuts.length-1));
+  renderCameraCutList();syncCameraCutButton();scheduleSaveSettings();
+});
+if(el.cameraCutPlayBtn)el.cameraCutPlayBtn.addEventListener("click",playCameraCutFromSim);
 if(el.cameraMoveSetFromBtn)el.cameraMoveSetFromBtn.addEventListener("click",()=>{
   cameraMove.from=cameraMoveViewNow();syncCameraMoveControls();scheduleSaveSettings();
 });
@@ -12703,6 +12877,8 @@ function collectPersistedSettings(){
     photoTone:{day:{...photoTone.day},night:{...photoTone.night}},   // 【v905】
     groundTone:{...groundTone},   // 【v906】
     cameraMove:{from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing},   // 【v912】
+    cameraCuts:cameraCuts.map(cut=>({from:cut.from,to:cut.to,seconds:cut.seconds,easing:cut.easing})),   // 【v925】
+    cameraCutIndex:cameraCutIndex,
     photoToneRevision:PHOTO_TONE_REVISION,   // 【v908】
     mwTextureLOffsetDeg:mwTextureLOffsetDeg,
     mwTextureBOffsetDeg:mwTextureBOffsetDeg,
@@ -12939,6 +13115,20 @@ async function loadPersistedSettings(){
       cameraMove.to=pick(s.cameraMove.to);
       if(Number.isFinite(+s.cameraMove.seconds))el.cameraMoveSeconds.value=String(Math.round(clamp(+s.cameraMove.seconds,1,30)*10));
       cameraMove.easing=s.cameraMove.easing!==false;
+    }
+    /* 【v925】カットの一覧。古い保存（1カットぶん）しか無ければ、それが1カット目になる。 */
+    if(Array.isArray(s.cameraCuts)&&s.cameraCuts.length){
+      const pickView=v=>(v&&Number.isFinite(+v.az)&&Number.isFinite(+v.alt)&&Number.isFinite(+v.focal))
+        ?{az:+v.az,alt:+v.alt,focal:+v.focal}:null;
+      cameraCuts=s.cameraCuts.map(cut=>({from:pickView(cut&&cut.from),to:pickView(cut&&cut.to),
+        seconds:clamp(+(cut&&cut.seconds)||6,1,30),easing:!(cut&&cut.easing===false)}));
+      cameraCutIndex=clamp(Math.round(+s.cameraCutIndex||0),0,cameraCuts.length-1);
+      cameraPlayCursor=0;
+      const cut=cameraCuts[cameraCutIndex];
+      cameraMove.from=cut.from?{...cut.from}:null;
+      cameraMove.to=cut.to?{...cut.to}:null;
+      cameraMove.easing=cut.easing;
+      if(el.cameraMoveSeconds)el.cameraMoveSeconds.value=String(Math.round(cut.seconds*10));
     }
     syncCameraMoveControls();
     if(s.mwTextureLOffsetDeg!==undefined){
@@ -14947,13 +15137,15 @@ function computeState(){
   }
 
   /* カメラ設定 */
-  const focalLength=+el.focalLength.value;
+  /* 【v924】カメラワークが残した小数の向きがあれば、そちらで作る。 */
+  const aimFine=aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
+  const focalLength=aimFine?aimFine.focal:+el.focalLength.value;
   const aperture=+el.aperture.value;
   const iso=ISO_STEPS[+el.isoSlider.value];
   const shutter=+el.shutter.value;
   const sensor=SENSORS[+el.sensor.value];
   const lp=LP_LEVELS[+el.lp.value];
-  const facingAz=+el.facingAz.value, facingAlt=+el.facingAlt.value;
+  const facingAz=aimFine?aimFine.az:+el.facingAz.value, facingAlt=aimFine?aimFine.alt:+el.facingAlt.value;
 
   if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
   else normalLensFocalLength=clamp(focalLength,8,50);
@@ -26156,7 +26348,7 @@ function drawPhoto(ctx,s){
         /* 【v920】貼り直しの再生中は、投影済みPath2Dが今の画角と合わない。
            焼いておいた「水面の上の橋」の絵を、地形と同じ射影変換で貼り直す。 */
         if(cameraPano.playing&&bridgeLinesVisible){
-          const tile=cameraPanoPick(s.facingAz,s.facingAlt);
+          const tile=cameraPanoPick(s.facingAz,s.facingAlt,s.fovH);
           if(!tile||!tile.bridge)return false;
           const restoreCanvas=drawPhoto._bridgeWaterRestoreCanvas||(drawPhoto._bridgeWaterRestoreCanvas=document.createElement("canvas"));
           if(restoreCanvas.width!==W||restoreCanvas.height!==H){restoreCanvas.width=W;restoreCanvas.height=H;}
@@ -28887,7 +29079,7 @@ function cameraWarpApply(texture,srcView,dstView,target){
   return true;
 }
 /* 【v917】焼いた地形の束。再生中だけ中身が入る。 */
-const cameraPano={tiles:null,active:null,softness:1,prepared:0,withMask:0,withBridge:0};
+const cameraPano={tiles:null,active:null,softness:1,prepared:0,withMask:0,withBridge:0,angStep:1};
 function cameraPanoClear(){
   if(cameraPano.tiles)for(const tile of cameraPano.tiles){
     cameraWarpRelease(tile.terrain);cameraWarpRelease(tile.mask);cameraWarpRelease(tile.bridge);
@@ -28913,22 +29105,39 @@ function cameraPanoPrepare(){
   if(!(W>0&&H>0))return "画面の大きさが取れません";
   const sensorCrop=state&&state.sensor?state.sensor.crop:1;
   const halfW=(state&&state.orientation==="portrait")?12:18;
-  const frameFov=2*Math.atan(halfW/(sensorCrop*Math.max(8,Math.min(from.focal,to.focal))))*R2D;
+  /* 【v921】経路上の位置 t での焦点距離と画角。再生と同じ対数補間。 */
+  const focalAt=t=>Math.max(8,from.focal*Math.pow(to.focal/from.focal,clamp(t,0,1)));
+  const fovAt=t=>2*Math.atan(halfW/(sensorCrop*focalAt(t)))*R2D;
+  const narrowFov=Math.min(fovAt(0),fovAt(1));   /* いちばん望遠側＝いちばん厳しい */
   const span=cameraPanoAngularSpan();
-  /* 刻み。ボケ量は 1+刻み/画角 なので、1割以内に収まるところから始める。
-     枚数は端末のメモリを考えて上限を切る（1枚あたり画面2枚ぶん）。 */
-  const MAX_TILES=12;
-  let step=Math.max(2,frameFov*.1);
-  let count=Math.max(1,Math.ceil(span/step)+1);
-  if(count>MAX_TILES){count=MAX_TILES;step=span/Math.max(1,count-1);}
-  const tileFov=Math.min(150,frameFov+step);
-  cameraPano.softness=tileFov/frameFov;
+  const zoomLog=Math.abs(Math.log(Math.max(8,to.focal)/Math.max(8,from.focal)));
+  /* 【v921】枚数は**首振りとズームの両方**から決める。
+     ズームだけの経路（首振り0）でも必要な枚数が出るようにする。 */
+  const MAX_TILES=16;
+  const ZOOM_STEP=Math.log(1.18);
+  const angStep=Math.max(.5,narrowFov*.1);
+  const needByAngle=Math.ceil(span/angStep);
+  const needByZoom=Math.ceil(zoomLog/ZOOM_STEP);
+  const count=Math.max(1,Math.max(needByAngle,needByZoom)+1);
+  if(count>MAX_TILES)return `画角の変化が大きく、${count}枚必要です（上限${MAX_TILES}枚）`;
+  const step=angStep;
+  cameraPano.angStep=angStep;
   const azDelta=((to.az-from.az+540)%360)-180;
+  let worstSoftness=1;
   const tiles=[];
-  const previousKey=drawPhoto._terrainRenderKey;
+  /* 【v922】焼くと terrainCanvas の中身は最後の1枚になる。
+     鍵を焼く前へ戻すと「前の画角のもの」と誤って信じさせることになり、
+     開始の向きから再生したときに1コマ目が壊れる。戻さず捨てる。 */
   for(let i=0;i<count;i++){
     const t=count===1?0:i/(count-1);
     const az=norm360(from.az+azDelta*t),alt=from.alt+(to.alt-from.alt)*t;
+    /* 【v921】この枚が受け持つ区間の**いちばん広い画角**に合わせて焼く。
+       経路のいちばん広いところで揃えると、望遠側が拡大されてボケる。 */
+    const half=count===1?0:.5/(count-1);
+    const segFov=Math.max(fovAt(t-half),fovAt(t+half));
+    const tileFov=Math.min(150,segFov+step);
+    const frameFovHere=fovAt(t);
+    worstSoftness=Math.max(worstSoftness,tileFov/Math.max(1,fovAt(t-half)),tileFov/Math.max(1,fovAt(t+half)));
     /* この向き・この画角で地形を作らせる。焼くのは既存の描画そのまま。 */
     const focal=halfW/tan(tileFov/2)/sensorCrop;
     cameraMoveOverride={az,alt,focal};
@@ -28943,11 +29152,11 @@ function cameraPanoPrepare(){
     }
     try{updateCameraViewOnly();}finally{cameraMoveOverride=null;}
     const terrainLayer=drawPhoto._terrainLayerCanvas,maskLayer=drawPhoto._waterSurfaceMaskCanvas;
-    if(!terrainLayer||terrainLayer.width!==W||terrainLayer.height!==H){cameraPanoClear();return "地形の下絵を取れませんでした";}
+    if(!terrainLayer||terrainLayer.width!==W||terrainLayer.height!==H){cameraPanoClear();drawPhoto._terrainRenderKey=null;return "地形の下絵を取れませんでした";}
     /* 【v919】焼いたその場でGPUへ載せ、キャンバスは捨てる。
        再生中は「貼るだけ」になり、切り替えの山が立たない。 */
     const terrain=cameraWarpUpload(terrainLayer);
-    if(!terrain){cameraPanoClear();return "焼いた地形をGPUへ載せられませんでした";}
+    if(!terrain){cameraPanoClear();drawPhoto._terrainRenderKey=null;return "焼いた地形をGPUへ載せられませんでした";}
     let mask=null;
     if(maskLayer&&maskLayer.width===W&&maskLayer.height===H)mask=cameraWarpUpload(maskLayer);
     /* 【v920】水面反射のあとに描き戻す「水面の上の橋」も焼く。
@@ -28955,38 +29164,75 @@ function cameraPanoPrepare(){
     let bridge=null;
     const bridgeLayer=drawPhoto._bridgeWaterRestoreCanvas;
     if(bridgeLinesVisible&&bridgeLayer&&bridgeLayer.width===W&&bridgeLayer.height===H)bridge=cameraWarpUpload(bridgeLayer);
-    tiles.push({az,alt,fovH:tileFov,w:W,h:H,terrain,mask,bridge});
+    tiles.push({az,alt,fovH:tileFov,frameFov:frameFovHere,w:W,h:H,terrain,mask,bridge});
   }
-  drawPhoto._terrainRenderKey=previousKey;
+  drawPhoto._terrainRenderKey=null;
+  cameraPano.softness=worstSoftness;
   cameraPano.tiles=tiles;cameraPano.prepared=tiles.length;
   cameraPano.withMask=tiles.filter(tile=>tile.mask).length;
   cameraPano.withBridge=tiles.filter(tile=>tile.bridge).length;
   return null;
 }
 /* いまの向きにいちばん近い1枚を選ぶ。 */
-function cameraPanoPick(az,alt){
+/* 【v921】向きだけでなく**画角も見て**選ぶ。
+   ズームだけの経路では全タイルの向きが同じなので、向きだけだと拡大率の合わない枚を掴む。
+   選んだ枚が今のコマを覆えないときは null を返し、その枚だけ従来の描画に落とす。 */
+function cameraPanoPick(az,alt,fovH){
   if(!cameraPano.tiles||!cameraPano.tiles.length)return null;
+  const frameFov=Number.isFinite(fovH)?fovH:null;
   let best=null,bestGap=Infinity;
   for(const tile of cameraPano.tiles){
     const azGap=Math.abs(((tile.az-az+540)%360)-180)*cos((tile.alt+alt)/2);
-    const gap=Math.hypot(azGap,tile.alt-alt);
+    const angGap=Math.hypot(azGap,tile.alt-alt);
+    let gap=angGap;
+    if(frameFov&&tile.frameFov){
+      /* 向きのずれと画角のずれを、それぞれの許容量で割って足す。 */
+      const zoomGap=Math.abs(Math.log(frameFov/tile.frameFov))/Math.log(1.18);
+      gap=Math.hypot(angGap/Math.max(.001,cameraPanoAngStep()),zoomGap);
+    }
     if(gap<bestGap){bestGap=gap;best=tile;}
+  }
+  if(best&&frameFov){
+    /* 覆えるか。覆えないなら黒縁が出るので使わない。 */
+    const azGap=Math.abs(((best.az-az+540)%360)-180)*cos((best.alt+alt)/2);
+    const angGap=Math.hypot(azGap,best.alt-alt);
+    if(angGap+frameFov/2>best.fovH/2)return null;
   }
   return best;
 }
+function cameraPanoAngStep(){return cameraPano.angStep||1;}
 /* 【v916】カメラワーク再生中だけ、**小数のままの向き**をここへ入れる。
 
    方位・仰角のスライダーは step="1" なので、小数を書き込むと整数へ丸められる。
    スライダー越しに渡すと1°刻みのカクカクした動きになってしまう。
    再生中はここを見て描き、スライダーには見た目用に丸めた値を入れる。 */
 let cameraMoveOverride=null;
+/* 【v924】カメラワークが描いた**小数の向き**の記憶。
+
+   スライダーは step="1" で整数しか持てないので、これを持たないと
+   次に全体が描き直されたときに0.5°ぶん飛ぶ。
+
+   捨てる仕掛けは足さない。「スライダーの値が、記憶を丸めたものと一致する間だけ有効」
+   とするので、利用者が方位や焦点距離を動かせばその場で自動的に無効になる。
+   入力欄ごとにフックを足す必要がなく、拾い漏れが起きない。 */
+let aimFineView=null;
+function aimFineResolve(az,alt,focal){
+  const fine=aimFineView;
+  if(!fine)return null;
+  if(((Math.round(fine.az)%360)+360)%360!==(((az%360)+360)%360)
+    ||Math.round(fine.alt)!==alt
+    ||Math.round(fine.focal)!==focal){aimFineView=null;return null;}
+  return fine;
+}
 function updateCameraViewOnly(){
   if(scheduledUpdateRaf){cameraViewSkip.pending++;return;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(!state){cameraViewSkip.noState++;update();return;}
-  const focalLength=cameraMoveOverride?cameraMoveOverride.focal:+el.focalLength.value;
-  const facingAz=cameraMoveOverride?cameraMoveOverride.az:+el.facingAz.value;
-  const facingAlt=cameraMoveOverride?cameraMoveOverride.alt:+el.facingAlt.value;
+  /* 【v924】再生中の指定 → カメラワークが残した小数 → スライダー、の順で見る。 */
+  const aimFine=cameraMoveOverride||aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
+  const focalLength=aimFine?aimFine.focal:+el.focalLength.value;
+  const facingAz=aimFine?aimFine.az:+el.facingAz.value;
+  const facingAlt=aimFine?aimFine.alt:+el.facingAlt.value;
   const sensor=state.sensor;
   if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
   else normalLensFocalLength=clamp(focalLength,8,50);
