@@ -5440,7 +5440,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="932-sunset-presets";
+const APP_VERSION="933-daruma-sunset";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10870,7 +10870,7 @@ function updateSunsetModeReadout(s){
   const out=el.sunsetModeReadout;
   if(!out)return;
   const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
-  const text=alt===null?"":`太陽の高さ ${alt.toFixed(1)}° ／ 効き ${Math.round(sunsetModeWeight(s)*100)}% ／ 太陽まわりの光 ${Math.round(sunsetGlowAltitudeFactor(alt)*100)}%`;
+  const text=alt===null?"":`太陽の高さ ${alt.toFixed(1)}° ／ 効き ${Math.round(sunsetModeWeight(s)*100)}% ／ 太陽まわりの光 ${Math.round(Math.min(sunsetGlowAltitudeFactor(alt),sunsetHorizonFactor(alt))*100)}% ／ 光の道 ${Math.round(sunsetHorizonFactor(alt)*100)}%`;
   if(out.textContent!==text)out.textContent=text;
 }
 /* 掛ける強さ。太陽の高さで決めるので、朝焼けにも同じように効く。
@@ -10887,7 +10887,15 @@ function sunsetModeWeight(s){
   const value=clamp(raw,0,1);
   return value*value*(3-2*value);   /* 角を丸めて、切り替わりを目立たなくする */
 }
-/* 【v931】太陽まわりの光（空の輝き・水面の輝き・光の道）の強さ。
+/* 【v933】水平線で必ず0になる係数。つまみに関係なく効く。
+   だるま夕陽は「太陽の面がくっきり残る」ことが要なので、
+   まわりの強い光とにじみをここで確実に落とす。 */
+function sunsetHorizonFactor(alt){
+  if(!Number.isFinite(alt))return 0;
+  const t=clamp(alt/5,0,1);
+  return t*t*(3-2*t);
+}
+/* 【v931】太陽まわりの光（空の輝き・水面の輝き）の強さ。
    太陽が水平線へ近づくほど弱まり、**水平線より下では消える**。 */
 function sunsetGlowAltitudeFactor(alt){
   if(!Number.isFinite(alt))return 0;
@@ -11010,7 +11018,10 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const sun=point?{x:point[0],y:point[1]}:{x:cw/2,y:ch*.42};
   const sunRadius=(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
   const diagonal=Math.hypot(cw,ch);
-  const glowAlt=sunsetGlowAltitudeFactor(sunAlt);   /* 【v931】水平線へ近づくほど弱まる */
+  /* 【v931】水平線へ近づくほど弱まる。
+     【v933】つまみを下げていても水平線では消えるよう、`Math.min` で押さえる。 */
+  const horizonFade=sunsetHorizonFactor(sunAlt);
+  const glowAlt=Math.min(sunsetGlowAltitudeFactor(sunAlt),horizonFade);
   const colors=sunsetGlowColors();
   const rgba=(color,alpha)=>`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
 
@@ -11095,17 +11106,18 @@ function applySunsetMode(ctx,s,W,H,toXY){
       }
     }
     /* 【v931】太陽の光の道。横に細く縦に長い楕円なので、太陽の真下へ光の柱が伸びる。 */
-    if(sunsetMode.rayGlow>0&&glowAlt>.002){
+    /* 【v933】光の道は、沈むのに合わせて**長さも**短くする。水平線で消える。 */
+    if(sunsetMode.rayGlow>0&&horizonFade>.002){
       const ray=clamp(sunsetMode.rayGlow/100,0,3);
       const rayHalfWidth=Math.max(2,diagonal*.125*(sunsetMode.rayWidth/100));
-      const rayHalfLength=Math.max(4,diagonal*.5*(sunsetMode.rayLength/100));
+      const rayHalfLength=Math.max(4,diagonal*.5*(sunsetMode.rayLength/100)*(.12+.88*horizonFade));
       sunsetFieldPass(ctx,cw,ch,sun,rayHalfWidth,rayHalfLength,
         [[0,rgba(colors.core,1)],[.3,rgba(colors.core,.7)],[.7,rgba(colors.mid,.24)],[1,rgba(colors.edge,0)]],
-        waterMask,false,"lighter",weight*glowAlt*Math.min(1,ray),brightMask,protect);
+        waterMask,false,"lighter",weight*horizonFade*Math.min(1,ray),brightMask,protect);
       if(ray>1){
         sunsetFieldPass(ctx,cw,ch,sun,rayHalfWidth*.55,rayHalfLength,
           [[0,rgba(colors.core,1)],[.4,rgba(colors.core,.6)],[1,rgba(colors.mid,0)]],
-          waterMask,false,"lighter",weight*glowAlt*Math.min(1,ray-1),brightMask,protect);
+          waterMask,false,"lighter",weight*horizonFade*Math.min(1,ray-1),brightMask,protect);
       }
     }
   }
@@ -11129,7 +11141,10 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const sunWhite=clamp(sunsetMode.sunWhite/100,0,1);
   if(sunWhite>.002&&point&&sunAlt>-1.2){
     const color=sunsetSunColor(sunAlt);
-    const radius=sunRadius*clamp(sunsetMode.sunSize/100,.5,5);
+    /* 【v933】だるま夕陽。水平線へ近づくほど、にじみの幅を面の大きさへ寄せる。
+       水平線ではちょうど面の大きさになるので、**輪郭のはっきりした円**が残る。 */
+    const sizeK=clamp(sunsetMode.sunSize/100,.5,5);
+    const radius=sunRadius*(1+(sizeK-1)*horizonFade);
     sunsetFieldPass(ctx,cw,ch,sun,radius,radius,
       [[0,`rgba(${color.r},${color.g},${color.b},1)`],
        [.42,`rgba(${color.r},${color.g},${color.b},0.92)`],
@@ -23555,8 +23570,15 @@ function drawPhoto(ctx,s){
           }
           const lowFactor=Math.pow(clamp(1-aa.alt/altitudeLimit,0,1),isSun?1.08:1.18);
           const phasePower=clamp(strength,0,1);
+          /* 【v933】沈んだ太陽に鏡面反射は成立しない。
+             `lowFactor` は「低いほど長い」向きなので、高さがマイナスでも1のまま張り付き、
+             日没後も光の道が残っていた。高さ3°から0°へ向けて短く・淡くし、0°以下は描かない。
+             月は今までどおり（月の出前後の見え方を変えないため）。 */
+          const setFadeRaw=isSun?clamp(aa.alt/3,0,1):1;
+          const setFade=isSun?setFadeRaw*setFadeRaw*(3-2*setFadeRaw):1;
+          if(isSun&&setFade<=.004) return;
           const maxRoad=H*(isSun?.78:(kind==="moon"?.57:.43))*sunRoadZoom;
-          const roadLength=Math.max(8*sunRoadLengthPixelScale,maxRoad*lowFactor*(.48+phasePower*.52));
+          const roadLength=Math.max(8*sunRoadLengthPixelScale,maxRoad*lowFactor*(.48+phasePower*.52)*(.18+.82*setFade));
           /* 鏡面反射の中心は太陽と同じ角度だけ水平線下へ来る。
              その前後へ光点を分布させ、高高度・望遠時に不自然に水平線から光が始まるのを防ぐ。 */
           const headShare=isSun?.52:.42;
@@ -23567,7 +23589,7 @@ function drawPhoto(ctx,s){
           startY+=roadLength*.14*horizonRetreat;
           if(endY-startY<5) return;
           const roadVisibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
-          const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.88:(kind==="moon"?.54:.39))*(.48+phasePower*.52),0,isSun?.96:.66);
+          const roadAlpha=clamp(roadVisibility*lowFactor*(isSun?.88:(kind==="moon"?.54:.39))*(.48+phasePower*.52)*setFade,0,isSun?.96:.66);
           const baseWidth=(isSun?5.5:(kind==="moon"?6.8:4.2))*sunRoadWidthPixelScale;
           const roadWidth=(isSun?84:(kind==="moon"?50:31))*sunRoadWidthPixelScale*(.50+lowFactor*.50);
           const bandSpacing=(isSun?4.8:(kind==="moon"?4.4:5.6))*sunRoadBandZoom;
