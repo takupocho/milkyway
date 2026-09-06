@@ -4347,6 +4347,27 @@
                 </div>
               </div>
             </div>
+            <!-- 【v928】横移動。タイムバーの再生と連動して、開始位置から終了位置へ動かす。 -->
+            <div style="margin-top:10px;padding:10px;border:1px solid var(--line,#2a3345);border-radius:10px;">
+              <p class="map-hint" style="margin:0 0 6px;color:var(--ink);font-weight:700;">🚃 時間に合わせて動かす</p>
+              <p class="map-hint" style="margin:0 0 8px;">上の「◀ 左 / 右 ▶」で置きたい所へ合わせてから「いまの位置を開始にする」を押します。終了も同じです。両方の高さは変わらないので、動きは横移動だけになります。</p>
+              <button id="kmzMoveOnBtn" type="button" class="toggle-btn"><span>タイムバーに合わせて動かす</span><span id="kmzMoveOnState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+              <p class="map-hint" style="margin:6px 0 10px;">ONのあいだは、画面の模型は時刻から決まる位置に出ます。置き場所を決め直すときはOFFに戻してください。</p>
+              <p class="map-hint" style="margin:0 0 4px;color:var(--ink);font-weight:700;">開始</p>
+              <div style="display:flex;gap:6px;align-items:flex-end;"><div class="field" style="flex:1;margin:0;"><label class="top">時</label><input id="kmzMoveFromH" type="number" min="0" max="29" step="1" value="0"></div><div class="field" style="flex:1;margin:0;"><label class="top">分</label><input id="kmzMoveFromM" type="number" min="0" max="59" step="1" value="0"></div><div class="field" style="flex:1;margin:0;"><label class="top">秒</label><input id="kmzMoveFromS" type="number" min="0" max="59" step="1" value="0"></div></div>
+              <button id="kmzMoveSetFromBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">いまの位置を開始にする</button>
+              <p id="kmzMoveFromLabel" class="map-hint mono" style="margin:4px 0 10px;">開始：未設定</p>
+              <p class="map-hint" style="margin:0 0 4px;color:var(--ink);font-weight:700;">終了</p>
+              <div style="display:flex;gap:6px;align-items:flex-end;"><div class="field" style="flex:1;margin:0;"><label class="top">時</label><input id="kmzMoveToH" type="number" min="0" max="29" step="1" value="0"></div><div class="field" style="flex:1;margin:0;"><label class="top">分</label><input id="kmzMoveToM" type="number" min="0" max="59" step="1" value="0"></div><div class="field" style="flex:1;margin:0;"><label class="top">秒</label><input id="kmzMoveToS" type="number" min="0" max="59" step="1" value="0"></div></div>
+              <button id="kmzMoveSetToBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">いまの位置を終了にする</button>
+              <p id="kmzMoveToLabel" class="map-hint mono" style="margin:4px 0 10px;">終了：未設定</p>
+              <div style="display:flex;gap:6px;">
+                <button id="kmzMoveGoFromBtn" type="button" class="ghost" style="flex:1;">開始位置へ戻す</button>
+                <button id="kmzMoveGoToBtn" type="button" class="ghost" style="flex:1;">終了位置へ戻す</button>
+              </div>
+              <button id="kmzMoveClearBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">この移動を消す</button>
+              <p id="kmzMoveSummary" class="map-hint mono" style="margin-top:8px;white-space:pre-wrap;"></p>
+            </div>
             <div class="row2">
               <div class="field"><label class="top">基部の標高（m）</label><input id="kmzBuildingAltitude" type="number" step="0.1" value="0"></div>
               <div class="field"><label class="top">回転（°）</label><input id="kmzBuildingHeading" type="number" min="-360" max="360" step="1" value="0"></div>
@@ -5006,6 +5027,10 @@
                   <input id="planSaveName" class="plan-save-name" type="text" maxlength="40" placeholder="撮影地名・計画名（例：六甲山展望台 夏の天の川）">
                   <p class="plan-genre-label">ジャンル（いくつでも選べます）</p>
                   <div class="plan-genre-row" id="planSaveGenreRow" role="group" aria-label="撮影計画のジャンル"></div>
+                  <!-- 【v927】この計画に付けるカメラワーク。 -->
+                  <p class="plan-genre-label">カメラワーク</p>
+                  <select id="planSaveCameraWork" style="width:100%;box-sizing:border-box;margin-bottom:6px;"><option value="none">付けない</option></select>
+                  <p id="planSaveCameraWorkHint" class="plan-photo-help" style="margin-bottom:10px;">この計画を読み込んだとき、カメラワークも一緒に入ります。</p>
                   <div id="planSavePreview" class="plan-preview"></div>
                   <div class="plan-photo-section">
                     <h4 class="plan-photo-heading">実際に撮影した写真</h4>
@@ -5364,7 +5389,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="926-camera-work";
+const APP_VERSION="928-kmz-move";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6467,6 +6492,7 @@ const el={
   planTitleCard:$("planTitleCard"), planTitleCardName:$("planTitleCardName"),
   planTitleCardPlace:$("planTitleCardPlace"), planTitleCardGenre:$("planTitleCardGenre"),
   planSaveGenreRow:$("planSaveGenreRow"), planFilterGenreRow:$("planFilterGenreRow"),
+  planSaveCameraWork:$("planSaveCameraWork"), planSaveCameraWorkHint:$("planSaveCameraWorkHint"),
   planSlideshowBtn:$("planSlideshowBtn"), planSlideshowCount:$("planSlideshowCount"),
   slideshowOverlay:$("slideshowOverlay"), slideshowStage:$("slideshowStage"), slideshowCaption:$("slideshowCaption"),
   slideshowTitle:$("slideshowTitle"), slideshowPlaceText:$("slideshowPlaceText"), slideshowGenre:$("slideshowGenre"),
@@ -6561,6 +6587,13 @@ const el={
   kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
   kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"), kmzBuildingPlacement:$("kmzBuildingPlacement"),
+  kmzMoveOnBtn:$("kmzMoveOnBtn"), kmzMoveOnState:$("kmzMoveOnState"),
+  kmzMoveFromH:$("kmzMoveFromH"), kmzMoveFromM:$("kmzMoveFromM"), kmzMoveFromS:$("kmzMoveFromS"),
+  kmzMoveToH:$("kmzMoveToH"), kmzMoveToM:$("kmzMoveToM"), kmzMoveToS:$("kmzMoveToS"),
+  kmzMoveSetFromBtn:$("kmzMoveSetFromBtn"), kmzMoveSetToBtn:$("kmzMoveSetToBtn"),
+  kmzMoveFromLabel:$("kmzMoveFromLabel"), kmzMoveToLabel:$("kmzMoveToLabel"),
+  kmzMoveGoFromBtn:$("kmzMoveGoFromBtn"), kmzMoveGoToBtn:$("kmzMoveGoToBtn"),
+  kmzMoveClearBtn:$("kmzMoveClearBtn"), kmzMoveSummary:$("kmzMoveSummary"),
   kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
@@ -6638,9 +6671,35 @@ let kmzActiveId=null;
 let kmzSlotSeq=0;
 function kmzActiveSlot(){return kmzSlots.find(slot=>slot.id===kmzActiveId)||null;}
 function kmzSlotSettings(slot){
-  return {lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,
+  /* 【v928】時間に合わせて動かす設定があれば、描く位置だけ差し替える。
+     スロットのlat/lonは利用者が置いた位置そのものなので書き換えない。 */
+  const moved=kmzMovedPosition(slot);
+  return {lat:moved?moved.lat:slot.lat,lon:moved?moved.lon:slot.lon,
+          altitude:slot.altitude||0,
           heading:slot.heading||0,scale:slot.scale||1,
           opacity:Number.isFinite(slot.opacity)?slot.opacity:1};
+}
+/* 【v928】タイムバーの今の時刻（その日の0時からの分）。
+   再生中は小数のまま進む playbackVisualMinutes を使う。
+   スライダーは1コマに4回しか書き換えないので、そちらを見ると動きが飛ぶ。 */
+function kmzTimelineMinutes(){
+  if(typeof playbackTimer!=="undefined"&&playbackTimer&&Number.isFinite(playbackVisualMinutes))return playbackVisualMinutes;
+  return +el.timeSlider.value||0;
+}
+function kmzMoveReady(move){
+  if(!move||!move.from||!move.to)return false;
+  return [move.from.lat,move.from.lon,move.from.minutes,
+          move.to.lat,move.to.lon,move.to.minutes].every(Number.isFinite);
+}
+/* 開始と終了のあいだを直線で混ぜる。範囲の外では端に止める。
+   2点は同じ標高なので、混ぜた結果は必ず水平の動きになる。 */
+function kmzMovedPosition(slot){
+  const move=slot&&slot.move;
+  if(!move||!move.on||!kmzMoveReady(move))return null;
+  const from=move.from,to=move.to,now=kmzTimelineMinutes();
+  const span=to.minutes-from.minutes;
+  const ratio=span>0?clamp((now-from.minutes)/span,0,1):(now>=to.minutes?1:0);
+  return {lat:from.lat+(to.lat-from.lat)*ratio,lon:from.lon+(to.lon-from.lon)*ratio,ratio};
 }
 
 /* 【v880】置き場所の微調整の量。**スロットごとに持つ**ので写しにも含める。
@@ -6832,6 +6891,7 @@ function refreshKmzBuildingControls(redraw=true){
   if(el.kmzBuildingDepthBtn){el.kmzBuildingDepthBtn.classList.toggle("active",kmzDepthBuffer);el.kmzBuildingDepthState.textContent=kmzDepthBuffer?"ON":"OFF";}
   if(el.kmzBuildingNudgeStepBtn){el.kmzBuildingNudgeStepBtn.textContent=`${kmzNudgeStepM}m`;el.kmzBuildingNudgeVal.textContent=kmzNudgeLabel();}
   if(el.kmzBuildingPlacement)el.kmzBuildingPlacement.textContent=kmzPlacementReport();
+  syncKmzMoveControls();   /* 【v928】 */
   el.kmzBuildingScaleVal.textContent=`${(+el.kmzBuildingScale.value||1).toFixed(2)}倍`;el.kmzBuildingOpacityVal.textContent=`${Math.round(+el.kmzBuildingOpacity.value||100)}%`;
   renderKmzList();   // 【v880】表示ON/OFFや選択の見た目を一覧へ反映
   if(redraw&&typeof update==="function")update();
@@ -6860,7 +6920,8 @@ async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,
     let slot=slotId?kmzSlots.find(s=>s.id===slotId):null;
     if(!slot){
       slot={id:++kmzSlotSeq,lat:0,lon:0,altitude:0,heading:0,scale:1,opacity:1,
-            visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0};
+            visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0,
+            move:{on:false,from:null,to:null}};   /* 【v928】 */
       const here=kmzActiveSlot();
       slot.lat=here?here.lat:(+el.lat.value||35);
       slot.lon=here?here.lon:(+el.lon.value||135);
@@ -6952,6 +7013,121 @@ function nudgeKmzBuilding(forwardM,strafeM){
   kmzNudgeForwardTotal+=forwardM;kmzNudgeRightTotal+=strafeM;
   refreshKmzBuildingControls();
 }
+
+/* 【v928】KMZ模型の横移動。
+
+   タイムバーの時刻（その日の0時からの分）で開始位置と終了位置のあいだを進む。
+   時・分・秒で入れた値は `h*60+m+s/60` にして持つ。1440以上は翌日。 */
+function kmzMoveClock(minutes){
+  if(!Number.isFinite(minutes))return "未設定";
+  const totalSec=Math.max(0,Math.round(minutes*60));
+  const day=Math.floor(totalSec/86400);
+  const pad=value=>String(value).padStart(2,"0");
+  return `${day>0?"翌 ":""}${pad(Math.floor(totalSec/3600)%24)}:${pad(Math.floor(totalSec/60)%60)}:${pad(totalSec%60)}`;
+}
+function kmzMoveEnsure(slot){
+  if(!slot)return null;
+  if(!slot.move)slot.move={on:false,from:null,to:null};
+  return slot.move;
+}
+function kmzMoveReadFields(hourEl,minuteEl,secondEl){
+  const hour=clamp(Math.round(+hourEl.value||0),0,29);
+  const minute=clamp(Math.round(+minuteEl.value||0),0,59);
+  const second=clamp(Math.round(+secondEl.value||0),0,59);
+  return hour*60+minute+second/60;
+}
+function kmzMoveWriteFields(minutes,hourEl,minuteEl,secondEl){
+  const totalSec=Number.isFinite(minutes)?Math.max(0,Math.round(minutes*60)):0;
+  hourEl.value=String(Math.floor(totalSec/3600));
+  minuteEl.value=String(Math.floor(totalSec/60)%60);
+  secondEl.value=String(totalSec%60);
+}
+/* 入力欄の時刻を、選んでいるスロットへ書き戻す。 */
+function kmzMoveCommitTimes(){
+  const slot=kmzActiveSlot();if(!slot||!el.kmzMoveFromH)return;
+  const move=kmzMoveEnsure(slot);
+  if(move.from)move.from.minutes=kmzMoveReadFields(el.kmzMoveFromH,el.kmzMoveFromM,el.kmzMoveFromS);
+  if(move.to)move.to.minutes=kmzMoveReadFields(el.kmzMoveToH,el.kmzMoveToM,el.kmzMoveToS);
+}
+function kmzMovePointLabel(point){
+  if(!point||!Number.isFinite(point.lat)||!Number.isFinite(point.lon))return "未設定";
+  return `${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}　${kmzMoveClock(point.minutes)}`;
+}
+function kmzMoveSummaryText(move){
+  if(!kmzMoveReady(move))return "開始と終了の両方を決めると、距離と速さが出ます。";
+  const from=move.from,to=move.to;
+  const north=(to.lat-from.lat)*111320;
+  const east=(to.lon-from.lon)*111320*Math.cos(from.lat*D2R);
+  const metres=Math.hypot(north,east);
+  const seconds=(to.minutes-from.minutes)*60;
+  if(seconds<=0)return `移動 ${metres.toFixed(1)}m　終了の時刻が開始より後になるようにしてください。`;
+  const kmh=metres/seconds*3.6;
+  return `移動 ${metres.toFixed(1)}m ／ ${seconds.toFixed(1)}秒 ／ 約 ${kmh.toFixed(1)}km/h`;
+}
+/* 操作画面へ写す。スロットを選び直したときと、値を変えたときに呼ぶ。 */
+function syncKmzMoveControls(){
+  if(!el.kmzMoveOnBtn)return;
+  const slot=kmzActiveSlot();
+  const move=slot&&slot.move?slot.move:null;
+  const on=!!(move&&move.on&&kmzMoveReady(move));
+  el.kmzMoveOnBtn.classList.toggle("active",on);
+  el.kmzMoveOnState.textContent=on?"ON":"OFF";
+  el.kmzMoveOnBtn.disabled=!slot||!kmzMoveReady(move);
+  el.kmzMoveFromLabel.textContent=`開始：${kmzMovePointLabel(move&&move.from)}`;
+  el.kmzMoveToLabel.textContent=`終了：${kmzMovePointLabel(move&&move.to)}`;
+  el.kmzMoveSummary.textContent=slot?kmzMoveSummaryText(move):"KMZを選んでください。";
+  /* ONのあいだは画面に出ている位置が補間された位置なので、覚え直させない。 */
+  const editable=!!slot&&!on;
+  el.kmzMoveSetFromBtn.disabled=!editable;
+  el.kmzMoveSetToBtn.disabled=!editable;
+  el.kmzMoveGoFromBtn.disabled=!editable||!(move&&move.from);
+  el.kmzMoveGoToBtn.disabled=!editable||!(move&&move.to);
+  el.kmzMoveClearBtn.disabled=!move||(!move.from&&!move.to);
+  if(move&&move.from)kmzMoveWriteFields(move.from.minutes,el.kmzMoveFromH,el.kmzMoveFromM,el.kmzMoveFromS);
+  if(move&&move.to)kmzMoveWriteFields(move.to.minutes,el.kmzMoveToH,el.kmzMoveToM,el.kmzMoveToS);
+}
+/* いまの編集欄の位置を、開始または終了として覚える。 */
+function kmzMoveCapture(which){
+  const slot=kmzActiveSlot();if(!slot)return;
+  kmzCommitEditor();
+  const lat=+el.kmzBuildingLat.value,lon=+el.kmzBuildingLon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const move=kmzMoveEnsure(slot);
+  const fields=which==="from"
+    ?[el.kmzMoveFromH,el.kmzMoveFromM,el.kmzMoveFromS]
+    :[el.kmzMoveToH,el.kmzMoveToM,el.kmzMoveToS];
+  move[which]={lat,lon,minutes:kmzMoveReadFields(fields[0],fields[1],fields[2])};
+  refreshKmzBuildingControls();
+}
+/* 覚えた位置を編集欄へ戻す。置き直したいときに使う。 */
+function kmzMoveRecall(which){
+  const slot=kmzActiveSlot();if(!slot)return;
+  const point=slot.move&&slot.move[which];
+  if(!point||!Number.isFinite(point.lat))return;
+  el.kmzBuildingLat.value=point.lat.toFixed(6);
+  el.kmzBuildingLon.value=point.lon.toFixed(6);
+  refreshKmzBuildingControls();
+}
+if(el.kmzMoveOnBtn)el.kmzMoveOnBtn.addEventListener("click",()=>{
+  const slot=kmzActiveSlot();if(!slot)return;
+  const move=kmzMoveEnsure(slot);
+  if(!kmzMoveReady(move))return;
+  move.on=!move.on;
+  refreshKmzBuildingControls();
+});
+if(el.kmzMoveSetFromBtn)el.kmzMoveSetFromBtn.addEventListener("click",()=>kmzMoveCapture("from"));
+if(el.kmzMoveSetToBtn)el.kmzMoveSetToBtn.addEventListener("click",()=>kmzMoveCapture("to"));
+if(el.kmzMoveGoFromBtn)el.kmzMoveGoFromBtn.addEventListener("click",()=>kmzMoveRecall("from"));
+if(el.kmzMoveGoToBtn)el.kmzMoveGoToBtn.addEventListener("click",()=>kmzMoveRecall("to"));
+if(el.kmzMoveClearBtn)el.kmzMoveClearBtn.addEventListener("click",()=>{
+  const slot=kmzActiveSlot();if(!slot||!slot.move)return;
+  slot.move={on:false,from:null,to:null};
+  refreshKmzBuildingControls();
+});
+[["kmzMoveFromH","kmzMoveFromM","kmzMoveFromS"],["kmzMoveToH","kmzMoveToM","kmzMoveToS"]]
+  .forEach(group=>group.forEach(id=>{
+    if(el[id])el[id].addEventListener("change",()=>{kmzMoveCommitTimes();refreshKmzBuildingControls();});
+  }));
 el.kmzBuildingNudgeStepBtn.addEventListener("click",()=>{
   kmzNudgeStepM=kmzNudgeStepM===1?5:1;refreshKmzBuildingControls();
 });
@@ -7711,6 +7887,12 @@ function roundToAimStep(value){
   return +(Math.round(value/step)*step).toFixed(4);
 }
 /* 小数以下を、刻みに応じて必要な桁だけ出す。 */
+/* 【v927】カメラワーク中は小数のままの焦点距離で描いている（v916）。
+   表示だけ小数点以下を切り捨てる。描画へ渡す値は小数のまま。 */
+function formatFocalMm(value){
+  const focal=+value;
+  return String(Math.floor(Number.isFinite(focal)?focal:0));
+}
 function formatAimDeg(value){
   const step=currentAimStep();
   const digits=step>=1?0:(step>=.1?1:2);
@@ -11036,6 +11218,75 @@ if(el.cameraWorkDeleteBtn)el.cameraWorkDeleteBtn.addEventListener("click",async(
   renderCameraWorkPresets();
   el.cameraWorkStatus.textContent=`「${preset.name}」を削除しました。`;
 });
+
+/* 【v927】撮影計画へカメラワークを付ける／戻す。
+
+   計画に入る形は {version,name,cuts:[{from,to,seconds,easing}]}。
+   エクスポートは計画をまるごと写しているので、この欄も一緒に運ばれる。 */
+function cameraWorkCutsUsable(cuts){
+  return (Array.isArray(cuts)?cuts:[]).map(cut=>({
+    from:cameraWorkPickView(cut&&cut.from),to:cameraWorkPickView(cut&&cut.to),
+    seconds:clamp(+(cut&&cut.seconds)||6,1,30),easing:!(cut&&cut.easing===false)
+  })).filter(cut=>cut.from&&cut.to);
+}
+function planCameraWorkSummary(saved){
+  const cuts=saved&&Array.isArray(saved.cuts)?saved.cuts.length:0;
+  if(!cuts)return "";
+  return saved.name?`${saved.name}・${cuts}カット`:`${cuts}カット`;
+}
+/* 保存画面の選び欄を作る。編集中の計画に既に付いていれば、それを既定にする。 */
+function renderPlanSaveCameraWorkSelect(){
+  const select=el.planSaveCameraWork;
+  if(!select)return;
+  const editing=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
+  const attached=editing&&editing.cameraWork&&Array.isArray(editing.cameraWork.cuts)&&editing.cameraWork.cuts.length?editing.cameraWork:null;
+  select.innerHTML="";
+  const add=(value,label)=>{const option=document.createElement("option");option.value=value;option.textContent=label;select.appendChild(option);};
+  if(attached)add("keep",`そのまま残す（${planCameraWorkSummary(attached)}）`);
+  add("none","付けない");
+  const currentCuts=cameraWorkCutsUsable(cameraCuts);
+  if(currentCuts.length)add("current",`いま設定しているカメラワーク（${currentCuts.length}カット）`);
+  cameraWorkPresets.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name),"ja")).forEach(item=>{
+    if(cameraWorkCutsUsable(item.cuts).length)add(`preset:${item.id}`,`${item.name}（${item.cuts.length}カット）`);
+  });
+  /* 開くたびに既定を入れる。値を引き継ぐと、読み込み直後の "none" が
+     そのまま残って「そのまま残す」に切り替わらない（付いていたカメラワークが消える）。 */
+  select.value=attached?"keep":"none";
+}
+/* 選び欄の内容を計画へ入れる形に直す。何も付けないときは null。 */
+function captureCameraWorkForPlan(existing){
+  const choice=el.planSaveCameraWork?el.planSaveCameraWork.value:"none";
+  if(choice==="keep"){
+    const attached=existing&&existing.cameraWork;
+    return attached&&cameraWorkCutsUsable(attached.cuts).length?attached:null;
+  }
+  if(choice==="current"){
+    const cuts=cameraWorkCutsUsable(cameraWorkCutsForSave());
+    if(!cuts.length)return null;
+    return {version:1,name:String((el.cameraWorkName&&el.cameraWorkName.value)||"").trim(),cuts};
+  }
+  if(choice.startsWith("preset:")){
+    const preset=cameraWorkPresets.find(item=>`preset:${item.id}`===choice);
+    const cuts=preset?cameraWorkCutsUsable(preset.cuts):[];
+    if(!cuts.length)return null;
+    return {version:1,name:preset.name,cuts};
+  }
+  return null;
+}
+/* 計画からカメラワークを戻す。
+   **記録がある計画のときだけ**入れ替える。記録の無い計画を読み込んだときに
+   いま作りかけのカットを消してしまわないため。 */
+function applyCameraWorkFromPlan(saved){
+  const cuts=saved?cameraWorkCutsUsable(saved.cuts):[];
+  if(!cuts.length)return false;
+  if(cameraMoveState.playing)stopCameraMove();
+  cameraCuts=cuts;cameraCutIndex=0;cameraPlayCursor=0;
+  if(el.cameraWorkName&&saved.name)el.cameraWorkName.value=saved.name;
+  cameraCutLoad(0);
+  renderCameraCutList();syncCameraCutButton();
+  if(el.cameraWorkStatus)el.cameraWorkStatus.textContent=`撮影計画から「${saved.name||"カメラワーク"}」を読み込みました（${cuts.length}カット）。`;
+  return true;
+}
 if(el.cameraWorkSavedSelect)el.cameraWorkSavedSelect.addEventListener("change",()=>{
   const preset=cameraWorkPresets.find(item=>item.id===el.cameraWorkSavedSelect.value);
   if(preset)el.cameraWorkName.value=preset.name;
@@ -13829,7 +14080,11 @@ function captureKmzBuildingForPlan(){
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl,
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
-      visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true
+      visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
+      /* 【v928】横移動。決めていないときは入れない。 */
+      move:kmzMoveReady(slot.move)?{on:!!slot.move.on,
+        from:{lat:slot.move.from.lat,lon:slot.move.from.lon,minutes:slot.move.from.minutes},
+        to:{lat:slot.move.to.lat,lon:slot.move.to.lon,minutes:slot.move.to.minutes}}:null
     }));
   return saved.length?saved:null;
 }
@@ -13865,6 +14120,13 @@ async function restoreKmzBuildingFromPlan(saved){
         slot.visible=item.visible!==false;
         slot.silhouette=item.silhouette===true;   // 【v851】古い保存には無いので既定OFF
         slot.glow=item.glow===true;                // 【v852】同上
+        /* 【v928】横移動。中身を検査してから入れる。壊れた保存でも落ちないように。 */
+        const savedMove=item.move;
+        slot.move=kmzMoveReady(savedMove)
+          ?{on:savedMove.on!==false,
+            from:{lat:+savedMove.from.lat,lon:+savedMove.from.lon,minutes:+savedMove.from.minutes},
+            to:{lat:+savedMove.to.lat,lon:+savedMove.to.lon,minutes:+savedMove.to.minutes}}
+          :{on:false,from:null,to:null};
       }
       restored++;
     }
@@ -13973,6 +14235,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     kmzBuilding:captureKmzBuildingForPlan(),
     localDetailTerrain:captureLocalDetailForPlan(),
     darumaIslandSilhouette:captureDarumaIslandSilhouetteForPlan(),
+    cameraWork:captureCameraWorkForPlan(duplicate),   /* 【v927】 */
     bridgeVisible:bridgeLinesVisible,
     updatedAt:Date.now()
   };
@@ -14221,6 +14484,7 @@ async function applySavedObservingPlan(location){
   if(location.orientation==="portrait"||location.orientation==="landscape") setOrientation(location.orientation); else update();
   await restoreKmzBuildingFromPlan(location.kmzBuilding||null);
   await applyLocalDetailDescriptor(location.localDetailTerrain||null,true);
+  applyCameraWorkFromPlan(location.cameraWork||null);   /* 【v927】記録がある計画のときだけ入れ替える */
   scheduleSaveSettings();
   showPlanTitleCard(location);   // v712: 題名を見せる
   return true;
@@ -14271,12 +14535,16 @@ function renderCurrentPlanPreview(){
   if(islandNow) appendPlanPreviewItem("遠方の島影",`${islandNow.segments.length}範囲・${savedDarumaIslandPointCount(islandNow)}点`,true);
   const bridgeNow=capturePlanBridgeSnapshot(lat,lon);
   if(bridgeNow) appendPlanPreviewItem("橋",`${bridgeNow.ways.length}本・撮影計画へ保存`,true);
+  /* 【v927】選び欄で選んだカメラワーク。 */
+  const cameraWorkNow=captureCameraWorkForPlan(savedObservingLocations.find(item=>item.id===editingSavedPlanId));
+  if(cameraWorkNow) appendPlanPreviewItem("カメラワーク",planCameraWorkSummary(cameraWorkNow),true);
 }
 function setPlanModalOpen(kind,open){
   const overlay=kind==="save"?el.planSaveOverlay:el.planLoadOverlay;
   overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
   if(!open){if(kind==="save"){resetPlanPhotoEditor();editingSavedPlanId="";syncPlanEditingSaveButton();}return;}
   if(kind==="save"){
+    renderPlanSaveCameraWorkSelect();   /* 【v927】下見より先に作る */
     renderCurrentPlanPreview();el.planSaveName.value=el.savedLocationName.value||"";
     preparePlanPhotoEditor();
     setTimeout(()=>el.planSaveName.focus(),0);
@@ -14403,6 +14671,7 @@ function createSavedPlanCard(location){
     if(planHasCloudSea(location)) values.push(`雲海 ${cloudSeaSummaryText(location.cloudSea)}`);
     if(planHasComets(location)) values.push(`彗星 ${cometsSummaryText(location.comets)}`);
     if(location.darumaIslandSilhouette) values.push(`遠方の島影 ${location.darumaIslandSilhouette.segments?.length||0}範囲・${savedDarumaIslandPointCount(location.darumaIslandSilhouette)}点`);
+    if(location.cameraWork&&location.cameraWork.cuts&&location.cameraWork.cuts.length) values.push(`カメラワーク ${planCameraWorkSummary(location.cameraWork)}`);   /* 【v927】 */
     values.forEach(value=>{const span=document.createElement("span");span.textContent=value;details.appendChild(span);});
     const actions=document.createElement("div");actions.className="plan-card-actions";
     const del=document.createElement("button");del.type="button";del.className="delete";del.textContent="削除";del.addEventListener("click",()=>removeSavedObservingPlan(location));
@@ -14947,10 +15216,11 @@ el.quickSavePlanBtn.addEventListener("click",()=>{
   syncPlanEditingSaveButton();
   setPlanModalOpen("save",true);
   syncPlanGenreRows();
-  if(editing){el.planSaveName.value=editing.title;renderCurrentPlanPreview();}
+  if(editing){el.planSaveName.value=editing.title;renderPlanSaveCameraWorkSelect();renderCurrentPlanPreview();}
 });
 el.quickLoadPlanBtn.addEventListener("click",()=>setPlanModalOpen("load",true));
 el.quickPhotoBtn.addEventListener("click",()=>{const location=savedObservingLocations.find(item=>item.id===activeLoadedPlanId);if(locationHasPhoto(location))openPlanPhotoViewer(location);});
+if(el.planSaveCameraWork)el.planSaveCameraWork.addEventListener("change",()=>renderCurrentPlanPreview());   /* 【v927】 */
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planSaveCancelBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planLoadCloseBtn.addEventListener("click",()=>setPlanModalOpen("load",false));
@@ -15244,12 +15514,13 @@ function computeState(){
   if(mobileLensMode==="fisheye") fisheyeLensFocalLength=clamp(focalLength,8,16);
   else normalLensFocalLength=clamp(focalLength,8,50);
 
-  el.flVal.textContent=`${focalLength} mm`;
+  const focalShown=formatFocalMm(focalLength);   /* 【v927】 */
+  el.flVal.textContent=`${focalShown} mm`;
   const showFisheyeBadge = mobileLensMode==="fisheye" && !arActive;
   el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
   el.focalBadge.innerHTML=showFisheyeBadge
-    ? `<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
-    : `${focalLength}<span class="focal-badge-unit">mm</span>`;
+    ? `<span>${focalShown}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
+    : `${focalShown}<span class="focal-badge-unit">mm</span>`;
   el.apVal.textContent=`F${aperture.toFixed(1)}`;
   el.isoVal.textContent=`ISO ${iso}`;
   el.ssVal.textContent=`${shutter} 秒`;
@@ -16809,6 +17080,9 @@ try{
         drawPhoto._terrainRenderKey=null;update();
         return kmzSlots.length;
       },
+      /* 【v928】横移動の確かめ用。今の時刻で実際に描く位置を返す。 */
+      kmzMove:()=>kmzSlots.map(slot=>({id:slot.id,lat:slot.lat,lon:slot.lon,
+        move:slot.move||null,minutes:kmzTimelineMinutes(),drawn:kmzSlotSettings(slot)})),
       /* スライドショーは動きが時刻で決まるので、手でコマを送って確かめられるようにする。 */
       slideshow:{
         open:openSlideshow,close:closeSlideshow,go:slideshowGo,
@@ -28904,13 +29178,16 @@ function renderMessages(s){
 function renderExif(s){
   /* 【v728】この欄に実際に表示する値が同じなら、HTML文字列の組み立て前に終了する。
      方位は整数表示なので、1°未満の細かな横移動では完成表示をそのまま再利用できる。 */
-  const exifKey=[Math.round(s.facingAz),s.facingAlt,s.focalLength,s.aperture.toFixed(1),s.iso,s.shutter,s.sensor.name].join("|");
+  /* 【v927】カメラワーク中は向きも焦点距離も小数なので、表示に出す文字で鍵を作る。 */
+  const exifAlt=Number.isInteger(+s.facingAlt)?String(+s.facingAlt):(+s.facingAlt).toFixed(1);
+  const exifFocal=formatFocalMm(s.focalLength);
+  const exifKey=[Math.round(s.facingAz),exifAlt,exifFocal,s.aperture.toFixed(1),s.iso,s.shutter,s.sensor.name].join("|");
   if(renderExif._lastDisplayKey===exifKey) return;
   renderExif._lastDisplayKey=exifKey;
   const exifMarkup=`
     <span><b>方位</b> ${Math.round(s.facingAz)}°</span>
-    <span><b>仰角</b> ${s.facingAlt}°</span>
-    <span><b>焦点距離</b> ${s.focalLength}mm</span>
+    <span><b>仰角</b> ${exifAlt}°</span>
+    <span><b>焦点距離</b> ${exifFocal}mm</span>
     <span><b>絞り</b> F${s.aperture.toFixed(1)}</span>
     <span><b>ISO</b> ${s.iso}</span>
     <span><b>SS</b> ${s.shutter}秒</span>
@@ -29332,13 +29609,14 @@ function updateCameraViewOnly(){
   else normalLensFocalLength=clamp(focalLength,8,50);
 
   // computeState()と同じカメラ表示値だけを同期する。
-  const focalText=`${focalLength} mm`;
+  const focalShown=formatFocalMm(focalLength);   /* 【v927】 */
+  const focalText=`${focalShown} mm`;
   if(el.flVal.textContent!==focalText) el.flVal.textContent=focalText;
   const showFisheyeBadge=mobileLensMode==="fisheye"&&!arActive;
   if(el.focalBadge.classList.contains("fisheye-mode")!==showFisheyeBadge) el.focalBadge.classList.toggle("fisheye-mode",showFisheyeBadge);
   const focalBadgeMarkup=showFisheyeBadge
-    ?`<span>${focalLength}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
-    :`${focalLength}<span class="focal-badge-unit">mm</span>`;
+    ?`<span>${focalShown}㎜</span><span class="focal-badge-fisheye-name">魚眼</span>`
+    :`${focalShown}<span class="focal-badge-unit">mm</span>`;
   if(updateCameraViewOnly._lastFocalBadgeMarkup!==focalBadgeMarkup){
     updateCameraViewOnly._lastFocalBadgeMarkup=focalBadgeMarkup;
     el.focalBadge.innerHTML=focalBadgeMarkup;
