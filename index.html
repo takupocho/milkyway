@@ -4473,6 +4473,17 @@
             </div>
             <p id="photoToneReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
           </div>
+          <!-- 【v929】夕焼けモード。雰囲気づくりの演出。 -->
+          <button id="sunsetModeBtn" type="button" class="toggle-btn" style="margin-top:12px;"><span>🌇 夕焼けモード</span><span id="sunsetModeState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:6px;">夕焼け・朝焼けの時間だけ、空を橙に染めて太陽を白く抜き、周りの景色を暗く締めます。太陽の高さで効き具合が決まるので、日が沈むにつれて自然に消えていきます。演出用なので、既定はOFFです。</p>
+          <div id="sunsetModePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
+            <div class="field"><label class="top">効き具合 <span class="val mono" id="sunsetStrengthVal">85%</span></label><input type="range" id="sunsetStrength" min="0" max="100" step="1" value="85"></div>
+            <div class="field"><label class="top">橙の濃さ <span class="val mono" id="sunsetSaturateVal">260%</span></label><input type="range" id="sunsetSaturate" min="100" max="400" step="5" value="260"></div>
+            <div class="field"><label class="top">明暗の締まり <span class="val mono" id="sunsetContrastVal">130%</span></label><input type="range" id="sunsetContrast" min="100" max="200" step="1" value="130"></div>
+            <div class="field"><label class="top">太陽の白さ <span class="val mono" id="sunsetSunWhiteVal">90%</span></label><input type="range" id="sunsetSunWhite" min="0" max="100" step="1" value="90"></div>
+            <div class="field"><label class="top">水面の輝き <span class="val mono" id="sunsetWaterGlowVal">60%</span></label><input type="range" id="sunsetWaterGlow" min="0" max="100" step="1" value="60"></div>
+            <p id="sunsetModeReadout" class="map-hint mono" style="margin-top:6px;"></p>
+          </div>
           <button id="showBelowHorizonBtn" type="button" class="toggle-btn"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
           <button id="realSunMoonBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>☀️🌙 太陽・月をリアル表示する</span><span id="realSunMoonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -5389,7 +5400,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="928-kmz-move";
+const APP_VERSION="929-sunset-mode";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6555,7 +6566,14 @@ const el={
   cacheManagerAllBtn:$("cacheManagerAllBtn"), cacheManagerMountainBtn:$("cacheManagerMountainBtn"),
   highDetailQualitySlider:$("highDetailQualitySlider"), highDetailQualityVal:$("highDetailQualityVal"),
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
-  photoToneBtn:$("photoToneBtn"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  photoToneBtn:$("photoToneBtn"),
+  sunsetModeBtn:$("sunsetModeBtn"), sunsetModeState:$("sunsetModeState"), sunsetModePanel:$("sunsetModePanel"),
+  sunsetStrength:$("sunsetStrength"), sunsetStrengthVal:$("sunsetStrengthVal"),
+  sunsetSaturate:$("sunsetSaturate"), sunsetSaturateVal:$("sunsetSaturateVal"),
+  sunsetContrast:$("sunsetContrast"), sunsetContrastVal:$("sunsetContrastVal"),
+  sunsetSunWhite:$("sunsetSunWhite"), sunsetSunWhiteVal:$("sunsetSunWhiteVal"),
+  sunsetWaterGlow:$("sunsetWaterGlow"), sunsetWaterGlowVal:$("sunsetWaterGlowVal"),
+  sunsetModeReadout:$("sunsetModeReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -10726,6 +10744,141 @@ function applyPhotoTone(ctx,s){
   ctx.putImageData(image,0,0);
 }
 
+/* 【v929】夕焼けモード。
+
+   できあがった絵への現像として、いちばん最後に一段掛ける。
+   個々の色の定義には触らないので、OFFにすれば1画素も変わらない。 */
+let sunsetModeOn=false;
+const sunsetMode={strength:85,saturate:260,contrast:130,sunWhite:90,waterGlow:60};
+const SUNSET_MODE_KEYS=["Strength","Saturate","Contrast","SunWhite","WaterGlow"];
+/* 明るいところだけを白く戻すための2つの値。
+   f(x)=(b*x-0.5)*c+0.5 が「輝度0.55で0、0.85で1」になるよう解いた。
+     b=1/(high+low)、c=(high+low)/(high-low)
+
+   実測：このアプリの夕日の場面でいちばん明るい画素（太陽の面）は
+   輝度0.84、空は多くが0.5以下。最初0.97を境にしたら太陽が白くならなかった。
+   露出の設定で明るさは変わるので、境は低めに取ってある（太陽の周りの光も
+   少し白くなるが、実際の夕焦げの写真もそう見える）。 */
+const SUNSET_HIGHLIGHT_BRIGHTNESS=.714,SUNSET_HIGHLIGHT_CONTRAST=4.667;
+function sunsetModeKey(name){return name[0].toLowerCase()+name.slice(1);}
+function readSunsetModeControls(){
+  for(const name of SUNSET_MODE_KEYS){
+    const input=el["sunset"+name];
+    if(!input)continue;
+    const value=+input.value;
+    if(Number.isFinite(value))sunsetMode[sunsetModeKey(name)]=value;
+  }
+}
+function syncSunsetModeControls(){
+  readSunsetModeControls();
+  for(const name of SUNSET_MODE_KEYS){
+    const out=el["sunset"+name+"Val"];
+    if(out)out.textContent=`${sunsetMode[sunsetModeKey(name)]}%`;
+  }
+  if(el.sunsetModeBtn){
+    el.sunsetModeBtn.classList.toggle("active",sunsetModeOn);
+    el.sunsetModeState.textContent=sunsetModeOn?"ON":"OFF";
+  }
+  if(el.sunsetModePanel)el.sunsetModePanel.style.opacity=sunsetModeOn?"1":".45";
+}
+/* 効き具合の表示は**描くときに**書く。
+   操作画面の同期は update() の前に走るので、そこで state を読むと1手ぶん古くなる。
+   drawPhoto は state が確定してから走るので、起動途中の見張りも要らない。 */
+function updateSunsetModeReadout(s){
+  const out=el.sunsetModeReadout;
+  if(!out)return;
+  const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
+  const text=alt===null?"":`太陽の高さ ${alt.toFixed(1)}° ／ 効き ${Math.round(sunsetModeWeight(s)*100)}%`;
+  if(out.textContent!==text)out.textContent=text;
+}
+/* 掛ける強さ。太陽の高さで決めるので、朝焼けにも同じように効く。
+   +14°より高い昼と、-14°より低い夜では0。-4°〜+8°でいちばん強い。 */
+function sunsetModeWeight(s){
+  if(!sunsetModeOn||arActive)return 0;
+  const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
+  if(alt===null)return 0;
+  let raw=0;
+  if(alt>=14||alt<=-14)raw=0;
+  else if(alt>8)raw=(14-alt)/6;
+  else if(alt>=-4)raw=1;
+  else raw=(alt+14)/10;
+  const value=clamp(raw,0,1);
+  return value*value*(3-2*value);   /* 角を丸めて、切り替わりを目立たなくする */
+}
+let sunsetScratch=null,sunsetWaterScratch=null;
+function sunsetScratchCanvas(store,w,h){
+  const canvas=store||document.createElement("canvas");
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  return canvas;
+}
+function applySunsetMode(ctx,s,W,H){
+  const weight=sunsetModeWeight(s);
+  if(weight<=.002||!photoToneCanvasFilterSupported)return;
+  const canvas=ctx.canvas,cw=canvas.width,ch=canvas.height;
+  if(!(cw>0&&ch>0))return;
+  const strength=clamp(sunsetMode.strength/100,0,1);
+  const waterGlow=clamp(sunsetMode.waterGlow/100,0,1);
+  const sunWhite=clamp(sunsetMode.sunWhite/100,0,1);
+
+  /* ① 水面だけ持ち上げる。平らな橙を乗せるのではなく、
+     **今ある水面の絵を明るくして重ねる**ので、太陽の写り込みが白いまま残る。 */
+  const mask=drawPhoto._waterSurfaceMaskCanvas;
+  if(waterGlow>.002&&mask&&mask.width===cw&&mask.height===ch){
+    const water=sunsetWaterScratch=sunsetScratchCanvas(sunsetWaterScratch,cw,ch);
+    const waterCtx=water.getContext("2d");
+    waterCtx.setTransform(1,0,0,1,0,0);
+    waterCtx.globalCompositeOperation="source-over";
+    waterCtx.globalAlpha=1;
+    waterCtx.clearRect(0,0,cw,ch);
+    waterCtx.filter="brightness(1.35) saturate(1.2)";
+    waterCtx.drawImage(canvas,0,0);
+    waterCtx.filter="none";
+    /* 水面マスクの形だけ残す。 */
+    waterCtx.globalCompositeOperation="destination-in";
+    waterCtx.drawImage(mask,0,0,cw,ch);
+    waterCtx.globalCompositeOperation="source-over";
+    ctx.save();ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha=weight*waterGlow;
+    ctx.drawImage(water,0,0);
+    ctx.restore();
+  }
+
+  /* ② 橙へ寄せる。元の絵の上へ globalAlpha で重ねるので、効き具合がそのまま混ざる。 */
+  const scratch=sunsetScratch=sunsetScratchCanvas(sunsetScratch,cw,ch);
+  const scratchCtx=scratch.getContext("2d");
+  scratchCtx.setTransform(1,0,0,1,0,0);
+  scratchCtx.globalCompositeOperation="source-over";
+  scratchCtx.globalAlpha=1;scratchCtx.filter="none";
+  scratchCtx.clearRect(0,0,cw,ch);
+  scratchCtx.drawImage(canvas,0,0);
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha=weight*strength;
+  ctx.filter=`sepia(1) saturate(${(sunsetMode.saturate/100).toFixed(3)}) contrast(${(sunsetMode.contrast/100).toFixed(3)}) brightness(1.02)`;
+  ctx.drawImage(scratch,0,0);
+  ctx.restore();
+
+  /* ③ 太陽を白く戻す。橙を掛ける**前**の絵から明るいところだけを取り出して足す。 */
+  if(sunWhite>.002){
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalCompositeOperation="screen";
+    ctx.globalAlpha=weight*sunWhite;
+    ctx.filter=`grayscale(1) brightness(${SUNSET_HIGHLIGHT_BRIGHTNESS}) contrast(${SUNSET_HIGHLIGHT_CONTRAST})`;
+    ctx.drawImage(scratch,0,0);
+    ctx.restore();
+  }
+}
+for(const name of SUNSET_MODE_KEYS){
+  const input=el["sunset"+name];
+  if(!input)continue;
+  input.addEventListener("input",()=>{syncSunsetModeControls();update();scheduleSaveSettings();});
+}
+if(el.sunsetModeBtn)el.sunsetModeBtn.addEventListener("click",()=>{
+  sunsetModeOn=!sunsetModeOn;syncSunsetModeControls();update();scheduleSaveSettings();
+});
+syncSunsetModeControls();
+
 /* 【v906】夜の地上だけを持ち上げる。
 
    空・星・天の川は地形キャンバスに入っていないので、
@@ -13219,6 +13372,9 @@ function collectPersistedSettings(){
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
     photoToneOn:photoToneOn,
+    sunsetModeOn:sunsetModeOn,   // 【v929】
+    sunsetMode:{...sunsetMode},
+
     photoTone:{day:{...photoTone.day},night:{...photoTone.night}},   // 【v905】
     groundTone:{...groundTone},   // 【v906】
     cameraMove:{from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing},   // 【v912】
@@ -13428,6 +13584,15 @@ async function loadPersistedSettings(){
     if(s.belowHorizonOpacity!==undefined) el.belowHorizonOpacitySlider.value=s.belowHorizonOpacity;
     el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
     if(s.photoToneOn!==undefined)photoToneOn=s.photoToneOn!==false;
+    /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
+    if(s.sunsetModeOn!==undefined)sunsetModeOn=s.sunsetModeOn===true;
+    if(s.sunsetMode&&typeof s.sunsetMode==="object"){
+      for(const name of SUNSET_MODE_KEYS){
+        const key=sunsetModeKey(name),value=+s.sunsetMode[key];
+        if(Number.isFinite(value)&&el["sunset"+name])el["sunset"+name].value=value;
+      }
+    }
+    syncSunsetModeControls();
     if(s.photoTone&&typeof s.photoTone==="object"){
       for(const scope of ["day","night"]){
         const saved=s.photoTone[scope];
@@ -28609,6 +28774,10 @@ function drawPhoto(ctx,s){
   /* 【v905】画面全体のトーン。**ここで一段掛ける**。
      魚眼の像円の外（真っ黒）より前に置くので、黒が持ち上げられない。 */
   applyPhotoTone(ctx,s);
+
+  /* 【v929】夕焼けモード。トーンのあと、魚眼の像円の外より前に掛ける。 */
+  applySunsetMode(ctx,s,W,H);
+  updateSunsetModeReadout(s);
 
   // 短い焦点距離では180°の像円がセンサー内に収まるため、像円の外側を黒くして円周魚眼らしく見せる。
   if(useDiagonalFisheye){
