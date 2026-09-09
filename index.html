@@ -2307,22 +2307,33 @@
      使うのはスマホだが、見えないと探せないので、置き場所だけは共通にする。 */
   .drive-toggle-btn svg{width:21px;height:21px;}
   .drive-toggle-btn[aria-pressed="true"]{color:var(--core-amber);border-color:var(--core-amber);}
-  .drive-panel{
-    display:none;position:absolute;left:9px;right:9px;bottom:9px;z-index:14;
-    padding:10px 12px;border:1px solid rgba(154,164,210,.55);border-radius:12px;
+  /* 【v952】ふだんは1行の帯だけ。景色を隠さないことを最優先にする。 */
+  .drive-panel{display:none;position:absolute;left:6px;right:6px;bottom:6px;z-index:14;}
+  body.drive-active .drive-panel{display:block;}
+  .drive-bar{
+    display:flex;align-items:center;gap:6px;
+    padding:5px 6px 5px 9px;border:1px solid rgba(154,164,210,.5);border-radius:10px;
+    background:rgba(12,16,34,.88);color:#eef1f6;
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    box-shadow:0 3px 12px rgba(0,0,0,.36);
+  }
+  .drive-status{
+    flex:1;min-width:0;font-size:11.5px;line-height:1.3;color:#dbe3f5;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .drive-mini-btn{
+    flex:0 0 auto;min-height:26px;padding:3px 9px;border:1px solid rgba(255,255,255,.34);
+    border-radius:7px;background:rgba(255,255,255,.1);color:#fff;font:700 11px/1 'Inter',sans-serif;
+  }
+  .drive-config{
+    display:none;margin-bottom:6px;padding:10px 12px;
+    border:1px solid rgba(154,164,210,.5);border-radius:10px;
     background:rgba(12,16,34,.92);color:#eef1f6;
     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
-    box-shadow:0 6px 20px rgba(0,0,0,.42);
+    box-shadow:0 4px 16px rgba(0,0,0,.4);
   }
-  body.drive-active .drive-panel{display:block;}
-  .drive-panel-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
-  .drive-panel-title{font:700 13px/1.2 'Inter',sans-serif;}
-  .drive-exit-btn{
-    min-height:30px;padding:4px 12px;border:1px solid rgba(255,255,255,.4);border-radius:8px;
-    background:rgba(255,255,255,.12);color:#fff;font:700 12px/1 'Inter',sans-serif;
-  }
-  .drive-status{margin-top:7px;font-size:12.5px;line-height:1.55;white-space:pre-line;color:#dbe3f5;}
-  .drive-hint{margin:7px 0 0;font:500 10.5px/1.5 'Inter',sans-serif;color:rgba(255,255,255,.6);}
+  .drive-panel.open .drive-config{display:block;}
+  .drive-hint{margin:8px 0 0;font:500 10.5px/1.5 'Inter',sans-serif;color:rgba(255,255,255,.6);}
   body.drive-active .mobile-camera-cut-btn,
   body.drive-active .mobile-shot-plan-btn{display:none;}
   /* 地図モードではPC・スマホとも地図アイコンだけを残す。
@@ -5080,16 +5091,19 @@
               </button>
               <!-- 【v925】カメラワーク再生。押すたびに次のカットへ進む。 -->
               <button id="cameraCutPlayBtn" type="button" class="mobile-camera-cut-btn icon-help-target sim-left-help" data-help="カメラワーク再生" aria-label="カメラワークを再生" title="カメラワーク再生"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2.3" y="6.2" width="13.4" height="11.6" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M2.3 10.4h13.4" stroke="currentColor" stroke-width="1.4"/><path d="M6.6 6.2 4.9 10.4M10.9 6.2 9.2 10.4M15.2 6.2 13.5 10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M17.9 8.3v7.4l5.6-3.7-5.6-3.7Z" fill="currentColor"/></svg></button>
-              <!-- 【v950】ドライブモードの操作板。走行中に見るので、大きめの文字にする。 -->
+              <!-- 【v952】ドライブモードの帯。景色を見るための機能なので、
+                   ふだんは1行だけ。つまみは歯車で開く。 -->
               <div id="drivePanel" class="drive-panel" aria-hidden="true">
-                <div class="drive-panel-row">
-                  <span class="drive-panel-title">🚗 ドライブモード</span>
-                  <button id="driveExitBtn" type="button" class="drive-exit-btn">終了</button>
+                <div id="driveConfig" class="drive-config">
+                  <div class="field" style="margin:0;"><label class="top">目線の高さ（追加） <span class="val mono" id="driveEyeVal">1.5m</span></label><input type="range" id="driveEye" min="0" max="5" step="0.1" value="1.5"></div>
+                  <div class="field" style="margin:8px 0 0;"><label class="top">更新する距離 <span class="val mono" id="driveStepVal">12m</span></label><input type="range" id="driveStep" min="5" max="100" step="1" value="12"></div>
+                  <p class="drive-hint">スマホは<b>画面を自分側</b>にして立てて固定してください。止まっているあいだは景色を更新しません。</p>
                 </div>
-                <div id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</div>
-                <div class="field" style="margin:8px 0 0;"><label class="top">目線の高さ（追加） <span class="val mono" id="driveEyeVal">1.5m</span></label><input type="range" id="driveEye" min="0" max="5" step="0.1" value="1.5"></div>
-                <div class="field" style="margin:6px 0 0;"><label class="top">更新する距離 <span class="val mono" id="driveStepVal">12m</span></label><input type="range" id="driveStep" min="5" max="100" step="1" value="12"></div>
-                <p class="drive-hint">スマホは<b>画面を自分側</b>にして立てて固定してください。止まっているあいだは景色を更新しません。</p>
+                <div class="drive-bar">
+                  <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
+                  <button id="driveConfigBtn" type="button" class="drive-mini-btn" aria-expanded="false" aria-label="ドライブモードの設定">⚙</button>
+                  <button id="driveExitBtn" type="button" class="drive-mini-btn drive-exit-btn">終了</button>
+                </div>
               </div>
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="地図をタップして観測地点を選択するOpenStreetMap"></div>
@@ -5503,7 +5517,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="951-drive-visible";
+const APP_VERSION="952-drive-bar";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6636,6 +6650,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveExitBtn:$("driveExitBtn"), driveStatus:$("driveStatus"),
+  driveConfigBtn:$("driveConfigBtn"), driveConfig:$("driveConfig"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13695,16 +13710,16 @@ function driveScheduleRender(){
 }
 function driveRenderStatus(){
   if(!el.driveStatus)return;
-  const source=Number.isFinite(driveGpsAz)&&driveSpeedMps>=4?"GPSの進行方向"
-    :(Number.isFinite(driveCompassAz)?"電子コンパス":"—");
+  const source=Number.isFinite(driveGpsAz)&&driveSpeedMps>=4?"GPS"
+    :(Number.isFinite(driveCompassAz)?"コンパス":"—");
   const speedKmh=driveSpeedMps*3.6;
   const need=Math.max(driveStepMetres(),driveSpeedMps*1.2);
-  const lines=[
-    `方位 ${driveSmoothedAz===null?"—":Math.round(driveSmoothedAz)+"°"}（${source}）`,
-    `速さ ${speedKmh<1?"停車中":speedKmh.toFixed(0)+" km/h"}　測位 ${driveAccuracyM===null?"—":"±"+Math.round(driveAccuracyM)+"m"}`,
-    `次の更新まで ${Math.max(0,need-drivePendingMoveM).toFixed(0)}m（${Math.round(need)}mごと）`
-  ];
-  const text=lines.join("\n");
+  /* 【v952】1行に詰める。景色を隠さないことが最優先。 */
+  const text=[
+    `${driveSmoothedAz===null?"—":Math.round(driveSmoothedAz)+"°"} ${source}`,
+    `${speedKmh<1?"停車中":speedKmh.toFixed(0)+"km/h"} ±${driveAccuracyM===null?"—":Math.round(driveAccuracyM)+"m"}`,
+    `次 ${Math.max(0,need-drivePendingMoveM).toFixed(0)}m`
+  ].join(" ｜ ");
   if(el.driveStatus.textContent!==text)el.driveStatus.textContent=text;
 }
 function driveHandlePosition(pos){
@@ -13745,7 +13760,8 @@ async function startDriveMode(){
   document.body.classList.add("drive-active");
   el.driveModeBtn.classList.add("active");
   el.driveModeBtn.setAttribute("aria-pressed","true");
-  if(el.drivePanel)el.drivePanel.setAttribute("aria-hidden","false");
+  if(el.drivePanel){el.drivePanel.setAttribute("aria-hidden","false");el.drivePanel.classList.remove("open");}
+  if(el.driveConfigBtn)el.driveConfigBtn.setAttribute("aria-expanded","false");
   driveLastLat=null;driveLastLon=null;driveSmoothedAz=null;driveCompassAz=null;driveGpsAz=null;
   driveSpeedMps=0;driveAccuracyM=null;drivePendingMoveM=0;driveLastFrameAt=0;
   /* 目線の高さを足す。終わったら元へ戻す。 */
@@ -13787,6 +13803,11 @@ if(el.driveModeBtn)el.driveModeBtn.addEventListener("click",()=>{
   if(driveActive)stopDriveMode();else startDriveMode();
 });
 if(el.driveExitBtn)el.driveExitBtn.addEventListener("click",stopDriveMode);
+/* 【v952】つまみは歯車で開く。開いている間だけ景色に掛かる。 */
+if(el.driveConfigBtn)el.driveConfigBtn.addEventListener("click",()=>{
+  const open=el.drivePanel.classList.toggle("open");
+  el.driveConfigBtn.setAttribute("aria-expanded",String(open));
+});
 if(el.driveEye)el.driveEye.addEventListener("input",()=>{
   driveSyncControls();
   if(driveActive&&el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();update();}
