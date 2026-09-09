@@ -2307,6 +2307,47 @@
      使うのはスマホだが、見えないと探せないので、置き場所だけは共通にする。 */
   .drive-toggle-btn svg{width:21px;height:21px;}
   .drive-toggle-btn[aria-pressed="true"]{color:var(--core-amber);border-color:var(--core-amber);}
+
+  /* 【v956】全画面モード（スマホのみ）。
+     写真は**縦構図の3:2**（幅100vw・高さ150vw）。下の余りに時刻と時間バーを置く。 */
+  .fs-overlay{display:none;position:fixed;inset:0;z-index:300;background:#04060f;overflow:hidden;}
+  body.fs-sim .fs-overlay{display:flex;flex-direction:column;}
+  body.fs-sim{overflow:hidden;}
+  .fs-photo-slot{flex:0 0 auto;width:100vw;}
+  /* 【v956】土台の  より
+     **強い選び方**にしないと正方形のままになる（実測で375×375だった）。 */
+  body.fs-sim .fs-photo-slot .photo-canvas-wrap{
+    width:100vw;max-width:100vw;margin:0;
+    aspect-ratio:2/3;                 /* 縦構図の3:2 */
+    --sim-inset-x:0px;--sim-inset-y:0px;
+  }
+  /* 縦構図の絵は、正方形の器に収めるため幅66.67%で描かれている。
+     全画面では器がすでに3:2なので、**幅いっぱい**に戻す。 */
+  body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #photoCanvas,
+  body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #meteorCanvas,
+  body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #walkerFxCanvas{width:100%;}
+  .fs-bottom{
+    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:2px;
+    padding:4px 10px 8px;overflow:hidden;
+  }
+  .fs-bottom .dt-time-label{margin:0;}
+  .fs-bottom .timeline-row{margin:0;}
+  .fs-exit-btn{
+    position:absolute;top:10px;right:10px;z-index:320;
+    width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;
+    border:1px solid rgba(255,255,255,.62);border-radius:50%;
+    background:rgba(8,12,26,.62);color:#fff;
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
+  .fs-exit-btn svg{width:22px;height:22px;}
+  /* 保存・読込は右上（top:9px right:9px）にいる。バツと同じ場所なので下へずらす。
+     実測でバツが「保存」を覆っていた。 */
+  body.fs-sim .plan-quick-actions{top:56px;}
+  /* 小地図は元から「写真の下端から下へ伸びる」作り。
+     全画面のときだけ、残りいっぱい・画面幅いっぱいにする。 */
+  body.fs-sim .drone-map-panel{width:100%;left:0;transform:none;border-radius:0;}
+  body.fs-sim.drone-map-open .drone-map-panel{--mini-map-h:calc(100vh - 150vw - 2px);}
+  @media (min-width:761px){ body.fs-sim .fs-overlay{display:none;} }
   /* 【v955】ドライブモードの状態表示。
 
      画面の下は小地図・ドローンの操作輪・方位バーが並んでいて、必ず何かと重なる。
@@ -4159,6 +4200,14 @@
 </div>
 <div class="app">
 
+  <!-- 【v956】全画面モードの器。中身は入るときに引っ越してくる。 -->
+  <div id="fsOverlay" class="fs-overlay" aria-hidden="true">
+    <div id="fsPhotoSlot" class="fs-photo-slot"></div>
+    <div id="fsBottom" class="fs-bottom"></div>
+    <button id="fsExitBtn" type="button" class="fs-exit-btn" aria-label="全画面表示を終了する" title="全画面表示を終了">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
+    </button>
+  </div>
   <div class="layout">
     <div class="left-column">
       <header class="masthead">
@@ -5513,7 +5562,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="955-drive-status";
+const APP_VERSION="956-fullscreen";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6646,6 +6695,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveStatus:$("driveStatus"),
+  fsOverlay:$("fsOverlay"), fsPhotoSlot:$("fsPhotoSlot"), fsBottom:$("fsBottom"), fsExitBtn:$("fsExitBtn"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13213,6 +13263,84 @@ el.orientationSeg.addEventListener("click",(e)=>{
   if(!btn) return;
   setOrientation(btn.dataset.o);
 });
+
+/* =========================================================
+   【v956】全画面モード（スマホのみ）
+
+   隠す要素をひとつずつ指定すると必ず取りこぼすので、
+   **必要な3つだけを全画面の器へ引っ越しさせる**。終わったら元の場所へ戻す。
+   ========================================================= */
+let fsSimActive=false;
+const fsMovedNodes=[];
+function fsMoveNode(node,target){
+  if(!node||!target)return;
+  fsMovedNodes.push({node,parent:node.parentElement,next:node.nextSibling});
+  target.appendChild(node);
+}
+function fsRestoreNodes(){
+  while(fsMovedNodes.length){
+    const item=fsMovedNodes.pop();
+    if(item.parent)item.parent.insertBefore(item.node,item.next);
+  }
+}
+function fsSimAvailable(){
+  return window.matchMedia("(max-width:760px)").matches;
+}
+function enterFullscreenSim(){
+  if(fsSimActive||!fsSimAvailable()||arActive)return;
+  fsSimActive=true;
+  document.body.classList.add("fs-sim");
+  el.fsOverlay.setAttribute("aria-hidden","false");
+  /* 縦構図限定。横構図で入ったら縦へ直す。 */
+  if(orientation!=="portrait")setOrientation("portrait");
+  const wrap=document.querySelector(".photo-canvas-wrap");
+  const timeLabel=document.querySelector(".dt-time-label");
+  fsMoveNode(wrap,el.fsPhotoSlot);
+  fsMoveNode(timeLabel,el.fsBottom);
+  fsMoveNode(document.getElementById("sliderTimelineRow"),el.fsBottom);
+  update();
+  /* 引っ越したあとは、地図の大きさを取り直さないと灰色のままになる。 */
+  requestAnimationFrame(()=>{
+    if(typeof droneMapInstance!=="undefined"&&droneMapInstance)droneMapInstance.invalidateSize({pan:false});
+    update();
+  });
+}
+function exitFullscreenSim(){
+  if(!fsSimActive)return;
+  fsSimActive=false;
+  document.body.classList.remove("fs-sim");
+  el.fsOverlay.setAttribute("aria-hidden","true");
+  fsRestoreNodes();
+  update();
+  requestAnimationFrame(()=>{
+    if(typeof droneMapInstance!=="undefined"&&droneMapInstance)droneMapInstance.invalidateSize({pan:false});
+    update();
+  });
+}
+if(el.fsExitBtn)el.fsExitBtn.addEventListener("click",exitFullscreenSim);
+/* 構図アイコンの長押しで入る。短く押したときは今までどおり縦横の切り替え。 */
+const FS_LONG_PRESS_MS=550;
+let fsLongPressTimer=0,fsLongPressFired=false;
+function fsCancelLongPress(){
+  if(fsLongPressTimer){clearTimeout(fsLongPressTimer);fsLongPressTimer=0;}
+}
+if(el.mobileOrientationToggleBtn){
+  el.mobileOrientationToggleBtn.addEventListener("pointerdown",()=>{
+    if(!fsSimAvailable())return;
+    fsLongPressFired=false;
+    fsCancelLongPress();
+    fsLongPressTimer=setTimeout(()=>{
+      fsLongPressTimer=0;fsLongPressFired=true;
+      enterFullscreenSim();
+    },FS_LONG_PRESS_MS);
+  });
+  ["pointerup","pointerleave","pointercancel"].forEach(type=>
+    el.mobileOrientationToggleBtn.addEventListener(type,fsCancelLongPress));
+  /* 長押しが成立したときは、そのあとのクリック（縦横の切り替え）を捨てる。 */
+  el.mobileOrientationToggleBtn.addEventListener("click",(e)=>{
+    if(fsLongPressFired){e.preventDefault();e.stopImmediatePropagation();fsLongPressFired=false;}
+  },true);
+}
 el.mobileOrientationToggleBtn.addEventListener("click",()=>{
   setOrientation(orientation==="portrait" ? "landscape" : "portrait");
 });
