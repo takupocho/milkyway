@@ -4752,7 +4752,7 @@
           </div>
           <!-- 【v931】夕焼けモード。空・水面・光の道・地上・太陽を分けて調整する。 -->
           <button id="sunsetModeBtn" type="button" class="toggle-btn" style="margin-top:12px;"><span>🌇 夕焼けモード</span><span id="sunsetModeState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
-          <p class="map-hint" style="margin-top:6px;">夕焼け・朝焼けの時間だけ、太陽を中心に放射状の明暗を付けて逆光の絵に寄せます。太陽の高さで効き具合が決まるので、日が沈むにつれて自然に消えます。演出用なので既定はOFFです。</p>
+          <p class="map-hint" style="margin-top:6px;">夕焼け・朝焼けの時間だけ、太陽を中心に放射状の明暗を付けて逆光の絵に寄せます。太陽の高さで効き具合が決まるので、日が沈むにつれて自然に消えます。演出用の機能です。</p>
           <div id="sunsetModePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
             <p class="map-hint" style="margin:2px 0 2px;color:var(--ink);font-weight:700;">全体</p>
             <div class="field"><label class="top">効き具合 <span class="val mono" id="sunsetStrengthVal">94%</span></label><input type="range" id="sunsetStrength" min="0" max="100" step="1" value="94"></div>
@@ -4806,6 +4806,9 @@
               <button id="sunsetPresetLoadBtn" type="button" style="margin-top:6px;width:100%;">選んだ夕陽を呼び出す</button>
               <button id="sunsetCopyBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">いまの値を書き出す</button>
               <p id="sunsetCopyReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
+              <!-- 【v957】スマホで効かないときの自己診断。押すと原因が下に出る。 -->
+              <button id="sunsetSelfTestBtn" type="button" class="ghost" style="width:100%;margin-top:10px;">効かないときの自己診断</button>
+              <p id="sunsetSelfTestReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;line-height:1.6;"></p>
               <p id="sunsetPresetStatus" class="map-hint" style="margin-top:7px;">上のつまみの内容をまとめて保存します。撮影計画にも一緒に記録されます。</p>
             </div>
           </div>
@@ -5562,7 +5565,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="956-fullscreen";
+const APP_VERSION="957-sunset-selftest";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6770,7 +6773,8 @@ const el={
   sunsetModeReadout:$("sunsetModeReadout"),
   sunsetPresetName:$("sunsetPresetName"), sunsetPresetSaveBtn:$("sunsetPresetSaveBtn"), sunsetPresetDeleteBtn:$("sunsetPresetDeleteBtn"),
   sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"),
-  sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
+  sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -11173,6 +11177,21 @@ function sunsetSunColor(alt){
   if(value>=1)return sunsetColorBlend(SUNSET_SUN_YELLOW,SUNSET_SUN_WHITE,(value-1)/2);
   return sunsetColorBlend(SUNSET_SUN_RED,SUNSET_SUN_YELLOW,value);
 }
+/* 【v957】自己診断用。armedのときだけ、掛ける前後の平均色を控える。 */
+let sunsetProbeCanvas=null,sunsetProbeArmed=false,sunsetProbeResult=null;
+function sunsetProbeMean(canvas){
+  try{
+    const probe=sunsetProbeCanvas=sunsetCanvas(sunsetProbeCanvas,8,8);
+    const c=probe.getContext("2d",{willReadFrequently:true});
+    c.setTransform(1,0,0,1,0,0);c.globalCompositeOperation="source-over";
+    c.globalAlpha=1;c.filter="none";c.clearRect(0,0,8,8);
+    c.drawImage(canvas,0,0,8,8);
+    const d=c.getImageData(0,0,8,8).data;
+    let r=0,g=0,b=0;
+    for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];}
+    return [r/64,g/64,b/64];
+  }catch(error){return null;}
+}
 let sunsetCopyCanvas=null,sunsetFieldCanvas=null,sunsetMaskCanvas=null,sunsetBrightCanvas=null,sunsetVividCanvas=null,sunsetRestoreCanvas=null,sunsetSkyMaskCanvas=null,sunsetGuardCanvas=null;
 function sunsetCanvas(store,w,h){
   const canvas=store||document.createElement("canvas");
@@ -11261,9 +11280,16 @@ function sunsetGray(percent){
 }
 function applySunsetMode(ctx,s,W,H,toXY){
   const weight=sunsetModeWeight(s);
-  if(weight<=.002||!photoToneCanvasFilterSupported)return;
+  if(sunsetProbeArmed)sunsetProbeResult=null;
+  if(weight<=.002||!photoToneCanvasFilterSupported){
+    /* 【v957】掛けずに帰るときは、その理由を控える。 */
+    if(sunsetProbeArmed)sunsetProbeResult={skipped:!photoToneCanvasFilterSupported
+      ?"この端末はcanvasのfilterに未対応":`効きが${(weight*100).toFixed(1)}%（時間帯・ARモード）`};
+    return;
+  }
   const canvas=ctx.canvas,cw=canvas.width,ch=canvas.height;
-  if(!(cw>0&&ch>0))return;
+  if(!(cw>0&&ch>0)){if(sunsetProbeArmed)sunsetProbeResult={skipped:"画面の大きさが0"};return;}
+  const probeBefore=sunsetProbeArmed?sunsetProbeMean(canvas):null;
   const strength=clamp(sunsetMode.strength/100,0,1);
 
   /* ① 橙＋赤／黄へ寄せる。
@@ -11528,6 +11554,8 @@ function applySunsetMode(ctx,s,W,H,toXY){
   restoreRegion(groundMask,1-groundFade);
   /* 【v942】水面も同じく。日没後に空より明るい赤が残るのを止める。 */
   restoreRegion(waterOk?waterMask:null,1-sunsetWaterFactor(sunAlt));
+  /* 【v957】掛けたあとの平均色。前と同じなら、描いたつもりで何も乗っていない。 */
+  if(probeBefore)sunsetProbeResult={before:probeBefore,after:sunsetProbeMean(canvas),weight:weight};
 }
 for(const name of SUNSET_MODE_KEYS){
   const input=el["sunset"+name];
@@ -11619,6 +11647,197 @@ function sunsetModeValuesText(){
 if(el.sunsetCopyBtn)el.sunsetCopyBtn.addEventListener("click",()=>{
   const text=sunsetModeValuesText();
   if(el.sunsetCopyReadout)el.sunsetCopyReadout.textContent=text;
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+});
+
+/* =========================================================
+   【v957】夕焼けモードの自己診断（スマホで効かないとき用）
+
+   手元はWindowsでWebKitが無く、iOSでどの描画が言うことを聞かないかを
+   確かめる手立てが無い。当てずっぽうで直すのはやめて、
+   **利用者の端末の上で答えを出す**。
+
+   下ごしらえ9つを小さなキャンバスで実際に描いて、読み返して合否を出す。
+   絵の見え方には一切触らない。
+   ========================================================= */
+function sunsetTestCanvas(w,h){
+  const canvas=document.createElement("canvas");
+  canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation="source-over";
+  ctx.globalAlpha=1;ctx.filter="none";
+  return {canvas,ctx};
+}
+function sunsetTestFill(w,h,color){
+  const t=sunsetTestCanvas(w,h);
+  t.ctx.fillStyle=color;t.ctx.fillRect(0,0,w,h);
+  return t;
+}
+function sunsetTestPixel(ctx,x,y){
+  const d=ctx.getImageData(x,y,1,1).data;
+  return [d[0],d[1],d[2],d[3]];
+}
+function sunsetSelfTestChecks(){
+  const rows=[];
+  const add=(name,ok,note)=>rows.push({name,ok,note:note||""});
+  const near=(v,target,slack)=>Math.abs(v-target)<=slack;
+
+  /* ① filterそのもの */
+  try{
+    const t=sunsetTestCanvas(4,4);
+    t.ctx.filter="brightness(2)";
+    add("filter対応",t.ctx.filter==="brightness(2)",t.ctx.filter);
+  }catch(error){add("filter対応",false,"例外");}
+
+  /* ② sepia … 灰色に掛けると赤が青より強くなるはず */
+  let sepiaRgb=null;
+  try{
+    const src=sunsetTestFill(4,4,"rgb(120,120,120)");
+    const dst=sunsetTestCanvas(4,4);
+    dst.ctx.filter="sepia(1)";
+    dst.ctx.drawImage(src.canvas,0,0);
+    dst.ctx.filter="none";
+    sepiaRgb=sunsetTestPixel(dst.ctx,2,2);
+    add("sepia",sepiaRgb[0]-sepiaRgb[2]>=25,sepiaRgb.slice(0,3).join(","));
+  }catch(error){add("sepia",false,"例外");}
+
+  /* ③ 実際に使っている組み合わせ。sepiaだけの結果から動いていればよい */
+  try{
+    const src=sunsetTestFill(4,4,"rgb(120,120,120)");
+    const dst=sunsetTestCanvas(4,4);
+    dst.ctx.filter="brightness(.85) sepia(1) saturate(4.000) hue-rotate(-23.40deg)";
+    dst.ctx.drawImage(src.canvas,0,0);
+    dst.ctx.filter="none";
+    const rgb=sunsetTestPixel(dst.ctx,2,2);
+    const moved=sepiaRgb?Math.max(Math.abs(rgb[0]-sepiaRgb[0]),Math.abs(rgb[1]-sepiaRgb[1]),Math.abs(rgb[2]-sepiaRgb[2])):99;
+    add("saturate+hue",moved>=10,rgb.slice(0,3).join(","));
+  }catch(error){add("saturate+hue",false,"例外");}
+
+  /* ④ filterと透明度の同時使い。黒の上へ白を半分の濃さで置く → 128前後 */
+  try{
+    const src=sunsetTestFill(4,4,"rgb(255,255,255)");
+    const dst=sunsetTestFill(4,4,"rgb(0,0,0)");
+    dst.ctx.globalAlpha=.5;
+    dst.ctx.filter="brightness(1)";
+    dst.ctx.drawImage(src.canvas,0,0);
+    dst.ctx.filter="none";dst.ctx.globalAlpha=1;
+    const v=sunsetTestPixel(dst.ctx,2,2)[0];
+    add("filter＋透明度",near(v,128,30),String(v)+"（正解128）");
+  }catch(error){add("filter＋透明度",false,"例外");}
+
+  /* ⑤ 放射グラデ。半径1の円を setTransform で引き伸ばす、夕焼けの土台。 */
+  const radial=(huge)=>{
+    const t=sunsetTestCanvas(64,64);
+    t.ctx.setTransform(32,0,0,32,32,32);
+    const g=t.ctx.createRadialGradient(0,0,0,0,0,1);
+    g.addColorStop(0,"rgb(255,255,255)");
+    g.addColorStop(1,"rgb(0,0,0)");
+    t.ctx.fillStyle=g;
+    if(huge)t.ctx.fillRect(-9999,-9999,19998,19998);
+    else t.ctx.fillRect(-2,-2,4,4);
+    t.ctx.setTransform(1,0,0,1,0,0);
+    return [sunsetTestPixel(t.ctx,32,32)[0],sunsetTestPixel(t.ctx,1,1)[0]];
+  };
+  try{
+    const v=radial(false);
+    add("放射グラデ",v[0]>=200&&v[1]<=60,`中心${v[0]} 外${v[1]}`);
+  }catch(error){add("放射グラデ",false,"例外");}
+  try{
+    const v=radial(true);
+    add("巨大な塗り",v[0]>=200&&v[1]<=60,`中心${v[0]} 外${v[1]}`);
+  }catch(error){add("巨大な塗り",false,"例外");}
+
+  /* ⑥ 足し算・掛け算・型抜き */
+  try{
+    const src=sunsetTestFill(4,4,"rgb(60,60,60)");
+    const dst=sunsetTestFill(4,4,"rgb(60,60,60)");
+    dst.ctx.globalCompositeOperation="lighter";
+    dst.ctx.drawImage(src.canvas,0,0);
+    dst.ctx.globalCompositeOperation="source-over";
+    const v=sunsetTestPixel(dst.ctx,2,2)[0];
+    add("lighter（足す）",near(v,120,20),String(v)+"（正解120）");
+  }catch(error){add("lighter（足す）",false,"例外");}
+  try{
+    const src=sunsetTestFill(4,4,"rgb(128,128,128)");
+    const dst=sunsetTestFill(4,4,"rgb(255,255,255)");
+    dst.ctx.globalCompositeOperation="multiply";
+    dst.ctx.drawImage(src.canvas,0,0);
+    dst.ctx.globalCompositeOperation="source-over";
+    const v=sunsetTestPixel(dst.ctx,2,2)[0];
+    add("multiply（掛ける）",near(v,128,20),String(v)+"（正解128）");
+  }catch(error){add("multiply（掛ける）",false,"例外");}
+  try{
+    const mask=sunsetTestCanvas(8,8);
+    mask.ctx.fillStyle="rgb(255,255,255)";mask.ctx.fillRect(0,0,4,8);
+    const field=sunsetTestFill(8,8,"rgb(255,0,0)");
+    field.ctx.globalCompositeOperation="destination-in";
+    field.ctx.drawImage(mask.canvas,0,0,8,8);
+    field.ctx.globalCompositeOperation="source-over";
+    const left=sunsetTestPixel(field.ctx,1,4)[3],right=sunsetTestPixel(field.ctx,6,4)[3];
+    add("型抜き",left>=200&&right<=40,`左${left} 右${right}`);
+  }catch(error){add("型抜き",false,"例外");}
+
+  /* ⑧ 【v957】iOSはページ全体のキャンバス量に上限があり、
+     超えると古いキャンバスの中身を**黙って捨てる**。
+     夕焼けは全面の作業用キャンバスを8枚使うので、
+     スマホ（倍率3）だとPCの9倍の場所を食う。ここが本命の容疑。 */
+  try{
+    const main=el.photoCanvas,cw=main.width,ch=main.height;
+    const mb=(cw*ch*4*8)/1048576;
+    const held=[];
+    for(let i=0;i<8;i++){
+      const t=sunsetTestCanvas(cw,ch);
+      t.ctx.fillStyle="rgb(200,40,40)";t.ctx.fillRect(0,0,cw,ch);
+      held.push(t);
+    }
+    const first=sunsetTestPixel(held[0].ctx,1,1);
+    const last=sunsetTestPixel(held[7].ctx,1,1);
+    const ok=first[0]>=150&&first[3]>=200&&last[0]>=150&&last[3]>=200;
+    add(`作業用${cw}x${ch}を8枚`,ok,`${mb.toFixed(0)}MB 1枚目${first.join("/")} 8枚目${last.join("/")}`);
+    for(const t of held){t.canvas.width=0;t.canvas.height=0;}
+  }catch(error){add("作業用キャンバス",false,"例外 "+(error&&error.message));}
+
+  return rows;
+}
+function sunsetSelfTestReport(){
+  const lines=[];
+  const ua=navigator.userAgent;
+  const os=/iP(hone|ad|od)/.test(ua)?"iOS":(/Android/.test(ua)?"Android":"PCなど");
+  const app=/CriOS/.test(ua)?"Chrome":(/FxiOS|Firefox/.test(ua)?"Firefox":(/Edg\//.test(ua)?"Edge":(/Chrome\//.test(ua)?"Chrome":"Safari")));
+  lines.push(`版 ${APP_VERSION} / ${os} / ${app}`);
+  const canvas=el.photoCanvas;
+  lines.push(`画面 ${canvas.width}x${canvas.height}（表示 ${Math.round(canvas.getBoundingClientRect().width)} / 倍率 ${(window.devicePixelRatio||1).toFixed(1)}）`);
+  const s=(typeof state!=="undefined")?state:null;
+  const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
+  lines.push(`夕焼け ${sunsetModeOn?"ON":"OFF"} / 効き ${Math.round(sunsetModeWeight(s)*100)}% / 太陽 ${alt===null?"—":alt.toFixed(1)+"°"} / AR ${arActive?"ON":"OFF"}`);
+  const sizeOf=(m)=>!m?"なし":((m.width===canvas.width&&m.height===canvas.height)?"OK":`大きさ違い ${m.width}x${m.height}`);
+  lines.push(`地形マスク ${sizeOf(drawPhoto._terrainLayerCanvas)} / 水面マスク ${sizeOf(drawPhoto._waterSurfaceMaskCanvas)}`);
+
+  /* 実際に1枚描いて、掛ける前と後の平均色を比べる。 */
+  sunsetProbeArmed=true;sunsetProbeResult=null;
+  try{update();}catch(error){lines.push(`描き直しで例外 ${error&&error.message}`);}
+  sunsetProbeArmed=false;
+  const p=sunsetProbeResult;
+  lines.push("─────────────");
+  if(!p)lines.push("効き具合 … 測れませんでした");
+  else if(p.skipped)lines.push(`効き具合 … 掛けずに帰りました（${p.skipped}）`);
+  else if(!p.before||!p.after)lines.push("効き具合 … 画素を読めませんでした");
+  else{
+    const f=v=>v.map(x=>Math.round(x)).join(",");
+    const diff=Math.max(Math.abs(p.after[0]-p.before[0]),Math.abs(p.after[1]-p.before[1]),Math.abs(p.after[2]-p.before[2]));
+    lines.push(`掛ける前 ${f(p.before)}\n掛けた後 ${f(p.after)}\n差 ${diff.toFixed(1)}${diff<2?"  ← 描いても乗っていない":"  ← 絵は変わっている"}`);
+  }
+  lines.push("───── 下ごしらえ ─────");
+  for(const row of sunsetSelfTestChecks()){
+    lines.push(`${row.ok?"○":"×"} ${row.name}${row.note?"  "+row.note:""}`);
+  }
+  return lines.join("\n");
+}
+if(el.sunsetSelfTestBtn)el.sunsetSelfTestBtn.addEventListener("click",()=>{
+  let text;
+  try{text=sunsetSelfTestReport();}
+  catch(error){text=`自己診断で例外\n${error&&error.message}\n${error&&error.stack?String(error.stack).slice(0,300):""}`;}
+  if(el.sunsetSelfTestReadout)el.sunsetSelfTestReadout.textContent=text;
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
 });
 if(el.sunsetPresetSelect)el.sunsetPresetSelect.addEventListener("change",()=>{
