@@ -2325,15 +2325,7 @@
     flex:0 0 auto;min-height:26px;padding:3px 9px;border:1px solid rgba(255,255,255,.34);
     border-radius:7px;background:rgba(255,255,255,.1);color:#fff;font:700 11px/1 'Inter',sans-serif;
   }
-  .drive-config{
-    display:none;margin-bottom:6px;padding:10px 12px;
-    border:1px solid rgba(154,164,210,.5);border-radius:10px;
-    background:rgba(12,16,34,.92);color:#eef1f6;
-    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
-    box-shadow:0 4px 16px rgba(0,0,0,.4);
-  }
-  .drive-panel.open .drive-config{display:block;}
-  .drive-hint{margin:8px 0 0;font:500 10.5px/1.5 'Inter',sans-serif;color:rgba(255,255,255,.6);}
+  /* 【v953】つまみは「設定」の中へ移した。画面の帯は状態表示と終了だけ。 */
   body.drive-active .mobile-camera-cut-btn,
   body.drive-active .mobile-shot-plan-btn{display:none;}
   /* 地図モードではPC・スマホとも地図アイコンだけを残す。
@@ -4589,6 +4581,19 @@
         </div>
       </section>
 
+      <!-- 【v953】ドライブモードのつまみ。走行中に触るものではないので設定側へ。 -->
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">ドライブモード設定<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint" style="margin:0 0 8px;">走りながら、実際の景色とシミュレーション画面を見比べるための設定です。スマホ向けで、上の並びにある車のボタンから始めます。</p>
+          <div class="field"><label class="top">目線の高さ（追加） <span class="val mono" id="driveEyeVal">1.5m</span></label><input type="range" id="driveEye" min="0" max="5" step="0.1" value="1.5"></div>
+          <p class="map-hint" style="margin-top:4px;">三脚の高さに上乗せされます。車の目線に近づけたいときは1.5〜2.5mくらいが目安です。ドライブモードを終えると元の値へ戻ります。</p>
+          <div class="field" style="margin-top:10px;"><label class="top">更新する距離 <span class="val mono" id="driveStepVal">12m</span></label><input type="range" id="driveStep" min="5" max="100" step="1" value="12"></div>
+          <p class="map-hint" style="margin-top:4px;">この距離だけ動いたら景色を作り直します。速く走っているときは自動でもう少し広がります（速さ×1.2秒）。止まっているあいだは更新しません。</p>
+          <p class="map-hint" style="margin-top:10px;">スマホは<b>画面を自分側</b>にして立てて固定してください。止まっているときは電子コンパス、走っているときはGPSの進行方向で向きを決めます（車内は磁気が乱れるため）。</p>
+        </div>
+      </section>
+
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">軽量化<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
@@ -5094,14 +5099,8 @@
               <!-- 【v952】ドライブモードの帯。景色を見るための機能なので、
                    ふだんは1行だけ。つまみは歯車で開く。 -->
               <div id="drivePanel" class="drive-panel" aria-hidden="true">
-                <div id="driveConfig" class="drive-config">
-                  <div class="field" style="margin:0;"><label class="top">目線の高さ（追加） <span class="val mono" id="driveEyeVal">1.5m</span></label><input type="range" id="driveEye" min="0" max="5" step="0.1" value="1.5"></div>
-                  <div class="field" style="margin:8px 0 0;"><label class="top">更新する距離 <span class="val mono" id="driveStepVal">12m</span></label><input type="range" id="driveStep" min="5" max="100" step="1" value="12"></div>
-                  <p class="drive-hint">スマホは<b>画面を自分側</b>にして立てて固定してください。止まっているあいだは景色を更新しません。</p>
-                </div>
                 <div class="drive-bar">
                   <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
-                  <button id="driveConfigBtn" type="button" class="drive-mini-btn" aria-expanded="false" aria-label="ドライブモードの設定">⚙</button>
                   <button id="driveExitBtn" type="button" class="drive-mini-btn drive-exit-btn">終了</button>
                 </div>
               </div>
@@ -5517,7 +5516,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="952-drive-bar";
+const APP_VERSION="953-drive-settings";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6650,7 +6649,6 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveExitBtn:$("driveExitBtn"), driveStatus:$("driveStatus"),
-  driveConfigBtn:$("driveConfigBtn"), driveConfig:$("driveConfig"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13760,8 +13758,7 @@ async function startDriveMode(){
   document.body.classList.add("drive-active");
   el.driveModeBtn.classList.add("active");
   el.driveModeBtn.setAttribute("aria-pressed","true");
-  if(el.drivePanel){el.drivePanel.setAttribute("aria-hidden","false");el.drivePanel.classList.remove("open");}
-  if(el.driveConfigBtn)el.driveConfigBtn.setAttribute("aria-expanded","false");
+  if(el.drivePanel)el.drivePanel.setAttribute("aria-hidden","false");
   driveLastLat=null;driveLastLon=null;driveSmoothedAz=null;driveCompassAz=null;driveGpsAz=null;
   driveSpeedMps=0;driveAccuracyM=null;drivePendingMoveM=0;driveLastFrameAt=0;
   /* 目線の高さを足す。終わったら元へ戻す。 */
@@ -13803,11 +13800,6 @@ if(el.driveModeBtn)el.driveModeBtn.addEventListener("click",()=>{
   if(driveActive)stopDriveMode();else startDriveMode();
 });
 if(el.driveExitBtn)el.driveExitBtn.addEventListener("click",stopDriveMode);
-/* 【v952】つまみは歯車で開く。開いている間だけ景色に掛かる。 */
-if(el.driveConfigBtn)el.driveConfigBtn.addEventListener("click",()=>{
-  const open=el.drivePanel.classList.toggle("open");
-  el.driveConfigBtn.setAttribute("aria-expanded",String(open));
-});
 if(el.driveEye)el.driveEye.addEventListener("input",()=>{
   driveSyncControls();
   if(driveActive&&el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();update();}
