@@ -1581,8 +1581,10 @@
     text-shadow:0 1px 3px rgba(4,8,20,.85),0 0 8px rgba(4,8,20,.6);
     box-shadow:0 4px 14px rgba(4,8,20,.3);cursor:pointer;white-space:nowrap;
   }
+  /* 【v949】距離の表示は**終了点（地図の中心）の少し下**へ置く。
+     画面の下端に置いていたので、方位のバーと重なって読めなかった。 */
   .map-measure-readout{
-    position:absolute;z-index:1020;left:50%;transform:translateX(-50%);bottom:14px;
+    position:absolute;z-index:1020;left:50%;top:50%;transform:translateX(-50%);margin-top:26px;
     display:none;padding:5px 1em;border-radius:9px;
     border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.2);
     -webkit-backdrop-filter:blur(14px) saturate(120%);
@@ -2299,10 +2301,37 @@
     body.ar-active .mobile-clock-toggle-btn,
     body.ar-active .mobile-map-toggle-btn{display:none;}
   }
-  /* 地図モードではPC・スマホとも地図アイコンだけを残す。 */
+
+  /* 【v950】ドライブモード。スマホでしか出さない。 */
+  .drive-toggle-btn{font-size:15px;}
+  @media (min-width:761px){ .drive-toggle-btn{display:none!important;} }
+  .drive-panel{
+    display:none;position:absolute;left:9px;right:9px;bottom:9px;z-index:14;
+    padding:10px 12px;border:1px solid rgba(154,164,210,.55);border-radius:12px;
+    background:rgba(12,16,34,.92);color:#eef1f6;
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    box-shadow:0 6px 20px rgba(0,0,0,.42);
+  }
+  body.drive-active .drive-panel{display:block;}
+  .drive-panel-row{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .drive-panel-title{font:700 13px/1.2 'Inter',sans-serif;}
+  .drive-exit-btn{
+    min-height:30px;padding:4px 12px;border:1px solid rgba(255,255,255,.4);border-radius:8px;
+    background:rgba(255,255,255,.12);color:#fff;font:700 12px/1 'Inter',sans-serif;
+  }
+  .drive-status{margin-top:7px;font-size:12.5px;line-height:1.55;white-space:pre-line;color:#dbe3f5;}
+  .drive-hint{margin:7px 0 0;font:500 10.5px/1.5 'Inter',sans-serif;color:rgba(255,255,255,.6);}
+  body.drive-active .mobile-camera-cut-btn,
+  body.drive-active .mobile-shot-plan-btn{display:none;}
+  /* 地図モードではPC・スマホとも地図アイコンだけを残す。
+
+     【v948】カメラワーク再生ボタンもここへ入れる。
+     v925で置いた場所（top:97px / left:9px）が**距離測定ボタンと同じ**で、
+     地図を開いても消えないため上に重なり、距離測定を押せなくしていた。 */
   .photo-canvas-wrap.osm-map-open .mobile-sky-search-control,
   .photo-canvas-wrap.osm-map-open .mobile-lens-mode-btn,
   .photo-canvas-wrap.osm-map-open .mobile-drone-btn,
+  .photo-canvas-wrap.osm-map-open .mobile-camera-cut-btn,
   .photo-canvas-wrap.osm-map-open .mobile-clock-toggle-btn{display:none;}
   .osm-map-panel{
     display:none;
@@ -4434,96 +4463,6 @@
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">シミュレーション画面<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
-          <!-- 【v905】画面全体のトーン。絵を描き終えた最後に一段掛ける。 -->
-          <button id="photoToneBtn" type="button" class="toggle-btn active" style="margin-top:12px;"><span>🎚 画面のトーン調整</span><span id="photoToneState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
-          <p class="map-hint" style="margin-top:6px;">できあがった絵の最後に、写真の現像と同じ調整を一段掛けます。<b>OFFにすれば1画素も変わらない状態</b>に戻るので、同じ画角のまま見比べられます。昼と夜で別の値を持ち、夕暮れではなめらかに混ざります。</p>
-          <!-- 【v907】青の成分だけを輝度へ寄せる色の行列。
-               地形を重ねるときの filter から url(#...) で参照する。
-               color-interpolation-filters="sRGB" は必須。
-               既定のlinearRGBのままだと行列と関係なく色が変わる。 -->
-          <svg id="toneFilterDefs" width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;">
-            <filter id="groundBlueDesatFilter" color-interpolation-filters="sRGB">
-              <feColorMatrix id="groundBlueDesatMatrix" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
-            </filter>
-            <filter id="toneFilterProbe" color-interpolation-filters="sRGB">
-              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
-            </filter>
-          </svg>
-          <div id="photoTonePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">昼</p>
-            <div class="field"><label class="top">明るさ <span class="val mono" id="toneDayBrightnessVal">100%</span></label><input type="range" id="toneDayBrightness" min="50" max="200" step="1" value="100"></div>
-            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneDayContrastVal">125%</span></label><input type="range" id="toneDayContrast" min="50" max="200" step="1" value="125"></div>
-            <div class="field"><label class="top">彩度 <span class="val mono" id="toneDaySaturateVal">108%</span></label><input type="range" id="toneDaySaturate" min="50" max="200" step="1" value="108"></div>
-            <div class="field"><label class="top">黒レベル <span class="val mono" id="toneDayBlackVal">-10</span></label><input type="range" id="toneDayBlack" min="-100" max="100" step="1" value="-10"></div>
-            <div class="field"><label class="top">白レベル <span class="val mono" id="toneDayWhiteVal">8</span></label><input type="range" id="toneDayWhite" min="-100" max="100" step="1" value="8"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">夜</p>
-            <div class="field"><label class="top">明るさ <span class="val mono" id="toneNightBrightnessVal">122%</span></label><input type="range" id="toneNightBrightness" min="50" max="200" step="1" value="122"></div>
-            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneNightContrastVal">112%</span></label><input type="range" id="toneNightContrast" min="50" max="200" step="1" value="112"></div>
-            <div class="field"><label class="top">彩度 <span class="val mono" id="toneNightSaturateVal">115%</span></label><input type="range" id="toneNightSaturate" min="50" max="200" step="1" value="115"></div>
-            <div class="field"><label class="top">黒レベル <span class="val mono" id="toneNightBlackVal">-5</span></label><input type="range" id="toneNightBlack" min="-100" max="100" step="1" value="-5"></div>
-            <div class="field"><label class="top">白レベル <span class="val mono" id="toneNightWhiteVal">20</span></label><input type="range" id="toneNightWhite" min="-100" max="100" step="1" value="20"></div>
-            <p class="map-hint" style="margin-top:8px;">黒レベルをマイナスにすると影が締まり、白レベルをプラスにすると明るいところが伸びます（現像ソフトと同じ向き）。</p>
-            <p class="map-hint" style="margin:12px 0 2px;color:var(--ink);font-weight:700;">夜の地上だけ（空は変わりません）</p>
-            <div class="field"><label class="top">明るさ <span class="val mono" id="toneGroundBrightnessVal">220</span></label><input type="range" id="toneGroundBrightness" min="50" max="250" step="1" value="220"></div>
-            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneGroundContrastVal">104</span></label><input type="range" id="toneGroundContrast" min="50" max="200" step="1" value="104"></div>
-            <div class="field"><label class="top">彩度 <span class="val mono" id="toneGroundSaturateVal">125</span></label><input type="range" id="toneGroundSaturate" min="50" max="250" step="1" value="125"></div>
-            <div class="field"><label class="top">持ち上げ <span class="val mono" id="toneGroundLiftVal">10</span></label><input type="range" id="toneGroundLift" min="0" max="100" step="1" value="10"></div>
-            <div class="field"><label class="top">青の彩度 <span class="val mono" id="toneGroundBlueVal">40</span></label><input type="range" id="toneGroundBlue" min="0" max="100" step="1" value="40"></div>
-            <p class="map-hint" style="margin-top:6px;">地形の層だけに掛けるので、星・天の川・空の色は一切変わりません。「持ち上げ」は影を潰さずに底上げする分です。昼は素通しなので、夕暮れにかけてなめらかに効いてきます。</p>
-            <div style="display:flex;gap:8px;margin-top:8px;">
-              <button id="photoToneResetBtn" type="button" class="ghost" style="flex:1;">調整前の値へ</button>
-              <button id="photoToneCopyBtn" type="button" class="ghost" style="flex:1;">いまの値を書き出す</button>
-            </div>
-            <p id="photoToneReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
-          </div>
-          <!-- 【v931】夕焼けモード。空・水面・光の道・地上・太陽を分けて調整する。 -->
-          <button id="sunsetModeBtn" type="button" class="toggle-btn" style="margin-top:12px;"><span>🌇 夕焼けモード</span><span id="sunsetModeState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
-          <p class="map-hint" style="margin-top:6px;">夕焼け・朝焼けの時間だけ、太陽を中心に放射状の明暗を付けて逆光の絵に寄せます。太陽の高さで効き具合が決まるので、日が沈むにつれて自然に消えます。演出用なので既定はOFFです。</p>
-          <div id="sunsetModePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
-            <p class="map-hint" style="margin:2px 0 2px;color:var(--ink);font-weight:700;">全体</p>
-            <div class="field"><label class="top">効き具合 <span class="val mono" id="sunsetStrengthVal">85%</span></label><input type="range" id="sunsetStrength" min="0" max="100" step="1" value="85"></div>
-            <div class="field"><label class="top">橙の濃さ <span class="val mono" id="sunsetSaturateVal">260%</span></label><input type="range" id="sunsetSaturate" min="100" max="400" step="5" value="260"></div>
-            <div class="field"><label class="top">赤み <span class="val mono" id="sunsetRedVal">30%</span></label><input type="range" id="sunsetRed" min="0" max="100" step="1" value="30"></div>
-            <div class="field"><label class="top">黄色み <span class="val mono" id="sunsetYellowVal">0%</span></label><input type="range" id="sunsetYellow" min="0" max="100" step="1" value="0"></div>
-            <div class="field"><label class="top">彩度 <span class="val mono" id="sunsetVividVal">120%</span></label><input type="range" id="sunsetVivid" min="100" max="300" step="1" value="120"></div>
-            <div class="field"><label class="top">コントラスト <span class="val mono" id="sunsetContrastVal">108%</span></label><input type="range" id="sunsetContrast" min="100" max="250" step="1" value="108"></div>
-            <div class="field"><label class="top">橋・建物を暗いまま残す <span class="val mono" id="sunsetProtectVal">100%</span></label><input type="range" id="sunsetProtect" min="0" max="100" step="1" value="100"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">空</p>
-            <div class="field"><label class="top">空全体の明るさ <span class="val mono" id="sunsetSkyLiftVal">20%</span></label><input type="range" id="sunsetSkyLift" min="0" max="100" step="1" value="20"></div>
-            <div class="field"><label class="top">太陽の近くの明るさ <span class="val mono" id="sunsetSkyNearVal">100%</span></label><input type="range" id="sunsetSkyNear" min="20" max="100" step="1" value="100"></div>
-            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetSkyFarVal">92%</span></label><input type="range" id="sunsetSkyFar" min="10" max="100" step="1" value="92"></div>
-            <div class="field"><label class="top">太陽まわりの輝き <span class="val mono" id="sunsetSkyGlowVal">90%</span></label><input type="range" id="sunsetSkyGlow" min="0" max="300" step="1" value="90"></div>
-            <div class="field"><label class="top">太陽まわりの黄色み <span class="val mono" id="sunsetGlowHueVal">55%</span></label><input type="range" id="sunsetGlowHue" min="0" max="100" step="1" value="55"></div>
-            <div class="field"><label class="top">沈むほど弱める <span class="val mono" id="sunsetGlowFadeVal">100%</span></label><input type="range" id="sunsetGlowFade" min="0" max="100" step="1" value="100"></div>
-            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetSkySpreadVal">75%</span></label><input type="range" id="sunsetSkySpread" min="20" max="200" step="1" value="75"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">水面</p>
-            <div class="field"><label class="top">水面全体の明るさ <span class="val mono" id="sunsetWaterLiftVal">25%</span></label><input type="range" id="sunsetWaterLift" min="0" max="100" step="1" value="25"></div>
-            <div class="field"><label class="top">太陽の光の輝き <span class="val mono" id="sunsetWaterGlowVal">140%</span></label><input type="range" id="sunsetWaterGlow" min="0" max="300" step="1" value="140"></div>
-            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetWaterFarVal">95%</span></label><input type="range" id="sunsetWaterFar" min="10" max="100" step="1" value="95"></div>
-            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetWaterSpreadVal">55%</span></label><input type="range" id="sunsetWaterSpread" min="10" max="200" step="1" value="55"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">太陽の光の道（水面）</p>
-            <div class="field"><label class="top">明るさ <span class="val mono" id="sunsetRayGlowVal">150%</span></label><input type="range" id="sunsetRayGlow" min="0" max="300" step="1" value="150"></div>
-            <div class="field"><label class="top">幅 <span class="val mono" id="sunsetRayWidthVal">100%</span></label><input type="range" id="sunsetRayWidth" min="10" max="300" step="1" value="100"></div>
-            <div class="field"><label class="top">長さ <span class="val mono" id="sunsetRayLengthVal">200%</span></label><input type="range" id="sunsetRayLength" min="20" max="400" step="1" value="200"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">地上</p>
-            <div class="field"><label class="top">太陽の近くの明るさ <span class="val mono" id="sunsetGroundNearVal">85%</span></label><input type="range" id="sunsetGroundNear" min="10" max="100" step="1" value="85"></div>
-            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetGroundFarVal">38%</span></label><input type="range" id="sunsetGroundFar" min="0" max="100" step="1" value="38"></div>
-            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetGroundSpreadVal">95%</span></label><input type="range" id="sunsetGroundSpread" min="20" max="200" step="1" value="95"></div>
-            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">太陽</p>
-            <div class="field"><label class="top">白さ <span class="val mono" id="sunsetSunWhiteVal">100%</span></label><input type="range" id="sunsetSunWhite" min="0" max="100" step="1" value="100"></div>
-            <div class="field"><label class="top">大きさ <span class="val mono" id="sunsetSunSizeVal">170%</span></label><input type="range" id="sunsetSunSize" min="50" max="500" step="5" value="170"></div>
-            <p class="map-hint" style="margin-top:6px;">「明るさ」のうち<b>全体の明るさ</b>は足す光、<b>近く／遠くの明るさ</b>は残し具合（100%で素通し、0%で真っ黒）です。太陽まわりの輝きと光の道は、太陽が水平線へ近づくほど弱まり、水平線より下では消えます。</p>
-            <p id="sunsetModeReadout" class="map-hint mono" style="margin-top:6px;"></p>
-            <!-- 【v932】夕陽の設定の保存・呼び出し。夕焼けにも色々あるので何通りでも持てる。 -->
-            <div style="border-top:1px solid var(--line,#2a3345);margin-top:12px;padding-top:10px;">
-              <p class="map-hint" style="margin:0 0 6px;color:var(--ink);font-weight:700;">この夕陽を保存</p>
-              <div class="field"><label class="top">名前</label><input id="sunsetPresetName" type="text" maxlength="60" placeholder="例：加古川の夏の夕陽"></div>
-              <div class="row2" style="margin-top:6px;"><button id="sunsetPresetSaveBtn" type="button">この設定を保存</button><button id="sunsetPresetDeleteBtn" type="button">保存を削除</button></div>
-              <div class="field" style="margin-top:8px;"><label class="top">保存した夕陽</label><select id="sunsetPresetSelect"><option value="">保存なし</option></select></div>
-              <button id="sunsetPresetLoadBtn" type="button" style="margin-top:6px;width:100%;">選んだ夕陽を呼び出す</button>
-              <p id="sunsetPresetStatus" class="map-hint" style="margin-top:7px;">上のつまみの内容をまとめて保存します。撮影計画にも一緒に記録されます。</p>
-            </div>
-          </div>
           <button id="showBelowHorizonBtn" type="button" class="toggle-btn"><span>🌐 南半球を可視化する</span><span id="showBelowHorizonState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:8px;">水平線の下に隠れている星座・天の川・太陽・月・恒星が、今どのあたりにいるかを透けて見えるようにします。実際の写真には写らない位置の目安としてご利用ください。</p>
           <button id="realSunMoonBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>☀️🌙 太陽・月をリアル表示する</span><span id="realSunMoonState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -4698,6 +4637,115 @@
         </div>
       </section>
 
+      <!-- 【v934】画面のトーン調整と夕焼けモードは「開発者」へ移した。 -->
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">開発者<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint" style="margin-bottom:4px;">絵の仕上げに関わる調整です。値を変えると見え方が大きく変わります。</p>
+          <!-- 【v905】画面全体のトーン。絵を描き終えた最後に一段掛ける。 -->
+          <button id="photoToneBtn" type="button" class="toggle-btn active" style="margin-top:12px;"><span>🎚 画面のトーン調整</span><span id="photoToneState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+          <p class="map-hint" style="margin-top:6px;">できあがった絵の最後に、写真の現像と同じ調整を一段掛けます。<b>OFFにすれば1画素も変わらない状態</b>に戻るので、同じ画角のまま見比べられます。昼と夜で別の値を持ち、夕暮れではなめらかに混ざります。</p>
+          <!-- 【v907】青の成分だけを輝度へ寄せる色の行列。
+               地形を重ねるときの filter から url(#...) で参照する。
+               color-interpolation-filters="sRGB" は必須。
+               既定のlinearRGBのままだと行列と関係なく色が変わる。 -->
+          <svg id="toneFilterDefs" width="0" height="0" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;">
+            <filter id="groundBlueDesatFilter" color-interpolation-filters="sRGB">
+              <feColorMatrix id="groundBlueDesatMatrix" type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/>
+            </filter>
+            <filter id="toneFilterProbe" color-interpolation-filters="sRGB">
+              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/>
+            </filter>
+          </svg>
+          <div id="photoTonePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">昼</p>
+            <div class="field"><label class="top">明るさ <span class="val mono" id="toneDayBrightnessVal">100%</span></label><input type="range" id="toneDayBrightness" min="50" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneDayContrastVal">188%</span></label><input type="range" id="toneDayContrast" min="50" max="200" step="1" value="188"></div>
+            <div class="field"><label class="top">彩度 <span class="val mono" id="toneDaySaturateVal">100%</span></label><input type="range" id="toneDaySaturate" min="50" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">黒レベル <span class="val mono" id="toneDayBlackVal">17</span></label><input type="range" id="toneDayBlack" min="-100" max="100" step="1" value="17"></div>
+            <div class="field"><label class="top">白レベル <span class="val mono" id="toneDayWhiteVal">-49</span></label><input type="range" id="toneDayWhite" min="-100" max="100" step="1" value="-49"></div>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">夜</p>
+            <div class="field"><label class="top">明るさ <span class="val mono" id="toneNightBrightnessVal">136%</span></label><input type="range" id="toneNightBrightness" min="50" max="200" step="1" value="136"></div>
+            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneNightContrastVal">107%</span></label><input type="range" id="toneNightContrast" min="50" max="200" step="1" value="107"></div>
+            <div class="field"><label class="top">彩度 <span class="val mono" id="toneNightSaturateVal">92%</span></label><input type="range" id="toneNightSaturate" min="50" max="200" step="1" value="92"></div>
+            <div class="field"><label class="top">黒レベル <span class="val mono" id="toneNightBlackVal">-12</span></label><input type="range" id="toneNightBlack" min="-100" max="100" step="1" value="-12"></div>
+            <div class="field"><label class="top">白レベル <span class="val mono" id="toneNightWhiteVal">11</span></label><input type="range" id="toneNightWhite" min="-100" max="100" step="1" value="11"></div>
+            <p class="map-hint" style="margin-top:8px;">黒レベルをマイナスにすると影が締まり、白レベルをプラスにすると明るいところが伸びます（現像ソフトと同じ向き）。</p>
+            <p class="map-hint" style="margin:12px 0 2px;color:var(--ink);font-weight:700;">夜の地上だけ（空は変わりません）</p>
+            <div class="field"><label class="top">明るさ <span class="val mono" id="toneGroundBrightnessVal">166</span></label><input type="range" id="toneGroundBrightness" min="50" max="250" step="1" value="166"></div>
+            <div class="field"><label class="top">コントラスト <span class="val mono" id="toneGroundContrastVal">144</span></label><input type="range" id="toneGroundContrast" min="50" max="200" step="1" value="144"></div>
+            <div class="field"><label class="top">彩度 <span class="val mono" id="toneGroundSaturateVal">100</span></label><input type="range" id="toneGroundSaturate" min="50" max="250" step="1" value="100"></div>
+            <div class="field"><label class="top">持ち上げ <span class="val mono" id="toneGroundLiftVal">14</span></label><input type="range" id="toneGroundLift" min="0" max="100" step="1" value="14"></div>
+            <div class="field"><label class="top">青の彩度 <span class="val mono" id="toneGroundBlueVal">26</span></label><input type="range" id="toneGroundBlue" min="0" max="100" step="1" value="26"></div>
+            <p class="map-hint" style="margin-top:6px;">地形の層だけに掛けるので、星・天の川・空の色は一切変わりません。「持ち上げ」は影を潰さずに底上げする分です。昼は素通しなので、夕暮れにかけてなめらかに効いてきます。</p>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button id="photoToneResetBtn" type="button" class="ghost" style="flex:1;">既定の値へ戻す</button>
+              <button id="photoToneCopyBtn" type="button" class="ghost" style="flex:1;">いまの値を書き出す</button>
+            </div>
+            <p id="photoToneReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
+          </div>
+          <!-- 【v931】夕焼けモード。空・水面・光の道・地上・太陽を分けて調整する。 -->
+          <button id="sunsetModeBtn" type="button" class="toggle-btn" style="margin-top:12px;"><span>🌇 夕焼けモード</span><span id="sunsetModeState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:6px;">夕焼け・朝焼けの時間だけ、太陽を中心に放射状の明暗を付けて逆光の絵に寄せます。太陽の高さで効き具合が決まるので、日が沈むにつれて自然に消えます。演出用なので既定はOFFです。</p>
+          <div id="sunsetModePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
+            <p class="map-hint" style="margin:2px 0 2px;color:var(--ink);font-weight:700;">全体</p>
+            <div class="field"><label class="top">効き具合 <span class="val mono" id="sunsetStrengthVal">94%</span></label><input type="range" id="sunsetStrength" min="0" max="100" step="1" value="94"></div>
+            <div class="field"><label class="top">橙の濃さ <span class="val mono" id="sunsetSaturateVal">400%</span></label><input type="range" id="sunsetSaturate" min="100" max="400" step="5" value="400"></div>
+            <div class="field"><label class="top">赤み <span class="val mono" id="sunsetRedVal">88%</span></label><input type="range" id="sunsetRed" min="0" max="100" step="1" value="88"></div>
+            <div class="field"><label class="top">黄色み <span class="val mono" id="sunsetYellowVal">15%</span></label><input type="range" id="sunsetYellow" min="0" max="100" step="1" value="15"></div>
+            <div class="field"><label class="top">彩度 <span class="val mono" id="sunsetVividVal">132%</span></label><input type="range" id="sunsetVivid" min="100" max="300" step="1" value="132"></div>
+            <div class="field"><label class="top">コントラスト <span class="val mono" id="sunsetContrastVal">126%</span></label><input type="range" id="sunsetContrast" min="100" max="250" step="1" value="126"></div>
+            <div class="field"><label class="top">橋・建物を暗いまま残す <span class="val mono" id="sunsetProtectVal">19%</span></label><input type="range" id="sunsetProtect" min="0" max="100" step="1" value="19"></div>
+            <div class="field"><label class="top">明暗差をおさえる <span class="val mono" id="sunsetSoftPeakVal">92%</span></label><input type="range" id="sunsetSoftPeak" min="0" max="100" step="1" value="92"></div>
+            <p class="map-hint" style="margin-top:4px;">太陽まわりがいちばん明るくなる時間帯（高さ5〜8°あたり）だけ、足す光の量をおさえます。日没ぎわの明るさは変わらないので、他のつまみを上げても山だけが白飛びしません。</p>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">空</p>
+            <div class="field"><label class="top">空全体の明るさ <span class="val mono" id="sunsetSkyLiftVal">100%</span></label><input type="range" id="sunsetSkyLift" min="0" max="100" step="1" value="100"></div>
+            <div class="field"><label class="top">太陽の近くの明るさ <span class="val mono" id="sunsetSkyNearVal">91%</span></label><input type="range" id="sunsetSkyNear" min="20" max="100" step="1" value="91"></div>
+            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetSkyFarVal">51%</span></label><input type="range" id="sunsetSkyFar" min="10" max="100" step="1" value="51"></div>
+            <div class="field"><label class="top">太陽まわりの輝き <span class="val mono" id="sunsetSkyGlowVal">300%</span></label><input type="range" id="sunsetSkyGlow" min="0" max="300" step="1" value="300"></div>
+            <div class="field"><label class="top">太陽まわりの黄色み <span class="val mono" id="sunsetGlowHueVal">54%</span></label><input type="range" id="sunsetGlowHue" min="0" max="100" step="1" value="54"></div>
+            <div class="field"><label class="top">沈むほど弱める <span class="val mono" id="sunsetGlowFadeVal">61%</span></label><input type="range" id="sunsetGlowFade" min="0" max="100" step="1" value="61"></div>
+            <div class="field"><label class="top">日没後の粘り <span class="val mono" id="sunsetSkyLingerVal">50%</span></label><input type="range" id="sunsetSkyLinger" min="0" max="100" step="1" value="50"></div>
+            <p class="map-hint" style="margin-top:4px;">日が沈んだあと、空の焼け色をどこまで引っぱるかです。100%で高さ-4°まで保って-14°で終わり、0%なら日没とほぼ同時に終わります。</p>
+            <div class="field"><label class="top">水平線の赤み <span class="val mono" id="sunsetHorizonRedVal">11%</span></label><input type="range" id="sunsetHorizonRed" min="0" max="200" step="1" value="11"></div>
+            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetSkySpreadVal">60%</span></label><input type="range" id="sunsetSkySpread" min="20" max="200" step="1" value="60"></div>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">水面</p>
+            <div class="field"><label class="top">水面全体の明るさ <span class="val mono" id="sunsetWaterLiftVal">84%</span></label><input type="range" id="sunsetWaterLift" min="0" max="100" step="1" value="84"></div>
+            <div class="field"><label class="top">水面を通常へ戻す早さ <span class="val mono" id="sunsetWaterBackVal">37%</span></label><input type="range" id="sunsetWaterBack" min="0" max="100" step="1" value="37"></div>
+            <p class="map-hint" style="margin-top:4px;">大きいほど早く、太陽が高いうちから通常の水面の色へ戻り始めます。0%にすると日が沈んでからゆっくり戻ります。</p>
+            <div class="field"><label class="top">太陽の光の輝き <span class="val mono" id="sunsetWaterGlowVal">0%</span></label><input type="range" id="sunsetWaterGlow" min="0" max="300" step="1" value="0"></div>
+            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetWaterFarVal">100%</span></label><input type="range" id="sunsetWaterFar" min="10" max="100" step="1" value="100"></div>
+            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetWaterSpreadVal">118%</span></label><input type="range" id="sunsetWaterSpread" min="10" max="200" step="1" value="118"></div>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">太陽の光の道（水面）</p>
+            <div class="field"><label class="top">明るさ <span class="val mono" id="sunsetRayGlowVal">300%</span></label><input type="range" id="sunsetRayGlow" min="0" max="300" step="1" value="300"></div>
+            <div class="field"><label class="top">幅 <span class="val mono" id="sunsetRayWidthVal">45%</span></label><input type="range" id="sunsetRayWidth" min="10" max="300" step="1" value="45"></div>
+            <div class="field"><label class="top">長さ <span class="val mono" id="sunsetRayLengthVal">400%</span></label><input type="range" id="sunsetRayLength" min="20" max="400" step="1" value="400"></div>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">地上</p>
+            <div class="field"><label class="top">太陽の近くの明るさ <span class="val mono" id="sunsetGroundNearVal">63%</span></label><input type="range" id="sunsetGroundNear" min="10" max="100" step="1" value="63"></div>
+            <div class="field"><label class="top">遠くの明るさ <span class="val mono" id="sunsetGroundFarVal">44%</span></label><input type="range" id="sunsetGroundFar" min="0" max="100" step="1" value="44"></div>
+            <div class="field"><label class="top">広がり <span class="val mono" id="sunsetGroundSpreadVal">88%</span></label><input type="range" id="sunsetGroundSpread" min="20" max="200" step="1" value="88"></div>
+            <div class="field"><label class="top">順光のときの明るさ <span class="val mono" id="sunsetFrontLitVal">40%</span></label><input type="range" id="sunsetFrontLit" min="0" max="100" step="1" value="40"></div>
+            <p class="map-hint" style="margin-top:4px;">太陽に<b>背を向けたとき</b>の地上の明るさです。太陽を向いているあいだは効きません。0%にすると、どちらを向いても逆光の暗さのままになります。</p>
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">太陽</p>
+            <div class="field"><label class="top">白さ <span class="val mono" id="sunsetSunWhiteVal">100%</span></label><input type="range" id="sunsetSunWhite" min="0" max="100" step="1" value="100"></div>
+            <div class="field"><label class="top">大きさ <span class="val mono" id="sunsetSunSizeVal">100%</span></label><input type="range" id="sunsetSunSize" min="50" max="500" step="5" value="100"></div>
+            <p class="map-hint" style="margin-top:6px;">「明るさ」のうち<b>全体の明るさ</b>は足す光、<b>近く／遠くの明るさ</b>は残し具合（100%で素通し、0%で真っ黒）です。太陽まわりの輝きと光の道は、太陽が水平線へ近づくほど弱まり、水平線より下では消えます。</p>
+            <p id="sunsetModeReadout" class="map-hint mono" style="margin-top:6px;"></p>
+            <!-- 【v932】夕陽の設定の保存・呼び出し。夕焼けにも色々あるので何通りでも持てる。 -->
+            <div style="border-top:1px solid var(--line,#2a3345);margin-top:12px;padding-top:10px;">
+              <p class="map-hint" style="margin:0 0 6px;color:var(--ink);font-weight:700;">この夕陽を保存</p>
+              <div class="field"><label class="top">名前</label><input id="sunsetPresetName" type="text" maxlength="60" placeholder="例：加古川の夏の夕陽"></div>
+              <div class="row2" style="margin-top:6px;"><button id="sunsetPresetSaveBtn" type="button">この設定を保存</button><button id="sunsetPresetDeleteBtn" type="button">保存を削除</button></div>
+              <div class="field" style="margin-top:8px;"><label class="top">保存した夕陽</label><select id="sunsetPresetSelect"><option value="">保存なし</option></select></div>
+              <button id="sunsetPresetLoadBtn" type="button" style="margin-top:6px;width:100%;">選んだ夕陽を呼び出す</button>
+              <button id="sunsetCopyBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">いまの値を書き出す</button>
+              <p id="sunsetCopyReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
+              <p id="sunsetPresetStatus" class="map-hint" style="margin-top:7px;">上のつまみの内容をまとめて保存します。撮影計画にも一緒に記録されます。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </aside>
     </div>
 
@@ -4775,6 +4823,8 @@
               <button id="iconInfoBtn" type="button" class="constellation-toggle-btn info-toggle-btn header-circle-btn" aria-label="アイコンの説明を表示" aria-pressed="false" title="アイコン説明">i</button>
               <button id="mobileOrientationToggleBtn" type="button" class="constellation-toggle-btn orientation-toggle-btn header-circle-btn portrait" aria-label="縦横を切り替える"><span class="orientation-icon" aria-hidden="true"></span></button>
               <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn header-circle-btn">AR</button>
+              <!-- 【v950】ドライブモード。スマホのみ。 -->
+              <button id="driveModeBtn" type="button" class="constellation-toggle-btn drive-toggle-btn header-circle-btn" aria-pressed="false" aria-label="ドライブモード" title="ドライブモード">🚗</button>
               <span class="focal-badge" id="focalBadge" role="button" tabindex="0" aria-label="焦点距離を変える">24<span class="focal-badge-unit">mm</span></span>
               <div class="focal-quick" id="focalQuick" aria-hidden="true">
                 <div class="focal-quick-head"><span>焦点距離</span><span class="focal-quick-value" id="focalQuickVal">24mm</span></div>
@@ -5028,6 +5078,17 @@
               </button>
               <!-- 【v925】カメラワーク再生。押すたびに次のカットへ進む。 -->
               <button id="cameraCutPlayBtn" type="button" class="mobile-camera-cut-btn icon-help-target sim-left-help" data-help="カメラワーク再生" aria-label="カメラワークを再生" title="カメラワーク再生"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2.3" y="6.2" width="13.4" height="11.6" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M2.3 10.4h13.4" stroke="currentColor" stroke-width="1.4"/><path d="M6.6 6.2 4.9 10.4M10.9 6.2 9.2 10.4M15.2 6.2 13.5 10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M17.9 8.3v7.4l5.6-3.7-5.6-3.7Z" fill="currentColor"/></svg></button>
+              <!-- 【v950】ドライブモードの操作板。走行中に見るので、大きめの文字にする。 -->
+              <div id="drivePanel" class="drive-panel" aria-hidden="true">
+                <div class="drive-panel-row">
+                  <span class="drive-panel-title">🚗 ドライブモード</span>
+                  <button id="driveExitBtn" type="button" class="drive-exit-btn">終了</button>
+                </div>
+                <div id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</div>
+                <div class="field" style="margin:8px 0 0;"><label class="top">目線の高さ（追加） <span class="val mono" id="driveEyeVal">1.5m</span></label><input type="range" id="driveEye" min="0" max="5" step="0.1" value="1.5"></div>
+                <div class="field" style="margin:6px 0 0;"><label class="top">更新する距離 <span class="val mono" id="driveStepVal">12m</span></label><input type="range" id="driveStep" min="5" max="100" step="1" value="12"></div>
+                <p class="drive-hint">スマホは<b>画面を自分側</b>にして立てて固定してください。止まっているあいだは景色を更新しません。</p>
+              </div>
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="地図をタップして観測地点を選択するOpenStreetMap"></div>
                 <button id="mapMeasureEndBtn" type="button" class="map-measure-end-btn">距離測定を終了する</button>
@@ -5318,7 +5379,7 @@
                 <div class="best-time-text">
                   <div class="best-time-top-row">
                     <span class="best-time-label">🌌 今夜の天の川のベストタイム</span>
-                    <button id="bestTimeAutoJumpBtn" type="button" class="time-range-mode-btn besttime-autojump-btn" aria-pressed="true" title="ON: 日付を送ると常に天の川のベストタイム開始時間になります / OFF: 時刻はそのままで日付だけ変わります">開始時間</button>
+                    <button id="bestTimeAutoJumpBtn" type="button" class="time-range-mode-btn besttime-autojump-btn" aria-pressed="false" title="OFF（既定）: 時刻はそのままで日付だけ変わります / ON: 日付を送ると天の川のベストタイム開始時間へ飛びます">開始時間</button>
                     <button id="mobileMonthTableBtn" type="button" class="month-table-mobile-btn">▶月別表</button>
                   </div>
                   <span class="best-time-value mono" id="bestTimeValue"><span id="bestTimeDate">—</span><span id="bestTimeRange"></span></span>
@@ -5440,7 +5501,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="933-daruma-sunset";
+const APP_VERSION="950-drive-mode";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6072,9 +6133,12 @@ function jdToLocalHM(jd,tz){
   return `${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
 }
 function fmtRiseSet(rs,tz){
-  if(rs.alwaysUp) return {rise:"—",set:"—",note:"終日沈みません"};
-  if(rs.alwaysDown) return {rise:"—",set:"—",note:"終日昇りません"};
-  return {rise: rs.riseJd?jdToLocalHM(rs.riseJd,tz):"—", set: rs.setJd?jdToLocalHM(rs.setJd,tz):"—", note:null};
+  /* 【v946】表示用の文字列だけでなく、**元のユリウス日も持たせる**。
+     「日の入の何分前か」を出すのに要る。捨てていたので計算できなかった。 */
+  if(rs.alwaysUp) return {rise:"—",set:"—",note:"終日沈みません",riseJd:null,setJd:null};
+  if(rs.alwaysDown) return {rise:"—",set:"—",note:"終日昇りません",riseJd:null,setJd:null};
+  return {rise: rs.riseJd?jdToLocalHM(rs.riseJd,tz):"—", set: rs.setJd?jdToLocalHM(rs.setJd,tz):"—", note:null,
+          riseJd: rs.riseJd||null, setJd: rs.setJd||null};
 }
 
 /* 「今夜」(選択日の正午 〜 翌日正午)の中で、空が十分暗い(太陽高度≦-20°)・
@@ -6569,6 +6633,8 @@ const el={
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
+  driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveExitBtn:$("driveExitBtn"), driveStatus:$("driveStatus"),
+  driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
   facingAz:$("facingAz"), azVal:$("azVal"),
@@ -6615,14 +6681,18 @@ const el={
   sunsetVivid:$("sunsetVivid"), sunsetVividVal:$("sunsetVividVal"),
   sunsetContrast:$("sunsetContrast"), sunsetContrastVal:$("sunsetContrastVal"),
   sunsetProtect:$("sunsetProtect"), sunsetProtectVal:$("sunsetProtectVal"),
+  sunsetSoftPeak:$("sunsetSoftPeak"), sunsetSoftPeakVal:$("sunsetSoftPeakVal"),
   sunsetSkyLift:$("sunsetSkyLift"), sunsetSkyLiftVal:$("sunsetSkyLiftVal"),
   sunsetSkyNear:$("sunsetSkyNear"), sunsetSkyNearVal:$("sunsetSkyNearVal"),
   sunsetSkyFar:$("sunsetSkyFar"), sunsetSkyFarVal:$("sunsetSkyFarVal"),
   sunsetSkyGlow:$("sunsetSkyGlow"), sunsetSkyGlowVal:$("sunsetSkyGlowVal"),
   sunsetGlowHue:$("sunsetGlowHue"), sunsetGlowHueVal:$("sunsetGlowHueVal"),
   sunsetGlowFade:$("sunsetGlowFade"), sunsetGlowFadeVal:$("sunsetGlowFadeVal"),
+  sunsetHorizonRed:$("sunsetHorizonRed"), sunsetHorizonRedVal:$("sunsetHorizonRedVal"),
   sunsetSkySpread:$("sunsetSkySpread"), sunsetSkySpreadVal:$("sunsetSkySpreadVal"),
   sunsetWaterLift:$("sunsetWaterLift"), sunsetWaterLiftVal:$("sunsetWaterLiftVal"),
+  sunsetWaterBack:$("sunsetWaterBack"), sunsetWaterBackVal:$("sunsetWaterBackVal"),
+  sunsetSkyLinger:$("sunsetSkyLinger"), sunsetSkyLingerVal:$("sunsetSkyLingerVal"),
   sunsetWaterGlow:$("sunsetWaterGlow"), sunsetWaterGlowVal:$("sunsetWaterGlowVal"),
   sunsetWaterFar:$("sunsetWaterFar"), sunsetWaterFarVal:$("sunsetWaterFarVal"),
   sunsetWaterSpread:$("sunsetWaterSpread"), sunsetWaterSpreadVal:$("sunsetWaterSpreadVal"),
@@ -6632,11 +6702,13 @@ const el={
   sunsetGroundNear:$("sunsetGroundNear"), sunsetGroundNearVal:$("sunsetGroundNearVal"),
   sunsetGroundFar:$("sunsetGroundFar"), sunsetGroundFarVal:$("sunsetGroundFarVal"),
   sunsetGroundSpread:$("sunsetGroundSpread"), sunsetGroundSpreadVal:$("sunsetGroundSpreadVal"),
+  sunsetFrontLit:$("sunsetFrontLit"), sunsetFrontLitVal:$("sunsetFrontLitVal"),
   sunsetSunWhite:$("sunsetSunWhite"), sunsetSunWhiteVal:$("sunsetSunWhiteVal"),
   sunsetSunSize:$("sunsetSunSize"), sunsetSunSizeVal:$("sunsetSunSizeVal"),
   sunsetModeReadout:$("sunsetModeReadout"),
   sunsetPresetName:$("sunsetPresetName"), sunsetPresetSaveBtn:$("sunsetPresetSaveBtn"), sunsetPresetDeleteBtn:$("sunsetPresetDeleteBtn"),
-  sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"),
+  sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -7565,7 +7637,15 @@ el.nowBtn.addEventListener("click",()=>{
 // 「開始時間」ON/OFF: ONの場合、日付を送る(前日/翌日/前月/翌月)たびに天の川のベストタイム
 // 開始時刻へ自動でジャンプする(従来の挙動)。OFFの場合は現在設定している時刻をそのまま保ち、
 // 日付・月だけを送る。
-let autoJumpToBestTimeOnDateNav=true;
+/* 【v944】日付を送ったときに天の川のベストタイムへ飛ぶかどうか。
+
+   天の川専用のアプリではなくなったので、**既定は「時刻を保つ」**。
+   「開始時間」ボタンを押せば、今までどおりベストタイムへ飛ぶ動きに戻せる。 */
+let autoJumpToBestTimeOnDateNav=false;
+/* 既定を変えた版。端末に古い既定（ON）が保存されていても、
+   この版番号が一致しない保存は**一度だけ無視**して新しい既定にする。
+   利用者が自分でONへ戻せば、そのとき新しい版番号ごと保存されるので次からは尊重される。 */
+const DATE_NAV_REVISION=944;
 function setAutoJumpToBestTimeOnDateNav(on){
   autoJumpToBestTimeOnDateNav=!!on;
   el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
@@ -7581,8 +7661,9 @@ function shiftSelectedDate(deltaDays,deltaMonths){
   if(deltaMonths) d.setUTCMonth(d.getUTCMonth()+deltaMonths);
   el.dateInput.value=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
   update();
+  /* 【v944】既定では**時刻をそのまま**にして日付だけ送る。
+     「開始時間」ボタンをONにしたときだけ、その日のベストタイム開始時刻へ飛ぶ。 */
   if(autoJumpToBestTimeOnDateNav && state && state.bestWindow){
-    // その日のベストタイムがあれば開始時刻へ。無い日は時刻を変えず、前回表示していた時刻のまま日だけ送る
     const minutesFromMidnight=Math.round((state.bestWindow.start-state.jdMidnight)*1440);
     el.timeSlider.value=clamp(minutesFromMidnight,0,1800);
     update();
@@ -10721,7 +10802,9 @@ el.belowHorizonOpacitySlider.addEventListener("input",()=>{
 const PHOTO_TONE_KEYS=["Brightness", "Contrast", "Saturate", "Black", "White"];
 const PHOTO_TONE_PLAIN={brightness:100,contrast:100,saturate:100,black:0,white:0};
 let photoToneOn=true;
-const photoTone={day:{brightness:100, contrast:125, saturate:108, black:-10, white:8},night:{brightness:122, contrast:112, saturate:115, black:-5, white:20}};
+/* 【v935】利用者が実機で詰めた値。ここが「調整前の値」でもある。 */
+const PHOTO_TONE_DEFAULT={day:{brightness:100, contrast:188, saturate:100, black:17, white:-49},night:{brightness:136, contrast:107, saturate:92, black:-12, white:11}};
+const photoTone={day:{...PHOTO_TONE_DEFAULT.day},night:{...PHOTO_TONE_DEFAULT.night}};
 const photoToneCanvasFilterSupported=(()=>{
   try{
     const probe=document.createElement("canvas").getContext("2d");
@@ -10831,18 +10914,25 @@ function applyPhotoTone(ctx,s){
        水面 ＝ 水面マスク
 
    できあがった絵への現像なので、OFFにすれば1画素も変わらない。 */
-let sunsetModeOn=false;
-const sunsetMode={strength:85,saturate:260,red:30,yellow:0,vivid:120,contrast:108,protect:100,
-  skyLift:20,skyNear:100,skyFar:92,skyGlow:90,glowHue:55,glowFade:100,skySpread:75,
-  waterLift:25,waterGlow:140,waterFar:95,waterSpread:55,
-  rayGlow:150,rayWidth:100,rayLength:200,
-  groundNear:85,groundFar:38,groundSpread:95,
-  sunWhite:100,sunSize:170};
-const SUNSET_MODE_KEYS=["Strength","Saturate","Red","Yellow","Vivid","Contrast","Protect",
-  "SkyLift","SkyNear","SkyFar","SkyGlow","GlowHue","GlowFade","SkySpread",
-  "WaterLift","WaterGlow","WaterFar","WaterSpread",
+/* 【v947】夕焼けモードの既定をONへ。
+   利用者からの既定値が 「sunset ON {…}」 だったため。 */
+let sunsetModeOn=true;
+/* 【v947】利用者が実機で詰めた値。書き出しの1行をそのまま既定にした。 */
+const SUNSET_MODE_DEFAULT={strength:94,saturate:400,red:88,yellow:15,vivid:132,contrast:126,protect:19,softPeak:92,
+  skyLift:100,skyNear:91,skyFar:51,skyGlow:300,glowHue:54,glowFade:61,skyLinger:50,horizonRed:11,skySpread:60,
+  waterLift:84,waterBack:37,waterGlow:0,waterFar:100,waterSpread:118,
+  rayGlow:300,rayWidth:45,rayLength:400,
+  groundNear:63,groundFar:44,groundSpread:88,frontLit:40,
+  sunWhite:100,sunSize:100};
+const sunsetMode={...SUNSET_MODE_DEFAULT};
+/* 既定値を差し替えた版。端末に古い既定が保存されていても、
+   版番号が合わない保存は**一度だけ読み飛ばして**新しい既定にする（v935と同じ手）。 */
+const SUNSET_REVISION=947;
+const SUNSET_MODE_KEYS=["Strength","Saturate","Red","Yellow","Vivid","Contrast","Protect","SoftPeak",
+  "SkyLift","SkyNear","SkyFar","SkyGlow","GlowHue","GlowFade","SkyLinger","HorizonRed","SkySpread",
+  "WaterLift","WaterBack","WaterGlow","WaterFar","WaterSpread",
   "RayGlow","RayWidth","RayLength",
-  "GroundNear","GroundFar","GroundSpread","SunWhite","SunSize"];
+  "GroundNear","GroundFar","GroundSpread","FrontLit","SunWhite","SunSize"];
 function sunsetModeKey(name){return name[0].toLowerCase()+name.slice(1);}
 function readSunsetModeControls(){
   for(const name of SUNSET_MODE_KEYS){
@@ -10870,7 +10960,11 @@ function updateSunsetModeReadout(s){
   const out=el.sunsetModeReadout;
   if(!out)return;
   const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
-  const text=alt===null?"":`太陽の高さ ${alt.toFixed(1)}° ／ 効き ${Math.round(sunsetModeWeight(s)*100)}% ／ 太陽まわりの光 ${Math.round(Math.min(sunsetGlowAltitudeFactor(alt),sunsetHorizonFactor(alt))*100)}% ／ 光の道 ${Math.round(sunsetHorizonFactor(alt)*100)}%`;
+  const aim=sunsetAimFactor(s);
+  const text=alt===null?"":`太陽の高さ ${alt.toFixed(1)}° ／ 効き ${Math.round(sunsetModeWeight(s)*100)}%`
+    +` ／ 太陽まわりの光 ${Math.round(Math.min(sunsetGlowAltitudeFactor(alt),sunsetHorizonFactor(alt))*aim*100)}%`
+    +` ／ 光の道 ${Math.round(sunsetHorizonFactor(alt)*aim*100)}%`
+    +` ／ 地上 ${Math.round(sunsetGroundFactor(alt)*100)}% ／ 水面 ${Math.round(sunsetWaterFactor(alt)*100)}%`;
   if(out.textContent!==text)out.textContent=text;
 }
 /* 掛ける強さ。太陽の高さで決めるので、朝焼けにも同じように効く。
@@ -10879,13 +10973,83 @@ function sunsetModeWeight(s){
   if(!sunsetModeOn||arActive)return 0;
   const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
   if(alt===null)return 0;
+  /* 【v942】日没後の裾はつまみで動かす。
+       保つ下限 = -4° × k     終わる高さ = -3° - 11° × k
+     k=1で今までどおり（-4°まで保って-14°で終了）、k=0で日没とほぼ同時に終わる。 */
+  const linger=clamp(sunsetMode.skyLinger/100,0,1);
+  const holdLow=-4*linger,endLow=-3-11*linger;
   let raw=0;
-  if(alt>=14||alt<=-14)raw=0;
+  if(alt>=14||alt<=endLow)raw=0;
   else if(alt>8)raw=(14-alt)/6;
-  else if(alt>=-4)raw=1;
-  else raw=(alt+14)/10;
+  else if(alt>=holdLow)raw=1;
+  else raw=(alt-endLow)/Math.max(.001,holdLow-endLow);
   const value=clamp(raw,0,1);
   return value*value*(3-2*value);   /* 角を丸めて、切り替わりを目立たなくする */
+}
+/* 【v946】水面の丸い鏡像を、日の入の30分前に消しきるための係数。
+
+   高さで決めると、同じ高さでも季節と緯度で「日の入まで何分か」が変わってしまう。
+   実際の日の入時刻（`s.sunRiseSet.setJd`）からの分で決める。
+
+       日の入まで45分 → 1（そのまま）
+       日の入まで30分 → 0（消えきる）
+
+   日の出側も同じ（日の出から30分たつまでは出さない）。 */
+function sunsetMirrorTimeFade(s){
+  const info=s&&s.sunRiseSet;
+  if(!info||!Number.isFinite(s.jd))return 1;
+  let minutes=Infinity;
+  if(Number.isFinite(info.setJd))minutes=Math.min(minutes,(info.setJd-s.jd)*1440);
+  if(Number.isFinite(info.riseJd))minutes=Math.min(minutes,(s.jd-info.riseJd)*1440);
+  if(!Number.isFinite(minutes))return 1;
+  const t=clamp((minutes-30)/15,0,1);
+  return t*t*(3-2*t);
+}
+/* 【v936】カメラの正面と太陽の向きの角度差で決める係数。
+
+   `toXY()` はカメラの**後ろ**にある向きでも座標を返す（裏返った位置）。
+   そのまま光の中心に使うと、西日なのに北を向いたときに北の空が光ってしまう。
+   45°以内はそのまま、85°で0。実測で決めた：最初 60〜95° にしたら、
+   北を向いたとき（太陽との差 95°）でまだ 7〜13% 残っていた。 */
+/* 【v947】カメラの正面と太陽の向きのなす角の余弦。正面=1、真横=0、背後=-1。 */
+function sunsetFacingDot(s){
+  if(!s||!s.sunAltAz)return 0;
+  const forward=toVec(s.facingAz,s.facingAlt),sun=toVec(s.sunAltAz.az,s.sunAltAz.alt);
+  return clamp(forward[0]*sun[0]+forward[1]*sun[1]+forward[2]*sun[2],-1,1);
+}
+/* 【v947】逆光の度合い。太陽を向いていれば1、真横で0.5、背を向ければ0。
+   地上を暗くする量をこれで加減する（順光では暗くしない）。 */
+function sunsetBacklightFactor(s){
+  return clamp((1+sunsetFacingDot(s))/2,0,1);
+}
+function sunsetAimFactor(s){
+  if(!s||!s.sunAltAz)return 0;
+  const dot=sunsetFacingDot(s);
+  const separation=Math.acos(dot)*R2D;
+  const t=clamp((85-separation)/40,0,1);
+  return t*t*(3-2*t);
+}
+/* 【v936】地上だけを通常の色へ戻していく係数。
+
+   空は日没後も焼け色が残るが、地上が赤く染まったままなのはおかしい。
+   +2°で1、-3°で0。0になると地上は夕焼けモードを掛けない絵と同じになる。 */
+/* 【v942】水面だけを通常の色へ戻していく係数。
+
+   日没のころ、水面に映る赤い光が空より明るいまま残るのを止める。
+   つまみ k で山の位置を動かす：
+     始まり = -2° + 6°k     終わり = 始まり - 4°
+   k=0.5 なら +1°で戻り始め、-3°で通常の色になる。 */
+function sunsetWaterFactor(alt){
+  if(!Number.isFinite(alt))return 0;
+  const k=clamp(sunsetMode.waterBack/100,0,1);
+  const start=-2+6*k,end=start-4;
+  const t=clamp((alt-end)/Math.max(.001,start-end),0,1);
+  return t*t*(3-2*t);
+}
+function sunsetGroundFactor(alt){
+  if(!Number.isFinite(alt))return 0;
+  const t=clamp((alt+3)/5,0,1);
+  return t*t*(3-2*t);
 }
 /* 【v933】水平線で必ず0になる係数。つまみに関係なく効く。
    だるま夕陽は「太陽の面がくっきり残る」ことが要なので、
@@ -10904,25 +11068,50 @@ function sunsetGlowAltitudeFactor(alt){
   const t=clamp(alt/8,0,1);
   return 1-fade*(1-t*t*(3-2*t));
 }
-/* 太陽まわりの光の色。つまみで「橙 ←→ 淡い黄白」を混ぜる。 */
-function sunsetGlowColors(){
+/* 太陽まわりの光の色。つまみで「橙 ←→ 淡い黄白」を混ぜる。
+
+   【v938】さらに、水平線へ近づくほど**太陽と同じ色（赤）へ寄せる**。
+   だるま夕陽は、面だけ赤くてまわりが黄色いままだと成立しないため。 */
+function sunsetGlowColors(alt){
   const t=clamp(sunsetMode.glowHue/100,0,1);
   const mix=(a,b)=>Math.round(a+(b-a)*t);
-  return {
+  const base={
     core:[255,mix(198,252),mix(92,220)],
     mid:[255,mix(172,232),mix(66,164)],
     edge:[255,mix(150,214),mix(48,110)]
   };
+  const toward=1-sunsetHorizonFactor(alt);
+  if(toward<=.01)return base;
+  const sun=sunsetSunColor(alt);
+  return {
+    core:sunsetColorBlend(base.core,sun,toward*.9),
+    mid:sunsetColorBlend(base.mid,sun,toward*.8),
+    edge:sunsetColorBlend(base.edge,sun,toward*.7)
+  };
 }
-/* 太陽の面の色。高いうちは真っ白、下がると少し暗く赤みを帯びる。 */
+/* 【v938】太陽の面の色。高さで白 → 黄 → 赤へ移る。
+
+     3°以上 … 白   (255,255,255)
+     1°     … 黄   (255,232,150)
+     0°以下 … 赤   (250,46,22)
+
+   v937は 8°→白 / 3°→黄 / 0°→赤 で**移るのが早すぎた**。
+   実測の場面（日没20分前で+3.5°、6分前で+1.2°、日没で0°）に合わせて詰め直した。
+   だるま夕陽の赤は「暗い赤」ではなく**明るい赤**なので、明度は落とさない。 */
+const SUNSET_SUN_WHITE=[255,255,255],SUNSET_SUN_YELLOW=[255,232,150],SUNSET_SUN_RED=[250,46,22];
+function sunsetColorBlend(a,b,t){
+  const k=clamp(t,0,1);
+  return [Math.round(a[0]+(b[0]-a[0])*k),
+          Math.round(a[1]+(b[1]-a[1])*k),
+          Math.round(a[2]+(b[2]-a[2])*k)];
+}
 function sunsetSunColor(alt){
-  const t=clamp((alt+3)/9,0,1);   /* -3°で0、+6°で1 */
-  return {r:255,
-    g:Math.round(214+(255-214)*t),
-    b:Math.round(158+(255-158)*t),
-    strength:.78+.22*t};
+  const value=Number.isFinite(alt)?alt:0;
+  if(value>=3)return SUNSET_SUN_WHITE;
+  if(value>=1)return sunsetColorBlend(SUNSET_SUN_YELLOW,SUNSET_SUN_WHITE,(value-1)/2);
+  return sunsetColorBlend(SUNSET_SUN_RED,SUNSET_SUN_YELLOW,value);
 }
-let sunsetCopyCanvas=null,sunsetFieldCanvas=null,sunsetMaskCanvas=null,sunsetBrightCanvas=null,sunsetVividCanvas=null;
+let sunsetCopyCanvas=null,sunsetFieldCanvas=null,sunsetMaskCanvas=null,sunsetBrightCanvas=null,sunsetVividCanvas=null,sunsetRestoreCanvas=null,sunsetSkyMaskCanvas=null,sunsetGuardCanvas=null;
 function sunsetCanvas(store,w,h){
   const canvas=store||document.createElement("canvas");
   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
@@ -10952,6 +11141,24 @@ function sunsetBrightMask(canvas,cw,ch){
   brightCtx.drawImage(canvas,0,0);
   brightCtx.filter="none";
   return bright;
+}
+/* 【v943】暗いものだけを守る型。
+
+   「明るいところにだけ光を乗せる型」（sunsetBrightMask）は中間の明るさも削るので、
+   太陽まわりの輝きに掛けると空の見え方まで変わってしまう。
+   こちらは**輝度0.45より上はそのまま・0.2より下で光を消す**ように解いたもの。
+
+       f(x)=(b*x-0.5)*c+0.5 が f(0.20)=0, f(0.45)=1
+       b=1/(high+low)=1.538,  c=(high+low)/(high-low)=2.6
+
+   橋やKMZ模型は逆光で暗いので、これで光が乗らなくなる。 */
+function sunsetDarkGuardMask(canvas,cw,ch){
+  const guard=sunsetGuardCanvas=sunsetCanvas(sunsetGuardCanvas,cw,ch);
+  const guardCtx=sunsetResetContext(guard);
+  guardCtx.filter="grayscale(1) brightness(1.538) contrast(2.6)";
+  guardCtx.drawImage(canvas,0,0);
+  guardCtx.filter="none";
+  return guard;
 }
 /* 太陽を中心にした放射状のグラデーションを、指定の範囲だけに塗る。
    `stops` は [位置0〜1, 色] の並び。半径の外は最後の色で埋まる。
@@ -11015,21 +11222,53 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const sunAlt=s.sunAltAz.alt;
   const point=toXY?toXY(s.sunAltAz.az,sunAlt):null;
   const edge=(toXY&&point)?toXY(s.sunAltAz.az,sunAlt+(s.sun&&s.sun.angularRadiusDeg||.267)):null;
-  const sun=point?{x:point[0],y:point[1]}:{x:cw/2,y:ch*.42};
-  const sunRadius=(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
   const diagonal=Math.hypot(cw,ch);
+  /* 【v936】太陽が画面の向きから離れていれば、太陽まわりの光は描かない。
+     95°より離れたら中心を画面のはるか外へ逃がす。こうすると放射のグラデーションは
+     全面が「遠く」の色になり、`toXY()` が返す裏返った座標に引きずられない。 */
+  const aimFade=sunsetAimFactor(s);
+  const sunBehind=aimFade<=.02;
+  const sun=(point&&!sunBehind)?{x:point[0],y:point[1]}:{x:cw*.5,y:-diagonal*4};
+  const sunRadius=(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
   /* 【v931】水平線へ近づくほど弱まる。
      【v933】つまみを下げていても水平線では消えるよう、`Math.min` で押さえる。 */
-  const horizonFade=sunsetHorizonFactor(sunAlt);
-  const glowAlt=Math.min(sunsetGlowAltitudeFactor(sunAlt),horizonFade);
-  const colors=sunsetGlowColors();
+  /* 【v937】向きを掛ける前の値も使う（太陽のにじみの幅）。 */
+  const horizonFadeRaw=sunsetHorizonFactor(sunAlt);
+  const horizonFade=horizonFadeRaw*aimFade;
+  /* 【v941】山の高さ。2つの係数がどちらも1に達する高さ5〜8°あたりで1になる。
+     ここだけ足す光を削れば、日没ぎわの明るさは変えずにピークだけ下げられる。 */
+  const peakness=Math.min(sunsetGlowAltitudeFactor(sunAlt),horizonFadeRaw);
+  const glowScale=1-clamp(sunsetMode.softPeak/100,0,1)*peakness;
+  const glowAlt=peakness*aimFade*glowScale;
+  const colors=sunsetGlowColors(sunAlt);
   const rgba=(color,alpha)=>`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+
+  /* 【v939】明暗の型を先に作る。空の段（全体の明るさ・水平線の赤み）にも掛けるため。
+     島影は地形レイヤーではなく写真の上に直接描かれるので「空の範囲」に入る。
+     型を掛けないと、逆光で黒く描いた島が足し算で持ち上げられてしまう。 */
+  const protect=clamp(sunsetMode.protect/100,0,1);
+  const brightMask=protect>.002?sunsetBrightMask(canvas,cw,ch):null;
+  /* 【v943】太陽まわりの輝き用。橋やKMZ模型に光が乗って半透明に見えるのを止める。 */
+  const guardMask=protect>.002?sunsetDarkGuardMask(canvas,cw,ch):null;
 
   const terrainMask=drawPhoto._terrainLayerCanvas;
   const waterMask=drawPhoto._waterSurfaceMaskCanvas;
   const terrainOk=!!(terrainMask&&terrainMask.width===cw&&terrainMask.height===ch);
   const waterOk=!!(waterMask&&waterMask.width===cw&&waterMask.height===ch);
-  const skyMask=terrainOk?terrainMask:null;
+  /* 【v940】空のマスクは「地形 ＋ 島影」。
+     島影は地形レイヤーに入っていないので、地形だけを使うと
+     **不透明な太陽の面が島を塗り潰して手前に出て**しまう。 */
+  let skyMask=terrainOk?terrainMask:null;
+  const islandMaskCanvas=drawPhoto._darumaIslandMaskCanvas;
+  const islandOk=!!(drawPhoto._darumaIslandMaskUsed&&darumaIslandOverlayActive(s)
+    &&islandMaskCanvas&&islandMaskCanvas.width===cw&&islandMaskCanvas.height===ch);
+  if(islandOk){
+    const combined=sunsetSkyMaskCanvas=sunsetCanvas(sunsetSkyMaskCanvas,cw,ch);
+    const combinedCtx=sunsetResetContext(combined);
+    if(terrainOk)combinedCtx.drawImage(terrainMask,0,0,cw,ch);
+    combinedCtx.drawImage(islandMaskCanvas,0,0,cw,ch);
+    skyMask=combined;
+  }
 
   /* 地上だけのマスク（地形 － 水面）。水面はこのあと別に輝かせるので抜いておく。 */
   let groundMask=null;
@@ -11055,34 +11294,51 @@ function applySunsetMode(ctx,s,W,H,toXY){
     const lift=clamp(sunsetMode.skyLift/100,0,1);
     sunsetFieldPass(ctx,cw,ch,sun,diagonal,diagonal,
       [[0,rgba(colors.edge,1)],[1,rgba(colors.edge,1)]],
-      skyMask,true,"lighter",weight*lift*.36);
+      skyMask,true,"lighter",weight*lift*.36,brightMask,protect);
   }
   if(sunsetMode.skyGlow>0&&glowAlt>.002){
     const glow=clamp(sunsetMode.skyGlow/100,0,3);
     sunsetFieldPass(ctx,cw,ch,sun,skyRadius*.62,skyRadius*.62,
       [[0,rgba(colors.core,1)],[.45,rgba(colors.mid,.42)],[1,rgba(colors.edge,0)]],
-      skyMask,true,"lighter",weight*glowAlt*Math.min(1,glow));
+      skyMask,true,"lighter",weight*glowAlt*Math.min(1,glow),guardMask,protect);
     if(glow>1){
       /* 100%を超えたぶんは、同じ光をもう一度重ねて濃くする。 */
       sunsetFieldPass(ctx,cw,ch,sun,skyRadius*.9,skyRadius*.9,
         [[0,rgba(colors.core,1)],[.5,rgba(colors.mid,.5)],[1,rgba(colors.edge,0)]],
-        skyMask,true,"lighter",weight*glowAlt*Math.min(1,glow-1));
+        skyMask,true,"lighter",weight*glowAlt*Math.min(1,glow-1),guardMask,protect);
     }
   }
 
-  /* ④ 地上。逆光なので、太陽の近くだけ少し残して、離れるほど暗く沈める。 */
-  if(groundMask){
+  /* ④ 地上。逆光なので、太陽の近くだけ少し残して、離れるほど暗く沈める。
+
+     【v936】太陽が沈む直前からは、地上だけ通常の色へ戻していく。
+     空は焼け色が残ってよいが、地上が赤く染まったままなのはおかしいため。
+     橙を掛ける前の絵（copy）を地上の形だけ上から戻せば、掛けた橙をちょうど打ち消せる。
+     水面は空を映すので戻さない（groundMask は水面を抜いてある）。 */
+  const groundFade=sunsetGroundFactor(sunAlt);
+  /* 【v947】逆光の度合い。太陽に背を向けているときは地上を暗くしない。
+     暗くする量を素通し(100%)の側へ寄せるので、真横ならその中間になる。 */
+  const backlight=sunsetBacklightFactor(s);
+  const frontLit=1-backlight;
+  if(groundMask&&groundFade>.002){
     const groundRadius=diagonal*.5*(sunsetMode.groundSpread/100);
+    const nearValue=100+(sunsetMode.groundNear-100)*backlight;
+    const farValue=100+(sunsetMode.groundFar-100)*backlight;
     sunsetFieldPass(ctx,cw,ch,sun,groundRadius,groundRadius,
-      [[0,sunsetGray(sunsetMode.groundNear)],[1,sunsetGray(sunsetMode.groundFar)]],
-      groundMask,false,"multiply",weight);
+      [[0,sunsetGray(nearValue)],[1,sunsetGray(farValue)]],
+      groundMask,false,"multiply",weight*groundFade);
+  }
+  /* 【v947】順光のぶんだけ地上を持ち上げる。太陽を向いているあいだは効かない。 */
+  if(groundMask&&frontLit>.01&&sunsetMode.frontLit>0){
+    const lift=clamp(sunsetMode.frontLit/100,0,1);
+    sunsetFieldPass(ctx,cw,ch,sun,diagonal,diagonal,
+      [[0,rgba(colors.mid,1)],[1,rgba(colors.mid,1)]],
+      groundMask,false,"lighter",weight*groundFade*frontLit*lift*.4,brightMask,protect);
   }
 
   /* ⑤ 水面。遠くを少し落として、全体を持ち上げ、太陽の光を足す。
      【v932】水面マスクは「範囲」なので、その上の橋やKMZの画素も含む。
      明暗の型を掛けて、**明るいところにだけ**光が乗るようにする。 */
-  const protect=clamp(sunsetMode.protect/100,0,1);
-  const brightMask=(waterOk&&protect>.002)?sunsetBrightMask(canvas,cw,ch):null;
   if(waterOk){
     const waterRadius=diagonal*.5*(sunsetMode.waterSpread/100);
     sunsetFieldPass(ctx,cw,ch,sun,waterRadius,waterRadius,
@@ -11113,11 +11369,11 @@ function applySunsetMode(ctx,s,W,H,toXY){
       const rayHalfLength=Math.max(4,diagonal*.5*(sunsetMode.rayLength/100)*(.12+.88*horizonFade));
       sunsetFieldPass(ctx,cw,ch,sun,rayHalfWidth,rayHalfLength,
         [[0,rgba(colors.core,1)],[.3,rgba(colors.core,.7)],[.7,rgba(colors.mid,.24)],[1,rgba(colors.edge,0)]],
-        waterMask,false,"lighter",weight*horizonFade*Math.min(1,ray),brightMask,protect);
+        waterMask,false,"lighter",weight*horizonFade*glowScale*Math.min(1,ray),brightMask,protect);
       if(ray>1){
         sunsetFieldPass(ctx,cw,ch,sun,rayHalfWidth*.55,rayHalfLength,
           [[0,rgba(colors.core,1)],[.4,rgba(colors.core,.6)],[1,rgba(colors.mid,0)]],
-          waterMask,false,"lighter",weight*horizonFade*Math.min(1,ray-1),brightMask,protect);
+          waterMask,false,"lighter",weight*horizonFade*glowScale*Math.min(1,ray-1),brightMask,protect);
       }
     }
   }
@@ -11138,20 +11394,78 @@ function applySunsetMode(ctx,s,W,H,toXY){
 
   /* ⑥ 太陽の面。空の範囲だけに白い円を足す。
      地形に隠れている太陽が山の上に出てしまわないように、必ずマスクを掛ける。 */
-  const sunWhite=clamp(sunsetMode.sunWhite/100,0,1);
-  if(sunWhite>.002&&point&&sunAlt>-1.2){
+  /* 【v945】太陽の面も、消えるときはなめらかに。
+     -1.2°でぶつ切りにしていたので、最後にパッと消えていた。 */
+  const discRaw=clamp((sunAlt+1.15)/.75,0,1);
+  const discFade=discRaw*discRaw*(3-2*discRaw);
+  const sunWhite=clamp(sunsetMode.sunWhite/100,0,1)*discFade;
+  if(sunWhite>.002&&point&&!sunBehind&&sunAlt>-1.2){
     const color=sunsetSunColor(sunAlt);
+    const sunRgba=alpha=>`rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
     /* 【v933】だるま夕陽。水平線へ近づくほど、にじみの幅を面の大きさへ寄せる。
-       水平線ではちょうど面の大きさになるので、**輪郭のはっきりした円**が残る。 */
+       【v937】面とにじみを別の段にした。**順番が肝**で、にじみを先に置いて
+       面をその上から塗る。逆にすると足し算のにじみが面の中まで明るくして、
+       また「中心だけ白い＝太陽が小さく見える」絵に戻ってしまう。 */
     const sizeK=clamp(sunsetMode.sunSize/100,.5,5);
-    const radius=sunRadius*(1+(sizeK-1)*horizonFade);
-    sunsetFieldPass(ctx,cw,ch,sun,radius,radius,
-      [[0,`rgba(${color.r},${color.g},${color.b},1)`],
-       [.42,`rgba(${color.r},${color.g},${color.b},0.92)`],
-       [.6,`rgba(${color.r},${Math.round(color.g*.9)},${Math.round(color.b*.72)},0.45)`],
-       [1,`rgba(255,170,70,0)`]],
-      skyMask,true,"lighter",weight*sunWhite*color.strength);
+    /* 【v938】にじみの半径は縮めない。
+       v937は水平線へ近づくほど半径を面の大きさへ寄せていたが、
+       1.02倍まで縮んだ結果**幅1画素の硬い光の輪**になり、
+       太陽が輪郭線付きに見えていた。半径はそのままにして、**濃さ**で弱める。 */
+    const glowRadius=Math.max(sunRadius*1.6,sunRadius*sizeK);
+    const discFraction=clamp(sunRadius/glowRadius,.05,.9);
+    sunsetFieldPass(ctx,cw,ch,sun,glowRadius,glowRadius,
+      [[0,sunRgba(.6)],[discFraction,sunRgba(.55)],[1,sunRgba(0)]],
+      skyMask,true,"lighter",weight*sunWhite*(.32+.68*horizonFadeRaw)*glowScale,guardMask,protect);
+    /* 面。**一様に塗る**ので、輪郭までその色ちょうどの円になる。
+       縁の1割だけ透明へ落として、階段状のギザギザを消す。 */
+    sunsetFieldPass(ctx,cw,ch,sun,sunRadius,sunRadius,
+      [[0,sunRgba(1)],[.9,sunRgba(1)],[1,sunRgba(0)]],
+      skyMask,true,"source-over",weight*sunWhite);
   }
+
+  /* 【v937】水平線の赤み。太陽が沈むころ、水平線あたりを赤く染める。
+     横に広く縦に短い楕円なので、水平線に沿った赤い帯になる。 */
+  const lowRed=1-sunsetHorizonFactor(sunAlt);
+  if(sunsetMode.horizonRed>0&&lowRed>.01&&!sunBehind&&sunAlt>-4&&sunAlt<8){
+    const red=clamp(sunsetMode.horizonRed/100,0,2);
+    sunsetFieldPass(ctx,cw,ch,sun,diagonal*.85,diagonal*.14,
+      [[0,"rgba(255,74,30,0.9)"],[.45,"rgba(255,58,22,0.42)"],[1,"rgba(255,48,16,0)"]],
+      skyMask,true,"lighter",weight*lowRed*aimFade*Math.min(1,red),brightMask,protect);
+    if(red>1){
+      sunsetFieldPass(ctx,cw,ch,sun,diagonal*1.1,diagonal*.22,
+        [[0,"rgba(255,66,24,0.7)"],[.5,"rgba(255,52,18,0.3)"],[1,"rgba(255,44,14,0)"]],
+        skyMask,true,"lighter",weight*lowRed*aimFade*Math.min(1,red-1),brightMask,protect);
+    }
+  }
+
+  /* 【v936】いちばん最後に、地上だけを通常の色へ戻す。
+
+     空は日没後も焼け色が残ってよいが、地上が赤く染まったままなのはおかしい。
+     橙を掛ける前の絵（copy）を地上の形だけ上から重ねると、
+
+         最終の地上 = 元の絵 と 加工後の絵 を「地上の効き」で混ぜたもの
+
+     になる。**最後に置くのが肝**。途中に置くと、そのあとに掛かる
+     彩度・コントラストが戻らない（実測で28万画素ぶん残っていた）。
+     水面は空を映すので戻さない（groundMask は水面を抜いてある）。 */
+  /* 【v942】地上と水面は同じやり方で戻す。混ぜる割合だけが別。 */
+  const restoreRegion=(mask,amount)=>{
+    if(!mask||!(amount>.002))return;
+    const back=sunsetRestoreCanvas=sunsetCanvas(sunsetRestoreCanvas,cw,ch);
+    const backCtx=sunsetResetContext(back);
+    backCtx.drawImage(copy,0,0);
+    backCtx.globalCompositeOperation="destination-in";
+    backCtx.drawImage(mask,0,0,cw,ch);
+    backCtx.globalCompositeOperation="source-over";
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha=clamp(amount,0,1);
+    ctx.drawImage(back,0,0);
+    ctx.restore();
+  };
+  restoreRegion(groundMask,1-groundFade);
+  /* 【v942】水面も同じく。日没後に空より明るい赤が残るのを止める。 */
+  restoreRegion(waterOk?waterMask:null,1-sunsetWaterFactor(sunAlt));
 }
 for(const name of SUNSET_MODE_KEYS){
   const input=el["sunset"+name];
@@ -11235,6 +11549,16 @@ if(el.sunsetPresetDeleteBtn)el.sunsetPresetDeleteBtn.addEventListener("click",as
   await saveSunsetPresets();renderSunsetPresets();
   el.sunsetPresetStatus.textContent=`「${preset.name}」を削除しました。`;
 });
+/* 【v942】いまの値を1行で書き出す。決まった値を既定値へ焼き直すときに使う。 */
+function sunsetModeValuesText(){
+  const line=SUNSET_MODE_KEYS.map(name=>`${sunsetModeKey(name)}:${sunsetMode[sunsetModeKey(name)]}`).join(",");
+  return `sunset ${sunsetModeOn?"ON":"OFF"} {${line}}`;
+}
+if(el.sunsetCopyBtn)el.sunsetCopyBtn.addEventListener("click",()=>{
+  const text=sunsetModeValuesText();
+  if(el.sunsetCopyReadout)el.sunsetCopyReadout.textContent=text;
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+});
 if(el.sunsetPresetSelect)el.sunsetPresetSelect.addEventListener("change",()=>{
   const preset=sunsetPresets.find(item=>item.id===el.sunsetPresetSelect.value);
   if(preset)el.sunsetPresetName.value=preset.name;
@@ -11252,11 +11576,15 @@ syncSunsetModeControls();
    利用者の端末に古い保存値が残っていても、
    **焼き直した項目だけ**は新しい既定値を採る。
    明るさ・コントラストなど、利用者が触ったかもしれない項目には手を出さない。 */
-const PHOTO_TONE_REVISION=908;
-const PHOTO_TONE_REBAKED_KEYS=["Blue"];
+const PHOTO_TONE_REVISION=935;
+/* 【v935】既定値そのものを差し替えたので、**全部の項目**を焼き直す。
+   端末に古い既定値が保存されていても、新しい既定値に入れ替わる。 */
+const PHOTO_TONE_REBAKED_KEYS=["Brightness","Contrast","Saturate","Black","White","Lift","Blue"];
 const GROUND_TONE_KEYS=["Brightness", "Contrast", "Saturate", "Lift", "Blue"];
 const GROUND_TONE_PLAIN={brightness:100, contrast:100, saturate:100, lift:0, blue:100};
-const groundTone={brightness:220, contrast:104, saturate:125, lift:10, blue:40};
+/* 【v935】同じく、地上だけの段の既定値。 */
+const GROUND_TONE_DEFAULT={brightness:166, contrast:144, saturate:100, lift:14, blue:26};
+const groundTone={...GROUND_TONE_DEFAULT};
 function readGroundToneControls(){
   for(const name of GROUND_TONE_KEYS){
     const input=el["toneGround"+name];
@@ -11348,13 +11676,16 @@ if(el.photoToneBtn)el.photoToneBtn.addEventListener("click",()=>{
   update();scheduleSaveSettings();
 });
 if(el.photoToneResetBtn)el.photoToneResetBtn.addEventListener("click",()=>{
+  /* 【v935】戻し先を**既定値**にした。
+     素通し（1画素も変えない状態）で見たいときは、上のスイッチをOFFにすればよいので、
+     行き先が重ならない。 */
   for(const scope of ["Day","Night"])for(const name of PHOTO_TONE_KEYS){
     const input=el["tone"+scope+name];
-    if(input)input.value=PHOTO_TONE_PLAIN[photoToneKey(name)];
+    if(input)input.value=PHOTO_TONE_DEFAULT[scope==="Day"?"day":"night"][photoToneKey(name)];
   }
   for(const name of GROUND_TONE_KEYS){
     const input=el["toneGround"+name];
-    if(input)input.value=GROUND_TONE_PLAIN[photoToneKey(name)];
+    if(input)input.value=GROUND_TONE_DEFAULT[photoToneKey(name)];
   }
   syncPhotoToneControls();syncGroundToneControls();update();scheduleSaveSettings();
 });
@@ -12463,10 +12794,19 @@ function stopPlayback(commit=true){
   el.playPauseBtn.classList.remove("playing");
   if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
   if(commit){
-    /* 以前は分単位へ丸めていたので、一時停止するだけで
-       最大27秒も飛んでいた。今の刻み（分/秒/0.1秒）へ丸める。 */
-    const stepMin=(typeof timeStepMinutes==="function")?timeStepMinutes():1;
-    const snapped=Math.round(playbackVisualMinutes/stepMin)*stepMin;
+    /* 【v943】**秒で止める**。
+       これまでは `timeStepMinutes()`（焦点距離で決まる刻み。広角では1分）へ
+       丸めていたので、止めた瞬間の秒が捨てられていた。
+
+       スライダーの刻みが1分のままだと、書き込んだ小数はブラウザに丸められる。
+       必要なときだけ刻みを1秒まで細かくしてから書く
+       （`syncTimeSliderStep()` が次に走れば元の刻みへ戻る。
+         刻みを変えても、すでに入っている値は丸め直されない）。 */
+    const secondStep=1/60;
+    const snapped=Math.round(playbackVisualMinutes*60)/60;
+    if(!(+el.timeSlider.step>0)||+el.timeSlider.step>secondStep+1e-9){
+      el.timeSlider.step=secondStep.toFixed(6);
+    }
     el.timeSlider.value=clamp(+snapped.toFixed(6),0,1800);
     update();
   }
@@ -13288,6 +13628,170 @@ function stopArMode(){
 el.arModeBtn.addEventListener("click",()=>{
   if(arActive) stopArMode(); else startArMode();
 });
+
+/* =========================================================
+   【v950】ドライブモード（スマホ向け）
+
+   走りながら、実際の景色とシミュレーション画面を見比べて精度を確かめるための機能。
+
+   ・位置 … watchPosition。ただし**測位のたびには動かさない**。
+            止まっていれば更新しない／精度の悪い測位は捨てる。
+   ・方位 … 遅いときは電子コンパス、走っているときはGPSの進行方向。
+            車内は磁気が乱れるので、走行中はGPSのほうが素直に合う。
+   ・仰角 … 触らない（車載ホルダーの角度は当てにならないため）。
+   ========================================================= */
+let driveActive=false;
+let driveWatchId=null,driveOrientationHandler=null,driveWakeLock=null;
+let driveLastLat=null,driveLastLon=null,driveLastApplyAt=0;
+let driveCompassAz=null,driveGpsAz=null,driveSmoothedAz=null;
+let driveSpeedMps=0,driveAccuracyM=null,driveLastFixAt=0,drivePendingMoveM=0;
+let drivePrevViewpointOffset=null,driveRafPending=false,driveLastFrameAt=0;
+const DRIVE_MIN_APPLY_MS=1200;      /* 反映は最短でも1.2秒に1回 */
+const DRIVE_MAX_ACCURACY_M=40;      /* これより粗い測位は使わない */
+function driveEyeMetres(){return clamp(+el.driveEye.value||0,0,5);}
+function driveStepMetres(){return clamp(+el.driveStep.value||12,5,100);}
+function driveSyncControls(){
+  if(el.driveEyeVal)el.driveEyeVal.textContent=`${driveEyeMetres().toFixed(1)}m`;
+  if(el.driveStepVal)el.driveStepVal.textContent=`${Math.round(driveStepMetres())}m`;
+}
+/* 2点間の距離（m）。地形の計算と同じ関数を使う。 */
+function driveDistanceM(lat1,lon1,lat2,lon2){
+  const r=terrainDistanceAndBearing(lat1,lon1,lat2,lon2);
+  return Number.isFinite(r&&r.distanceKm)?r.distanceKm*1000:Infinity;
+}
+/* 方位の持ち替え。2m/sで完全にコンパス、4m/sで完全にGPS。あいだは混ぜる。 */
+function driveTargetAzimuth(){
+  const hasCompass=Number.isFinite(driveCompassAz),hasGps=Number.isFinite(driveGpsAz);
+  if(!hasCompass&&!hasGps)return null;
+  if(!hasGps)return driveCompassAz;
+  if(!hasCompass)return driveGpsAz;
+  const w=clamp((driveSpeedMps-2)/2,0,1);
+  if(w<=0)return driveCompassAz;
+  if(w>=1)return driveGpsAz;
+  /* 角度は数値で混ぜると359°と1°の間で暴れる。近い側の差分で混ぜる。 */
+  return normalizeAngle(driveCompassAz+shortestAngleDelta(driveCompassAz,driveGpsAz)*w);
+}
+function driveScheduleRender(){
+  if(driveRafPending)return;
+  driveRafPending=true;
+  requestAnimationFrame(()=>{
+    driveRafPending=false;
+    if(!driveActive)return;
+    const now=performance.now();
+    const dt=driveLastFrameAt?clamp((now-driveLastFrameAt)/1000,0,.25):.016;
+    driveLastFrameAt=now;
+    const target=driveTargetAzimuth();
+    if(target!==null){
+      if(driveSmoothedAz===null)driveSmoothedAz=target;
+      /* フレームの間隔に左右されない追従。ナビのように少し粘らせる。 */
+      driveSmoothedAz=smoothAngleTowards(driveSmoothedAz,target,1-Math.exp(-4.5*dt));
+      el.facingAz.value=String(Math.round(driveSmoothedAz)%360);
+      updateCameraViewOnly();
+    }
+    driveRenderStatus();
+  });
+}
+function driveRenderStatus(){
+  if(!el.driveStatus)return;
+  const source=Number.isFinite(driveGpsAz)&&driveSpeedMps>=4?"GPSの進行方向"
+    :(Number.isFinite(driveCompassAz)?"電子コンパス":"—");
+  const speedKmh=driveSpeedMps*3.6;
+  const need=Math.max(driveStepMetres(),driveSpeedMps*1.2);
+  const lines=[
+    `方位 ${driveSmoothedAz===null?"—":Math.round(driveSmoothedAz)+"°"}（${source}）`,
+    `速さ ${speedKmh<1?"停車中":speedKmh.toFixed(0)+" km/h"}　測位 ${driveAccuracyM===null?"—":"±"+Math.round(driveAccuracyM)+"m"}`,
+    `次の更新まで ${Math.max(0,need-drivePendingMoveM).toFixed(0)}m（${Math.round(need)}mごと）`
+  ];
+  const text=lines.join("\n");
+  if(el.driveStatus.textContent!==text)el.driveStatus.textContent=text;
+}
+function driveHandlePosition(pos){
+  const c=pos&&pos.coords;
+  if(!c||!Number.isFinite(c.latitude)||!Number.isFinite(c.longitude))return;
+  driveLastFixAt=performance.now();
+  driveAccuracyM=Number.isFinite(c.accuracy)?c.accuracy:null;
+  if(Number.isFinite(c.speed)&&c.speed>=0)driveSpeedMps=c.speed;
+  /* GPSの進行方向は、ある程度動いていないと当てにならない。 */
+  if(Number.isFinite(c.heading)&&c.heading>=0&&driveSpeedMps>=1.5)driveGpsAz=normalizeAngle(c.heading);
+  /* 精度の悪い測位で観測地点を飛ばさない。 */
+  if(driveAccuracyM!==null&&driveAccuracyM>DRIVE_MAX_ACCURACY_M){driveScheduleRender();return;}
+  if(driveLastLat===null){driveApplyPosition(c.latitude,c.longitude);driveScheduleRender();return;}
+  drivePendingMoveM=driveDistanceM(driveLastLat,driveLastLon,c.latitude,c.longitude);
+  const need=Math.max(driveStepMetres(),driveSpeedMps*1.2);
+  const now=performance.now();
+  if(drivePendingMoveM>=need&&now-driveLastApplyAt>=DRIVE_MIN_APPLY_MS)driveApplyPosition(c.latitude,c.longitude);
+  driveScheduleRender();
+}
+function driveApplyPosition(lat,lon){
+  driveLastLat=lat;driveLastLon=lon;driveLastApplyAt=performance.now();drivePendingMoveM=0;
+  el.lat.value=lat.toFixed(6);
+  el.lon.value=lon.toFixed(6);
+  if(el.citySelect)el.citySelect.value=0;
+  /* 磁気偏角は場所で変わるので、動くたびに取り直す。 */
+  arMagneticDeclination=estimateJapanMagneticDeclination(lat,lon,new Date());
+  update();
+}
+async function startDriveMode(){
+  if(driveActive)return;
+  if(!navigator.geolocation){alert("この端末では位置情報を取得できません。");return;}
+  if(typeof arActive!=="undefined"&&arActive&&typeof stopArMode==="function")stopArMode();
+  /* iOSは利用者の操作の中でしか許可を聞けない。ボタンを押した流れのまま尋ねる。 */
+  if(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==="function"){
+    try{await DeviceOrientationEvent.requestPermission();}catch(error){}
+  }
+  driveActive=true;
+  document.body.classList.add("drive-active");
+  el.driveModeBtn.classList.add("active");
+  el.driveModeBtn.setAttribute("aria-pressed","true");
+  if(el.drivePanel)el.drivePanel.setAttribute("aria-hidden","false");
+  driveLastLat=null;driveLastLon=null;driveSmoothedAz=null;driveCompassAz=null;driveGpsAz=null;
+  driveSpeedMps=0;driveAccuracyM=null;drivePendingMoveM=0;driveLastFrameAt=0;
+  /* 目線の高さを足す。終わったら元へ戻す。 */
+  drivePrevViewpointOffset=el.viewpointOffset?el.viewpointOffset.value:null;
+  if(el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();}
+  driveSyncControls();
+  driveRenderStatus();
+  driveOrientationHandler=(e)=>{
+    if(!driveActive||e.alpha==null)return;
+    const dir=computeArDirection(e.alpha,e.beta||0,e.gamma||0,getScreenAngle());
+    if(dir&&Number.isFinite(dir.azimuth))driveCompassAz=normalizeAngle(dir.azimuth);
+    driveScheduleRender();
+  };
+  window.addEventListener("deviceorientation",driveOrientationHandler);
+  driveWatchId=navigator.geolocation.watchPosition(driveHandlePosition,(error)=>{
+    if(el.driveStatus)el.driveStatus.textContent=`位置情報を取得できません（${error&&error.message?error.message:"許可を確認してください"}）`;
+  },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
+  /* 走行中に画面が消えないようにする。取れない端末では黙って諦める。 */
+  try{if(navigator.wakeLock&&navigator.wakeLock.request)driveWakeLock=await navigator.wakeLock.request("screen");}catch(error){}
+  update();
+}
+function stopDriveMode(){
+  if(!driveActive)return;
+  driveActive=false;
+  document.body.classList.remove("drive-active");
+  el.driveModeBtn.classList.remove("active");
+  el.driveModeBtn.setAttribute("aria-pressed","false");
+  if(el.drivePanel)el.drivePanel.setAttribute("aria-hidden","true");
+  if(driveOrientationHandler){window.removeEventListener("deviceorientation",driveOrientationHandler);driveOrientationHandler=null;}
+  if(driveWatchId!==null){try{navigator.geolocation.clearWatch(driveWatchId);}catch(error){}driveWatchId=null;}
+  if(driveWakeLock){try{driveWakeLock.release();}catch(error){}driveWakeLock=null;}
+  if(drivePrevViewpointOffset!==null&&el.viewpointOffset){
+    el.viewpointOffset.value=drivePrevViewpointOffset;syncViewpointOffsetControl();
+  }
+  drivePrevViewpointOffset=null;
+  update();
+}
+if(el.driveModeBtn)el.driveModeBtn.addEventListener("click",()=>{
+  if(driveActive)stopDriveMode();else startDriveMode();
+});
+if(el.driveExitBtn)el.driveExitBtn.addEventListener("click",stopDriveMode);
+if(el.driveEye)el.driveEye.addEventListener("input",()=>{
+  driveSyncControls();
+  if(driveActive&&el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();update();}
+});
+if(el.driveStep)el.driveStep.addEventListener("input",()=>{driveSyncControls();driveRenderStatus();});
+driveSyncControls();
+
 el.arExitBtn.addEventListener("click",stopArMode);
 el.arCalibLeftBtn.addEventListener("click",()=>{ arOrientationOffset -= 5; });
 el.arCalibRightBtn.addEventListener("click",()=>{ arOrientationOffset += 5; });
@@ -13736,6 +14240,7 @@ function collectPersistedSettings(){
     photoToneOn:photoToneOn,
     kmzSilhouetteDarkness:kmzSilhouetteDarkness,   // 【v931】
     sunsetModeOn:sunsetModeOn,   // 【v929】
+    sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
 
     photoTone:{day:{...photoTone.day},night:{...photoTone.night}},   // 【v905】
@@ -13747,6 +14252,8 @@ function collectPersistedSettings(){
     mwTextureLOffsetDeg:mwTextureLOffsetDeg,
     mwTextureBOffsetDeg:mwTextureBOffsetDeg,
     autoJumpToBestTimeOnDateNav:autoJumpToBestTimeOnDateNav,
+    dateNavRevision:DATE_NAV_REVISION,   // 【v944】
+
     lockAzToGc:lockAzToGc,
     lockAzToSun:lockAzToSun,
     lockAzToMoon:lockAzToMoon,
@@ -13952,8 +14459,10 @@ async function loadPersistedSettings(){
       kmzSilhouetteDarkness=+el.kmzSilhouetteDarkness.value;
     }
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
-    if(s.sunsetModeOn!==undefined)sunsetModeOn=s.sunsetModeOn===true;
-    if(s.sunsetMode&&typeof s.sunsetMode==="object"){
+    /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
+    const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
+    if(s.sunsetModeOn!==undefined&&!sunsetRebaked)sunsetModeOn=s.sunsetModeOn===true;
+    if(s.sunsetMode&&typeof s.sunsetMode==="object"&&!sunsetRebaked){
       for(const name of SUNSET_MODE_KEYS){
         const key=sunsetModeKey(name),value=+s.sunsetMode[key];
         if(Number.isFinite(value)&&el["sunset"+name])el["sunset"+name].value=value;
@@ -13961,10 +14470,14 @@ async function loadPersistedSettings(){
     }
     syncSunsetModeControls();
     if(s.photoTone&&typeof s.photoTone==="object"){
+      /* 【v935】焼き直しの見張りは、v908では地上の段にしか無かった。
+         昼・夜の既定値も差し替えたので、こちらにも同じ見張りを入れる。 */
+      const dayNightRebaked=s.photoToneRevision!==PHOTO_TONE_REVISION;
       for(const scope of ["day","night"]){
         const saved=s.photoTone[scope];
         if(!saved)continue;
         for(const name of PHOTO_TONE_KEYS){
+          if(dayNightRebaked&&PHOTO_TONE_REBAKED_KEYS.includes(name))continue;
           const key=photoToneKey(name),value=+saved[key];
           if(!Number.isFinite(value))continue;
           const input=el["tone"+(scope==="day"?"Day":"Night")+name];
@@ -14018,10 +14531,11 @@ async function loadPersistedSettings(){
       el.mwTextureBOffsetSlider.value=mwTextureBOffsetDeg;
       el.mwTextureBOffsetVal.textContent=`${mwTextureBOffsetDeg}°`;
     }
-    if(s.autoJumpToBestTimeOnDateNav!==undefined){
+    /* 【v944】既定を「時刻を保つ」へ変えた。版番号が合わない古い保存は読み飛ばす。 */
+    if(s.autoJumpToBestTimeOnDateNav!==undefined&&s.dateNavRevision===DATE_NAV_REVISION){
       autoJumpToBestTimeOnDateNav=!!s.autoJumpToBestTimeOnDateNav;
-      el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
     }
+    el.bestTimeAutoJumpBtn.setAttribute("aria-pressed",String(autoJumpToBestTimeOnDateNav));
     lockAzToGc=!!s.lockAzToGc;
     lockAzToSun=!!(s.lockAzToSun&&!lockAzToGc); // 万一両方保存されていても、天の川固定を優先し同時ONにはしない
     lockAzToMoon=!!(s.lockAzToMoon&&!lockAzToGc&&!lockAzToSun); // 3つのうち1つだけがONになるようにする
@@ -15988,14 +16502,17 @@ function computeState(){
   const secondsPart=(totalTenthSec-wholeMin*600)/10;
   /* 秒は整数で表示する。小数以下は裏で持ったまま。
      同じ色系のまま少しだけ薄くして、時分と見分けられるようにする。 */
-  const secondsText=timeStep>=1?""
-    :`<span class="clock-sec">:${String(Math.floor(secondsPart)).padStart(2,"0")}</span>`;
+  /* 【v943】秒は**常に**出す。
+     これまでは「刻みが分未満のとき（＝100mm以上）」だけだったので、
+     出たり出なかったりして分かりにくかった。
+     一時停止で秒に止まれるようになったので、広角でも秒が意味を持つ。 */
+  const secondsText=`<span class="clock-sec">:${String(Math.floor(secondsPart)).padStart(2,"0")}</span>`;
   el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}${secondsText}`;
   const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
   const timeWeekdayCircled=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"][dispDateObj.getUTCDay()];
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}${timeWeekdayCircled}`;
   // 大きい時計にも、刻みが分未満のときは秒を出す。
-  updateSimulationClock(minutes,timeStep>=1?null:Math.floor(secondsPart));
+  updateSimulationClock(minutes,Math.floor(secondsPart));   /* 【v943】常に秒まで */
 
   /* 時刻を hh と mm だけから組み立てていたため、
      スライダーの分未満（秒・0.1秒）が丸ごと捨てられていた。
@@ -17618,6 +18135,23 @@ try{
         drawPhoto._terrainRenderKey=null;update();
         return kmzSlots.length;
       },
+      /* 【v950】ドライブモードの確かめ用。
+         実際に車を走らせなくても、測位とコンパスを手で流し込んで振る舞いを追える。 */
+      drive:{
+        start:startDriveMode, stop:stopDriveMode,
+        fix:(lat,lon,accuracy,speed,heading)=>{
+          driveHandlePosition({coords:{latitude:lat,longitude:lon,
+            accuracy:Number.isFinite(accuracy)?accuracy:8,
+            speed:Number.isFinite(speed)?speed:0,
+            heading:Number.isFinite(heading)?heading:null}});
+          return {applied:[driveLastLat,driveLastLon],pending:+drivePendingMoveM.toFixed(1)};
+        },
+        compass:(az)=>{driveCompassAz=normalizeAngle(az);driveScheduleRender();return driveCompassAz;},
+        state:()=>({active:driveActive,compass:driveCompassAz,gps:driveGpsAz,
+          speed:driveSpeedMps,accuracy:driveAccuracyM,smoothed:driveSmoothedAz,
+          target:driveTargetAzimuth(),pending:drivePendingMoveM,
+          applied:[driveLastLat,driveLastLon],step:driveStepMetres(),eye:driveEyeMetres()}),
+      },
       /* 【v931】水面の演出の確かめ用。水面マスクへ四角を描いて「水面のふり」をさせる。
          水域データが取れない場所でも、全体の明るさ・輝き・光の道を見られる。 */
       paintWaterMask:(x,y,w,h)=>{
@@ -18442,7 +18976,24 @@ function darumaTelephotoBlockingAltitudeAt(az,s){
   }
   return best;
 }
-function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor){
+/* 【v939】逆光の度合い。太陽が水平線へ近づくほど1へ近づく。
+   4.5°より高ければ0（今までどおり）、0°で1（ほぼ真っ黒）。
+   逆光は演出ではなく物理なので、夕焼けモードのON/OFFに関係なく効かせる。 */
+function darumaIslandBacklitFactor(s){
+  const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
+  if(alt===null||alt>=4.5)return 0;
+  const t=clamp(alt/4.5,0,1);
+  return 1-t*t*(3-2*t);
+}
+/* 【v940】島影の形を取っておくマスク。
+   夕焼けモードの太陽の面は不透明な塗りなので、
+   これが無いと**島の手前に太陽が出て**しまう（島は地形レイヤーに入っていない）。 */
+function darumaIslandMaskCanvas(W,H){
+  const canvas=drawPhoto._darumaIslandMaskCanvas||(drawPhoto._darumaIslandMaskCanvas=document.createElement("canvas"));
+  if(canvas.width!==W||canvas.height!==H){canvas.width=W;canvas.height=H;}
+  return canvas;
+}
+function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx){
   /* 【v889】島の足元は**描画上の海面線**に置く。
 
      これまでは「物理的な水平線からどれだけ高いか」を求めたあと、
@@ -18464,28 +19015,53 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor)
     const run=points.slice(start,end);
     if(run.length>=2){
       const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
-      const topRGB=[Math.round(lerp(38,98,dayFactor)),Math.round(lerp(45,111,dayFactor)),Math.round(lerp(55,101,dayFactor))];
+      /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。 */
+      const shade=1-clamp(backlit||0,0,1)*.94;
+      const topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
+                    Math.round(lerp(45,111,dayFactor)*shade),
+                    Math.round(lerp(55,101,dayFactor)*shade)];
       const bottomRGB=topRGB.map(value=>Math.round(value*.82));
       const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
       gradient.addColorStop(0,`rgb(${topRGB.join(",")})`);gradient.addColorStop(1,`rgb(${bottomRGB.join(",")})`);
-      ctx.save();ctx.beginPath();ctx.moveTo(run[0].top[0],run[0].top[1]);
-      for(let i=1;i<run.length;i++)ctx.lineTo(run[i].top[0],run[i].top[1]);
-      for(let i=run.length-1;i>=0;i--)ctx.lineTo(run[i].base[0],run[i].base[1]);
-      ctx.closePath();ctx.fillStyle=gradient;ctx.fill();ctx.restore();
+      /* 【v940】同じ形を1つの Path2D にして、絵とマスクの両方へ塗る。
+         別々に組み立てると、片方だけ直したときに形がずれる。 */
+      const shape=new Path2D();
+      shape.moveTo(run[0].top[0],run[0].top[1]);
+      for(let i=1;i<run.length;i++)shape.lineTo(run[i].top[0],run[i].top[1]);
+      for(let i=run.length-1;i>=0;i--)shape.lineTo(run[i].base[0],run[i].base[1]);
+      shape.closePath();
+      ctx.save();ctx.fillStyle=gradient;ctx.fill(shape);ctx.restore();
+      if(maskCtx){
+        maskCtx.fillStyle="#ffffff";maskCtx.fill(shape);
+        drawPhoto._darumaIslandMaskUsed=true;
+      }
     }
     start=Math.max(end,start+1);
   }
 }
 function drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,dayFactor){
+  const backlit=darumaIslandBacklitFactor(s);   /* 【v939】 */
+  /* 【v940】形を残すマスクを毎コマ作り直す。描かなかったコマの古い形を残さない。 */
+  const mask=darumaIslandMaskCanvas(W,H);
+  const maskCtx=mask.getContext("2d");
+  maskCtx.setTransform(1,0,0,1,0,0);
+  maskCtx.globalCompositeOperation="source-over";maskCtx.globalAlpha=1;maskCtx.filter="none";
+  maskCtx.clearRect(0,0,W,H);
+  drawPhoto._darumaIslandMaskUsed=false;
   if(darumaIslandSilhouetteMatches(s)){
     for(const segment of darumaIslandSilhouette.segments){
-      if(Array.isArray(segment.profile))drawDarumaIslandProfile(ctx,segment.profile,darumaIslandSilhouette.physicalHorizon,toXY,W,H,dayFactor);
+      if(Array.isArray(segment.profile))drawDarumaIslandProfile(ctx,segment.profile,darumaIslandSilhouette.physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx);
     }
     return;
   }
   if(!darumaTelephotoResultMatches(s))return;
   const result=darumaTelephotoState.result;
-  if(Array.isArray(result.profile))drawDarumaIslandProfile(ctx,result.profile,result.physicalHorizon,toXY,W,H,dayFactor);
+  if(Array.isArray(result.profile))drawDarumaIslandProfile(ctx,result.profile,result.physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx);
+}
+/* 【v940】いま島影が描かれている場面かどうか。
+   島を描く関数が呼ばれなかったコマで古いマスクを掴まないための見張り。 */
+function darumaIslandOverlayActive(s){
+  return !!(darumaIslandSilhouetteMatches(s)||darumaTelephotoResultMatches(s));
 }
 
 el.darumaTelephotoBtn?.addEventListener("click",()=>setDarumaTelephotoOpen(true));
@@ -23747,8 +24323,19 @@ function drawPhoto(ctx,s){
           const reflectedSunRGB=atmosphericCelestialRGB(s.sunAltAz.alt,"sun").join(",");
           const daylightSunVisibility=clamp(.86+dayFactor*.12,0,1);
           ctx.save();ctx.globalCompositeOperation="lighter";
-          /* 低い朝陽・夕陽は丸い鏡像を水中へ作らず、実写と同じく光条だけにする。 */
-          if(!darumaSunActive&&s.sunAltAz.alt>=3) drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility);
+          /* 低い朝陽・夕陽は丸い鏡像を水中へ作らず、実写と同じく光条だけにする。
+
+             【v945】これまで「高さ3°以上」のぶつ切りだったので、
+             3°を跨いだ瞬間に水面の太陽がパッと消えていた。
+             3°から1°へ向けてなめらかに薄くする。
+             **3°より上の濃さは今までと同じ**なので、見え方は変わらない。 */
+          const mirrorRaw=clamp((s.sunAltAz.alt-1)/2,0,1);
+          /* 【v946】夕焼けモードのときは、日の入の30分前に消しきる。
+             高さでの薄れと、**先に効いたほうを採る**。 */
+          const mirrorAltFade=mirrorRaw*mirrorRaw*(3-2*mirrorRaw);
+          const mirrorFade=sunsetModeOn?Math.min(mirrorAltFade,sunsetMirrorTimeFade(s)):mirrorAltFade;
+          if(!darumaSunActive&&mirrorFade>.002)
+            drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility*mirrorFade);
           // 低い太陽は一本線の汎用反射を重ねず、水面の短い反射群だけで光の道を作る。
           if(s.sunAltAz.alt>=20) drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
           drawCelestialLightRoad(s.sunAltAz,1,reflectedSunRGB,"sun",daylightSunVisibility);
