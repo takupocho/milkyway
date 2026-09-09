@@ -2307,25 +2307,24 @@
      使うのはスマホだが、見えないと探せないので、置き場所だけは共通にする。 */
   .drive-toggle-btn svg{width:21px;height:21px;}
   .drive-toggle-btn[aria-pressed="true"]{color:var(--core-amber);border-color:var(--core-amber);}
-  /* 【v952】ふだんは1行の帯だけ。景色を隠さないことを最優先にする。 */
-  .drive-panel{display:none;position:absolute;left:6px;right:6px;bottom:6px;z-index:14;}
-  body.drive-active .drive-panel{display:block;}
-  .drive-bar{
-    display:flex;align-items:center;gap:6px;
-    padding:5px 6px 5px 9px;border:1px solid rgba(154,164,210,.5);border-radius:10px;
-    background:rgba(12,16,34,.88);color:#eef1f6;
+  /* 【v955】ドライブモードの状態表示。
+
+     画面の下は小地図・ドローンの操作輪・方位バーが並んでいて、必ず何かと重なる。
+     住所や時刻と同じ**上の状態表示の列**（.sim-top-stack）へ入れて、
+     ボタンは置かない（終了はヘッダーの車アイコンをもう一度押す）。 */
+  .drive-panel{
+    /* 左右にアイコンの列があるので、そこへ掛からない幅に収める。 */
+    display:none;max-width:calc(100% - 150px);
+    padding:3px 11px;border:1px solid rgba(154,164,210,.5);border-radius:999px;
+    background:rgba(12,16,34,.86);color:#eef1f6;
     -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
     box-shadow:0 3px 12px rgba(0,0,0,.36);
   }
+  body.drive-active .drive-panel{display:block;}
   .drive-status{
-    flex:1;min-width:0;font-size:11.5px;line-height:1.3;color:#dbe3f5;
+    display:block;font-size:10.5px;line-height:1.5;color:#dbe3f5;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  .drive-mini-btn{
-    flex:0 0 auto;min-height:26px;padding:3px 9px;border:1px solid rgba(255,255,255,.34);
-    border-radius:7px;background:rgba(255,255,255,.1);color:#fff;font:700 11px/1 'Inter',sans-serif;
-  }
-  /* 【v953】つまみは「設定」の中へ移した。画面の帯は状態表示と終了だけ。 */
   body.drive-active .mobile-camera-cut-btn,
   body.drive-active .mobile-shot-plan-btn{display:none;}
   /* 地図モードではPC・スマホとも地図アイコンだけを残す。
@@ -5010,6 +5009,12 @@
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
               <div id="simInfoPanel" class="sim-info-panel" hidden></div>
               <div class="sim-top-stack" id="simTopStack">
+                <!-- 【v955】ドライブモードの状態。画面の下は小地図・ドローンの操作輪・方位バーが
+                     並んでいて必ず何かと重なるので、上の状態表示の列へ入れる。
+                     終了は「ドライブモード」アイコンをもう一度押す（ボタンを置かない）。 -->
+                <div id="drivePanel" class="drive-panel" aria-hidden="true">
+                  <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
+                </div>
                 <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降速度の調整、長押しで最速下降"></div>
                 <div id="droneAltitudeSpeedPanel" class="drone-altitude-speed-panel" hidden>
                   <div class="drone-altitude-speed-title"><span>上昇・下降速度</span><span id="droneAltitudeSpeedVal">下降 8m/秒</span></div>
@@ -5096,14 +5101,6 @@
               </button>
               <!-- 【v925】カメラワーク再生。押すたびに次のカットへ進む。 -->
               <button id="cameraCutPlayBtn" type="button" class="mobile-camera-cut-btn icon-help-target sim-left-help" data-help="カメラワーク再生" aria-label="カメラワークを再生" title="カメラワーク再生"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2.3" y="6.2" width="13.4" height="11.6" rx="1.6" stroke="currentColor" stroke-width="1.4"/><path d="M2.3 10.4h13.4" stroke="currentColor" stroke-width="1.4"/><path d="M6.6 6.2 4.9 10.4M10.9 6.2 9.2 10.4M15.2 6.2 13.5 10.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M17.9 8.3v7.4l5.6-3.7-5.6-3.7Z" fill="currentColor"/></svg></button>
-              <!-- 【v952】ドライブモードの帯。景色を見るための機能なので、
-                   ふだんは1行だけ。つまみは歯車で開く。 -->
-              <div id="drivePanel" class="drive-panel" aria-hidden="true">
-                <div class="drive-bar">
-                  <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
-                  <button id="driveExitBtn" type="button" class="drive-mini-btn drive-exit-btn">終了</button>
-                </div>
-              </div>
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="地図をタップして観測地点を選択するOpenStreetMap"></div>
                 <button id="mapMeasureEndBtn" type="button" class="map-measure-end-btn">距離測定を終了する</button>
@@ -5516,7 +5513,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="953-drive-settings";
+const APP_VERSION="955-drive-status";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6648,7 +6645,7 @@ const el={
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
-  driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveExitBtn:$("driveExitBtn"), driveStatus:$("driveStatus"),
+  driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveStatus:$("driveStatus"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13774,7 +13771,8 @@ async function startDriveMode(){
   };
   window.addEventListener("deviceorientation",driveOrientationHandler);
   driveWatchId=navigator.geolocation.watchPosition(driveHandlePosition,(error)=>{
-    if(el.driveStatus)el.driveStatus.textContent=`位置情報を取得できません（${error&&error.message?error.message:"許可を確認してください"}）`;
+    /* 【v955】長い英語の原文を出すと帯からあふれるので、短い日本語にする。 */
+    if(el.driveStatus)el.driveStatus.textContent=(error&&error.code===1)?"位置情報の許可が必要です":"位置情報を取得できません";
   },{enableHighAccuracy:true,maximumAge:1000,timeout:20000});
   /* 走行中に画面が消えないようにする。取れない端末では黙って諦める。 */
   try{if(navigator.wakeLock&&navigator.wakeLock.request)driveWakeLock=await navigator.wakeLock.request("screen");}catch(error){}
@@ -13799,7 +13797,6 @@ function stopDriveMode(){
 if(el.driveModeBtn)el.driveModeBtn.addEventListener("click",()=>{
   if(driveActive)stopDriveMode();else startDriveMode();
 });
-if(el.driveExitBtn)el.driveExitBtn.addEventListener("click",stopDriveMode);
 if(el.driveEye)el.driveEye.addEventListener("input",()=>{
   driveSyncControls();
   if(driveActive&&el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();update();}
