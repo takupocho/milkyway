@@ -5565,7 +5565,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="957-sunset-selftest";
+const APP_VERSION="958-sunset-ios";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11177,6 +11177,127 @@ function sunsetSunColor(alt){
   if(value>=1)return sunsetColorBlend(SUNSET_SUN_YELLOW,SUNSET_SUN_WHITE,(value-1)/2);
   return sunsetColorBlend(SUNSET_SUN_RED,SUNSET_SUN_YELLOW,value);
 }
+/* =========================================================
+   【v958】iOSのSafariは canvas の `ctx.filter` を掛けてくれない。
+
+   自己診断（v957）を利用者のiPhoneで走らせた結果：
+
+       ○ filter対応   brightness(2)     ← 文字列は受け取る
+       × sepia        120,120,120       ← でも描くときに掛からない
+       × saturate+hue 120,120,120
+
+   画面のトーン調整だけ効いていたのは、あちらに画素で計算する道が
+   もとからあったため。夕焼けモードには無かったので丸ごと素通りしていた。
+
+   CSSのfilterは「3×3の色行列 ＋ 足し算」の組み合わせでしかないので、
+   使っている4か所ぶんをまとめて1本の行列に畳んで、画素で同じ計算をする。
+   掛けられる環境（PC・Android）では今までどおりGPUに任せる。
+   ========================================================= */
+let sunsetForceCpuFilter=false;   /* 検証用。PCでも画素の道を通して見比べる。 */
+function sunsetUseGpuFilter(){return photoToneCanvasFilterSupported&&!sunsetForceCpuFilter;}
+/* 3行4列（色行列3×3 ＋ 足し算1列）。値は0〜1の世界で持つ。 */
+function smMul(A,B){   /* B を掛けてから A を掛ける */
+  const r=new Float64Array(12);
+  for(let i=0;i<3;i++){
+    for(let j=0;j<3;j++){
+      r[i*4+j]=A[i*4]*B[j]+A[i*4+1]*B[4+j]+A[i*4+2]*B[8+j];
+    }
+    r[i*4+3]=A[i*4]*B[3]+A[i*4+1]*B[7]+A[i*4+2]*B[11]+A[i*4+3];
+  }
+  return r;
+}
+function smBrightness(k){return new Float64Array([k,0,0,0, 0,k,0,0, 0,0,k,0]);}
+function smContrast(c){const o=.5-.5*c;return new Float64Array([c,0,0,o, 0,c,0,o, 0,0,c,o]);}
+/* 仕様書（Filter Effects）の係数そのまま。grayscale(1)=saturate(0)。 */
+function smSaturate(s){
+  return new Float64Array([
+    .213+.787*s, .715-.715*s, .072-.072*s, 0,
+    .213-.213*s, .715+.285*s, .072-.072*s, 0,
+    .213-.213*s, .715-.715*s, .072+.928*s, 0]);
+}
+function smSepia(a){
+  const i=1-a;
+  return new Float64Array([
+    .393+.607*i, .769-.769*i, .189-.189*i, 0,
+    .349-.349*i, .686+.314*i, .168-.168*i, 0,
+    .272-.272*i, .534-.534*i, .131+.869*i, 0]);
+}
+function smHueRotate(deg){
+  const rad=deg*Math.PI/180,c=Math.cos(rad),s=Math.sin(rad);
+  return new Float64Array([
+    .213+c*.787-s*.213, .715-c*.715-s*.715, .072-c*.072+s*.928, 0,
+    .213-c*.213+s*.143, .715+c*.285+s*.140, .072-c*.072-s*.283, 0,
+    .213-c*.213-s*.787, .715-c*.715+s*.715, .072+c*.928+s*.072, 0]);
+}
+/* 読み書きするキャンバスは、最初のgetContextで willReadFrequently を立てておく。
+   （あとから属性を変えても効かないので、作るときに決める） */
+const sunsetCpuCanvases=Object.create(null);
+function sunsetCpuCanvas(key,w,h){
+  let canvas=sunsetCpuCanvases[key];
+  if(!canvas){
+    canvas=sunsetCpuCanvases[key]=document.createElement("canvas");
+    canvas.getContext("2d",{willReadFrequently:true});
+  }
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  return canvas;
+}
+/* src を写して色行列を掛け、その結果のキャンバスを返す。 */
+function sunsetMatrixDraw(key,src,w,h,m){
+  const canvas=sunsetCpuCanvas(key,w,h);
+  const ctx=canvas.getContext("2d",{willReadFrequently:true});
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation="source-over";
+  ctx.globalAlpha=1;ctx.filter="none";
+  ctx.clearRect(0,0,w,h);
+  ctx.drawImage(src,0,0,w,h);
+  const image=ctx.getImageData(0,0,w,h),d=image.data;
+  const a0=m[0],a1=m[1],a2=m[2],a3=m[3]*255;
+  const b0=m[4],b1=m[5],b2=m[6],b3=m[7]*255;
+  const c0=m[8],c1=m[9],c2=m[10],c3=m[11]*255;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2];
+    d[i]  =a0*r+a1*g+a2*b+a3;
+    d[i+1]=b0*r+b1*g+b2*b+b3;
+    d[i+2]=c0*r+c1*g+c2*b+c3;
+  }
+  ctx.putImageData(image,0,0);
+  return canvas;
+}
+/* 型ふたつは値が決まっているので、行列は一度だけ作る。 */
+const SUNSET_BRIGHT_MATRIX=smMul(smContrast(2.1),smMul(smBrightness(1.05),smSaturate(0)));
+const SUNSET_GUARD_MATRIX=smMul(smContrast(2.6),smMul(smBrightness(1.538),smSaturate(0)));
+/* 輝度から作る型は「輝度→対応表」で済む。
+   しかも2枚とも同じ絵を読むので、1回読んで同時に作る。
+   読み書きが一番重いので、ここを半分にすると全体が速くなる。 */
+function sunsetLumTable(brightness,contrast){
+  const lut=new Uint8ClampedArray(256),offset=(.5-.5*contrast)*255;
+  for(let i=0;i<256;i++)lut[i]=i*brightness*contrast+offset;
+  return lut;
+}
+const SUNSET_BRIGHT_LUT=sunsetLumTable(1.05,2.1);
+const SUNSET_GUARD_LUT=sunsetLumTable(1.538,2.6);
+function sunsetLumMasksCpu(src,w,h){
+  const read=sunsetCpuCanvas("lum",w,h);
+  const readCtx=read.getContext("2d",{willReadFrequently:true});
+  readCtx.setTransform(1,0,0,1,0,0);readCtx.globalCompositeOperation="source-over";
+  readCtx.globalAlpha=1;readCtx.filter="none";
+  readCtx.clearRect(0,0,w,h);
+  readCtx.drawImage(src,0,0,w,h);
+  const source=readCtx.getImageData(0,0,w,h),sd=source.data;
+  const brightCanvas=sunsetCpuCanvas("bright",w,h),guardCanvas=sunsetCpuCanvas("guard",w,h);
+  const brightCtx=brightCanvas.getContext("2d",{willReadFrequently:true});
+  const guardCtx=guardCanvas.getContext("2d",{willReadFrequently:true});
+  const brightImage=brightCtx.createImageData(w,h),guardImage=guardCtx.createImageData(w,h);
+  const bd=brightImage.data,gd=guardImage.data;
+  for(let i=0;i<sd.length;i+=4){
+    const lum=(.213*sd[i]+.715*sd[i+1]+.072*sd[i+2]+.5)|0;
+    const v=SUNSET_BRIGHT_LUT[lum],g=SUNSET_GUARD_LUT[lum],a=sd[i+3];
+    bd[i]=bd[i+1]=bd[i+2]=v;bd[i+3]=a;
+    gd[i]=gd[i+1]=gd[i+2]=g;gd[i+3]=a;
+  }
+  brightCtx.putImageData(brightImage,0,0);
+  guardCtx.putImageData(guardImage,0,0);
+  return {bright:brightCanvas,guard:guardCanvas};
+}
 /* 【v957】自己診断用。armedのときだけ、掛ける前後の平均色を控える。 */
 let sunsetProbeCanvas=null,sunsetProbeArmed=false,sunsetProbeResult=null;
 function sunsetProbeMean(canvas){
@@ -11216,6 +11337,8 @@ function sunsetResetContext(canvas){
    水面マスクは「範囲」なので、その上に乗っている橋やKMZの画素も含んでしまう。
    形を変えずに「明るいところにだけ光を乗せる」ための型。 */
 function sunsetBrightMask(canvas,cw,ch){
+  /* 【v958】filterが掛からない環境では、同じ計算を画素で。 */
+  if(!sunsetUseGpuFilter())return sunsetMatrixDraw("bright",canvas,cw,ch,SUNSET_BRIGHT_MATRIX);
   const bright=sunsetBrightCanvas=sunsetCanvas(sunsetBrightCanvas,cw,ch);
   const brightCtx=sunsetResetContext(bright);
   brightCtx.filter="grayscale(1) brightness(1.05) contrast(2.1)";
@@ -11234,6 +11357,8 @@ function sunsetBrightMask(canvas,cw,ch){
 
    橋やKMZ模型は逆光で暗いので、これで光が乗らなくなる。 */
 function sunsetDarkGuardMask(canvas,cw,ch){
+  /* 【v958】同上。 */
+  if(!sunsetUseGpuFilter())return sunsetMatrixDraw("guard",canvas,cw,ch,SUNSET_GUARD_MATRIX);
   const guard=sunsetGuardCanvas=sunsetCanvas(sunsetGuardCanvas,cw,ch);
   const guardCtx=sunsetResetContext(guard);
   guardCtx.filter="grayscale(1) brightness(1.538) contrast(2.6)";
@@ -11281,10 +11406,10 @@ function sunsetGray(percent){
 function applySunsetMode(ctx,s,W,H,toXY){
   const weight=sunsetModeWeight(s);
   if(sunsetProbeArmed)sunsetProbeResult=null;
-  if(weight<=.002||!photoToneCanvasFilterSupported){
+  /* 【v958】filterが掛からない端末でも帰らない。画素で掛ける道がある。 */
+  if(weight<=.002){
     /* 【v957】掛けずに帰るときは、その理由を控える。 */
-    if(sunsetProbeArmed)sunsetProbeResult={skipped:!photoToneCanvasFilterSupported
-      ?"この端末はcanvasのfilterに未対応":`効きが${(weight*100).toFixed(1)}%（時間帯・ARモード）`};
+    if(sunsetProbeArmed)sunsetProbeResult={skipped:`効きが${(weight*100).toFixed(1)}%（時間帯・ARモード）`};
     return;
   }
   const canvas=ctx.canvas,cw=canvas.width,ch=canvas.height;
@@ -11299,11 +11424,18 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const copyCtx=sunsetResetContext(copy);
   copyCtx.drawImage(canvas,0,0);
   const hue=sunsetMode.yellow*.20-sunsetMode.red*.30;
+  const saturateK=sunsetMode.saturate/100;
   ctx.save();
   ctx.setTransform(1,0,0,1,0,0);
   ctx.globalAlpha=weight*strength;
-  ctx.filter=`brightness(.85) sepia(1) saturate(${(sunsetMode.saturate/100).toFixed(3)}) hue-rotate(${hue.toFixed(2)}deg)`;
-  ctx.drawImage(copy,0,0);
+  if(sunsetUseGpuFilter()){
+    ctx.filter=`brightness(.85) sepia(1) saturate(${saturateK.toFixed(3)}) hue-rotate(${hue.toFixed(2)}deg)`;
+    ctx.drawImage(copy,0,0);
+  }else{
+    /* 【v958】左から順に掛かるので、行列は右から積む。 */
+    ctx.drawImage(sunsetMatrixDraw("grade",copy,cw,ch,
+      smMul(smHueRotate(hue),smMul(smSaturate(saturateK),smMul(smSepia(1),smBrightness(.85))))),0,0);
+  }
   ctx.restore();
 
   /* ② 太陽の画面位置と、視半径ぶんの画面上の大きさ。 */
@@ -11335,9 +11467,11 @@ function applySunsetMode(ctx,s,W,H,toXY){
      島影は地形レイヤーではなく写真の上に直接描かれるので「空の範囲」に入る。
      型を掛けないと、逆光で黒く描いた島が足し算で持ち上げられてしまう。 */
   const protect=clamp(sunsetMode.protect/100,0,1);
-  const brightMask=protect>.002?sunsetBrightMask(canvas,cw,ch):null;
+  /* 【v958】画素で作るときは、1回読んで型2枚を同時に作る。 */
+  const lumMasks=(protect>.002&&!sunsetUseGpuFilter())?sunsetLumMasksCpu(canvas,cw,ch):null;
+  const brightMask=lumMasks?lumMasks.bright:(protect>.002?sunsetBrightMask(canvas,cw,ch):null);
   /* 【v943】太陽まわりの輝き用。橋やKMZ模型に光が乗って半透明に見えるのを止める。 */
-  const guardMask=protect>.002?sunsetDarkGuardMask(canvas,cw,ch):null;
+  const guardMask=lumMasks?lumMasks.guard:(protect>.002?sunsetDarkGuardMask(canvas,cw,ch):null);
 
   const terrainMask=drawPhoto._terrainLayerCanvas;
   const waterMask=drawPhoto._waterSurfaceMaskCanvas;
@@ -11469,14 +11603,20 @@ function applySunsetMode(ctx,s,W,H,toXY){
   /* 【v932】最後に全体の彩度とコントラスト。写真の現像と同じ最後の一段。 */
   const vivid=clamp(sunsetMode.vivid/100,1,3),contrast=clamp(sunsetMode.contrast/100,1,2.5);
   if(vivid>1.002||contrast>1.002){
-    const vividCopy=sunsetVividCanvas=sunsetCanvas(sunsetVividCanvas,cw,ch);
-    const vividCtx=sunsetResetContext(vividCopy);
-    vividCtx.drawImage(canvas,0,0);
     ctx.save();
     ctx.setTransform(1,0,0,1,0,0);
     ctx.globalAlpha=weight;
-    ctx.filter=`saturate(${vivid.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
-    ctx.drawImage(vividCopy,0,0);
+    if(sunsetUseGpuFilter()){
+      const vividCopy=sunsetVividCanvas=sunsetCanvas(sunsetVividCanvas,cw,ch);
+      const vividCtx=sunsetResetContext(vividCopy);
+      vividCtx.drawImage(canvas,0,0);
+      ctx.filter=`saturate(${vivid.toFixed(3)}) contrast(${contrast.toFixed(3)})`;
+      ctx.drawImage(vividCopy,0,0);
+    }else{
+      /* 【v958】同じ計算を画素で。 */
+      ctx.drawImage(sunsetMatrixDraw("vivid",canvas,cw,ch,
+        smMul(smContrast(contrast),smSaturate(vivid))),0,0);
+    }
     ctx.restore();
   }
 
@@ -11812,6 +11952,7 @@ function sunsetSelfTestReport(){
   lines.push(`夕焼け ${sunsetModeOn?"ON":"OFF"} / 効き ${Math.round(sunsetModeWeight(s)*100)}% / 太陽 ${alt===null?"—":alt.toFixed(1)+"°"} / AR ${arActive?"ON":"OFF"}`);
   const sizeOf=(m)=>!m?"なし":((m.width===canvas.width&&m.height===canvas.height)?"OK":`大きさ違い ${m.width}x${m.height}`);
   lines.push(`地形マスク ${sizeOf(drawPhoto._terrainLayerCanvas)} / 水面マスク ${sizeOf(drawPhoto._waterSurfaceMaskCanvas)}`);
+  lines.push(`掛け方 ${sunsetUseGpuFilter()?"GPU（filter）":"画素で計算（この端末はfilterが効かない）"}`);
 
   /* 実際に1枚描いて、掛ける前と後の平均色を比べる。 */
   sunsetProbeArmed=true;sunsetProbeResult=null;
@@ -18478,6 +18619,8 @@ try{
       /* 【v912】カメラワークの検証用。t=0〜1 で途中の向きを直接出せる。 */
       camera:(t,smooth)=>{const v=cameraMoveViewAt(t);if(!v)return null;cameraMoveApplyView(v.az,v.alt,v.focal,smooth!==false);return v;},
       cameraPath:()=>({from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing}),
+      /* 【v958】PCでも画素の道を通して、GPUと同じ絵になるか見比べるための入口。 */
+      cpuFilter:(on)=>{sunsetForceCpuFilter=on!==false;update();return sunsetForceCpuFilter;},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       injectKmz:(lat,lon,w,hgt)=>{
