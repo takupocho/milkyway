@@ -430,6 +430,39 @@
     width:15px;height:15px;border-radius:50%;
     background:var(--core-amber);border:2px solid #1c1120;cursor:pointer;
   }
+  /* 【v959】ドラッグする場所で「なぞって選択」が始まらないようにする。
+
+     なぞって選択を抑えていたのは**スマホだけ**だった（上の (hover:none) の指定）。
+     PCには何も無いので、つまみを少し外して押すとそこから文字の選択が始まり、
+     つまみが動かないままになっていた。
+     しかもスマホ側は `input, textarea, select` をまとめて選択できる側へ戻していて、
+     **つまみ（range）まで巻き込んでいた**。ここで外す
+     （`input[type="range"]` の方が詳細度が高いので、順番に関係なく勝つ）。
+
+     文字を読み取りたい欄（値の書き出し・自己診断・画面の情報表示）は
+     選べるままにしてある。 */
+  .timeline-row,.dt-time-label,.tick-row,.slider-wrap,.slider-tick-marks,
+  .timeline-bar-canvas,.range-hint,.field>label.top,.focal-quick,
+  .display-popup-slider,.play-speed-popup,input[type="range"]{
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  }
+  /* 縦の指の動きだけをページ送りへ渡す。横へ引いたときに取られない。 */
+  input[type="range"]{touch-action:pan-y;}
+
+  /* 【v959】時刻バーは軌道が4pxしかなく、上下は完全な空振りだった。
+     見た目と並びの高さはそのままに、**当たり判定だけ**を上下へ広げる。
+       ・透明な枠で広げ、background-clip で軌道は4pxのまま
+       ・広げたぶんを負のマージンで戻す（4+2+2=8px → 24-8-8=8px） */
+  #timeSlider{
+    height:24px;
+    border-top:10px solid transparent;
+    border-bottom:10px solid transparent;
+    background-clip:padding-box;
+    margin:-8px 0;
+  }
+  /* 広げた枠が下の目盛りの行に食われないよう、こちらを上に置く。 */
+  #sliderTimelineRow{position:relative;z-index:2;}
+
   /* 【v766】PCでは時刻バーのつまみだけを大きくする。
      ほかの設定スライダーと、760px以下のスマホ用26px設定は変更しない。 */
   @media (min-width:761px){
@@ -537,6 +570,8 @@
     .jump-besttime-btn{display:none;}
     #bestTimeDate{font-size:14px;color:var(--alert);font-weight:600;}
     input[type="range"]{height:6px;}
+    /* 【v959】軌道が6pxになるぶん、当たり判定も6+20=26pxにする（負のマージンは共通）。 */
+    #timeSlider{height:26px;}
     input[type="range"]::-webkit-slider-thumb{
       width:26px;height:26px;
       box-shadow:0 0 0 3px rgba(232,166,89,0.28);
@@ -912,6 +947,17 @@
     -webkit-backdrop-filter:blur(6px);
     width:min(720px,calc(100vw - 40px));
     box-sizing:border-box;
+  }
+  /* 【v961】色えらび2つを横に並べる。 */
+  .overlay-color-row{display:flex;gap:8px;margin-top:2px;}
+  .overlay-color-row label{
+    flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;
+    font:600 10px/1.3 'Inter',sans-serif;color:var(--dim-2);
+    -webkit-user-select:none;user-select:none;
+  }
+  .overlay-color-row input[type="color"]{
+    width:100%;height:30px;padding:2px;border:1px solid var(--line,#2a3345);
+    border-radius:7px;background:transparent;cursor:pointer;
   }
   .display-popup-section-title{
     flex:0 0 100%;
@@ -4812,6 +4858,47 @@
               <p id="sunsetPresetStatus" class="map-hint" style="margin-top:7px;">上のつまみの内容をまとめて保存します。撮影計画にも一緒に記録されます。</p>
             </div>
           </div>
+
+          <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
+          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛣 道路・線路・橋の色</p>
+          <p class="map-hint" style="margin-top:4px;">代表の色だけを選びます。付属の部分（センターライン・枕木・橋脚など）は、<b>既定色との比</b>を保ったまま一緒に動くので、立体感は崩れません。既定の色のままなら見え方は変わりません。</p>
+          <div id="overlayStylePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
+            <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">道路</p>
+            <p class="map-hint" style="margin:0 0 6px;">路面の色。センターラインは、この色との既定の比で明るくなります。</p>
+            <div class="overlay-color-row">
+              <label>昼の色<input type="color" id="overlayRoadDayColor" value="#848482"></label>
+              <label>夜の色<input type="color" id="overlayRoadNightColor" value="#686c74"></label>
+            </div>
+            <div class="field"><label class="top">昼の明るさ <span class="val mono" id="overlayRoadDayBrightVal">100%</span></label><input type="range" id="overlayRoadDayBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">昼の濃さ <span class="val mono" id="overlayRoadDayOpacityVal">100%</span></label><input type="range" id="overlayRoadDayOpacity" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayRoadNightBrightVal">100%</span></label><input type="range" id="overlayRoadNightBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayRoadNightOpacityVal">100%</span></label><input type="range" id="overlayRoadNightOpacity" min="0" max="200" step="1" value="100"></div>
+            <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">線路</p>
+            <p class="map-hint" style="margin:0 0 6px;">バラスト（道床）の色。枕木は、この色との既定の比で変わります。</p>
+            <div class="overlay-color-row">
+              <label>昼の色<input type="color" id="overlayRailDayColor" value="#686058"></label>
+              <label>夜の色<input type="color" id="overlayRailNightColor" value="#54504c"></label>
+            </div>
+            <div class="field"><label class="top">昼の明るさ <span class="val mono" id="overlayRailDayBrightVal">100%</span></label><input type="range" id="overlayRailDayBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">昼の濃さ <span class="val mono" id="overlayRailDayOpacityVal">100%</span></label><input type="range" id="overlayRailDayOpacity" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayRailNightBrightVal">100%</span></label><input type="range" id="overlayRailNightBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayRailNightOpacityVal">100%</span></label><input type="range" id="overlayRailNightOpacity" min="0" max="200" step="1" value="100"></div>
+            <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">橋</p>
+            <p class="map-hint" style="margin:0 0 6px;">橋面の色。側面・橋脚・縁・中央線は、この色との既定の比で暗く／明るくなります。</p>
+            <div class="overlay-color-row">
+              <label>昼の色<input type="color" id="overlayBridgeDayColor" value="#262a30"></label>
+              <label>夜の色<input type="color" id="overlayBridgeNightColor" value="#78808c"></label>
+            </div>
+            <div class="field"><label class="top">昼の明るさ <span class="val mono" id="overlayBridgeDayBrightVal">100%</span></label><input type="range" id="overlayBridgeDayBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">昼の濃さ <span class="val mono" id="overlayBridgeDayOpacityVal">100%</span></label><input type="range" id="overlayBridgeDayOpacity" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayBridgeNightBrightVal">100%</span></label><input type="range" id="overlayBridgeNightBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayBridgeNightOpacityVal">100%</span></label><input type="range" id="overlayBridgeNightOpacity" min="0" max="200" step="1" value="100"></div>
+            <div class="row2" style="margin-top:12px;">
+              <button id="overlayStyleResetBtn" type="button" class="ghost" style="flex:1;">既定の値へ戻す</button>
+              <button id="overlayStyleCopyBtn" type="button" class="ghost" style="flex:1;">いまの値を書き出す</button>
+            </div>
+            <p id="overlayStyleReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;"></p>
+          </div>
         </div>
       </section>
 
@@ -4909,6 +4996,8 @@
                 <button id="popupMountainNamesBtn" type="button" class="constellation-toggle-btn">山名表示</button>
                 <button id="popupFujiDetailBtn" type="button" class="constellation-toggle-btn">富士山 精細</button>
                 <div class="display-popup-section-title">シミュレーション画面</div>
+                <!-- 【v960】夕焼けモード。設定→開発者の中だけでは撮影中に遠いので、ここにも置く。 -->
+                <button id="popupSunsetModeBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="夕焼け・朝焼けの時間だけ、太陽を中心に逆光の色味を掛けます">夕焼けモード</button>
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
                 <button id="popupVignetteBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">周辺減光</button>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
@@ -5565,7 +5654,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="958-sunset-ios";
+const APP_VERSION="961-overlay-color";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6738,6 +6827,13 @@ const el={
   highDetailQualitySlider:$("highDetailQualitySlider"), highDetailQualityVal:$("highDetailQualityVal"),
   localDetailMeshStepSlider:$("localDetailMeshStepSlider"), localDetailMeshStepVal:$("localDetailMeshStepVal"), localDetailSampleIntervalDisplay:$("localDetailSampleIntervalDisplay"),
   photoToneBtn:$("photoToneBtn"),
+  overlayStyleResetBtn:$("overlayStyleResetBtn"), overlayStyleCopyBtn:$("overlayStyleCopyBtn"), overlayStyleReadout:$("overlayStyleReadout"),
+  overlayRoadDayColor:$("overlayRoadDayColor"), overlayRoadDayBright:$("overlayRoadDayBright"), overlayRoadDayBrightVal:$("overlayRoadDayBrightVal"), overlayRoadDayOpacity:$("overlayRoadDayOpacity"), overlayRoadDayOpacityVal:$("overlayRoadDayOpacityVal"),
+  overlayRoadNightColor:$("overlayRoadNightColor"), overlayRoadNightBright:$("overlayRoadNightBright"), overlayRoadNightBrightVal:$("overlayRoadNightBrightVal"), overlayRoadNightOpacity:$("overlayRoadNightOpacity"), overlayRoadNightOpacityVal:$("overlayRoadNightOpacityVal"),
+  overlayRailDayColor:$("overlayRailDayColor"), overlayRailDayBright:$("overlayRailDayBright"), overlayRailDayBrightVal:$("overlayRailDayBrightVal"), overlayRailDayOpacity:$("overlayRailDayOpacity"), overlayRailDayOpacityVal:$("overlayRailDayOpacityVal"),
+  overlayRailNightColor:$("overlayRailNightColor"), overlayRailNightBright:$("overlayRailNightBright"), overlayRailNightBrightVal:$("overlayRailNightBrightVal"), overlayRailNightOpacity:$("overlayRailNightOpacity"), overlayRailNightOpacityVal:$("overlayRailNightOpacityVal"),
+  overlayBridgeDayColor:$("overlayBridgeDayColor"), overlayBridgeDayBright:$("overlayBridgeDayBright"), overlayBridgeDayBrightVal:$("overlayBridgeDayBrightVal"), overlayBridgeDayOpacity:$("overlayBridgeDayOpacity"), overlayBridgeDayOpacityVal:$("overlayBridgeDayOpacityVal"),
+  overlayBridgeNightColor:$("overlayBridgeNightColor"), overlayBridgeNightBright:$("overlayBridgeNightBright"), overlayBridgeNightBrightVal:$("overlayBridgeNightBrightVal"), overlayBridgeNightOpacity:$("overlayBridgeNightOpacity"), overlayBridgeNightOpacityVal:$("overlayBridgeNightOpacityVal"),
   sunsetModeBtn:$("sunsetModeBtn"), sunsetModeState:$("sunsetModeState"), sunsetModePanel:$("sunsetModePanel"),
   sunsetStrength:$("sunsetStrength"), sunsetStrengthVal:$("sunsetStrengthVal"),
   sunsetSaturate:$("sunsetSaturate"), sunsetSaturateVal:$("sunsetSaturateVal"),
@@ -6828,7 +6924,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupWaterRayDiagBtn:$("popupWaterRayDiagBtn"), waterRayDiagPanel:$("waterRayDiagPanel"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
+  popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupWaterRayDiagBtn:$("popupWaterRayDiagBtn"), waterRayDiagPanel:$("waterRayDiagPanel"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
   popupBridgeBtn:$("popupBridgeBtn"),
   cometMagRow:$("cometMagRow"), cometMagSlider:$("cometMagSlider"), cometMagVal:$("cometMagVal"),
   cometTailRow:$("cometTailRow"), cometTailSlider:$("cometTailSlider"), cometTailVal:$("cometTailVal"), shotPlanBtn:$("shotPlanBtn"), shotPlanPanel:$("shotPlanPanel"),
@@ -11018,6 +11114,13 @@ function syncSunsetModeControls(){
     el.sunsetModeBtn.classList.toggle("active",sunsetModeOn);
     el.sunsetModeState.textContent=sunsetModeOn?"ON":"OFF";
   }
+  /* 【v960】表示パネル側のボタンも一緒に揃える。
+     この関数は切り替え時・起動時・設定の読み込み時のすべてから呼ばれるので、
+     どちらから切り替えても両方の見た目が合う。 */
+  if(el.popupSunsetModeBtn){
+    el.popupSunsetModeBtn.classList.toggle("active",sunsetModeOn);
+    el.popupSunsetModeBtn.setAttribute("aria-pressed",String(sunsetModeOn));
+  }
   if(el.sunsetModePanel)el.sunsetModePanel.style.opacity=sunsetModeOn?"1":".45";
 }
 /* 効き具合の表示は**描くときに**書く。
@@ -11702,6 +11805,8 @@ for(const name of SUNSET_MODE_KEYS){
   if(!input)continue;
   input.addEventListener("input",()=>{syncSunsetModeControls();update();scheduleSaveSettings();});
 }
+/* 【v960】表示パネルのボタンは、開発者側のボタンをそのまま押す（周辺減光と同じやり方）。 */
+if(el.popupSunsetModeBtn&&el.sunsetModeBtn)el.popupSunsetModeBtn.addEventListener("click",()=>el.sunsetModeBtn.click());
 if(el.sunsetModeBtn)el.sunsetModeBtn.addEventListener("click",()=>{
   sunsetModeOn=!sunsetModeOn;syncSunsetModeControls();update();scheduleSaveSettings();
 });
@@ -11987,6 +12092,169 @@ if(el.sunsetPresetSelect)el.sunsetPresetSelect.addEventListener("change",()=>{
 });
 syncSunsetModeControls();
 
+
+/* =========================================================
+   【v961】道路・線路・橋の色と明るさ（昼と夜それぞれ）
+
+   それぞれ1色ではない。道路は路面＋センターライン、線路はバラスト＋枕木、
+   橋は橋面・側面・橋脚・橋脚の影・橋脚の縁・縁・中央線の7つ。
+   ぜんぶ1色で塗ると立体感が消えるので、**代表の色だけ**を選んでもらい、
+   残りは既定色との比で伸ばす。
+
+       その部位の色 = 選んだ色 × (その部位の既定色 ÷ 代表の既定色)
+
+   選んだ色が既定色のままなら、割り算と掛け算が打ち消し合って
+   **元の数字がそのまま**出る。だから触らなければ1画素も変わらない。
+   ========================================================= */
+const OVERLAY_STYLE_REVISION=961;
+/* もともと描画のところに直接書いてあった数字。夜(t=0)と昼(t=1)。 */
+const OVERLAY_STYLE_PARTS={
+  road:{
+    main:{night:[104,108,116],day:[132,132,130]},   /* 路面 */
+    mark:{night:[158,162,170],day:[226,226,222]}    /* センターライン */
+  },
+  rail:{
+    main:{night:[ 84, 80, 76],day:[104, 96, 88]},   /* バラスト */
+    tie: {night:[150,145,136],day:[ 58, 50, 42]}    /* 枕木 */
+  },
+  bridge:{
+    main:     {night:[120,128,140],day:[ 38, 42, 48]},   /* 橋面 */
+    side:     {night:[ 86, 94,106],day:[ 27, 30, 35]},   /* 側面 */
+    pier:     {night:[ 68, 76, 88],day:[ 21, 24, 29]},   /* 橋脚 */
+    pierShade:{night:[ 46, 54, 66],day:[ 13, 16, 20]},   /* 橋脚の影 */
+    pierEdge: {night:[118,128,142],day:[  8, 10, 14]},   /* 橋脚の縁 */
+    edge:     {night:[176,186,198],day:[ 12, 15, 20]},   /* 縁 */
+    mark:     {night:[198,194,180],day:[178,166,132]}    /* 中央線・枕木の印 */
+  }
+};
+const OVERLAY_STYLE_GROUPS=[["road","Road"],["rail","Rail"],["bridge","Bridge"]];
+function overlayRgbToHex(rgb){
+  return "#"+rgb.map(v=>clamp(Math.round(v),0,255).toString(16).padStart(2,"0")).join("");
+}
+function overlayHexToRgb(hex){
+  const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||"").trim());
+  if(!m)return null;
+  const n=parseInt(m[1],16);
+  return [(n>>16)&255,(n>>8)&255,n&255];
+}
+const overlayStyle={};
+for(const [group] of OVERLAY_STYLE_GROUPS){
+  const base=OVERLAY_STYLE_PARTS[group].main;
+  overlayStyle[group]={
+    dayColor:overlayRgbToHex(base.day),   nightColor:overlayRgbToHex(base.night),
+    dayBright:100,  nightBright:100,
+    dayOpacity:100, nightOpacity:100
+  };
+}
+function overlayStyleDefault(group,field){
+  const base=OVERLAY_STYLE_PARTS[group].main;
+  if(field==="dayColor")return overlayRgbToHex(base.day);
+  if(field==="nightColor")return overlayRgbToHex(base.night);
+  return 100;
+}
+/* 部位の色。dayFactor は 0=夜 1=昼。 */
+function overlayPartRGB(group,part,dayFactor){
+  const parts=OVERLAY_STYLE_PARTS[group],base=parts.main,ref=parts[part]||base;
+  const style=overlayStyle[group];
+  const night=overlayHexToRgb(style.nightColor)||base.night;
+  const day=overlayHexToRgb(style.dayColor)||base.day;
+  const nightGain=style.nightBright/100,dayGain=style.dayBright/100;
+  const out=[];
+  for(let i=0;i<3;i++){
+    const n=night[i]*(ref.night[i]/base.night[i])*nightGain;
+    const d=day[i]*(ref.day[i]/base.day[i])*dayGain;
+    out.push(clamp(Math.round(lerp(n,d,dayFactor)),0,255));
+  }
+  return out;
+}
+/* 濃さの倍率。もとの濃さに掛ける。 */
+function overlayAlphaScale(group,dayFactor){
+  const style=overlayStyle[group];
+  return lerp(style.nightOpacity/100,style.dayOpacity/100,dayFactor);
+}
+/* 橋は7色まとめて要るので、1回で返す。3か所から同じものを使う。 */
+function overlayBridgePalette(dayFactor){
+  return {
+    deck:overlayPartRGB("bridge","main",dayFactor),
+    side:overlayPartRGB("bridge","side",dayFactor),
+    pier:overlayPartRGB("bridge","pier",dayFactor),
+    pierShade:overlayPartRGB("bridge","pierShade",dayFactor),
+    pierEdge:overlayPartRGB("bridge","pierEdge",dayFactor),
+    edge:overlayPartRGB("bridge","edge",dayFactor),
+    mark:overlayPartRGB("bridge","mark",dayFactor),
+    baseAlpha:lerp(.82,.97,dayFactor)*overlayAlphaScale("bridge",dayFactor)
+  };
+}
+function readOverlayStyleControls(){
+  for(const [group,name] of OVERLAY_STYLE_GROUPS){
+    const target=overlayStyle[group];
+    for(const scope of ["Day","Night"]){
+      const key=scope.toLowerCase();
+      const colorInput=el["overlay"+name+scope+"Color"];
+      if(colorInput&&overlayHexToRgb(colorInput.value))target[key+"Color"]=colorInput.value;
+      for(const field of ["Bright","Opacity"]){
+        const input=el["overlay"+name+scope+field];
+        if(!input)continue;
+        const value=+input.value;
+        if(Number.isFinite(value))target[key+field]=value;
+      }
+    }
+  }
+}
+function syncOverlayStyleControls(){
+  readOverlayStyleControls();
+  for(const [group,name] of OVERLAY_STYLE_GROUPS){
+    for(const scope of ["Day","Night"]){
+      const key=scope.toLowerCase();
+      for(const field of ["Bright","Opacity"]){
+        const out=el["overlay"+name+scope+field+"Val"];
+        if(out)out.textContent=`${overlayStyle[group][key+field]}%`;
+      }
+    }
+  }
+}
+function overlayStyleValuesText(){
+  return OVERLAY_STYLE_GROUPS.map(([group,name])=>{
+    const s=overlayStyle[group];
+    return `${group} 昼{color:${s.dayColor},bright:${s.dayBright},opacity:${s.dayOpacity}}`
+      +` 夜{color:${s.nightColor},bright:${s.nightBright},opacity:${s.nightOpacity}}`;
+  }).join("\n");
+}
+for(const [group,name] of OVERLAY_STYLE_GROUPS){
+  for(const scope of ["Day","Night"]){
+    for(const field of ["Color","Bright","Opacity"]){
+      const input=el["overlay"+name+scope+field];
+      if(!input)continue;
+      input.addEventListener("input",()=>{
+        syncOverlayStyleControls();
+        /* 形は変わらないが色は地形レイヤーの中なので、作り直しの鍵を落として描き直す。 */
+        drawPhoto._terrainRenderKey=null;
+        update();scheduleSaveSettings();
+      });
+    }
+  }
+}
+if(el.overlayStyleResetBtn)el.overlayStyleResetBtn.addEventListener("click",()=>{
+  for(const [group,name] of OVERLAY_STYLE_GROUPS){
+    for(const scope of ["Day","Night"]){
+      const key=scope.toLowerCase();
+      for(const field of ["Color","Bright","Opacity"]){
+        const input=el["overlay"+name+scope+field];
+        if(input)input.value=overlayStyleDefault(group,key+field);
+      }
+    }
+  }
+  syncOverlayStyleControls();
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
+  if(el.overlayStyleReadout)el.overlayStyleReadout.textContent="既定の値へ戻しました。";
+});
+if(el.overlayStyleCopyBtn)el.overlayStyleCopyBtn.addEventListener("click",()=>{
+  const text=overlayStyleValuesText();
+  if(el.overlayStyleReadout)el.overlayStyleReadout.textContent=text;
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+});
+syncOverlayStyleControls();
 /* 【v906】夜の地上だけを持ち上げる。
 
    空・星・天の川は地形キャンバスに入っていないので、
@@ -14739,6 +15007,8 @@ function collectPersistedSettings(){
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
     photoToneOn:photoToneOn,
     kmzSilhouetteDarkness:kmzSilhouetteDarkness,   // 【v931】
+    overlayStyleRevision:OVERLAY_STYLE_REVISION,   // 【v961】
+    overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -14958,6 +15228,23 @@ async function loadPersistedSettings(){
       el.kmzSilhouetteDarkness.value=clamp(Math.round(+s.kmzSilhouetteDarkness),0,100);
       kmzSilhouetteDarkness=+el.kmzSilhouetteDarkness.value;
     }
+    /* 【v961】道路・線路・橋の色。既定値を焼き直したら版番号を上げる。 */
+    if(s.overlayStyle&&typeof s.overlayStyle==="object"&&s.overlayStyleRevision===OVERLAY_STYLE_REVISION){
+      for(const [group,name] of OVERLAY_STYLE_GROUPS){
+        const saved=s.overlayStyle[group];
+        if(!saved)continue;
+        for(const scope of ["Day","Night"]){
+          const key=scope.toLowerCase();
+          const colorInput=el["overlay"+name+scope+"Color"];
+          if(colorInput&&overlayHexToRgb(saved[key+"Color"]))colorInput.value=saved[key+"Color"];
+          for(const field of ["Bright","Opacity"]){
+            const input=el["overlay"+name+scope+field],value=+saved[key+field];
+            if(input&&Number.isFinite(value))input.value=value;
+          }
+        }
+      }
+    }
+    syncOverlayStyleControls();
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
@@ -18621,6 +18908,10 @@ try{
       cameraPath:()=>({from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing}),
       /* 【v958】PCでも画素の道を通して、GPUと同じ絵になるか見比べるための入口。 */
       cpuFilter:(on)=>{sunsetForceCpuFilter=on!==false;update();return sunsetForceCpuFilter;},
+      /* 【v961】既定のままなら元の数字と一致するか、外から確かめるための入口。 */
+      overlayRGB:(group,part,t)=>overlayPartRGB(group,part,t),
+      overlayAlpha:(group,t)=>overlayAlphaScale(group,t),
+      overlayParts:()=>OVERLAY_STYLE_PARTS,
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       injectKmz:(lat,lon,w,hgt)=>{
@@ -28263,9 +28554,11 @@ function drawPhoto(ctx,s){
           strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
         }
         /* 道路用パレット。橋は水面との見分けを優先するため、下で専用色を使う。 */
-        const roadSurfaceRGB=mixRGB([104,108,116],[132,132,130],terrainDayFactor);
-        const roadMarkRGB=mixRGB([158,162,170],[226,226,222],terrainDayFactor);
-        const roadSurfaceBaseAlpha=lerp(.62,.86,terrainDayFactor);
+        /* 【v961】色と濃さは設定から。既定のままなら今までと同じ数字になる。 */
+        const roadAlphaScale=overlayAlphaScale("road",terrainDayFactor);
+        const roadSurfaceRGB=overlayPartRGB("road","main",terrainDayFactor);
+        const roadMarkRGB=overlayPartRGB("road","mark",terrainDayFactor);
+        const roadSurfaceBaseAlpha=lerp(.62,.86,terrainDayFactor)*roadAlphaScale;
         if(roadPaths){
           // アスファルトのグレー。夜は暗い路面、昼は明るい路面として見えるようにする。
           const color=roadSurfaceRGB.join(",");
@@ -28279,7 +28572,7 @@ function drawPhoto(ctx,s){
             if(alpha<.012) continue;
             tctx.fillStyle=`rgba(${color},${alpha.toFixed(3)})`;
             tctx.fill(roadPaths[i]);
-            const centreAlpha=lerp(.45,.8,terrainDayFactor)*fade;
+            const centreAlpha=lerp(.45,.8,terrainDayFactor)*roadAlphaScale*fade;
             if(centreAlpha>=.02){
               // 幅15cmの帯を面で塗る。線幅固定のストロークと違い、奥で細くなる。
               tctx.fillStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
@@ -28289,10 +28582,12 @@ function drawPhoto(ctx,s){
         }
         if(railPaths){
           // バラスト(道床)は道路より暗く、少し茶色寄りにして道路と見分けられるようにする。
-          const railRGB=mixRGB([84,80,76],[104,96,88],terrainDayFactor);
+          /* 【v961】色と濃さは設定から。 */
+          const railAlphaScale=overlayAlphaScale("rail",terrainDayFactor);
+          const railRGB=overlayPartRGB("rail","main",terrainDayFactor);
           const railColor=railRGB.join(",");
-          const baseAlpha=lerp(.66,.88,terrainDayFactor);
-          const tieRGB=mixRGB([150,145,136],[58,50,42],terrainDayFactor);
+          const baseAlpha=lerp(.66,.88,terrainDayFactor)*railAlphaScale;
+          const tieRGB=overlayPartRGB("rail","tie",terrainDayFactor);
           const tieColor=tieRGB.join(",");
           const pixelsPerDegree=W/Math.max(1,s.fovH);
           for(let i=0;i<FADE_BUCKETS;i++){
@@ -28306,7 +28601,7 @@ function drawPhoto(ctx,s){
                2.5px以上あく距離帯だけ描く。 */
             const centreM=Math.max(5,roadRangeM*(i+.5)/FADE_BUCKETS);
             const tieSpacingPx=Math.atan2(2,centreM)*R2D*pixelsPerDegree;
-            const tieAlpha=lerp(.5,.75,terrainDayFactor)*fade;
+            const tieAlpha=lerp(.5,.75,terrainDayFactor)*railAlphaScale*fade;
             if(tieSpacingPx>=2.5&&tieAlpha>=.02){
               tctx.strokeStyle=`rgba(${tieColor},${tieAlpha.toFixed(3)})`;
               tctx.lineWidth=Math.max(.8,1.4*fade);
@@ -28331,14 +28626,13 @@ function drawPhoto(ctx,s){
              昼は明るい川・湖に沈まない濃いチャコール、夜は暗い水面から浮く
              明るめのスチールグレーへ滑らかに補間する。橋・鉄橋とも同じ規則で、
              側面・橋脚は橋面より暗く、縁と枕木／中央線は一段明るく保つ。 */
-          const deckRGB=mixRGB([120,128,140],[38,42,48],terrainDayFactor);
-          const sideRGB=mixRGB([86,94,106],[27,30,35],terrainDayFactor);
-          const pierRGB=mixRGB([68,76,88],[21,24,29],terrainDayFactor);
-          const pierShadeRGB=mixRGB([46,54,66],[13,16,20],terrainDayFactor);
-          const pierEdgeRGB=mixRGB([118,128,142],[8,10,14],terrainDayFactor);
-          const edgeRGB=mixRGB([176,186,198],[12,15,20],terrainDayFactor);
-          const markRGB=mixRGB([198,194,180],[178,166,132],terrainDayFactor);
-          const bridgeSurfaceBaseAlpha=lerp(.82,.97,terrainDayFactor);
+          /* 【v961】橋の7色は3か所で同じ数字を書いていた。1つの関数にまとめた。 */
+          const bridgePalette=overlayBridgePalette(terrainDayFactor);
+          const deckRGB=bridgePalette.deck,sideRGB=bridgePalette.side;
+          const pierRGB=bridgePalette.pier,pierShadeRGB=bridgePalette.pierShade;
+          const pierEdgeRGB=bridgePalette.pierEdge,edgeRGB=bridgePalette.edge;
+          const markRGB=bridgePalette.mark;
+          const bridgeSurfaceBaseAlpha=bridgePalette.baseAlpha;
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=bridgeFadeOfBucket(i);
             if(fade<=0) continue;
@@ -28384,14 +28678,13 @@ function drawPhoto(ctx,s){
         const restoreCtx=restoreCanvas.getContext("2d");
         restoreCtx.setTransform(1,0,0,1,0,0);restoreCtx.clearRect(0,0,W,H);
         restoreCtx.save();restoreCtx.globalAlpha=terrainDisplayAlpha;restoreCtx.lineJoin="round";restoreCtx.lineCap="round";
-        const deckRGB=mixRGB([120,128,140],[38,42,48],dayFactor);
-        const sideRGB=mixRGB([86,94,106],[27,30,35],dayFactor);
-        const pierRGB=mixRGB([68,76,88],[21,24,29],dayFactor);
-        const pierShadeRGB=mixRGB([46,54,66],[13,16,20],dayFactor);
-        const pierEdgeRGB=mixRGB([118,128,142],[8,10,14],dayFactor);
-        const edgeRGB=mixRGB([176,186,198],[12,15,20],dayFactor);
-        const markRGB=mixRGB([198,194,180],[178,166,132],dayFactor);
-        const bridgeSurfaceBaseAlpha=lerp(.82,.97,dayFactor);
+        /* 【v961】本体と同じ色をここでも使う。 */
+        const bridgePalette=overlayBridgePalette(dayFactor);
+        const deckRGB=bridgePalette.deck,sideRGB=bridgePalette.side;
+        const pierRGB=bridgePalette.pier,pierShadeRGB=bridgePalette.pierShade;
+        const pierEdgeRGB=bridgePalette.pierEdge,edgeRGB=bridgePalette.edge;
+        const markRGB=bridgePalette.mark;
+        const bridgeSurfaceBaseAlpha=bridgePalette.baseAlpha;
         for(let i=0;i<overlay.buckets;i++){
           const fade=bridgeDistanceFade(i,overlay.buckets);
           const alpha=bridgeSurfaceBaseAlpha*fade;
@@ -28417,10 +28710,12 @@ function drawPhoto(ctx,s){
       function redrawStoredBridgeOverlay(targetContext,factor){
         const overlay=drawPhoto._bridgeForegroundOverlay;
         if(!bridgeLinesVisible||!targetContext||!overlay||overlay.key!==terrainGeometryKey)return false;
-        const deckRGB=mixRGB([120,128,140],[38,42,48],factor),sideRGB=mixRGB([86,94,106],[27,30,35],factor);
-        const pierRGB=mixRGB([68,76,88],[21,24,29],factor),pierShadeRGB=mixRGB([46,54,66],[13,16,20],factor);
-        const pierEdgeRGB=mixRGB([118,128,142],[8,10,14],factor),edgeRGB=mixRGB([176,186,198],[12,15,20],factor);
-        const markRGB=mixRGB([198,194,180],[178,166,132],factor),baseAlpha=lerp(.82,.97,factor);
+        /* 【v961】本体と同じ色をここでも使う。 */
+        const bridgePalette=overlayBridgePalette(factor);
+        const deckRGB=bridgePalette.deck,sideRGB=bridgePalette.side;
+        const pierRGB=bridgePalette.pier,pierShadeRGB=bridgePalette.pierShade;
+        const pierEdgeRGB=bridgePalette.pierEdge,edgeRGB=bridgePalette.edge;
+        const markRGB=bridgePalette.mark,baseAlpha=bridgePalette.baseAlpha;
         targetContext.save();targetContext.lineJoin="round";targetContext.lineCap="round";
         for(let i=0;i<overlay.buckets;i++){
           const fade=bridgeDistanceFade(i,overlay.buckets),alpha=baseAlpha*fade;
