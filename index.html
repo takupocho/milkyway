@@ -2386,6 +2386,14 @@
     -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   }
   .fs-exit-btn svg{width:22px;height:22px;}
+  /* 【v962】観測地点が動いたときだけ出る帯。 */
+  .fs-place-report{
+    position:absolute;left:8px;right:56px;top:8px;z-index:319;
+    padding:6px 9px;border:1px solid rgba(255,163,102,.7);border-radius:9px;
+    background:rgba(38,18,6,.92);color:#ffd9b8;
+    font:600 10.5px/1.5 'IBM Plex Mono',monospace;white-space:pre-wrap;
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
   /* 保存・読込は右上（top:9px right:9px）にいる。バツと同じ場所なので下へずらす。
      実測でバツが「保存」を覆っていた。 */
   body.fs-sim .plan-quick-actions{top:56px;}
@@ -4250,6 +4258,8 @@
   <div id="fsOverlay" class="fs-overlay" aria-hidden="true">
     <div id="fsPhotoSlot" class="fs-photo-slot"></div>
     <div id="fsBottom" class="fs-bottom"></div>
+      <!-- 【v962】観測地点が動いたときだけ出る帯。押すと文字がコピーされる。 -->
+      <div id="fsPlaceReport" class="fs-place-report" hidden></div>
     <button id="fsExitBtn" type="button" class="fs-exit-btn" aria-label="全画面表示を終了する" title="全画面表示を終了">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
     </button>
@@ -5654,7 +5664,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="961-overlay-color";
+const APP_VERSION="962-fullscreen-place";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6787,7 +6797,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveStatus:$("driveStatus"),
-  fsOverlay:$("fsOverlay"), fsPhotoSlot:$("fsPhotoSlot"), fsBottom:$("fsBottom"), fsExitBtn:$("fsExitBtn"),
+  fsPlaceReport:$("fsPlaceReport"), fsOverlay:$("fsOverlay"), fsPhotoSlot:$("fsPhotoSlot"), fsBottom:$("fsBottom"), fsExitBtn:$("fsExitBtn"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13898,6 +13908,90 @@ el.orientationSeg.addEventListener("click",(e)=>{
    隠す要素をひとつずつ指定すると必ず取りこぼすので、
    **必要な3つだけを全画面の器へ引っ越しさせる**。終わったら元の場所へ戻す。
    ========================================================= */
+
+/* =========================================================
+   【v962】全画面に入ると観測地点が飛ぶ件
+
+   手元（スマホ表示）では、条件を変えて何度試しても再現しなかった。
+   緯度の入力欄への書き込みを全部つかまえる見張りを付けても書き込みは0回。
+   利用者の端末側にしか無い経路（位置情報が使えるなど）が疑わしい。
+
+   そこで2段構えにする。
+     ① 入る直前の観測地点を控えて、入ったあとに戻す。6秒間は見張る。
+     ② 誰が書き換えたかを控えて、その場に短い帯で出す。
+   ========================================================= */
+const placeWriteLog=[];
+function watchPlaceInput(input,name){
+  if(!input)return;
+  const desc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value");
+  if(!desc||!desc.set||!desc.get)return;
+  Object.defineProperty(input,"value",{
+    configurable:true,
+    get(){return desc.get.call(this);},
+    set(v){
+      const before=desc.get.call(this);
+      desc.set.call(this,v);
+      if(String(before)===String(v))return;
+      /* どこから呼ばれたかを2〜4行だけ。長いURLは落とす。 */
+      const stack=(new Error().stack||"").split("\n").slice(2,5)
+        .map(line=>line.trim().replace(/https?:\/\/[^\s)]*\//g,"").replace(/^at\s+/,""))
+        .join(" ← ");
+      placeWriteLog.push({name,from:String(before),to:String(v),stack});
+      if(placeWriteLog.length>24)placeWriteLog.shift();
+    }
+  });
+}
+watchPlaceInput(el.lat,"緯度");
+watchPlaceInput(el.lon,"経度");
+
+/* 観測地点まわりの控え。全画面に入ることでこれらが動いてよい理由は無い。 */
+function fsCapturePlace(){
+  const read=id=>{const input=el[id];return input?String(input.value):null;};
+  return {lat:read("lat"),lon:read("lon"),tz:read("tz"),city:read("citySelect"),
+          az:read("facingAz"),alt:read("facingAlt")};
+}
+function fsPlaceDiff(keep){
+  const now=fsCapturePlace(),out=[];
+  const label={lat:"緯度",lon:"経度",tz:"時差",city:"都市",az:"方位",alt:"仰角"};
+  for(const key of Object.keys(keep)){
+    if(keep[key]===null)continue;
+    if(String(now[key])!==String(keep[key]))out.push(`${label[key]} ${keep[key]}→${now[key]}`);
+  }
+  return out;
+}
+function fsShowPlaceReport(lines){
+  const box=el.fsPlaceReport;
+  if(!box)return;
+  if(!lines||!lines.length){box.hidden=true;box.textContent="";return;}
+  const text=lines.join("\n");
+  box.textContent=text;box.hidden=false;
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+}
+/* 動いていたら書き戻す。何が動いたかは返す。 */
+function fsRestorePlace(keep,tag){
+  const moved=fsPlaceDiff(keep);
+  if(!moved.length)return null;
+  const culprit=placeWriteLog.length?placeWriteLog[placeWriteLog.length-1].stack:"（記録なし）";
+  for(const key of ["lat","lon","tz","city","az","alt"]){
+    if(keep[key]===null)continue;
+    const input=el[key==="city"?"citySelect":key];
+    if(input&&String(input.value)!==String(keep[key]))input.value=keep[key];
+  }
+  update();
+  return `【${tag}】${moved.join(" / ")}\n原因 ${culprit}`;
+}
+let fsPlaceWatchTimer=0;
+function fsWatchPlace(keep){
+  if(fsPlaceWatchTimer){clearInterval(fsPlaceWatchTimer);fsPlaceWatchTimer=0;}
+  const lines=[];
+  const started=Date.now();
+  fsPlaceWatchTimer=setInterval(()=>{
+    if(!fsSimActive||Date.now()-started>6000){clearInterval(fsPlaceWatchTimer);fsPlaceWatchTimer=0;return;}
+    const note=fsRestorePlace(keep,`${((Date.now()-started)/1000).toFixed(1)}秒後`);
+    if(note){lines.push(note);fsShowPlaceReport(lines);}
+  },300);
+  return lines;
+}
 let fsSimActive=false;
 const fsMovedNodes=[];
 function fsMoveNode(node,target){
@@ -13916,6 +14010,9 @@ function fsSimAvailable(){
 }
 function enterFullscreenSim(){
   if(fsSimActive||!fsSimAvailable()||arActive)return;
+  /* 【v962】入る直前の観測地点を控える。全画面にしただけで動いてよい理由は無い。 */
+  const keepPlace=fsCapturePlace();
+  fsShowPlaceReport(null);
   fsSimActive=true;
   document.body.classList.add("fs-sim");
   el.fsOverlay.setAttribute("aria-hidden","false");
@@ -13927,21 +14024,50 @@ function enterFullscreenSim(){
   fsMoveNode(timeLabel,el.fsBottom);
   fsMoveNode(document.getElementById("sliderTimelineRow"),el.fsBottom);
   update();
-  /* 引っ越したあとは、地図の大きさを取り直さないと灰色のままになる。 */
+  /* 【v962】ここまでで動いていたら戻す。 */
+  const notes=[];
+  const first=fsRestorePlace(keepPlace,"入るとき");
+  if(first)notes.push(first);
+  /* 【v962】見張りは**ここで**始める。
+     rAFの中で始めると、画面が隠れていてrAFが止まっている端末で
+     見張りそのものが始まらない（手元で実測して見つけた）。 */
+  const later=fsWatchPlace(keepPlace);
+  notes.forEach(line=>later.push(line));
+  /* 引っ越したあとは、地図の大きさを取り直さないと灰色のままになる。
+     【v962】小地図は「動かした中心を新しい撮影位置にする」作りなので、
+     大きさの取り直しが位置の書き換えに化けないよう、印を立ててから呼ぶ。 */
   requestAnimationFrame(()=>{
-    if(typeof droneMapInstance!=="undefined"&&droneMapInstance)droneMapInstance.invalidateSize({pan:false});
+    if(typeof droneMapInstance!=="undefined"&&droneMapInstance){
+      const wasProgrammatic=(typeof droneMapProgrammatic!=="undefined")?droneMapProgrammatic:null;
+      if(wasProgrammatic!==null)droneMapProgrammatic=true;
+      droneMapInstance.invalidateSize({pan:false});
+      if(wasProgrammatic!==null)setTimeout(()=>{droneMapProgrammatic=wasProgrammatic;},0);
+    }
+    const second=fsRestorePlace(keepPlace,"入った直後");
+    if(second)notes.push(second);
     update();
+    if(notes.length)fsShowPlaceReport(notes);
   });
 }
 function exitFullscreenSim(){
   if(!fsSimActive)return;
+  const keepPlace=fsCapturePlace();
+  if(fsPlaceWatchTimer){clearInterval(fsPlaceWatchTimer);fsPlaceWatchTimer=0;}
+  fsShowPlaceReport(null);
   fsSimActive=false;
   document.body.classList.remove("fs-sim");
   el.fsOverlay.setAttribute("aria-hidden","true");
   fsRestoreNodes();
   update();
   requestAnimationFrame(()=>{
-    if(typeof droneMapInstance!=="undefined"&&droneMapInstance)droneMapInstance.invalidateSize({pan:false});
+    if(typeof droneMapInstance!=="undefined"&&droneMapInstance){
+      const wasProgrammatic=(typeof droneMapProgrammatic!=="undefined")?droneMapProgrammatic:null;
+      if(wasProgrammatic!==null)droneMapProgrammatic=true;
+      droneMapInstance.invalidateSize({pan:false});
+      if(wasProgrammatic!==null)setTimeout(()=>{droneMapProgrammatic=wasProgrammatic;},0);
+    }
+    /* 【v962】戻すときも、全画面のせいで観測地点が動くことは無いようにする。 */
+    fsRestorePlace(keepPlace,"戻すとき");
     update();
   });
 }
@@ -18912,6 +19038,8 @@ try{
       overlayRGB:(group,part,t)=>overlayPartRGB(group,part,t),
       overlayAlpha:(group,t)=>overlayAlphaScale(group,t),
       overlayParts:()=>OVERLAY_STYLE_PARTS,
+      /* 【v962】観測地点を誰が書き換えたかの記録。 */
+      placeLog:()=>placeWriteLog.slice(),
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       injectKmz:(lat,lon,w,hgt)=>{
