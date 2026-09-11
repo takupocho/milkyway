@@ -5654,7 +5654,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="966-daruma-foot";
+const APP_VERSION="970-clock-seconds";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11529,6 +11529,26 @@ function sunsetGray(percent){
   const value=Math.round(clamp(percent,0,100)/100*255);
   return `rgb(${value},${value},${value})`;
 }
+/* 【v967】KMZ模型の形。太陽の面が模型の手前に出ないように、空のマスクへ足す。
+   模型は地形レイヤーに入っていないので、島影（v940）と同じく別に形を取る。
+   半透明の面も「形」としては隠したいので、自分を重ねてalphaを持ち上げる。 */
+let sunsetKmzMaskCanvas=null;
+function sunsetKmzShapeMask(s,toXY,W,H){
+  if(typeof kmzSlots==="undefined"||!Array.isArray(kmzSlots))return null;
+  if(!kmzSlots.some(slot=>slot&&slot.visible!==false&&slot.model))return null;
+  if(typeof drawKmzBuildingLayer!=="function")return null;
+  const canvas=sunsetKmzMaskCanvas=sunsetCanvas(sunsetKmzMaskCanvas,W,H);
+  const c=sunsetResetContext(canvas);
+  try{
+    drawKmzBuildingLayer(c,s,toXY,W,H,"before");
+    drawKmzBuildingLayer(c,s,toXY,W,H,"after");
+  }catch(error){return null;}
+  c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;c.filter="none";
+  c.globalCompositeOperation="lighter";
+  c.drawImage(canvas,0,0);c.drawImage(canvas,0,0);
+  c.globalCompositeOperation="source-over";
+  return canvas;
+}
 function applySunsetMode(ctx,s,W,H,toXY){
   const weight=sunsetModeWeight(s);
   if(sunsetProbeArmed)sunsetProbeResult=null;
@@ -11610,11 +11630,14 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const islandMaskCanvas=drawPhoto._darumaIslandMaskCanvas;
   const islandOk=!!(drawPhoto._darumaIslandMaskUsed&&darumaIslandOverlayActive(s)
     &&islandMaskCanvas&&islandMaskCanvas.width===cw&&islandMaskCanvas.height===ch);
-  if(islandOk){
+  /* 【v967】KMZ模型も空ではない。太陽の面が模型の手前に出ないよう、形を足す。 */
+  const kmzMask=sunsetKmzShapeMask(s,toXY,W,H);
+  if(islandOk||kmzMask){
     const combined=sunsetSkyMaskCanvas=sunsetCanvas(sunsetSkyMaskCanvas,cw,ch);
     const combinedCtx=sunsetResetContext(combined);
     if(terrainOk)combinedCtx.drawImage(terrainMask,0,0,cw,ch);
-    combinedCtx.drawImage(islandMaskCanvas,0,0,cw,ch);
+    if(islandOk)combinedCtx.drawImage(islandMaskCanvas,0,0,cw,ch);
+    if(kmzMask)combinedCtx.drawImage(kmzMask,0,0,cw,ch);
     skyMask=combined;
   }
 
@@ -13394,15 +13417,15 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
 function updatePlaybackClockLabel(minutes){
   const rounded=Math.floor(minutes);
   const dayOffset=Math.floor(rounded/1440), hh=Math.floor(rounded/60)%24, mm=rounded%60;
-  /* 低速では秒まで出す。分だけだと、1倍速のときに
-     時計が1分に1回しか動かず、止まって見える。 */
-  const speedX=clamp(parseFloat(el.animationSpeedSelect.value)||20,1,ANIM_SPEED_MAX);
-  const showSeconds=speedX<=10;
+  /* 【v969】秒は**常に**出す。
+     これまでは10倍速より速いと秒を消していたが、再生中はスライダーの書き換えで
+     update() 側（v943・常に秒あり）も走るため、「17:10」と「17:11:00」が
+     交互に書かれて点滅して見えていた。両方の経路を揃える。 */
   const ss=Math.floor((minutes-rounded)*60);
   el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")
     +`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
-    +(showSeconds?`<span class="clock-sec">:${String(ss).padStart(2,"0")}</span>`:"");
-  updateSimulationClock(minutes,showSeconds?ss:null);
+    +`<span class="clock-sec">:${String(ss).padStart(2,"0")}</span>`;
+  updateSimulationClock(minutes,ss);
 }
 /* =========================================================
    再生速度の目盛り（v618）
@@ -13507,6 +13530,9 @@ function playbackTick(now){
     // update()内の1回目の写真描画は直後の小数時刻描画で必ず上書きされるため省略する。
     suppressPhotoDrawForUpdate=true;
     try{update();}finally{suppressPhotoDrawForUpdate=false;}
+    /* 【v970】update() の中の時計書きはスライダー（分に切り捨て）を読むので秒が 00 になる。
+       同じ処理の中で本当の秒に書き直す。画面が描かれる前なので 00 は見えない。 */
+    updatePlaybackClockLabel(playbackVisualMinutes);
     const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
     const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
     refreshPlaybackCelestialState(jdPreview,norm360(gcAA.az));
@@ -19068,6 +19094,22 @@ try{
       overlayParts:()=>OVERLAY_STYLE_PARTS,
       /* 【v962】観測地点を誰が書き換えたかの記録。 */
       placeLog:()=>placeWriteLog.slice(),
+      /* 【v968】偽の島影。centerAz±half の範囲に、高さ heightDeg の台形の島を1つ置く。null で消す。 */
+      fakeIsland:(centerAz,half,nearKm,farKm,heightDeg)=>{
+        if(centerAz===null){clearDarumaIslandSilhouette();return null;}
+        const lat=+el.lat.value,lon=+el.lon.value,eye=observerEyeElevationM();
+        const physicalHorizon=currentSeaHorizonAltitudeDeg();
+        const profile=[];
+        for(let d=-half;d<=half;d+=.02){
+          const inner=Math.abs(d)<half*.6;
+          profile.push({az:normalizeAngle(centerAz+d),altitude:physicalHorizon+(inner?heightDeg:heightDeg*.35)});
+        }
+        darumaIslandSilhouette={version:1,lat,lon,eyeElevation:eye,heightAboveGround:eyeHeightAboveGroundM(),
+          observerKey:darumaTelephotoObserverKey(lat,lon,eye),physicalHorizon,
+          segments:[{centerAz,halfAngle:half,nearKm,farKm,incomplete:false,profile}]};
+        drawPhoto._terrainRenderKey=null;update();
+        return {matches:darumaIslandSilhouetteMatches(state),physicalHorizon};
+      },
       /* 【v966】だるまの形を外から与えて、足元の塗りを確かめる。 */
       darumaShape:(shape)=>{drawPhoto._darumaShapeForce=shape||null;update();return {sun:drawPhoto._sunsetSunPx,shape:drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce};},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
@@ -19286,6 +19328,28 @@ function darumaIslandSilhouetteMatches(s){
   const terrainReady=realTerrainState&&realTerrainState.key===terrainKey&&Number.isFinite(realTerrainState.observerElevation);
   const eye=observerEyeElevationM();
   return !terrainReady||!Number.isFinite(eye)||Math.abs(+silhouette.eyeElevation-eye)<=.02;
+}
+/* 【v968】案B：島影の方位範囲では、判定の距離範囲にある**陸の帯**を地形から外す。
+   水の帯（海面）と、nearKmより手前の陸はそのまま。
+   外した場所は空になり、そこへ島影（drawDarumaIslandProfile）が描かれる。
+   地形レイヤーから消えるので、水面の映り込みからも一緒に消える。 */
+function darumaSilhouetteSuppressRanges(s){
+  if(!darumaIslandSilhouetteMatches(s))return null;
+  const ranges=[];
+  for(const segment of darumaIslandSilhouette.segments){
+    const center=+segment.centerAz,half=+segment.halfAngle,near=+segment.nearKm,far=+segment.farKm;
+    if([center,half,near,far].every(Number.isFinite)&&half>0&&far>near)ranges.push({center,half,near,far});
+  }
+  return ranges.length?ranges:null;
+}
+function darumaSilhouetteFilterBands(az,bands,ranges){
+  if(!ranges||!bands||!bands.length)return bands;
+  let range=null;
+  for(const item of ranges){
+    if(Math.abs(darumaTelephotoAngleDifference(az,item.center))<=item.half){range=item;break;}
+  }
+  if(!range)return bands;
+  return bands.filter(band=>band.water||band.cloud||!(band.distanceKm>=range.near&&band.distanceKm<=range.far));
 }
 function darumaIslandProfilePointCount(silhouette=darumaIslandSilhouette){
   return silhouette&&Array.isArray(silhouette.segments)
@@ -25362,6 +25426,23 @@ function drawPhoto(ctx,s){
           drawPhoto._mountainReflectionRenderKey=mountainReflectionRenderKey;
         }
         ctx.drawImage(mountainReflectionCanvas,0,0);
+        /* 【v968】だるま判定の島影も水面へ映す。
+           島影は映り込みの**あと**に描く（v871・KMZより奥）ので、山の反転貼りに入っていない。
+           KMZと同じ手で別キャンバスへ描いて反転する。濃さは山と同じ。
+           このあとの水域マスクの抜きがそのまま効く。 */
+        if(darumaIslandOverlayActive(s)){
+          const islandReflection=drawPhoto._islandReflectionCanvas||(drawPhoto._islandReflectionCanvas=document.createElement("canvas"));
+          if(islandReflection.width!==W||islandReflection.height!==H){islandReflection.width=W;islandReflection.height=H;}
+          const islandCtx=islandReflection.getContext("2d");
+          islandCtx.setTransform(1,0,0,1,0,0);islandCtx.globalCompositeOperation="source-over";
+          islandCtx.globalAlpha=1;islandCtx.filter="none";islandCtx.clearRect(0,0,W,H);
+          drawDarumaTelephotoIslandOverlay(islandCtx,s,toXY,W,H,dayFactor);
+          ctx.save();
+          ctx.globalAlpha=terrainDisplayAlpha*.96;
+          ctx.translate(0,mirrorHorizonY*2);ctx.scale(1,-1);
+          ctx.drawImage(islandReflection,0,0);
+          ctx.restore();
+        }
         waterReflectionHorizonYByX=reflectionHorizonYByX;
         meteorReflectionWaterPath=meteorWaterPath;
         // 富士山の積雪が通常の山体に表示される季節・距離・遮蔽条件と一致する場合だけ反射する。
@@ -29324,6 +29405,7 @@ function drawPhoto(ctx,s){
           const startAz=s.facingAz-cornerHalf-stepDeg;
           const endAz=s.facingAz+cornerHalf+stepDeg;
           columns=[];
+          const suppressRanges=darumaSilhouetteSuppressRanges(s);   /* 【v968】案B */
           if(highDetailOn&&!useDiagonalFisheye){
             /* 5m DEMを7.5km先で見ると約3画素が元データ1画素に相当する。
                それより細かい1.5画素走査は情報を増やさず、メモリーだけを倍近く使っていた。 */
@@ -29334,14 +29416,14 @@ function drawPhoto(ctx,s){
               const edgePx=[0,14,11,8,6.5,5][highDetailQuality];
               const pixelStep=lerp(centrePx,edgePx,normalized*normalized);
               const az=s.facingAz+Math.atan((screenX-W/2)/Math.max(1e-6,rectilinearScale))*R2D;
-              const bands=azimuthVisibleBands(az,bottomAlt,false,true);
-              columns.push({az,bands:bands||[]});
+              const bands=darumaSilhouetteFilterBands(az,azimuthVisibleBands(az,bottomAlt,false,true)||[],suppressRanges);
+              columns.push({az,bands});
               screenX+=pixelStep;
             }
           }else{
             for(let a=startAz;a<=endAz+1e-6;a+=stepDeg){
-              const bands=azimuthVisibleBands(a,bottomAlt,false,true);
-              columns.push({az:a,bands:bands||[]});
+              const bands=darumaSilhouetteFilterBands(a,azimuthVisibleBands(a,bottomAlt,false,true)||[],suppressRanges);
+              columns.push({az:a,bands});
             }
           }
           /* 【v889】水域レイ診断: **画角内でいちばん高い水の帯**を拾う。
