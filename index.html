@@ -2386,14 +2386,6 @@
     -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   }
   .fs-exit-btn svg{width:22px;height:22px;}
-  /* 【v962】観測地点が動いたときだけ出る帯。 */
-  .fs-place-report{
-    position:absolute;left:8px;right:56px;top:8px;z-index:319;
-    padding:6px 9px;border:1px solid rgba(255,163,102,.7);border-radius:9px;
-    background:rgba(38,18,6,.92);color:#ffd9b8;
-    font:600 10.5px/1.5 'IBM Plex Mono',monospace;white-space:pre-wrap;
-    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
-  }
   /* 保存・読込は右上（top:9px right:9px）にいる。バツと同じ場所なので下へずらす。
      実測でバツが「保存」を覆っていた。 */
   body.fs-sim .plan-quick-actions{top:56px;}
@@ -4258,8 +4250,6 @@
   <div id="fsOverlay" class="fs-overlay" aria-hidden="true">
     <div id="fsPhotoSlot" class="fs-photo-slot"></div>
     <div id="fsBottom" class="fs-bottom"></div>
-      <!-- 【v962】観測地点が動いたときだけ出る帯。押すと文字がコピーされる。 -->
-      <div id="fsPlaceReport" class="fs-place-report" hidden></div>
     <button id="fsExitBtn" type="button" class="fs-exit-btn" aria-label="全画面表示を終了する" title="全画面表示を終了">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
     </button>
@@ -5664,7 +5654,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="962-fullscreen-place";
+const APP_VERSION="963-fullscreen-quiet";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6797,7 +6787,7 @@ const el={
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
   arModeBtn:$("arModeBtn"), arCameraVideo:$("arCameraVideo"), arStatusMessage:$("arStatusMessage"),
   driveModeBtn:$("driveModeBtn"), drivePanel:$("drivePanel"), driveStatus:$("driveStatus"),
-  fsPlaceReport:$("fsPlaceReport"), fsOverlay:$("fsOverlay"), fsPhotoSlot:$("fsPhotoSlot"), fsBottom:$("fsBottom"), fsExitBtn:$("fsExitBtn"),
+  fsOverlay:$("fsOverlay"), fsPhotoSlot:$("fsPhotoSlot"), fsBottom:$("fsBottom"), fsExitBtn:$("fsExitBtn"),
   driveEye:$("driveEye"), driveEyeVal:$("driveEyeVal"), driveStep:$("driveStep"), driveStepVal:$("driveStepVal"),
   arControls:$("arControls"), arExitBtn:$("arExitBtn"), arCalibLeftBtn:$("arCalibLeftBtn"), arCalibRightBtn:$("arCalibRightBtn"),
   arCalibUpBtn:$("arCalibUpBtn"), arCalibDownBtn:$("arCalibDownBtn"), arScreenshotBtn:$("arScreenshotBtn"), arGridToggleBtn:$("arGridToggleBtn"), arDebugOverlay:$("arDebugOverlay"),
@@ -13959,13 +13949,9 @@ function fsPlaceDiff(keep){
   }
   return out;
 }
+/* 【v963】画面には出さない。押さえ込みは残し、記録はコンソールにだけ。 */
 function fsShowPlaceReport(lines){
-  const box=el.fsPlaceReport;
-  if(!box)return;
-  if(!lines||!lines.length){box.hidden=true;box.textContent="";return;}
-  const text=lines.join("\n");
-  box.textContent=text;box.hidden=false;
-  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+  if(lines&&lines.length)console.info("[全画面] 観測地点を戻しました\n"+lines.join("\n"));
 }
 /* 動いていたら書き戻す。何が動いたかは返す。 */
 function fsRestorePlace(keep,tag){
