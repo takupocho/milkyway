@@ -5654,7 +5654,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="963-fullscreen-quiet";
+const APP_VERSION="964-kmz-move-alt";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6990,8 +6990,9 @@ function kmzSlotSettings(slot){
   /* 【v928】時間に合わせて動かす設定があれば、描く位置だけ差し替える。
      スロットのlat/lonは利用者が置いた位置そのものなので書き換えない。 */
   const moved=kmzMovedPosition(slot);
+  /* 【v964】標高も記録してあれば混ぜた値を使う。古い記録は今までどおり。 */
   return {lat:moved?moved.lat:slot.lat,lon:moved?moved.lon:slot.lon,
-          altitude:slot.altitude||0,
+          altitude:(moved&&Number.isFinite(moved.altitude))?moved.altitude:(slot.altitude||0),
           heading:slot.heading||0,scale:slot.scale||1,
           opacity:Number.isFinite(slot.opacity)?slot.opacity:1};
 }
@@ -7008,14 +7009,17 @@ function kmzMoveReady(move){
           move.to.lat,move.to.lon,move.to.minutes].every(Number.isFinite);
 }
 /* 開始と終了のあいだを直線で混ぜる。範囲の外では端に止める。
-   2点は同じ標高なので、混ぜた結果は必ず水平の動きになる。 */
+   【v964】基部の標高も同じ比で混ぜる（線路の勾配ぶん）。
+   両端に標高が無い古い記録では null を返し、スロットの標高のままにする。 */
 function kmzMovedPosition(slot){
   const move=slot&&slot.move;
   if(!move||!move.on||!kmzMoveReady(move))return null;
   const from=move.from,to=move.to,now=kmzTimelineMinutes();
   const span=to.minutes-from.minutes;
   const ratio=span>0?clamp((now-from.minutes)/span,0,1):(now>=to.minutes?1:0);
-  return {lat:from.lat+(to.lat-from.lat)*ratio,lon:from.lon+(to.lon-from.lon)*ratio,ratio};
+  const hasAlt=Number.isFinite(from.altitude)&&Number.isFinite(to.altitude);
+  return {lat:from.lat+(to.lat-from.lat)*ratio,lon:from.lon+(to.lon-from.lon)*ratio,
+          altitude:hasAlt?from.altitude+(to.altitude-from.altitude)*ratio:null,ratio};
 }
 
 /* 【v880】置き場所の微調整の量。**スロットごとに持つ**ので写しにも含める。
@@ -7376,7 +7380,8 @@ function kmzMoveCommitTimes(){
 }
 function kmzMovePointLabel(point){
   if(!point||!Number.isFinite(point.lat)||!Number.isFinite(point.lon))return "未設定";
-  return `${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}　${kmzMoveClock(point.minutes)}`;
+  const alt=Number.isFinite(point.altitude)?`　標高 ${(+point.altitude).toFixed(1)}m`:"";
+  return `${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}${alt}　${kmzMoveClock(point.minutes)}`;
 }
 function kmzMoveSummaryText(move){
   if(!kmzMoveReady(move))return "開始と終了の両方を決めると、距離と速さが出ます。";
@@ -7387,7 +7392,10 @@ function kmzMoveSummaryText(move){
   const seconds=(to.minutes-from.minutes)*60;
   if(seconds<=0)return `移動 ${metres.toFixed(1)}m　終了の時刻が開始より後になるようにしてください。`;
   const kmh=metres/seconds*3.6;
-  return `移動 ${metres.toFixed(1)}m ／ ${seconds.toFixed(1)}秒 ／ 約 ${kmh.toFixed(1)}km/h`;
+  /* 【v964】標高差があれば添える。 */
+  const climb=(Number.isFinite(from.altitude)&&Number.isFinite(to.altitude))?to.altitude-from.altitude:null;
+  const climbText=(climb!==null&&Math.abs(climb)>=.05)?` ／ 標高差 ${climb>0?"+":""}${climb.toFixed(1)}m`:"";
+  return `移動 ${metres.toFixed(1)}m ／ ${seconds.toFixed(1)}秒 ／ 約 ${kmh.toFixed(1)}km/h${climbText}`;
 }
 /* 操作画面へ写す。スロットを選び直したときと、値を変えたときに呼ぶ。 */
 function syncKmzMoveControls(){
@@ -7417,11 +7425,14 @@ function kmzMoveCapture(which){
   kmzCommitEditor();
   const lat=+el.kmzBuildingLat.value,lon=+el.kmzBuildingLon.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  /* 【v964】基部の標高も一緒に控える。 */
+  const altitudeRaw=el.kmzBuildingAltitude?+el.kmzBuildingAltitude.value:NaN;
+  const altitude=Number.isFinite(altitudeRaw)?altitudeRaw:0;
   const move=kmzMoveEnsure(slot);
   const fields=which==="from"
     ?[el.kmzMoveFromH,el.kmzMoveFromM,el.kmzMoveFromS]
     :[el.kmzMoveToH,el.kmzMoveToM,el.kmzMoveToS];
-  move[which]={lat,lon,minutes:kmzMoveReadFields(fields[0],fields[1],fields[2])};
+  move[which]={lat,lon,altitude,minutes:kmzMoveReadFields(fields[0],fields[1],fields[2])};
   refreshKmzBuildingControls();
 }
 /* 覚えた位置を編集欄へ戻す。置き直したいときに使う。 */
@@ -7431,6 +7442,8 @@ function kmzMoveRecall(which){
   if(!point||!Number.isFinite(point.lat))return;
   el.kmzBuildingLat.value=point.lat.toFixed(6);
   el.kmzBuildingLon.value=point.lon.toFixed(6);
+  /* 【v964】標高も戻す（記録があるときだけ）。 */
+  if(el.kmzBuildingAltitude&&Number.isFinite(point.altitude))el.kmzBuildingAltitude.value=point.altitude;
   refreshKmzBuildingControls();
 }
 if(el.kmzMoveOnBtn)el.kmzMoveOnBtn.addEventListener("click",()=>{
@@ -16028,8 +16041,8 @@ function captureKmzBuildingForPlan(){
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
       /* 【v928】横移動。決めていないときは入れない。 */
       move:kmzMoveReady(slot.move)?{on:!!slot.move.on,
-        from:{lat:slot.move.from.lat,lon:slot.move.from.lon,minutes:slot.move.from.minutes},
-        to:{lat:slot.move.to.lat,lon:slot.move.to.lon,minutes:slot.move.to.minutes}}:null
+        from:{lat:slot.move.from.lat,lon:slot.move.from.lon,altitude:slot.move.from.altitude,minutes:slot.move.from.minutes},
+        to:{lat:slot.move.to.lat,lon:slot.move.to.lon,altitude:slot.move.to.altitude,minutes:slot.move.to.minutes}}:null
     }));
   return saved.length?saved:null;
 }
@@ -16069,8 +16082,10 @@ async function restoreKmzBuildingFromPlan(saved){
         const savedMove=item.move;
         slot.move=kmzMoveReady(savedMove)
           ?{on:savedMove.on!==false,
-            from:{lat:+savedMove.from.lat,lon:+savedMove.from.lon,minutes:+savedMove.from.minutes},
-            to:{lat:+savedMove.to.lat,lon:+savedMove.to.lon,minutes:+savedMove.to.minutes}}
+            from:{lat:+savedMove.from.lat,lon:+savedMove.from.lon,minutes:+savedMove.from.minutes,
+                  altitude:Number.isFinite(+savedMove.from.altitude)?+savedMove.from.altitude:undefined},
+            to:{lat:+savedMove.to.lat,lon:+savedMove.to.lon,minutes:+savedMove.to.minutes,
+                altitude:Number.isFinite(+savedMove.to.altitude)?+savedMove.to.altitude:undefined}}
           :{on:false,from:null,to:null};
       }
       restored++;
