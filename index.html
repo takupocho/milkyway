@@ -5763,7 +5763,7 @@ const actMon={
   draw:0,update:0,view:0,rafRun:0,rafNames:Object.create(null),timer:0,fetch:0,geo:0,orient:0,
   busyMs:0,lastTick:0,canvasRefs:[],canvasMade:0,log:[],shown:false,started:performance.now(),
   /* 【v984】作り直しの理由。 */
-  terrainWhy:[],nullBy:Object.create(null),bandsWhy:{grid:0,rings:0,full:0,key:0},bandsSigs:Object.create(null),
+  terrainWhy:[],terrainWhyCount:Object.create(null),nullBy:Object.create(null),setBy:Object.create(null),bandsWhy:{grid:0,rings:0,full:0,key:0},bandsSigs:Object.create(null),
   last:{draw:0,update:0,view:0,rafRun:0,timer:0,fetch:0,geo:0,orient:0,busyMs:0,terrainN:0,bandsN:0}
 };
 (function(){
@@ -5858,16 +5858,33 @@ function actMonTerrainWhy(prev,next,resized){
   }
   actMon.terrainWhy.push(`${Math.round((performance.now()-actMon.started)/1000)}s ${why}`);
   if(actMon.terrainWhy.length>10)actMon.terrainWhy.shift();
+  actMon.terrainWhyCount[why]=(actMon.terrainWhyCount[why]||0)+1;
+}
+/* 【v985】呼び出し元（関数名＋ファイル行）。Chrome: "at name (url:L:C)"／Safari: "name@url:L:C"。 */
+function actMonWho(skipRe){
+  try{
+    const st=(new Error().stack||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    const nameOf=x=>x.replace(/^at\s+/,"").replace(/@.*$/,"").replace(/\s*\(.*$/,"").trim();
+    const isAccessor=n=>/^(set|get)/.test(n)||/\.(set|get)/.test(n)||/\[as /.test(n);
+    const line=st.find(x=>!/^Error$/.test(x)&&!/actMonWho|actMonNullBy|actMonSetWho/.test(x)&&!isAccessor(nameOf(x))&&/:\d+:\d+/.test(x)&&!skipRe.test(x));
+    if(!line)return "?";
+    let name=nameOf(line);
+    if(/:\/\//.test(name))name="";   /* 匿名は URL だけの行になる */
+
+    const m=line.match(/:(\d+):\d+\)?$/);
+    return `${name||"匿名"} L${m?m[1]:"?"}`;
+  }catch(e){return "?";}
 }
 function actMonNullBy(){
-  let who="?";
-  try{const st=(new Error().stack||"").split("\n").map(x=>x.trim()).filter(Boolean);
-    /* 自分（setter）の次の行が呼び出し元。 */
-    const line=st.find((x,i)=>i>0&&!/_terrainRenderKey|actMonNullBy|^Error/.test(x))||st[1]||"?";
-    who=line.replace(/@.*$/,"").replace(/^at\s+/,"").replace(/\s*\(.*$/,"").slice(0,40)||"匿名";
-  }catch(e){}
+  const who=actMonWho(/_terrainRenderKey/);
   actMon.nullBy[who]=(actMon.nullBy[who]||0)+1;
   actMon.lastNull=who;
+}
+/* 【v985】realTerrainState の中身の差し替えも数える。 */
+function actMonSetWho(bucket,skipRe){
+  const who=actMonWho(skipRe);
+  const map=actMon.setBy[bucket]||(actMon.setBy[bucket]=Object.create(null));
+  map[who]=(map[who]||0)+1;
 }
 function actMonBandsMiss(reason,key){
   actMon.bandsWhy[reason]++;
@@ -5891,10 +5908,14 @@ function actMonReport(){
   const names=Object.entries(actMon.rafNames).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
   lines.push(`rAF 累計 ${actMon.rafRun}（${names}）`);
   lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"}`);
-  lines.push("─── 地形を作り直した理由（直近）───");
-  for(const w of actMon.terrainWhy)lines.push(w);
-  const nb=Object.entries(actMon.nullBy).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
+  lines.push("─── 地形を作り直した理由（回数の多い順）───");
+  for(const [w,n] of Object.entries(actMon.terrainWhyCount).sort((a,b)=>b[1]-a[1]).slice(0,8))lines.push(`×${n} ${w}`);
+  const nb=Object.entries(actMon.nullBy).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ／ ");
   lines.push(`鍵を null にした呼び出し元: ${nb||"なし"}`);
+  for(const bucket of Object.keys(actMon.setBy)){
+    const sb=Object.entries(actMon.setBy[bucket]).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,n])=>`${k}:${n}`).join(" ／ ");
+    lines.push(`${bucket} を差し替えた呼び出し元: ${sb}`);
+  }
   const bw=actMon.bandsWhy;
   lines.push(`帯の取り直し: 格子替え${bw.grid} 輪替え${bw.rings} 満杯${bw.full} 鍵違い${bw.key}`);
   const sigs=Object.entries(actMon.bandsSigs).sort((a,b)=>b[1]-a[1]).slice(0,6);
@@ -5905,6 +5926,8 @@ function actMonReport(){
   return lines.join("\n");
 }
 let actMonTimer=0,actMonBox=null;
+/* 【v985】画面に出していなくても、1秒ごとの記録は溜める（軽い）。 */
+setInterval(()=>{if(!actMon.shown)actMonSample();},1000);
 function actMonSetShown(on){
   actMon.shown=!!on;
   if(!actMonBox){
@@ -5925,7 +5948,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="984-why-rebuild";
+const APP_VERSION="985-who-rebuild";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -12605,7 +12628,6 @@ if(el.actMonShowBtn)el.actMonShowBtn.addEventListener("click",()=>{
   el.actMonShowBtn.textContent=actMon.shown?"画面から消す":"画面に出す";
 });
 if(el.actMonCopyBtn)el.actMonCopyBtn.addEventListener("click",()=>{
-  if(!actMon.shown)actMonSample();
   let text;
   try{text=actMonReport();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
   if(el.actMonReadout)el.actMonReadout.textContent=text;
@@ -18305,6 +18327,15 @@ function seededSilhouette(){
 /* 国土地理院の標高PNGから、観測地点を中心とした360°の実地形スカイラインを作る。
    描画中に通信は行わず、場所が変わった時だけ非同期取得して結果をキャッシュする。 */
 const realTerrainState={key:"",loadingKey:"",failedKey:"",profile:null,observerElevation:null,requestToken:0};
+/* 【v985】差し替えた呼び出し元を数える（値は同じ）。 */
+for(const prop of ["rayGrid","_osmWaterRings","_renderRevision"]){
+  let value=undefined;
+  Object.defineProperty(realTerrainState,prop,{
+    configurable:true,enumerable:true,
+    get(){return value;},
+    set(v){if(v!==value)actMonSetWho(prop,/realTerrainState/);value=v;}
+  });
+}
 /* 【v864】見通しの計算（azimuthVisibleBands）の答えの取り置き。
 
    **ここ（いちばん外側）に置くことが肝心。**
