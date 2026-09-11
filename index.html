@@ -4938,6 +4938,10 @@
           </div>
 
           <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
+          <!-- 【v982】省電力モード。 -->
+          <button id="powerSaveBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🔋 省電力モード（コマ数の上限 30/秒）</span><span id="powerSaveState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:6px;">再生・ドラッグ・AR・歩く・ドローン・カメラワークのあいだだけ、描き直しを1秒に30回までにします。止まっているときはもともと描いていないので変わりません。絵は1画素も変わりません。既定はスマホON・PC OFF。</p>
+          <p id="powerSaveReadout" class="map-hint mono" style="margin-top:4px;white-space:pre-wrap;"></p>
           <!-- 【v976】WebGL化 第1段階。層の多角形の塗りだけをWebGLで。 -->
           <button id="glTerrainBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🧪 地形をWebGLで描く（実験）</span><span id="glTerrainState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:6px;">層の多角形を塗る段だけをGPUに任せます。見え方は同じになるはずです。雲海・地形メッシュ表示のときは従来どおり描きます。WebGL2が使えない端末では何も変わりません。</p>
@@ -5084,6 +5088,8 @@
                 <div class="display-popup-section-title">シミュレーション画面</div>
                 <!-- 【v960】夕焼けモード。設定→開発者の中だけでは撮影中に遠いので、ここにも置く。 -->
                 <button id="popupSunsetModeBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="夕焼け・朝焼けの時間だけ、太陽を中心に逆光の色味を掛けます">夕焼けモード</button>
+                <!-- 【v982】省電力。動いているあいだのコマ数を30/秒に抑える。 -->
+                <button id="popupPowerSaveBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="再生・ドラッグ中のコマ数を30/秒に抑えて発熱を減らします。絵は変わりません">省電力</button>
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
                 <button id="popupVignetteBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">周辺減光</button>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
@@ -5740,7 +5746,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="981-gl-sunset";
+const APP_VERSION="982-power-save";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6957,7 +6963,8 @@ const el={
   sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"),
   sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
-  glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
+  powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -7828,18 +7835,23 @@ let scheduledCameraViewRaf=0;
 function scheduleUpdate(){
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(scheduledUpdateRaf) return;
-  scheduledUpdateRaf=requestAnimationFrame(()=>{
+  /* 【v982】省電力の門を通らなければ、次のコマへ持ち越す（入力の最新値はそのとき読む）。 */
+  const tick=(now)=>{
+    if(!frameGateOk(now)){scheduledUpdateRaf=requestAnimationFrame(tick);return;}
     scheduledUpdateRaf=0;
     update();
-  });
+  };
+  scheduledUpdateRaf=requestAnimationFrame(tick);
 }
 function scheduleCameraViewUpdate(){
   // 日時・地点などの全体更新が待機中なら、その更新へまとめる。
   if(scheduledUpdateRaf||scheduledCameraViewRaf) return;
-  scheduledCameraViewRaf=requestAnimationFrame(()=>{
+  const tick=(now)=>{
+    if(!frameGateOk(now)){scheduledCameraViewRaf=requestAnimationFrame(tick);return;}   /* 【v982】 */
     scheduledCameraViewRaf=0;
     updateCameraViewOnly();
-  });
+  };
+  scheduledCameraViewRaf=requestAnimationFrame(tick);
 }
 el.citySelect.addEventListener("change",()=>{
   const c=CITIES[+el.citySelect.value];
@@ -8587,6 +8599,7 @@ function startDroneDescent(){
   const tick=now=>{
     droneDescentRaf=0;
     if(droneModeOn) return;
+    if(!frameGateOk(now)){droneDescentRaf=requestAnimationFrame(tick);return;}   /* 【v982】 */
     const dt=Math.min(.2,Math.max(0,(now-last)/1000));
     last=now;
     cameraRiseM=Math.max(0,cameraRiseM-DRONE_DESCENT_MPS*dt);
@@ -11179,6 +11192,28 @@ function applyPhotoTone(ctx,s){
 /* 【v947】夕焼けモードの既定をONへ。
    利用者からの既定値が 「sunset ON {…}」 だったため。 */
 let sunsetModeOn=true;
+/* 【v982】省電力モード。動いているあいだのコマ数を 30/秒 に抑える。絵は変えない。
+   既定はスマホ ON・PC OFF。保存があればそれに従う。 */
+let powerSaveOn=(()=>{try{return !!(window.matchMedia&&(window.matchMedia("(max-width:900px)").matches||window.matchMedia("(pointer:coarse)").matches));}catch(e){return false;}})();
+const POWER_SAVE_FPS=30;
+const powerGate={last:0,count:0,countAt:0,fps:0,skipped:0};
+function powerFrameMinMs(){return powerSaveOn?1000/POWER_SAVE_FPS:0;}
+/* 動きのあるコマの門。true なら描いてよい。false なら次のコマへ持ち越す。 */
+function frameGateOk(now){
+  const min=powerFrameMinMs();
+  if(min>0&&now-powerGate.last<min-1){powerGate.skipped++;return false;}
+  powerGate.last=now;
+  return true;
+}
+/* 実測コマ数（drawPhoto の回数／秒）。 */
+function powerCountFrame(){
+  const now=performance.now();
+  powerGate.count++;
+  if(now-powerGate.countAt>=1000){
+    powerGate.fps=powerGate.count*1000/(now-powerGate.countAt);
+    powerGate.count=0;powerGate.countAt=now;
+  }
+}
 /* 【v976】WebGL地形のスイッチと状態。定義時に設定画面の同期が読むので、ここで宣言する（TDZ回避）。 */
 let glTerrainOn=false;
 const glTerrain={canvas:null,gl:null,prog:null,buf:null,loc:null,lost:false,ctxLostCount:0,geomKey:null,geomCount:0,uploadedKey:null,lastBuildMs:0,lastDrawMs:0,frames:0};
@@ -12359,6 +12394,29 @@ function sunsetSelfTestReport(){
   }
   return lines.join("\n");
 }
+/* 【v982】省電力モードのスイッチ（設定→開発者 と 表示ポップアップの両方を同期）。 */
+let powerSaveReadoutTimer=0;
+function syncPowerSaveControls(){
+  if(el.powerSaveBtn){
+    el.powerSaveBtn.classList.toggle("active",powerSaveOn);
+    el.powerSaveState.textContent=powerSaveOn?"ON":"OFF";
+  }
+  if(el.popupPowerSaveBtn){
+    el.popupPowerSaveBtn.classList.toggle("active",powerSaveOn);
+    el.popupPowerSaveBtn.setAttribute("aria-pressed",String(powerSaveOn));
+  }
+  if(el.powerSaveReadout){
+    el.powerSaveReadout.textContent=`上限 ${powerSaveOn?POWER_SAVE_FPS+"コマ/秒":"なし（画面の刻み）"} ／ 直近の実測 ${powerGate.fps.toFixed(0)}コマ/秒 ／ 飛ばしたコマ ${powerGate.skipped}`;
+  }
+}
+function setPowerSaveOn(on){
+  powerSaveOn=!!on;
+  syncPowerSaveControls();
+  scheduleSaveSettings();
+}
+if(el.powerSaveBtn)el.powerSaveBtn.addEventListener("click",()=>setPowerSaveOn(!powerSaveOn));
+if(el.popupPowerSaveBtn)el.popupPowerSaveBtn.addEventListener("click",()=>setPowerSaveOn(!powerSaveOn));
+syncPowerSaveControls();
 /* 【v976】WebGL地形のスイッチ。 */
 function syncGlTerrainControls(){
   if(!el.glTerrainBtn)return;
@@ -12373,6 +12431,7 @@ if(el.glTerrainBtn)el.glTerrainBtn.addEventListener("click",()=>{
   glTerrainOn=!glTerrainOn;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();scheduleSaveSettings();
 });
 syncGlTerrainControls();
+setInterval(()=>{if(el.powerSaveReadout&&el.powerSaveReadout.isConnected&&el.powerSaveReadout.offsetParent!==null)syncPowerSaveControls();},1000);   /* 【v982】見えているときだけ */
 if(el.sunsetSelfTestBtn)el.sunsetSelfTestBtn.addEventListener("click",()=>{
   let text;
   try{text=sunsetSelfTestReport();}
@@ -12814,6 +12873,7 @@ function playCameraMove(){
     if(!cameraMoveState.playing)return;
     if(!startedAt)startedAt=now;
     const raw=clamp((now-startedAt)/durationMs,0,1);
+    if(raw<1&&!frameGateOk(now)){cameraMoveState.raf=requestAnimationFrame(step);return;}   /* 【v982】最後のコマは必ず描く */
     const view=cameraMoveViewAt(raw);
     /* 【v913】このコマの内訳を控える。 */
     terrainRenderMsAccum=0;
@@ -13736,7 +13796,7 @@ function playbackTick(now){
   const finished=playbackVisualMinutes>=1800;
 
   // リアル天の川は30fps、従来表示は最大60fps。座標はどちらも小数時刻で連続的に進める。
-  const targetFrameMs=realMilkyWayEnabled ? 1000/30 : 1000/60;
+  const targetFrameMs=Math.max(realMilkyWayEnabled ? 1000/30 : 1000/60, powerFrameMinMs());   /* 【v982】 */
   /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
      必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
      再生中に周期的な負荷の山ができるため、その1回を省く。 */
@@ -14671,14 +14731,16 @@ async function startArMode(){
   function scheduleArRender(){
     if(arRafPending) return;
     arRafPending=true;
-    requestAnimationFrame(()=>{
+    const tick=(now)=>{
+      if(!arActive){arRafPending=false;return;}
+      if(!frameGateOk(now)){requestAnimationFrame(tick);return;}   /* 【v982】 */
       arRafPending=false;
-      if(!arActive) return;
       el.facingAz.value = arSmoothedAz.toFixed(1);
       el.facingAlt.value = arSmoothedAlt.toFixed(1);
       updateArFrame();
       if(el.arDebugOverlay.classList.contains("show")) renderArDebugOverlay();
-    });
+    };
+    requestAnimationFrame(tick);
   }
 
   arOrientationHandler = (e)=>{
@@ -15420,6 +15482,7 @@ function collectPersistedSettings(){
     overlayStyleRevision:OVERLAY_STYLE_REVISION,   // 【v961】
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
+    powerSaveOn:powerSaveOn,   // 【v982】
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -15657,6 +15720,7 @@ async function loadPersistedSettings(){
     }
     syncOverlayStyleControls();
     if(s.glTerrainOn!==undefined){glTerrainOn=s.glTerrainOn===true;syncGlTerrainControls();}   /* 【v976】 */
+    if(s.powerSaveOn!==undefined){powerSaveOn=s.powerSaveOn===true;syncPowerSaveControls();}   /* 【v982】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
@@ -19342,6 +19406,9 @@ try{
       sunsetGl:(on)=>{sunsetGlOn=on!==false;update();return sunsetGlOn;},
       sunsetGlState:()=>({on:sunsetGlOn,fail:sunsetGl.fail,lost:sunsetGl.lost,ctxLostCount:sunsetGl.ctxLostCount,lastMs:sunsetGl.lastMs}),
       sunsetGlReset:()=>{sunsetGl.lastMs=0;},
+      /* 【v982】省電力。 */
+      powerSave:(on)=>{setPowerSaveOn(on!==false);return powerSaveOn;},
+      powerState:()=>({on:powerSaveOn,fps:powerGate.fps,skipped:powerGate.skipped,count:powerGate.count}),
       /* 【v961】既定のままなら元の数字と一致するか、外から確かめるための入口。 */
       overlayRGB:(group,part,t)=>overlayPartRGB(group,part,t),
       overlayAlpha:(group,t)=>overlayAlphaScale(group,t),
@@ -23971,6 +24038,7 @@ let terrainRenderMsAccum=0;
 /* 【v974】段ごとの時間。WebGL化でどこを置き換えるべきかを数字で決めるため。 */
 const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fineWater:0,fineColor:0,bridgeRedraw:0,inland:0,grown:0,smear:0,terrain:0,terrainN:0,reflect:0,sunset:0,photo:0,photoN:0};
 function drawPhoto(ctx,s){
+  powerCountFrame();   /* 【v982】実測コマ数 */
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
     highDetailFallbackPending=true;
@@ -33263,6 +33331,7 @@ function startWalkLoop(){
   const tick=now=>{
     walkRaf=0;
     if(!walkActive()){ endWalk(); return; }
+    if(!frameGateOk(now)){walkRaf=requestAnimationFrame(tick);return;}   /* 【v982】dt は持ち越す */
     const dt=Math.min(.25,Math.max(0,(now-walkLastTime)/1000));
     walkLastTime=now;
     const viewChanged=applyViewKeys(dt,walkFast);
