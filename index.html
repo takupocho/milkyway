@@ -4948,7 +4948,10 @@
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">📈 活動モニター（熱くなる原因さがし）</p>
           <p class="map-hint" style="margin-top:4px;">画面の左下に1秒ごとの数字を出します。何もしていないのに「描」「rAF」「忙」が増え続けていれば、それが原因です。しばらく使ってから「記録を書き出す」を押すと、直近40秒ぶんが下に出て、クリップボードにも入ります。</p>
           <div class="row2" style="margin-top:6px;"><button id="actMonShowBtn" type="button">画面に出す</button><button id="actMonCopyBtn" type="button" class="ghost">記録を書き出す</button></div>
-          <p id="actMonReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;line-height:1.6;"></p>
+          <!-- 【v987】テキストで渡せるように。 -->
+          <div class="row2" style="margin-top:6px;"><button id="actMonClipBtn" type="button" class="ghost">📋 コピー</button><button id="actMonShareBtn" type="button" class="ghost">📤 共有…</button></div>
+          <p id="actMonCopyStatus" class="map-hint" style="margin-top:4px;"></p>
+          <textarea id="actMonReadout" readonly spellcheck="false" style="width:100%;min-height:160px;margin-top:6px;padding:8px;border:1px solid var(--line,#2a3345);border-radius:8px;background:rgba(0,0,0,.25);color:var(--star-white);font:11px/1.5 'IBM Plex Mono',monospace;white-space:pre;overflow:auto;-webkit-user-select:text;user-select:text;"></textarea>
           <!-- 【v982】省電力モード。 -->
           <button id="powerSaveBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🔋 省電力モード（コマ数の上限 30/秒）</span><span id="powerSaveState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:6px;">再生・ドラッグ・AR・歩く・ドローン・カメラワークのあいだだけ、描き直しを1秒に30回までにします。止まっているときはもともと描いていないので変わりません。絵は1画素も変わりません。既定はスマホON・PC OFF。</p>
@@ -5865,7 +5868,7 @@ function actMonWho(skipRe){
   try{
     const st=(new Error().stack||"").split("\n").map(x=>x.trim()).filter(Boolean);
     const nameOf=x=>x.replace(/^at\s+/,"").replace(/@.*$/,"").replace(/\s*\(.*$/,"").trim();
-    const isAccessor=n=>/^(set|get)/.test(n)||/\.(set|get)/.test(n)||/\[as /.test(n);
+    const isAccessor=n=>/^(set|get)\b/.test(n)||/\.(set|get)\b/.test(n)||/\[as /.test(n);   /* 【v986】\b が backspace になっていた */
     const line=st.find(x=>!/^Error$/.test(x)&&!/actMonWho|actMonNullBy|actMonSetWho/.test(x)&&!isAccessor(nameOf(x))&&/:\d+:\d+/.test(x)&&!skipRe.test(x));
     if(!line)return "?";
     let name=nameOf(line);
@@ -5948,7 +5951,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="985-who-rebuild";
+const APP_VERSION="987-monitor-share";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7170,6 +7173,7 @@ const el={
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
+  actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
   worldGridBrightness:$("worldGridBrightness"), worldGridBrightnessVal:$("worldGridBrightnessVal"),   /* 【v984】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
@@ -8042,22 +8046,22 @@ function scheduleUpdate(){
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(scheduledUpdateRaf) return;
   /* 【v982】省電力の門を通らなければ、次のコマへ持ち越す（入力の最新値はそのとき読む）。 */
-  const tick=(now)=>{
-    if(!frameGateOk(now)){scheduledUpdateRaf=requestAnimationFrame(tick);return;}
+  const updateTick=(now)=>{
+    if(!frameGateOk(now)){scheduledUpdateRaf=requestAnimationFrame(updateTick);return;}
     scheduledUpdateRaf=0;
     update();
   };
-  scheduledUpdateRaf=requestAnimationFrame(tick);
+  scheduledUpdateRaf=requestAnimationFrame(updateTick);
 }
 function scheduleCameraViewUpdate(){
   // 日時・地点などの全体更新が待機中なら、その更新へまとめる。
   if(scheduledUpdateRaf||scheduledCameraViewRaf) return;
-  const tick=(now)=>{
-    if(!frameGateOk(now)){scheduledCameraViewRaf=requestAnimationFrame(tick);return;}   /* 【v982】 */
+  const viewTick=(now)=>{
+    if(!frameGateOk(now)){scheduledCameraViewRaf=requestAnimationFrame(viewTick);return;}   /* 【v982】 */
     scheduledCameraViewRaf=0;
     updateCameraViewOnly();
   };
-  scheduledCameraViewRaf=requestAnimationFrame(tick);
+  scheduledCameraViewRaf=requestAnimationFrame(viewTick);
 }
 el.citySelect.addEventListener("change",()=>{
   const c=CITIES[+el.citySelect.value];
@@ -8809,19 +8813,19 @@ function startDroneDescent(){
   if(cameraRiseM<=0) return;
   droneHoldElevation=null;
   let last=performance.now();
-  const tick=now=>{
+  const droneDescentTick=now=>{
     droneDescentRaf=0;
     if(droneModeOn) return;
-    if(!frameGateOk(now)){droneDescentRaf=requestAnimationFrame(tick);return;}   /* 【v982】 */
+    if(!frameGateOk(now)){droneDescentRaf=requestAnimationFrame(droneDescentTick);return;}   /* 【v982】 */
     const dt=Math.min(.2,Math.max(0,(now-last)/1000));
     last=now;
     cameraRiseM=Math.max(0,cameraRiseM-DRONE_DESCENT_MPS*dt);
     syncTripodHeightControl();
     drawPhoto._terrainRenderKey=null;
     update();
-    if(cameraRiseM>0) droneDescentRaf=requestAnimationFrame(tick);
+    if(cameraRiseM>0) droneDescentRaf=requestAnimationFrame(droneDescentTick);
   };
-  droneDescentRaf=requestAnimationFrame(tick);
+  droneDescentRaf=requestAnimationFrame(droneDescentTick);
 }
 function toggleControllerVisible(){
   droneModeOn=!droneModeOn;
@@ -10557,7 +10561,7 @@ function startDroneAutoVertical(speedMps){
   if(!droneAutoVerticalSpeedMps) return;
   stopDroneDescent();
   droneAutoVerticalLastTime=performance.now();droneAutoVerticalLastDraw=0;
-  const tick=now=>{
+  const droneAutoTick=now=>{
     const dt=Math.min(.2,Math.max(0,(now-droneAutoVerticalLastTime)/1000));
     droneAutoVerticalLastTime=now;
     const next=clamp(cameraRiseM+droneAutoVerticalSpeedMps*dt,0,CAMERA_RISE_MAX_M);
@@ -10579,10 +10583,10 @@ function startDroneAutoVertical(speedMps){
       syncTripodHeightControl();drawPhoto._terrainRenderKey=null;update();
       stopDroneAutoVertical(false);return;
     }
-    droneAutoVerticalRaf=requestAnimationFrame(tick);
+    droneAutoVerticalRaf=requestAnimationFrame(droneAutoTick);
   };
   if(el.droneBadge) el.droneBadge.classList.add("auto-moving");
-  droneAutoVerticalRaf=requestAnimationFrame(tick);
+  droneAutoVerticalRaf=requestAnimationFrame(droneAutoTick);
   syncDroneBadge();
 }
 /* 上昇中だけ高度を出す。DOMの重ね表示なので保存写真には写らない。 */
@@ -12627,11 +12631,35 @@ if(el.actMonShowBtn)el.actMonShowBtn.addEventListener("click",()=>{
   actMonSetShown(!actMon.shown);
   el.actMonShowBtn.textContent=actMon.shown?"画面から消す":"画面に出す";
 });
+/* 【v987】コピー：clipboard API → 選択＋execCommand の順に試す。 */
+function actMonSetStatus(text){if(el.actMonCopyStatus)el.actMonCopyStatus.textContent=text;}
+async function actMonCopyText(){
+  const text=el.actMonReadout?el.actMonReadout.value:"";
+  if(!text){actMonSetStatus("先に「記録を書き出す」を押してください");return false;}
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);actMonSetStatus("コピーしました（貼り付けできます）");return true;}
+  }catch(e){}
+  try{
+    el.actMonReadout.focus();el.actMonReadout.setSelectionRange(0,text.length);
+    const ok=document.execCommand&&document.execCommand("copy");
+    actMonSetStatus(ok?"コピーしました（貼り付けできます）":"コピーできませんでした。枠の中を長押し→全選択→コピーしてください");
+    return !!ok;
+  }catch(e){actMonSetStatus("コピーできませんでした。枠の中を長押し→全選択→コピーしてください");return false;}
+}
 if(el.actMonCopyBtn)el.actMonCopyBtn.addEventListener("click",()=>{
   let text;
   try{text=actMonReport();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
-  if(el.actMonReadout)el.actMonReadout.textContent=text;
-  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+  if(el.actMonReadout)el.actMonReadout.value=text;
+  actMonCopyText();
+});
+if(el.actMonClipBtn)el.actMonClipBtn.addEventListener("click",()=>{actMonCopyText();});
+if(el.actMonShareBtn)el.actMonShareBtn.addEventListener("click",async()=>{
+  const text=el.actMonReadout?el.actMonReadout.value:"";
+  if(!text){actMonSetStatus("先に「記録を書き出す」を押してください");return;}
+  if(navigator.share){
+    try{await navigator.share({title:`StarChase 活動モニター v${APP_VERSION}`,text});actMonSetStatus("共有しました");}
+    catch(e){if(!(e&&e.name==="AbortError"))actMonSetStatus("共有できませんでした。「コピー」を試してください");}
+  }else actMonSetStatus("この端末では共有が使えません。「コピー」を試してください");
 });
 /* 【v982】省電力モードのスイッチ（設定→開発者 と 表示ポップアップの両方を同期）。 */
 let powerSaveReadoutTimer=0;
@@ -13108,11 +13136,11 @@ function playCameraMove(){
   cameraMoveState.playing=true;
   syncCameraMoveControls();
   let startedAt=0;
-  const step=now=>{
+  const cameraStep=now=>{
     if(!cameraMoveState.playing)return;
     if(!startedAt)startedAt=now;
     const raw=clamp((now-startedAt)/durationMs,0,1);
-    if(raw<1&&!frameGateOk(now)){cameraMoveState.raf=requestAnimationFrame(step);return;}   /* 【v982】最後のコマは必ず描く */
+    if(raw<1&&!frameGateOk(now)){cameraMoveState.raf=requestAnimationFrame(cameraStep);return;}   /* 【v982】最後のコマは必ず描く */
     const view=cameraMoveViewAt(raw);
     /* 【v913】このコマの内訳を控える。 */
     terrainRenderMsAccum=0;
@@ -13129,9 +13157,9 @@ function playCameraMove(){
       cameraCutAdvance();
       return;
     }
-    cameraMoveState.raf=requestAnimationFrame(step);
+    cameraMoveState.raf=requestAnimationFrame(cameraStep);
   };
-  cameraMoveState.raf=requestAnimationFrame(step);
+  cameraMoveState.raf=requestAnimationFrame(cameraStep);
 }
 
 let cameraMovePanoOn=true;
@@ -14970,16 +14998,16 @@ async function startArMode(){
   function scheduleArRender(){
     if(arRafPending) return;
     arRafPending=true;
-    const tick=(now)=>{
+    const arTick=(now)=>{
       if(!arActive){arRafPending=false;return;}
-      if(!frameGateOk(now)){requestAnimationFrame(tick);return;}   /* 【v982】 */
+      if(!frameGateOk(now)){requestAnimationFrame(arTick);return;}   /* 【v982】 */
       arRafPending=false;
       el.facingAz.value = arSmoothedAz.toFixed(1);
       el.facingAlt.value = arSmoothedAlt.toFixed(1);
       updateArFrame();
       if(el.arDebugOverlay.classList.contains("show")) renderArDebugOverlay();
     };
-    requestAnimationFrame(tick);
+    requestAnimationFrame(arTick);
   }
 
   arOrientationHandler = (e)=>{
@@ -16928,13 +16956,13 @@ function showPlanTitleCard(location){
   planTitleStartedAt=performance.now();
   planTitleFrame(0);
   if(planTitleRaf) cancelAnimationFrame(planTitleRaf);
-  const loop=(now)=>{
+  const planTitleLoop=(now)=>{
     const seconds=(now-planTitleStartedAt)/1000;
     planTitleFrame(seconds);
     if(seconds>=PLAN_TITLE_TOTAL){ planTitleRaf=0; stopPlanTitleCard(); return; }
-    planTitleRaf=requestAnimationFrame(loop);
+    planTitleRaf=requestAnimationFrame(planTitleLoop);
   };
-  planTitleRaf=requestAnimationFrame(loop);
+  planTitleRaf=requestAnimationFrame(planTitleLoop);
 }
 /* 【v717】ガイド役のひとこと。一文字ずつ置いていき、出しきったら少し置いて消える。
    置き場所は、本人を描いたときの位置（pixelWalkerLastLayout）から毎回測り直す。
@@ -16990,15 +17018,15 @@ function showWalkerBubble(text){
   walkerBubbleFrame(0);
   bubble.classList.add("show");
   placeWalkerBubble();
-  const loop=(now)=>{
+  const bubbleLoop=(now)=>{
     const done=walkerBubbleFrame((now-walkerBubbleStartedAt)/1000);
     if(done&&!walkerBubbleDoneAt) walkerBubbleDoneAt=now;
     if(walkerBubbleDoneAt&&now-walkerBubbleDoneAt>=WALKER_BUBBLE_HOLD_MS){
       walkerBubbleRaf=0; hideWalkerBubble(); return;
     }
-    walkerBubbleRaf=requestAnimationFrame(loop);
+    walkerBubbleRaf=requestAnimationFrame(bubbleLoop);
   };
-  walkerBubbleRaf=requestAnimationFrame(loop);
+  walkerBubbleRaf=requestAnimationFrame(bubbleLoop);
   return true;
 }
 async function applySavedObservingPlan(location){
@@ -33598,10 +33626,10 @@ function stepObserver(forwardM,strafeM){
 function startWalkLoop(){
   if(walkRaf) return;
   walkLastTime=performance.now();
-  const tick=now=>{
+  const walkTick=now=>{
     walkRaf=0;
     if(!walkActive()){ endWalk(); return; }
-    if(!frameGateOk(now)){walkRaf=requestAnimationFrame(tick);return;}   /* 【v982】dt は持ち越す */
+    if(!frameGateOk(now)){walkRaf=requestAnimationFrame(walkTick);return;}   /* 【v982】dt は持ち越す */
     const dt=Math.min(.25,Math.max(0,(now-walkLastTime)/1000));
     walkLastTime=now;
     const viewChanged=applyViewKeys(dt,walkFast);
@@ -33611,9 +33639,9 @@ function startWalkLoop(){
     }else if(viewChanged){
       update();
     }
-    walkRaf=requestAnimationFrame(tick);
+    walkRaf=requestAnimationFrame(walkTick);
   };
-  walkRaf=requestAnimationFrame(tick);
+  walkRaf=requestAnimationFrame(walkTick);
 }
 
 /* 移動を終えたら、通常の取得経路を一度通して水域・海岸線・山名を本来の精度へ戻す。 */
@@ -34416,13 +34444,13 @@ update();
     pixelWalkerFacing="front";   /* v717: ガイド役はこちらを向く */
     powerStartedAt=performance.now();
     powerFrame(0);
-    const loop=(now)=>{
+    const powerLoop=(now)=>{
       const p=(now-powerStartedAt)/POWER_ON_MS;
       powerFrame(p);
       if(p>=1){ powerRaf=0; powerDone=true; finishPowerOn(); return; }
-      powerRaf=requestAnimationFrame(loop);
+      powerRaf=requestAnimationFrame(powerLoop);
     };
-    powerRaf=requestAnimationFrame(loop);
+    powerRaf=requestAnimationFrame(powerLoop);
   }
   if(overlay){
     /* 幕は本体の直下へ移す。スマホでは器の親が重なりの文脈を作っていて、
