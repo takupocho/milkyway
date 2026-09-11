@@ -4342,6 +4342,8 @@
       </header>
     <aside class="control-panel">
       <button id="closeSettingsBtn" type="button" class="close-settings-btn">✕ 閉じる(シミュレーション画面へ戻る)</button>
+      <!-- 【v984】いま動いている版。 -->
+      <p id="settingsVersionLine" class="map-hint mono" style="margin:8px 0 2px;color:var(--dim-2);font-size:11px;letter-spacing:.03em;"></p>
 
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">観測地点<span class="ctrl-arrow">▼</span></h2>
@@ -4938,6 +4940,10 @@
           </div>
 
           <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
+          <!-- 【v984】地面グリッドの明るさ。 -->
+          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🟩 地面グリッドの明るさ</p>
+          <div class="field"><label class="top">明るさ <span class="val mono" id="worldGridBrightnessVal">100%</span></label><input type="range" id="worldGridBrightness" min="0" max="300" step="5" value="100"></div>
+          <p class="map-hint" style="margin-top:2px;">100% が今までと同じ。下げると薄く、上げると濃く・白っぽくなります。昼夜の差はそのままです。</p>
           <!-- 【v983】活動モニター。何が動き続けているかを実機で数える。 -->
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">📈 活動モニター（熱くなる原因さがし）</p>
           <p class="map-hint" style="margin-top:4px;">画面の左下に1秒ごとの数字を出します。何もしていないのに「描」「rAF」「忙」が増え続けていれば、それが原因です。しばらく使ってから「記録を書き出す」を押すと、直近40秒ぶんが下に出て、クリップボードにも入ります。</p>
@@ -5756,6 +5762,8 @@
 const actMon={
   draw:0,update:0,view:0,rafRun:0,rafNames:Object.create(null),timer:0,fetch:0,geo:0,orient:0,
   busyMs:0,lastTick:0,canvasRefs:[],canvasMade:0,log:[],shown:false,started:performance.now(),
+  /* 【v984】作り直しの理由。 */
+  terrainWhy:[],nullBy:Object.create(null),bandsWhy:{grid:0,rings:0,full:0,key:0},bandsSigs:Object.create(null),
   last:{draw:0,update:0,view:0,rafRun:0,timer:0,fetch:0,geo:0,orient:0,busyMs:0,terrainN:0,bandsN:0}
 };
 (function(){
@@ -5837,6 +5845,40 @@ function actMonSample(){
 function actMonLine(s){
   return `${s.t}s 描${s.draw} 更${s.update} 視${s.view} rAF${s.raf} timer${s.timer} fetch${s.fetch} 位置${s.geo} 向き${s.orient} 忙${s.busy}% 地形${s.terrain} 帯${s.bands} canvas${s.canvas}枚 ${s.mb}MB`;
 }
+/* 【v984】terrainRenderKey の欄の名前（drawPhoto の terrainGeometryKey と同じ順）。 */
+const ACTMON_KEY_NAMES=["W","H","地形key","改訂","lat","lon","方位","仰角","fovH","レンズ","焦点","crop","方位刻み","細密水","局所刻み","目の高さ","メッシュ","雲海","重ね","局所地形","昼夜"];
+function actMonTerrainWhy(prev,next,resized){
+  let why;
+  if(resized)why="サイズ変更";
+  else if(prev==null)why=`鍵なし（null にした: ${actMon.lastNull||"?"}）`;
+  else{
+    const a=String(prev).split("|"),b=String(next).split("|"),d=[];
+    for(let i=0;i<Math.max(a.length,b.length);i++)if(a[i]!==b[i])d.push(`${ACTMON_KEY_NAMES[i]||i}:${String(a[i]).slice(0,40)}→${String(b[i]).slice(0,40)}`);
+    why=d.length?d.slice(0,4).join(" "):"同じ鍵なのに作り直し";
+  }
+  actMon.terrainWhy.push(`${Math.round((performance.now()-actMon.started)/1000)}s ${why}`);
+  if(actMon.terrainWhy.length>10)actMon.terrainWhy.shift();
+}
+function actMonNullBy(){
+  let who="?";
+  try{const st=(new Error().stack||"").split("\n").map(x=>x.trim()).filter(Boolean);
+    /* 自分（setter）の次の行が呼び出し元。 */
+    const line=st.find((x,i)=>i>0&&!/_terrainRenderKey|actMonNullBy|^Error/.test(x))||st[1]||"?";
+    who=line.replace(/@.*$/,"").replace(/^at\s+/,"").replace(/\s*\(.*$/,"").slice(0,40)||"匿名";
+  }catch(e){}
+  actMon.nullBy[who]=(actMon.nullBy[who]||0)+1;
+  actMon.lastNull=who;
+}
+function actMonBandsMiss(reason,key){
+  actMon.bandsWhy[reason]++;
+  if(reason==="key"&&key){
+    /* 方位の欄を落とした残り。これが何種類もあれば、方位以外の欄が揺れている。 */
+    const sig=String(key).replace(/^[^|]*\|/,"");
+    actMon.bandsSigs[sig]=(actMon.bandsSigs[sig]||0)+1;
+    const keys=Object.keys(actMon.bandsSigs);
+    if(keys.length>12)delete actMon.bandsSigs[keys[0]];
+  }
+}
 function actMonReport(){
   const lines=[];
   const ua=navigator.userAgent;
@@ -5849,6 +5891,15 @@ function actMonReport(){
   const names=Object.entries(actMon.rafNames).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
   lines.push(`rAF 累計 ${actMon.rafRun}（${names}）`);
   lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"}`);
+  lines.push("─── 地形を作り直した理由（直近）───");
+  for(const w of actMon.terrainWhy)lines.push(w);
+  const nb=Object.entries(actMon.nullBy).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
+  lines.push(`鍵を null にした呼び出し元: ${nb||"なし"}`);
+  const bw=actMon.bandsWhy;
+  lines.push(`帯の取り直し: 格子替え${bw.grid} 輪替え${bw.rings} 満杯${bw.full} 鍵違い${bw.key}`);
+  const sigs=Object.entries(actMon.bandsSigs).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  lines.push(`鍵違いの内訳（方位以外・${Object.keys(actMon.bandsSigs).length}種類）:`);
+  for(const [k,n] of sigs)lines.push(`  ×${n} ${k.slice(0,90)}`);
   lines.push("─── 直近（1秒ごと）───");
   for(const s of actMon.log.slice(-40))lines.push(actMonLine(s));
   return lines.join("\n");
@@ -5874,7 +5925,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="983-activity-monitor";
+const APP_VERSION="984-why-rebuild";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -5929,6 +5980,8 @@ function terrainRendererLabel(){
 function syncAppVersionBadge(){
   const badge=document.getElementById("appVersionBadge");
   if(badge) badge.textContent=`v${APP_VERSION} [${terrainRendererLabel()}]`;
+  const line=document.getElementById("settingsVersionLine");   /* 【v984】 */
+  if(line) line.textContent=`StarChase v${APP_VERSION}`;
 }
 
 /* =========================================================
@@ -7093,7 +7146,8 @@ const el={
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
-  actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
+  worldGridBrightness:$("worldGridBrightness"), worldGridBrightnessVal:$("worldGridBrightnessVal"),   /* 【v984】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -8169,6 +8223,13 @@ if(el.focalQuickRange){
     el.focalLength.dispatchEvent(new Event("input",{bubbles:true}));
   });
   document.addEventListener("click",()=>setFocalQuickOpen(false));
+  /* 【v984】iOS では、写真や余白を触っても document の click が来ない（ドラッグ処理が preventDefault する）。
+     pointerdown で「窓とバッジの外」を触ったら閉じる。 */
+  document.addEventListener("pointerdown",e=>{
+    if(!el.focalQuick.classList.contains("show"))return;
+    if(e.target.closest("#focalQuick,#focalBadge"))return;
+    setFocalQuickOpen(false);
+  },{capture:true,passive:true});
   window.addEventListener("resize",()=>{ if(el.focalQuick.classList.contains("show")) positionFocalQuick(); });
 }
 [el.aperture,el.isoSlider,el.shutter,el.sensor,el.lp]
@@ -9778,6 +9839,9 @@ function niceStepM(target,steps){
 const WORLD_GRID_SPACING_M=10;  // 地面グリッドの間隔
 const CONTOUR_INTERVAL_M=1;     // 等高線の標高間隔
 let worldGridVisible=true;
+/* 【v984】地面グリッドの明るさ（%）。100 で今までと同じ。線の濃さ（alpha）に掛け、100を超えたぶんは色も白へ寄せる。 */
+let worldGridBrightness=100;
+
 let contourLinesVisible=true;
 let roadLinesVisible=false; // 通信を伴うので既定はOFF
 let bridgeLinesVisible=false; // 橋専用データも利用者がONにした時だけ取得する
@@ -12523,6 +12587,18 @@ function sunsetSelfTestReport(){
   }
   return lines.join("\n");
 }
+/* 【v984】地面グリッドの明るさ。 */
+function syncWorldGridBrightnessControls(){
+  if(el.worldGridBrightness&&String(el.worldGridBrightness.value)!==String(worldGridBrightness))el.worldGridBrightness.value=String(worldGridBrightness);
+  if(el.worldGridBrightnessVal)el.worldGridBrightnessVal.textContent=`${worldGridBrightness}%`;
+}
+if(el.worldGridBrightness)el.worldGridBrightness.addEventListener("input",()=>{
+  worldGridBrightness=Math.max(0,Math.min(300,Math.round(+el.worldGridBrightness.value)||0));
+  syncWorldGridBrightnessControls();
+  drawPhoto._terrainRenderKey=null;   /* 線は地形レイヤーの中 */
+  update();scheduleSaveSettings();
+});
+syncWorldGridBrightnessControls();
 /* 【v983】活動モニターのボタン。 */
 if(el.actMonShowBtn)el.actMonShowBtn.addEventListener("click",()=>{
   actMonSetShown(!actMon.shown);
@@ -15624,6 +15700,7 @@ function collectPersistedSettings(){
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
     powerSaveOn:powerSaveOn,   // 【v982】
+    worldGridBrightness:worldGridBrightness,   // 【v984】
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -15862,6 +15939,7 @@ async function loadPersistedSettings(){
     syncOverlayStyleControls();
     if(s.glTerrainOn!==undefined){glTerrainOn=s.glTerrainOn===true;syncGlTerrainControls();}   /* 【v976】 */
     if(s.powerSaveOn!==undefined){powerSaveOn=s.powerSaveOn===true;syncPowerSaveControls();}   /* 【v982】 */
+    if(Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
@@ -24180,6 +24258,15 @@ function glFineStore(){
 let terrainRenderMsAccum=0;
 /* 【v974】段ごとの時間。WebGL化でどこを置き換えるべきかを数字で決めるため。 */
 const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fineWater:0,fineColor:0,bridgeRedraw:0,inland:0,grown:0,smear:0,terrain:0,terrainN:0,reflect:0,sunset:0,photo:0,photoN:0};
+/* 【v984】_terrainRenderKey を null にした呼び出し元を数える。値そのものは同じ。 */
+(function(){
+  let value=drawPhoto._terrainRenderKey===undefined?null:drawPhoto._terrainRenderKey;
+  Object.defineProperty(drawPhoto,"_terrainRenderKey",{
+    configurable:true,enumerable:true,
+    get(){return value;},
+    set(v){if(v===null&&value!==null)actMonNullBy();value=v;}
+  });
+})();
 function drawPhoto(ctx,s){
   powerCountFrame();   /* 【v982】実測コマ数 */
   actMon.draw++;   /* 【v983】 */
@@ -25374,7 +25461,7 @@ function drawPhoto(ctx,s){
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
         cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
-        (worldGridVisible?"g":"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
+        (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length:"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off"
       ].join("|");
       /* 【v911】夜は昼用レイヤーを作らない。
@@ -25383,6 +25470,7 @@ function drawPhoto(ctx,s){
       const dayTerrainLayerNeeded=dayFactor>0;
       const terrainRenderKey=terrainGeometryKey+"|"+(dayTerrainLayerNeeded?"day":"night-only");
       const terrainNeedsRender=terrainCanvasResized||dayTerrainCanvasResized||waterMaskResized||drawPhoto._terrainRenderKey!==terrainRenderKey;
+      if(terrainNeedsRender)actMonTerrainWhy(drawPhoto._terrainRenderKey,terrainRenderKey,terrainCanvasResized||dayTerrainCanvasResized||waterMaskResized);   /* 【v984】 */
       const bandStyles={
         immediate:{top:[4,5,7],bottom:[20,22,28],boost:4},
         near:{top:[8,10,15],bottom:[15,18,25],boost:5},
@@ -27876,6 +27964,7 @@ function drawPhoto(ctx,s){
         if(!grid) return azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
         const rings=realTerrainState._osmWaterRings;
         if(visibleBandsCacheGrid!==grid||visibleBandsCacheRings!==rings){
+          if(visibleBandsCache.size)actMonBandsMiss(visibleBandsCacheGrid!==grid?"grid":"rings");   /* 【v984】 */
           visibleBandsCache.clear();
           visibleBandsCacheGrid=grid;visibleBandsCacheRings=rings;
         }
@@ -27911,8 +28000,9 @@ function drawPhoto(ctx,s){
         const __b0=performance.now();
         const result=azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
         terrainStageProf.bands+=performance.now()-__b0;terrainStageProf.bandsN++;
+        actMonBandsMiss("key",key);   /* 【v984】 */
         // 際限なく増えないように。あちこち向いても膨らみ続けない。
-        if(visibleBandsCache.size>=VISIBLE_BANDS_CACHE_MAX) visibleBandsCache.clear();
+        if(visibleBandsCache.size>=VISIBLE_BANDS_CACHE_MAX){visibleBandsCache.clear();actMonBandsMiss("full");}
         visibleBandsCache.set(key,result);
         return result;
       }
@@ -29605,7 +29695,10 @@ function drawPhoto(ctx,s){
         };
         if(gridPaths){
           // 夜は地面がほぼ黒なので、同じ濃さだと線だけが浮いて星より目立ってしまう。
-          strokeFaded(gridPaths,mixRGB([92,108,132],[36,52,32],terrainDayFactor),lerp(.14,.42,terrainDayFactor));
+          /* 【v984】明るさのつまみ。100% なら今までと同じ数字。 */
+          const gk=Math.max(0,worldGridBrightness/100),glift=Math.max(0,Math.min(1,(gk-1)*.5));
+          const grgb=mixRGB([92,108,132],[36,52,32],terrainDayFactor).map(v=>Math.round(v+(255-v)*glift));
+          strokeFaded(gridPaths,grgb,Math.min(1,lerp(.14,.42,terrainDayFactor)*gk));
         }
         if(contourPaths){
           // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
