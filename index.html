@@ -5654,7 +5654,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="964-kmz-move-alt";
+const APP_VERSION="966-daruma-foot";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11485,15 +11485,25 @@ function sunsetDarkGuardMask(canvas,cw,ch){
 /* 太陽を中心にした放射状のグラデーションを、指定の範囲だけに塗る。
    `stops` は [位置0〜1, 色] の並び。半径の外は最後の色で埋まる。
    `bright` を渡すと、明るいところにだけ光が乗るようになる（橋やKMZを黒いまま残す）。 */
-function sunsetFieldPass(ctx,cw,ch,sun,radiusX,radiusY,stops,mask,invert,mode,alpha,bright,protect){
+function sunsetFieldPass(ctx,cw,ch,sun,radiusX,radiusY,stops,mask,invert,mode,alpha,bright,protect,yBand){
   if(!(alpha>.002)||!(radiusX>0)||!(radiusY>0))return;
   const field=sunsetFieldCanvas=sunsetCanvas(sunsetFieldCanvas,cw,ch);
   const fieldCtx=sunsetResetContext(field);
+  /* 【v966】だるまの反転像用。塗る範囲を縦に限る（折り返し線〜水平線）。
+     このキャンバスは毎回使い回すので、clipは save/restore で必ず外す。
+     （外さないと次の塗りから全部が帯の中だけになる。実測で踏んだ） */
+  if(yBand){
+    fieldCtx.save();
+    fieldCtx.beginPath();
+    fieldCtx.rect(0,yBand[0],cw,Math.max(1,yBand[1]-yBand[0]));
+    fieldCtx.clip();
+  }
   fieldCtx.setTransform(radiusX,0,0,radiusY,sun.x,sun.y);
   const gradient=fieldCtx.createRadialGradient(0,0,0,0,0,1);
   for(const stop of stops)gradient.addColorStop(stop[0],stop[1]);
   fieldCtx.fillStyle=gradient;
   fieldCtx.fillRect(-9999,-9999,19998,19998);   /* 半径の外は最後の色で埋まる */
+  if(yBand)fieldCtx.restore();   /* 【v966】clipを外す */
   fieldCtx.setTransform(1,0,0,1,0,0);
   if(bright&&protect>.002){
     /* 光の色だけを暗くする。マスクの形（alpha）は触らない。 */
@@ -11765,6 +11775,23 @@ function applySunsetMode(ctx,s,W,H,toXY){
     sunsetFieldPass(ctx,cw,ch,sun,sunRadius,sunRadius,
       [[0,sunRgba(1)],[.9,sunRgba(1)],[1,sunRgba(0)]],
       skyMask,true,"source-over",weight*sunWhite);
+    /* 【v966】だるま夕陽の足元。
+
+       だるま（v745）は太陽の下端を折り返し線で反転させ、折り返し線〜水平線の
+       あいだに反転像を描いて「くびれ＋横張り出し」を作る。反転像は太陽の円の
+       **外（下）へはみ出す**ので、上のまん丸の面では塗られず、下の描画
+       （薄い塗り＋①のセピア）のまま暗く残っていた。
+       同じ形（中心 (x, 2*foldY−y)・同じ半径・折り返し線〜水平線に限る）を、
+       面と同じ色・同じ濃さで塗る。 */
+    drawPhoto._sunsetSunPx={x:sun.x,y:sun.y,r:sunRadius};   /* 検証用 */
+    const darumaShape=drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce;   /* 後者は検証用 */
+    if(darumaShape&&Number.isFinite(darumaShape.foldY)&&Number.isFinite(darumaShape.horizonY)){
+      const foldY=darumaShape.foldY,horizonY=Math.max(foldY+1,darumaShape.horizonY);
+      const inverted={x:sun.x,y:2*foldY-sun.y};
+      sunsetFieldPass(ctx,cw,ch,inverted,sunRadius,sunRadius,
+        [[0,sunRgba(1)],[.9,sunRgba(1)],[1,sunRgba(0)]],
+        skyMask,true,"source-over",weight*sunWhite,null,0,[foldY,horizonY+1]);
+    }
   }
 
   /* 【v937】水平線の赤み。太陽が沈むころ、水平線あたりを赤く染める。
@@ -19041,6 +19068,8 @@ try{
       overlayParts:()=>OVERLAY_STYLE_PARTS,
       /* 【v962】観測地点を誰が書き換えたかの記録。 */
       placeLog:()=>placeWriteLog.slice(),
+      /* 【v966】だるまの形を外から与えて、足元の塗りを確かめる。 */
+      darumaShape:(shape)=>{drawPhoto._darumaShapeForce=shape||null;update();return {sun:drawPhoto._sunsetSunPx,shape:drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce};},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       injectKmz:(lat,lon,w,hgt)=>{
@@ -23311,6 +23340,7 @@ function drawPhoto(ctx,s){
   }
   let darumaSunActive=false;
   let darumaSunShape=null;
+  drawPhoto._darumaSunShape=null;   /* 【v966】夕焼けの段から読む */
   const activeTerrainProfile=currentEyeTerrainProfile();
   const activeTerrainLayerProfiles=currentEyeTerrainLayerProfiles();
   const activeTerrainLayers=Array.isArray(realTerrainState.terrainLayers)
@@ -24084,6 +24114,7 @@ function drawPhoto(ctx,s){
           darumaSunActive=true;
           const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,renderedSeaHorizonAlt);
           if(foldPoint&&horizonPoint) darumaSunShape={foldY:foldPoint[1],horizonY:horizonPoint[1]};
+          drawPhoto._darumaSunShape=darumaSunShape;   /* 【v966】 */
         }
       }
 
