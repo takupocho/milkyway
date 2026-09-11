@@ -534,28 +534,46 @@
       border-bottom:1px solid var(--line-soft);
       box-shadow:0 8px 16px -8px rgba(0,0,0,0.5);
     }
+    /* 【v980】丸ボタン6つは左に固定。日付と月は右寄せ。焦点距離は2行目の左。
+       住所は日付の下に重ねる（幅に数えない）ので、長くても行が崩れない。 */
     .photo-sticky-wrap .toggle-btn-row{
       margin-bottom:6px; padding:0 6px;
       flex-wrap:wrap;
       align-items:center;
-      justify-content:space-between;
-      row-gap:6px;
-      gap:5px;
+      justify-content:flex-start;
+      row-gap:4px;
+      gap:4px;
     }
     .constellation-toggle-btn{padding:4px 7px;font-size:10px;border-radius:6px;}
-    .toggle-btn-row .today-date{gap:0;align-items:flex-end;}
+    .toggle-btn-row .header-date-moon{
+      order:1;
+      margin-left:auto;
+      display:flex;
+      align-items:flex-end;
+      gap:8px;
+      position:relative;
+      z-index:3;
+    }
+    .toggle-btn-row .toggle-row-break{order:2;flex:0 0 100%;height:0;}
+    .toggle-btn-row .today-date{gap:0;align-items:flex-end;position:relative;}
     .toggle-btn-row .today-date-year{font-size:9px;}
     .toggle-btn-row .today-date-main{font-size:13px;}
     .toggle-btn-row .today-date-place{
       display:block;
+      position:absolute;
+      right:0;
+      top:100%;
+      margin-top:1px;
       font-family:'Inter',sans-serif;
       font-size:9px;
       font-weight:600;
       color:var(--dim);
       white-space:nowrap;
-      max-width:80px;
-      overflow:hidden;
-      text-overflow:ellipsis;
+      max-width:none;
+      overflow:visible;
+      text-overflow:clip;
+      text-align:right;
+      pointer-events:auto;
     }
     .toggle-btn-row .moon-today{gap:2px;}
     .toggle-btn-row .moon-today-label{font-size:9px;}
@@ -563,8 +581,34 @@
     .toggle-btn-row #moonTodayIcon{width:22px;height:22px;}
     .toggle-btn-row .moon-today-name{font-size:12px;}
     .toggle-btn-row .moon-today-name rt{font-size:7.5px;}
-    .toggle-btn-row .focal-badge{font-size:11px;}
-    .toggle-btn-row .focal-badge-unit{font-size:8px;}
+    .toggle-btn-row .focal-badge{
+      order:3;
+      font-size:12px;
+      line-height:1;
+      align-items:flex-start;
+      margin:0 0 0 6px;
+      min-width:34px;
+    }
+    .toggle-btn-row .focal-badge::before{
+      content:"焦点距離";
+      display:block;
+      font-family:'Inter',sans-serif;
+      font-size:7px;
+      font-weight:600;
+      letter-spacing:.02em;
+      color:var(--dim);
+      margin-bottom:1px;
+    }
+    .toggle-btn-row .focal-badge-unit{font-size:7.5px;}
+    .toggle-btn-row .focal-badge.fisheye-mode{align-items:flex-start;}
+    .toggle-btn-row .focal-badge-fisheye-name{font-size:7.5px;}
+    /* 幅の狭い端末：日付と月が1行目に入らないので、2行目の右へ（焦点距離の隣）。 */
+    @media (max-width:400px){
+      .toggle-btn-row .toggle-row-break{order:1;}
+      .toggle-btn-row .focal-badge{order:2;}
+      /* 最後の行になるので、下に重ねる住所のぶんだけ余白を取り、写真に掛からないようにする。 */
+      .toggle-btn-row .header-date-moon{order:3;margin-bottom:12px;}
+    }
     #cardTitleRow .card-title{width:100%;}
     .best-time-bar{cursor:pointer;}
     .jump-besttime-btn{display:none;}
@@ -745,6 +789,10 @@
     gap:26px;
     position:relative;
   }
+  /* 【v980】日付と月の箱。PCでは元の並びと同じ。 */
+  .header-date-moon{display:flex;align-items:flex-end;gap:26px;}
+  .toggle-row-break{display:none;}
+  @media (max-width:900px){.toggle-btn-row .toggle-row-break{display:block;}}
   .header-left-group{
     display:flex;
     align-items:flex-end;
@@ -4890,6 +4938,10 @@
           </div>
 
           <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
+          <!-- 【v976】WebGL化 第1段階。層の多角形の塗りだけをWebGLで。 -->
+          <button id="glTerrainBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🧪 地形をWebGLで描く（実験）</span><span id="glTerrainState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <p class="map-hint" style="margin-top:6px;">層の多角形を塗る段だけをGPUに任せます。見え方は同じになるはずです。雲海・地形メッシュ表示のときは従来どおり描きます。WebGL2が使えない端末では何も変わりません。</p>
+          <p id="glTerrainReadout" class="map-hint mono" style="margin-top:4px;white-space:pre-wrap;"></p>
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛣 道路・線路・橋の色</p>
           <p class="map-hint" style="margin-top:4px;">代表の色だけを選びます。付属の部分（センターライン・枕木・橋脚など）は、<b>既定色との比</b>を保ったまま一緒に動くので、立体感は崩れません。既定の色のままなら見え方は変わりません。</p>
           <div id="overlayStylePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
@@ -4988,6 +5040,8 @@
             </div>
             <div class="header-left-group" id="headerLeftGroup"></div>
             <div class="header-right-group" id="headerRightGroup">
+              <!-- 【v980】スマホでは日付と月をこの箱ごと操作アイコン行の右へ動かす。 -->
+              <div class="header-date-moon" id="headerDateMoon">
               <div class="today-date" id="todayDate">
                 <span class="today-date-year" id="todayDateYear">2026</span>
                 <span class="today-date-main" id="todayDateMain">7/20(月)</span>
@@ -5000,6 +5054,7 @@
                   <ruby class="moon-today-name" id="moonTodayName">月<rt>つき</rt></ruby>
                 </div>
               </div>
+              </div>
             </div>
           </div>
           <div class="photo-sticky-wrap" id="photoStickyWrap">
@@ -5011,6 +5066,7 @@
               <button id="arModeBtn" type="button" class="constellation-toggle-btn ar-toggle-btn header-circle-btn">AR</button>
               <!-- 【v950】ドライブモード。スマホのみ。 -->
               <button id="driveModeBtn" type="button" class="constellation-toggle-btn drive-toggle-btn header-circle-btn" aria-pressed="false" aria-label="ドライブモード" title="ドライブモード（走りながら実景と見比べる。スマホ向け）"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.6 15.4v-3.1c0-.4.1-.8.3-1.1l1.9-3.4c.3-.5.8-.8 1.4-.8h9.6c.6 0 1.1.3 1.4.8l1.9 3.4c.2.3.3.7.3 1.1v3.1a.9.9 0 0 1-.9.9H4.5a.9.9 0 0 1-.9-.9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M4.4 11.7h15.2" stroke="currentColor" stroke-width="1.4"/><circle cx="7.4" cy="14" r="1.05" fill="currentColor"/><circle cx="16.6" cy="14" r="1.05" fill="currentColor"/></svg></button>
+              <span class="toggle-row-break" aria-hidden="true"></span>
               <span class="focal-badge" id="focalBadge" role="button" tabindex="0" aria-label="焦点距離を変える">24<span class="focal-badge-unit">mm</span></span>
               <div class="focal-quick" id="focalQuick" aria-hidden="true">
                 <div class="focal-quick-head"><span>焦点距離</span><span class="focal-quick-value" id="focalQuickVal">24mm</span></div>
@@ -5684,7 +5740,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="973-date-first";
+const APP_VERSION="980-mobile-header";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6900,7 +6956,8 @@ const el={
   sunsetPresetName:$("sunsetPresetName"), sunsetPresetSaveBtn:$("sunsetPresetSaveBtn"), sunsetPresetDeleteBtn:$("sunsetPresetDeleteBtn"),
   sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"),
   sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
-  sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
+  glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"), photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -11122,6 +11179,9 @@ function applyPhotoTone(ctx,s){
 /* 【v947】夕焼けモードの既定をONへ。
    利用者からの既定値が 「sunset ON {…}」 だったため。 */
 let sunsetModeOn=true;
+/* 【v976】WebGL地形のスイッチと状態。定義時に設定画面の同期が読むので、ここで宣言する（TDZ回避）。 */
+let glTerrainOn=false;
+const glTerrain={canvas:null,gl:null,prog:null,buf:null,loc:null,lost:false,ctxLostCount:0,geomKey:null,geomCount:0,uploadedKey:null,lastBuildMs:0,lastDrawMs:0,frames:0};
 /* 【v947】利用者が実機で詰めた値。書き出しの1行をそのまま既定にした。 */
 const SUNSET_MODE_DEFAULT={strength:94,saturate:400,red:88,yellow:15,vivid:132,contrast:126,protect:19,softPeak:92,
   skyLift:100,skyNear:91,skyFar:51,skyGlow:300,glowHue:54,glowFade:61,skyLinger:50,horizonRed:11,skySpread:60,
@@ -12172,6 +12232,20 @@ function sunsetSelfTestReport(){
   }
   return lines.join("\n");
 }
+/* 【v976】WebGL地形のスイッチ。 */
+function syncGlTerrainControls(){
+  if(!el.glTerrainBtn)return;
+  el.glTerrainBtn.classList.toggle("active",glTerrainOn);
+  el.glTerrainState.textContent=glTerrainOn?"ON":"OFF";
+  const supported=(()=>{try{const c=document.createElement("canvas");return !!c.getContext("webgl2");}catch(e){return false;}})();
+  if(el.glTerrainReadout)el.glTerrainReadout.textContent=supported
+    ?(glTerrainOn?`WebGL2 OK ／ 三角形 ${glTerrain.geomCount/3|0} ／ 組む ${glTerrain.lastBuildMs.toFixed(1)}ms ／ 描く ${glTerrain.lastDrawMs.toFixed(1)}ms ／ 消失 ${glTerrain.ctxLostCount}回`:"WebGL2 OK")
+    :"この端末は WebGL2 が使えません（従来どおり描きます）";
+}
+if(el.glTerrainBtn)el.glTerrainBtn.addEventListener("click",()=>{
+  glTerrainOn=!glTerrainOn;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();scheduleSaveSettings();
+});
+syncGlTerrainControls();
 if(el.sunsetSelfTestBtn)el.sunsetSelfTestBtn.addEventListener("click",()=>{
   let text;
   try{text=sunsetSelfTestReport();}
@@ -15062,9 +15136,10 @@ if(compactUiMQ.addEventListener){
 function layoutHeaderForViewport(){
   const isMobile = mobileHeaderMQ.matches;
   const targetParent = isMobile ? el.toggleBtnRow : el.headerRightGroup;
-  if(el.todayDate.parentElement !== targetParent){
-    targetParent.appendChild(el.todayDate);
-    targetParent.appendChild(el.moonToday);
+  /* 【v980】日付と月は箱（headerDateMoon）ごと動かす。 */
+  const dateMoonBox=document.getElementById("headerDateMoon");
+  if(dateMoonBox.parentElement !== targetParent){
+    targetParent.appendChild(dateMoonBox);
   }
   // PC画面では「表示」「アイコン説明」「縦横切替」「焦点距離」を行の左端(headerLeftGroup)にまとめる。
   // スマホ画面では元のtoggleBtnRow(操作アイコン行)に戻す。
@@ -15217,6 +15292,7 @@ function collectPersistedSettings(){
     kmzSilhouetteDarkness:kmzSilhouetteDarkness,   // 【v931】
     overlayStyleRevision:OVERLAY_STYLE_REVISION,   // 【v961】
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
+    glTerrainOn:glTerrainOn,   // 【v976】
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -15453,6 +15529,7 @@ async function loadPersistedSettings(){
       }
     }
     syncOverlayStyleControls();
+    if(s.glTerrainOn!==undefined){glTerrainOn=s.glTerrainOn===true;syncGlTerrainControls();}   /* 【v976】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
@@ -15800,6 +15877,11 @@ function setObservedPlaceDisplay(text, isStatus){
   currentObservedPlaceName=text;
   scheduleSaveSettings(); // 一度取得した観測地点名は、次回開いた時のために記憶しておく
   el.todayDatePlace.textContent = text;
+  /* 【v980】スマホでは縮めない。日付の下に重ねて置くので、長くてもはみ出して見せる。 */
+  if(window.matchMedia&&window.matchMedia("(max-width:900px)").matches){
+    el.todayDatePlace.style.fontSize="";
+    return;
+  }
   // 文字数に応じて、はみ出さないよう自動的に文字サイズを小さくする
   const len=text.length;
   let fontSize=9;
@@ -19113,6 +19195,17 @@ try{
       terrainProfile:()=>({ms:terrainRenderMsAccum,key:drawPhoto._terrainRenderKey,skip:{...cameraViewSkip}}),
       skipReset:()=>{cameraViewSkip={pending:0,noState:0,drawn:0};},
       terrainProfileReset:()=>{terrainRenderMsAccum=0;},
+      /* 【v974】段ごとの時間。 */
+      stageProfile:()=>({...terrainStageProf}),
+      /* 【v975】WebGL 第1段階の実験。いまの場面で1コマ描いて、Canvasと比べる。 */
+      terrainCompare:()=>{glTerrainX.armed=true;glTerrainX.result=null;drawPhoto._terrainRenderKey=null;update();return glTerrainX.result||{error:"走らなかった（WebGL2が無い／地形が無い／replayのみ）"};},
+      terrainGlCanvas:()=>glTerrainX.canvas,
+      /* 【v976】本線のスイッチ。 */
+      glTerrain:(on)=>{glTerrainOn=on!==false;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();return {on:glTerrainOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs,drawMs:glTerrain.lastDrawMs,lost:glTerrain.ctxLostCount};},
+      glTerrainCanvas:()=>glTerrain.canvas,
+      masks:()=>({fine:drawPhoto._normalFineWaterMaskCanvas,water:drawPhoto._waterSurfaceMaskCanvas,terrain:drawPhoto._terrainLayerCanvas,color:drawPhoto._inlandVectorWaterColorCanvas}),
+      terrainRefCanvas:()=>({color:glTerrainX.lastRefColor,mask:glTerrainX.lastRefMask}),
+      stageProfileReset:()=>{for(const k of Object.keys(terrainStageProf))terrainStageProf[k]=0;},
       /* 【v912】カメラワークの検証用。t=0〜1 で途中の向きを直接出せる。 */
       camera:(t,smooth)=>{const v=cameraMoveViewAt(t);if(!v)return null;cameraMoveApplyView(v.az,v.alt,v.focal,smooth!==false);return v;},
       cameraPath:()=>({from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing}),
@@ -23439,7 +23532,313 @@ function bridgeDistanceFade(index,buckets){
 }
 /* 【v913】地形（renderTerrainVariant）に消えた時間を数えるだけの入れ物。
    カメラワークの計測でしか読まないので、ふだんの描画には影響しない。 */
+
+/* =========================================================
+   【v975】WebGL地形 ── 第1段階（実験・画面には出さない）
+
+   層の格子から Canvas 2D と同じ区間分け・同じ順番・同じ色で三角形を組み、
+   WebGL2 で「地形色」と「水面マスク」を描く。結果は比較にしか使わない。
+
+   作り：
+     ・頂点 = 画面座標(x,y) ＋ 色(rgba)。1つの描画呼び出しで全部描く
+       （同じ呼び出しの中では三角形の順番が守られるので、奥→手前の塗り重ねになる）
+     ・ブレンドなし・深度なし。後の三角形が前を上書きする ＝ Canvasの source-over と同じ
+     ・水面マスクは「水=白・陸=透明」を同じ順で上書き ＝ source-over / destination-out と同じ
+   ========================================================= */
+const glTerrainX={canvas:null,gl:null,prog:null,buf:null,uSize:null,lost:false,armed:false,result:null,ctxLostCount:0};
+function glTerrainXInit(W,H){
+  const x=glTerrainX;
+  if(!x.canvas){
+    x.canvas=document.createElement("canvas");
+    x.canvas.addEventListener("webglcontextlost",e=>{e.preventDefault();x.lost=true;x.ctxLostCount++;});
+    x.canvas.addEventListener("webglcontextrestored",()=>{x.lost=false;x.gl=null;x.prog=null;});
+  }
+  if(x.canvas.width!==W||x.canvas.height!==H){x.canvas.width=W;x.canvas.height=H;x.prog=null;}
+  if(x.gl&&x.prog&&!x.lost)return true;
+  const gl=x.gl||x.canvas.getContext("webgl2",{antialias:true,premultipliedAlpha:true,preserveDrawingBuffer:true,alpha:true});
+  if(!gl)return false;
+  x.gl=gl;
+  const vs=`#version 300 es
+in vec2 aPos;in vec4 aCol;uniform vec2 uSize;out vec4 vCol;
+void main(){vec2 c=vec2(aPos.x/uSize.x*2.0-1.0,1.0-aPos.y/uSize.y*2.0);gl_Position=vec4(c,0.0,1.0);vCol=aCol;}`;
+  const fs=`#version 300 es
+precision mediump float;in vec4 vCol;out vec4 o;void main(){o=vCol;}`;
+  const make=(type,src)=>{const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){console.warn("[glTerrainX]",gl.getShaderInfoLog(sh));return null;}return sh;};
+  const v=make(gl.VERTEX_SHADER,vs),f=make(gl.FRAGMENT_SHADER,fs);
+  if(!v||!f)return false;
+  const prog=gl.createProgram();gl.attachShader(prog,v);gl.attachShader(prog,f);gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.warn("[glTerrainX]",gl.getProgramInfoLog(prog));return false;}
+  x.prog=prog;
+  x.buf=gl.createBuffer();
+  x.aPos=gl.getAttribLocation(prog,"aPos");x.aCol=gl.getAttribLocation(prog,"aCol");
+  x.uSize=gl.getUniformLocation(prog,"uSize");
+  gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);
+  return true;
+}
+/* 三角形の並びを描く。data は [x,y,r,g,b,a]×頂点。 */
+function glTerrainXDraw(data,count,W,H){
+  const x=glTerrainX,gl=x.gl;
+  gl.viewport(0,0,W,H);
+  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  if(!count)return;
+  gl.useProgram(x.prog);
+  gl.uniform2f(x.uSize,W,H);
+  gl.bindBuffer(gl.ARRAY_BUFFER,x.buf);
+  gl.bufferData(gl.ARRAY_BUFFER,data.subarray(0,count*6),gl.STREAM_DRAW);
+  gl.enableVertexAttribArray(x.aPos);gl.vertexAttribPointer(x.aPos,2,gl.FLOAT,false,24,0);
+  gl.enableVertexAttribArray(x.aCol);gl.vertexAttribPointer(x.aCol,4,gl.FLOAT,false,24,8);
+  gl.drawArrays(gl.TRIANGLES,0,count);
+}
+/* 三角形を溜める入れもの。足りなくなったら倍にする。 */
+function glTerrainXStore(){
+  return {data:new Float32Array(6*6*4096),n:0,
+    push(x1,y1,x2,y2,x3,y3,r,g,b,a){
+      if((this.n+3)*6>this.data.length){const bigger=new Float32Array(this.data.length*2);bigger.set(this.data);this.data=bigger;}
+      let i=this.n*6;const d=this.data;
+      d[i++]=x1;d[i++]=y1;d[i++]=r;d[i++]=g;d[i++]=b;d[i++]=a;
+      d[i++]=x2;d[i++]=y2;d[i++]=r;d[i++]=g;d[i++]=b;d[i++]=a;
+      d[i++]=x3;d[i++]=y3;d[i++]=r;d[i++]=g;d[i++]=b;d[i++]=a;
+      this.n+=3;
+    }};
+}
+/* 折れ線（稜線）の下を画面下端まで塗る形を、縦の台形2枚ずつの三角形にする。
+   Canvasの「折れ線＋下端で閉じた多角形の nonzero 塗り」と同じ領域になる。 */
+function glTerrainXSkyline(store,segment,bottomY,r,g,b,a){
+  for(let i=1;i<segment.length;i++){
+    const p=segment[i-1],q=segment[i];
+    store.push(p[0],p[1],q[0],q[1],q[0],bottomY,r,g,b,a);
+    store.push(p[0],p[1],q[0],bottomY,p[0],bottomY,r,g,b,a);
+  }
+}
+/* Canvas 2D の結果と比べる。色：平均差・差8以上の割合。マスク：不一致（境界の隣は除く）。 */
+function glTerrainXCompare(refColorCanvas,refMaskCanvas,W,H){
+  const read=(canvas)=>{const c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(canvas,0,0);return g.getImageData(0,0,W,H).data;};
+  const x=glTerrainX;
+  const gl=read(x.canvas);
+  const ref=read(refColorCanvas);
+  let sum=0,n8=0,n16=0,opaqueRef=0,opaqueGl=0,alphaMismatch=0;
+  for(let i=0;i<ref.length;i+=4){
+    const ra=ref[i+3]>127,ga=gl[i+3]>127;
+    if(ra)opaqueRef++;if(ga)opaqueGl++;
+    if(ra!==ga){alphaMismatch++;continue;}
+    if(!ra)continue;
+    const d=Math.max(Math.abs(ref[i]-gl[i]),Math.abs(ref[i+1]-gl[i+1]),Math.abs(ref[i+2]-gl[i+2]));
+    sum+=d;if(d>=8)n8++;if(d>=16)n16++;
+  }
+  return {color:{meanDiff:+(sum/Math.max(1,opaqueRef)).toFixed(3),over8:+(n8/Math.max(1,opaqueRef)*100).toFixed(3)+"%",over16:+(n16/Math.max(1,opaqueRef)*100).toFixed(3)+"%",
+    opaqueRef,opaqueGl,alphaMismatch,alphaMismatchPct:+(alphaMismatch/(W*H)*100).toFixed(3)+"%"}};
+}
+function glTerrainXCompareMask(refMaskCanvas,W,H){
+  const read=(canvas)=>{const c=document.createElement("canvas");c.width=W;c.height=H;const g=c.getContext("2d",{willReadFrequently:true});g.drawImage(canvas,0,0);return g.getImageData(0,0,W,H).data;};
+  const gl=read(glTerrainX.canvas),ref=read(refMaskCanvas);
+  const isW=(d,i)=>d[i+3]>127;
+  let mismatch=0,interior=0,waterRef=0,waterGl=0;
+  for(let y=0;y<H;y++)for(let xx=0;xx<W;xx++){
+    const i=(y*W+xx)*4;
+    const a=isW(ref,i),b=isW(gl,i);
+    if(a)waterRef++;if(b)waterGl++;
+    if(a===b)continue;
+    mismatch++;
+    /* 境界の隣（上下左右のどれかが違う値）なら、アンチエイリアスの差として数えない。 */
+    let boundary=false;
+    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=xx+dx,ny=y+dy;if(nx<0||ny<0||nx>=W||ny>=H)continue;
+      if(isW(ref,(ny*W+nx)*4)!==a){boundary=true;break;}
+    }
+    if(!boundary)interior++;
+  }
+  return {waterRef,waterGl,mismatch,mismatchPct:+(mismatch/(W*H)*100).toFixed(3)+"%",interior,interiorPct:+(interior/(W*H)*100).toFixed(4)+"%"};
+}
+
+/* =========================================================
+   【v976】WebGL地形 ── 本線（第1段階）。既定OFF。
+
+   層の格子から三角形を組む所は v975 と同じ。違いは
+     ・色を **シェーダーで** 計算する（rayBandColor の移植）。頂点は x,y,距離km,高度°,水 の5値
+     ・夜（commands）で組んだ buffer を、昼（replay）は uniform だけ変えて描き直す
+     ・水面マスクは同じ buffer を mode=1 で描く
+   置き換わるのは「層の多角形を塗る」段だけ。帯の走査・列作り・水面の細密マスク・
+   内水面・映り込み・夕焼けはすべて今までどおり。
+   ========================================================= */
+/* glTerrainOn / glTerrain の宣言は sunsetModeOn の隣（TDZ回避）。 */
+function glTerrainInit(W,H){
+  const x=glTerrain;
+  if(!x.canvas){
+    x.canvas=document.createElement("canvas");
+    x.canvas.addEventListener("webglcontextlost",e=>{e.preventDefault();x.lost=true;x.ctxLostCount++;x.uploadedKey=null;});
+    x.canvas.addEventListener("webglcontextrestored",()=>{x.lost=false;x.gl=null;x.prog=null;x.uploadedKey=null;});
+  }
+  if(x.canvas.width!==W||x.canvas.height!==H){x.canvas.width=W;x.canvas.height=H;}
+  if(x.gl&&x.prog&&!x.lost)return true;
+  if(x.lost)return false;
+  const gl=x.gl||x.canvas.getContext("webgl2",{antialias:true,premultipliedAlpha:true,preserveDrawingBuffer:true,alpha:true});
+  if(!gl)return false;
+  x.gl=gl;
+  /* rayBandColor() の移植。定数は本体と同じ値（mixRGBの四捨五入は省く：差は1階調以内）。 */
+  const vs=`#version 300 es
+in vec2 aPos;in float aDist;in float aAlt;in float aWater;
+uniform vec2 uSize;uniform float uDay;uniform float uWaterAsLand;uniform float uNearGrassKm;uniform float uMode;
+flat out vec4 vCol;
+const vec3 LNN=vec3(10.,12.,10.)/255.,LNF=vec3(25.,30.,28.)/255.;
+const vec3 LDN=vec3(62.,78.,48.)/255.,LDF=vec3(104.,118.,92.)/255.;
+const vec3 LNH=vec3(35.,47.,64.)/255.,LDH=vec3(196.,208.,218.)/255.;
+const vec3 WNN=vec3(54.,49.,69.)/255.,WNF=vec3(44.,40.,57.)/255.;
+const vec3 WDN=vec3(146.,172.,215.)/255.,WDF=vec3(132.,159.,205.)/255.;
+const vec3 WNH=vec3(52.,47.,66.)/255.,WDH=vec3(120.,146.,186.)/255.;
+const vec3 GN=vec3(22.,30.,21.)/255.,GD=vec3(108.,138.,68.)/255.;
+void main(){
+  vec2 c=vec2(aPos.x/uSize.x*2.0-1.0,1.0-aPos.y/uSize.y*2.0);
+  gl_Position=vec4(c,0.0,1.0);
+  if(uMode>0.5){vCol=aWater>0.5?vec4(1.0):vec4(0.0);return;}
+  bool w=(uWaterAsLand<0.5)&&(aWater>0.5);
+  float d=aDist;float depth=clamp(d,0.0,1.0);
+  vec3 night=w?mix(WNN,WNF,depth):mix(LNN,LNF,depth);
+  vec3 day=w?mix(WDN,WDF,depth):mix(LDN,LDF,depth);
+  if(d>1.0){float haze=clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0);night=mix(night,w?WNH:LNH,haze);day=mix(day,w?WDH:LDH,haze);}
+  if(!w&&d<uNearGrassKm){float t=clamp(1.0-d/uNearGrassKm,0.0,1.0);float nm=t*t*(3.0-2.0*t);night=mix(night,GN,nm);day=mix(day,GD,nm);}
+  vec3 rgb=mix(night,day,uDay);
+  if(!w){float relief=clamp((aAlt+8.0)/24.0,0.0,1.0);rgb=clamp(rgb*(0.88+relief*0.12),0.0,1.0);}
+  vCol=vec4(rgb,1.0);
+}`;
+  const fs=`#version 300 es
+precision mediump float;flat in vec4 vCol;out vec4 o;void main(){o=vCol;}`;
+  const make=(type,src)=>{const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){console.warn("[glTerrain]",gl.getShaderInfoLog(sh));return null;}return sh;};
+  const v=make(gl.VERTEX_SHADER,vs),f=make(gl.FRAGMENT_SHADER,fs);
+  if(!v||!f)return false;
+  const prog=gl.createProgram();gl.attachShader(prog,v);gl.attachShader(prog,f);gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.warn("[glTerrain]",gl.getProgramInfoLog(prog));return false;}
+  x.prog=prog;x.buf=gl.createBuffer();
+  x.loc={aPos:gl.getAttribLocation(prog,"aPos"),aDist:gl.getAttribLocation(prog,"aDist"),aAlt:gl.getAttribLocation(prog,"aAlt"),aWater:gl.getAttribLocation(prog,"aWater"),
+    uSize:gl.getUniformLocation(prog,"uSize"),uDay:gl.getUniformLocation(prog,"uDay"),uWaterAsLand:gl.getUniformLocation(prog,"uWaterAsLand"),
+    uNearGrassKm:gl.getUniformLocation(prog,"uNearGrassKm"),uMode:gl.getUniformLocation(prog,"uMode")};
+  gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);
+  x.uploadedKey=null;
+  return true;
+}
+/* 三角形を組む。Canvasの塗りと同じ「層ごと・同じ属性の区間ごと・稜線の下を画面下端まで」。
+   1頂点 = [x,y,distKm,alt,water] の5値。型付き配列へ直接書く。 */
+const GL_STRIDE=5;
+let glTerrainScratch=new Float32Array(GL_STRIDE*3*2*20000);
+function glTerrainBuild(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,projector,bottomY,maxJumpX){
+  let data=glTerrainScratch,n=0,runs=0;
+  const need=(extra)=>{if(n+extra>data.length){let size=data.length*2;while(size<n+extra)size*=2;const bigger=new Float32Array(size);bigger.set(data.subarray(0,n));data=glTerrainScratch=bigger;}};
+  const columnCount=columns.length;
+  const px=new Float64Array(columnCount+2),py=new Float64Array(columnCount+2),ok=new Uint8Array(columnCount+2);
+  /* 【v979】列の sin/cos(方位) は1回だけ。 */
+  const colSin=new Float64Array(columnCount),colCos=new Float64Array(columnCount);
+  for(let c=0;c<columnCount;c++){colSin[c]=projector.azSin(columns[c].az);colCos[c]=projector.azCos(columns[c].az);}
+  const tmp=[0,0];
+  for(let k=layerCount-1;k>=0;k--){
+    if(k<layerCount-1){
+      let changed=false;
+      for(let c=0;c<columnCount;c++){if(altGrid[c*layerCount+k]!==altGrid[c*layerCount+k+1]){changed=true;break;}}
+      if(!changed)continue;
+    }
+    const distanceKm=layerKm[k];
+    let runStart=0;
+    while(runStart<columnCount){
+      const runWater=waterGrid[runStart*layerCount+k],runCloud=cloudGrid[runStart*layerCount+k];
+      let runEnd=runStart;
+      while(runEnd+1<columnCount&&waterGrid[(runEnd+1)*layerCount+k]===runWater&&cloudGrid[(runEnd+1)*layerCount+k]===runCloud)runEnd++;
+      if(runCloud){runStart=runEnd+1;continue;}   /* 雲海のコマはこの道を使わない */
+      const lastIndex=Math.min(columnCount-1,runEnd+1);
+      const ownLastAlt=altGrid[runEnd*layerCount+k];
+      let altSum=0,altCount=0,m=0;
+      for(let c=runStart;c<=lastIndex;c++,m++){
+        const alt=c>runEnd?Math.min(altGrid[c*layerCount+k],ownLastAlt):altGrid[c*layerCount+k];
+        if(!projector.project(colSin[c],colCos[c],alt,tmp)||!Number.isFinite(tmp[0])||!Number.isFinite(tmp[1])){ok[m]=0;continue;}
+        ok[m]=1;px[m]=tmp[0];py[m]=tmp[1];altSum+=alt;altCount++;
+      }
+      if(altCount>=2){
+        const meanAlt=altSum/altCount,water=runWater?1:0;
+        /* 折れ線を、画面外へ飛ぶ継ぎ目で切りながら台形2枚ずつ（三角形6頂点）に。 */
+        let prev=-1;
+        for(let i=0;i<m;i++){
+          if(!ok[i]){prev=-1;continue;}
+          if(prev>=0&&Math.abs(px[i]-px[prev])>maxJumpX){prev=i;continue;}
+          if(prev>=0){
+            need(GL_STRIDE*6);
+            const x1=px[prev],y1=py[prev],x2=px[i],y2=py[i];
+            data[n++]=x1;data[n++]=y1;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+            data[n++]=x2;data[n++]=y2;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+            data[n++]=x2;data[n++]=bottomY;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+            data[n++]=x1;data[n++]=y1;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+            data[n++]=x2;data[n++]=bottomY;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+            data[n++]=x1;data[n++]=bottomY;data[n++]=distanceKm;data[n++]=meanAlt;data[n++]=water;
+          }
+          prev=i;
+        }
+        runs++;
+      }
+      runStart=runEnd+1;
+    }
+  }
+  return {data,count:n/GL_STRIDE,runs};
+}
+function glTerrainUpload(geom,key){
+  const x=glTerrain,gl=x.gl;
+  if(x.uploadedKey===key)return;
+  gl.bindBuffer(gl.ARRAY_BUFFER,x.buf);
+  gl.bufferData(gl.ARRAY_BUFFER,geom.data.subarray(0,geom.count*GL_STRIDE),gl.DYNAMIC_DRAW);
+  x.uploadedKey=key;x.geomCount=geom.count;
+}
+/* 【v978】細密水面用の2本目の buffer。地形の buffer を上書きしないため。 */
+function glTerrainUploadFine(geom){
+  const x=glTerrain,gl=x.gl;
+  if(!x.bufFine)x.bufFine=gl.createBuffer();
+  if(!x.bufFineLines)x.bufFineLines=gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER,x.bufFine);
+  gl.bufferData(gl.ARRAY_BUFFER,geom.data.subarray(0,geom.count*GL_STRIDE),gl.DYNAMIC_DRAW);
+  x.fineCount=geom.count;x.fineLineCount=0;
+}
+function glTerrainDraw(mode,W,H,dayFactor,waterAsLand,nearGrassKm){
+  return glTerrainDrawBuffer(glTerrain.buf,glTerrain.geomCount,mode,W,H,dayFactor,waterAsLand,nearGrassKm);
+}
+function glTerrainDrawFine(mode,W,H,dayFactor,nearGrassKm){
+  glTerrainDrawBuffer(glTerrain.bufFine,glTerrain.fineCount||0,mode,W,H,dayFactor,false,nearGrassKm);
+  /* 縁の1px（Canvasの stroke 相当）。消さずに重ねる。 */
+  glTerrainDrawBuffer(glTerrain.bufFineLines,glTerrain.fineLineCount||0,mode,W,H,dayFactor,false,nearGrassKm,true);
+}
+function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGrassKm,lines,keep){
+  const x=glTerrain,gl=x.gl,L=x.loc;
+  gl.viewport(0,0,W,H);
+  if(!lines){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
+  if(!count||!buffer)return;
+  gl.useProgram(x.prog);
+  gl.uniform2f(L.uSize,W,H);gl.uniform1f(L.uDay,dayFactor);gl.uniform1f(L.uWaterAsLand,waterAsLand?1:0);
+  gl.uniform1f(L.uNearGrassKm,nearGrassKm);gl.uniform1f(L.uMode,mode);
+  gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+  const stride=GL_STRIDE*4;
+  gl.enableVertexAttribArray(L.aPos);gl.vertexAttribPointer(L.aPos,2,gl.FLOAT,false,stride,0);
+  gl.enableVertexAttribArray(L.aDist);gl.vertexAttribPointer(L.aDist,1,gl.FLOAT,false,stride,8);
+  gl.enableVertexAttribArray(L.aAlt);gl.vertexAttribPointer(L.aAlt,1,gl.FLOAT,false,stride,12);
+  gl.enableVertexAttribArray(L.aWater);gl.vertexAttribPointer(L.aWater,1,gl.FLOAT,false,stride,16);
+  gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,count);
+}
+/* 【v978】細密水面の四角形を溜める入れもの（地形用とは別）。 */
+let glFineScratch=new Float32Array(GL_STRIDE*6*8192);
+let glFineLineScratch=new Float32Array(GL_STRIDE*8*8192);
+function glFineStore(){
+  return {data:glFineScratch,n:0,
+    quad(p0,p1,p2,p3,dist,alt){
+      if(this.n+GL_STRIDE*6>this.data.length){let size=this.data.length*2;const bigger=new Float32Array(size);bigger.set(this.data.subarray(0,this.n));this.data=glFineScratch=bigger;}
+      const d=this.data;let i=this.n;
+      /* Canvas は fill のあと 1px の stroke で縁を 0.5px 太らせていた（水平線の上の2pxを埋める役目もある）。
+         同じ量だけ四角形を外へ広げる（左上=p0,p1 側を左・上へ、右下=p2,p3 側を右・下へ）。
+         隣り合う四角形は重なるだけなので継ぎ目は出ず、外周だけが0.5px太る＝strokeと同じ。 */
+      const e=.5;
+      const q0=[p0[0]-e,p0[1]+e],q1=[p1[0]-e,p1[1]-e],q2=[p2[0]+e,p2[1]-e],q3=[p3[0]+e,p3[1]+e];
+      const put=(p)=>{d[i++]=p[0];d[i++]=p[1];d[i++]=dist;d[i++]=alt;d[i++]=1;};
+      put(q0);put(q1);put(q2);put(q0);put(q2);put(q3);
+      this.n=i;
+    },
+    get count(){return this.n/GL_STRIDE;}};
+}
 let terrainRenderMsAccum=0;
+/* 【v974】段ごとの時間。WebGL化でどこを置き換えるべきかを数字で決めるため。 */
+const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fineWater:0,fineColor:0,bridgeRedraw:0,inland:0,grown:0,smear:0,terrain:0,terrainN:0,reflect:0,sunset:0,photo:0,photoN:0};
 function drawPhoto(ctx,s){
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
@@ -23492,6 +23891,34 @@ function drawPhoto(ctx,s){
     if(output){output[0]=x;output[1]=y;return output;}
     return [x,y];
   }
+  /* 【v979】GLの道で使う速い投影器。toXY() と同じ式。
+     基底は1コマ1回、列の sin/cos(方位) は呼ぶ側が1回だけ作り、頂点ごとは sin/cos(高度)だけ。 */
+  const fastProjector=(()=>{
+    const F=toVec(s.facingAz,s.facingAlt),R=[cos(s.facingAz),-sin(s.facingAz),0],U=cross(R,F);
+    const F0=F[0],F1=F[1],F2=F[2],R0=R[0],R1=R[1],R2=R[2],U0=U[0],U1=U[1],U2=U[2];
+    const cx=W/2,cy=H/2,pixelsPerMm=Math.hypot(W,H)/43.2666,effF=s.focalLength*s.sensor.crop;
+    const fisheye=useDiagonalFisheye;
+    return {
+      azSin:(az)=>Math.sin(az*D2R),azCos:(az)=>Math.cos(az*D2R),
+      /* out[0],out[1] に書く。見えない向きなら false。 */
+      project(sinAz,cosAz,altDeg,out){
+        const a=altDeg*D2R,ca=Math.cos(a),sa=Math.sin(a);
+        const px=ca*sinAz,py=ca*cosAz,pz=sa;
+        const zc=px*F0+py*F1+pz*F2,xc=px*R0+py*R1+pz*R2,yc=px*U0+py*U1+pz*U2;
+        if(fisheye){
+          const z=zc<-1?-1:(zc>1?1:zc);
+          const theta=Math.acos(z);
+          if(theta>Math.PI/2+1e-6)return false;
+          const st=Math.sin(theta);
+          if(st<1e-8){out[0]=cx;out[1]=cy;return true;}
+          const r=2*effF*pixelsPerMm*Math.sin(theta/2);
+          out[0]=cx+(xc/st)*r;out[1]=cy-(yc/st)*r;return true;
+        }
+        if(zc<=.02)return false;
+        out[0]=cx+(xc/zc)*scale;out[1]=cy-(yc/zc)*scale;return true;
+      }
+    };
+  })();
   // リアル天の川反射の全頂点は同じカメラ姿勢を使うため、投影基底を一度だけ準備する。
   // 通常のtoXY()と同じ式・前面判定を、頂点ごとの一時配列なしで既存バッファへ書き込む。
   const reflectionProjectionForward=toVec(s.facingAz,s.facingAlt);
@@ -27138,7 +27565,9 @@ function drawPhoto(ctx,s){
         }
         const hit=visibleBandsCache.get(key);
         if(hit!==undefined) return hit;
+        const __b0=performance.now();
         const result=azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
+        terrainStageProf.bands+=performance.now()-__b0;terrainStageProf.bandsN++;
         // 際限なく増えないように。あちこち向いても膨らみ続けない。
         if(visibleBandsCache.size>=VISIBLE_BANDS_CACHE_MAX) visibleBandsCache.clear();
         visibleBandsCache.set(key,result);
@@ -29270,7 +29699,8 @@ function drawPhoto(ctx,s){
          （実測: 穴の高さ33px ＝ subtractPx 32px）。
          上へは太らせない。上へ太らせると、今度は遠い岸の側に同じ穴が出来る。
          戻り値は使い回しのCanvas。次に呼ぶまでに描き終えること。 */
-      function smearedDownMask(source,sideGrowPx){
+      function smearedDownMask(source,sideGrowPx){const __m0=performance.now();try{return smearedDownMaskInner(source,sideGrowPx);}finally{terrainStageProf.smear+=performance.now()-__m0;}}
+      function smearedDownMaskInner(source,sideGrowPx){
         const sw=Math.max(1,Math.round(W*GROWN_WATER_MASK_SCALE));
         const sh=Math.max(1,Math.round(H*GROWN_WATER_MASK_SCALE));
         const first=drawPhoto._smearMaskA||(drawPhoto._smearMaskA=document.createElement("canvas"));
@@ -29295,7 +29725,8 @@ function drawPhoto(ctx,s){
         }
         return current;
       }
-      function grownWaterMask(source,radiusPx){
+      function grownWaterMask(source,radiusPx){const __g0=performance.now();try{return grownWaterMaskInner(source,radiusPx);}finally{terrainStageProf.grown+=performance.now()-__g0;}}
+      function grownWaterMaskInner(source,radiusPx){
         /* 太らせるだけなので、原寸で処理する必要がない。1/4で作ると画素数が16分の1になる。
            使う側が drawImage(mask,0,0,W,H) で拡大して重ねること。 */
         const sw=Math.max(1,Math.round(W*GROWN_WATER_MASK_SCALE)),sh=Math.max(1,Math.round(H*GROWN_WATER_MASK_SCALE));
@@ -29316,7 +29747,18 @@ function drawPhoto(ctx,s){
          直接マスクへ塗る。これにより通常地形は142層のまま、川岸だけv789相当になる。 */
       function drawNormalFineWaterMaskOnly(targetContext,colorContext){
         if(highDetailOn||(!targetContext&&!colorContext))return false;
-        const reusable=!targetContext&&colorContext&&Array.isArray(drawPhoto._normalFineWaterSegments)
+        /* 【v978】WebGLの道。地形と同じスイッチ。 */
+        const glWater=glTerrainOn&&glTerrainInit(W,H);
+        const nearGrassRangeKmFine=Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000);
+        if(glWater&&!targetContext&&colorContext&&drawPhoto._normalFineWaterGl){
+          /* 昼（replay）の色だけの呼び出し：同じ buffer を uDay だけ変えて描き直す。 */
+          const stored=drawPhoto._normalFineWaterGl;
+          if(!stored.count)return false;
+          glTerrainDrawFine(0,W,H,terrainDayFactor,nearGrassRangeKmFine);
+          colorContext.drawImage(glTerrain.canvas,0,0);
+          return true;
+        }
+        const reusable=!glWater&&!targetContext&&colorContext&&Array.isArray(drawPhoto._normalFineWaterSegments)
           ?drawPhoto._normalFineWaterSegments:null;
         if(reusable){
           colorContext.save();colorContext.lineWidth=1;
@@ -29339,6 +29781,8 @@ function drawPhoto(ctx,s){
         const rawStartAz=s.facingAz-halfSpan-stepDeg,endAz=s.facingAz+halfSpan+stepDeg;
         const firstColumn=Math.floor(rawStartAz/stepDeg);
         let painted=0;const segments=[];
+        const fineStore=glWater?glFineStore():null;   /* 【v978】 */
+        const fq0=[0,0],fq1=[0,0],fq2=[0,0],fq3=[0,0];   /* 【v979】投影の書き先（使い回し） */
         normalFineWaterMaskPass=true;
         try{
           if(targetContext){targetContext.save();targetContext.fillStyle="#fff";targetContext.strokeStyle="#fff";targetContext.lineWidth=1;}
@@ -29348,6 +29792,9 @@ function drawPhoto(ctx,s){
             const azRight=Math.min(endAz,azLeft+stepDeg);
             const bands=azimuthVisibleBands((azLeft+azRight)/2,bottomAlt,false,true);
             if(!bands)continue;
+            /* 【v979】この列の sin/cos(方位)。 */
+            let fineSinL=0,fineCosL=0,fineSinR=0,fineCosR=0;
+            if(fineStore){fineSinL=fastProjector.azSin(azLeft);fineCosL=fastProjector.azCos(azLeft);fineSinR=fastProjector.azSin(azRight);fineCosR=fastProjector.azCos(azRight);}
             /* 【v831】内水面の帯も必ず作る。これが「どこまで見えているか」の正になる。
                v826はここで内水面を読み飛ばしていたが、その判定（coarseWaterBandIsTaggedInland）は
                細い川を内水面と断定できず素通りさせるため、川が階段状のまま残っていた。
@@ -29396,12 +29843,21 @@ function drawPhoto(ctx,s){
                 let distanceSum=0;
                 for(let i=from;i<=to;i++)distanceSum+=run[i].distanceKm;
                 const distanceKm=distanceSum/(to-from+1);
+                const meanAlt=(lo+hi)*.5;
+                if(fineStore){
+                  /* 【v978】同じ四角形を三角形2枚で溜める。Path2Dは作らない。
+                     【v979】投影は速い投影器で（列の sin/cos は上で作ってある）。 */
+                  if(!fastProjector.project(fineSinL,fineCosL,lo,fq0)||!fastProjector.project(fineSinL,fineCosL,hi,fq1)
+                    ||!fastProjector.project(fineSinR,fineCosR,hi,fq2)||!fastProjector.project(fineSinR,fineCosR,lo,fq3))continue;
+                  fineStore.quad(fq0,fq1,fq2,fq3,distanceKm,meanAlt);
+                  painted++;
+                  continue;
+                }
                 const p0=toXY(azLeft,lo),p1=toXY(azLeft,hi);
                 const p2=toXY(azRight,hi),p3=toXY(azRight,lo);
                 if(!p0||!p1||!p2||!p3)continue;
                 const path=new Path2D();path.moveTo(p0[0],p0[1]);path.lineTo(p1[0],p1[1]);
                 path.lineTo(p2[0],p2[1]);path.lineTo(p3[0],p3[1]);path.closePath();
-                const meanAlt=(lo+hi)*.5;
                 segments.push({path,distanceKm,alt:meanAlt});
                 if(targetContext){targetContext.fill(path);targetContext.stroke(path);}
                 if(colorContext){
@@ -29415,7 +29871,18 @@ function drawPhoto(ctx,s){
           if(targetContext)targetContext.restore();
           if(colorContext)colorContext.restore();
         }finally{normalFineWaterMaskPass=false;}
-        if(targetContext)drawPhoto._normalFineWaterSegments=segments;
+        if(fineStore){
+          /* 【v978】GPUへ渡して、マスクと色を描いて写す。 */
+          glTerrainUploadFine(fineStore);
+          drawPhoto._normalFineWaterGl={count:fineStore.count};
+          drawPhoto._normalFineWaterSegments=null;
+          if(fineStore.count){
+            if(targetContext){glTerrainDrawFine(1,W,H,terrainDayFactor,nearGrassRangeKmFine);targetContext.drawImage(glTerrain.canvas,0,0);}
+            if(colorContext){glTerrainDrawFine(0,W,H,terrainDayFactor,nearGrassRangeKmFine);colorContext.drawImage(glTerrain.canvas,0,0);}
+          }
+        }else{
+          if(targetContext){drawPhoto._normalFineWaterSegments=segments;drawPhoto._normalFineWaterGl=null;}
+        }
         if(waterRayDiagVisible){waterFineDiagTallest=diagFineTallest;waterFineDiagRuns=diagFineRuns;}   // 【v894】
         return painted>0;
       }
@@ -29446,6 +29913,7 @@ function drawPhoto(ctx,s){
           waterGrid=replayGeometry.waterGrid;
           cloudGrid=replayGeometry.cloudGrid;
         }else{
+          var __c0=performance.now();
           const cornerHalf=rayHalfSpanDeg();
           const startAz=s.facingAz-cornerHalf-stepDeg;
           const endAz=s.facingAz+cornerHalf+stepDeg;
@@ -29594,6 +30062,7 @@ function drawPhoto(ctx,s){
 
         /* 通常表示の完成形と同じポリゴンを距離色で非表示Canvasへも塗る。
            写真を選択するときは、この面からタップ位置の実距離を読み取る。 */
+        if(typeof __c0==="number")terrainStageProf.columns+=performance.now()-__c0;
         const terrainPickCtx=beginHighDetailTerrainPickFrame(W,H,s,useDiagonalFisheye,sharedTerrainProjectionPass);
         const bottomY=H+4;
         /* 雲海の後処理用。列ごとに
@@ -29612,7 +30081,32 @@ function drawPhoto(ctx,s){
         let painted=0;
 
         // 奥から手前へ。各層は「そこまでに見える面」を画面下端まで塗る。
-        for(let k=layerCount-1;k>=0;k--){
+        const __p0=performance.now();
+        /* 【v976】WebGLの道。雲海・メッシュ表示・写真からの選択（pick）のコマは従来どおり。 */
+        let glDrawn=false;
+        if(glTerrainOn&&!cloudCtx&&!terrainPickCtx&&!meshPath&&glTerrainInit(W,H)){
+          const glKey=terrainGeometryKey+"|gl";
+          let geom=(sharedTerrainProjectionCache&&sharedTerrainProjectionCache.glGeometry&&sharedTerrainProjectionCache.glGeometry.key===glKey)
+            ?sharedTerrainProjectionCache.glGeometry.geom:null;
+          if(!geom){
+            const gb0=performance.now();
+            geom=glTerrainBuild(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,fastProjector,bottomY,maxJumpX);
+            glTerrain.lastBuildMs=performance.now()-gb0;
+            if(sharedTerrainProjectionCache)sharedTerrainProjectionCache.glGeometry={key:glKey,geom};
+          }
+          const gd0=performance.now();
+          glTerrainUpload(geom,glKey);
+          const nearGrassRangeKm=Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000);
+          glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass,nearGrassRangeKm);
+          tctx.drawImage(glTerrain.canvas,0,0);
+          if(sharedTerrainProjectionPass!=="replay"){
+            glTerrainDraw(1,W,H,terrainDayFactor,false,nearGrassRangeKm);
+            wmctx.drawImage(glTerrain.canvas,0,0);
+          }
+          glTerrain.lastDrawMs=performance.now()-gd0;glTerrain.frames++;
+          painted=geom.runs;glDrawn=true;
+        }
+        if(!glDrawn)for(let k=layerCount-1;k>=0;k--){
           /* 以前の高品質版と同じく、見かけ高度が全方位で同じ層は省略する。
              水/陸属性だけで細かな層を全部描くと、通常距離帯の矩形が水面へ現れ、
              高精細スキャン後の川がブロック状になる。水面色は完成マスクから別途確定する。 */
@@ -29714,6 +30208,76 @@ function drawPhoto(ctx,s){
           }
         }
 
+        const __paintMs=performance.now()-__p0;terrainStageProf.paint+=__paintMs;
+        /* 【v975】WebGL 第1段階の実験。armed のときだけ、夜（commands）のコマで走る。 */
+        if(!glDrawn&&glTerrainX.armed&&sharedTerrainProjectionPass!=="replay"&&glTerrainXInit(W,H)){
+          const tb0=performance.now();
+          const colorStore=glTerrainXStore(),maskStore=glTerrainXStore();
+          for(let k=layerCount-1;k>=0;k--){
+            if(k<layerCount-1){
+              let changed=false;
+              for(let c=0;c<columns.length;c++){if(altGrid[c*layerCount+k]!==altGrid[c*layerCount+k+1]){changed=true;break;}}
+              if(!changed)continue;
+            }
+            const distanceKm=layerKm[k];
+            let runStart=0;
+            while(runStart<columns.length){
+              const runWater=waterGrid[runStart*layerCount+k],runCloud=cloudGrid[runStart*layerCount+k];
+              let runEnd=runStart;
+              while(runEnd+1<columns.length&&waterGrid[(runEnd+1)*layerCount+k]===runWater&&cloudGrid[(runEnd+1)*layerCount+k]===runCloud)runEnd++;
+              const lastIndex=Math.min(columns.length-1,runEnd+1);
+              const ownLastAlt=altGrid[runEnd*layerCount+k];
+              const points=[];let altSum=0,altCount=0;
+              for(let c=runStart;c<=lastIndex;c++){
+                const alt=c>runEnd?Math.min(altGrid[c*layerCount+k],ownLastAlt):altGrid[c*layerCount+k];
+                const p=toXY(columns[c].az,alt);
+                if(!p||!Number.isFinite(p[0])||!Number.isFinite(p[1])){points.push(null);continue;}
+                points.push(p);altSum+=alt;altCount++;
+              }
+              if(altCount>=2&&!(cloudCtx&&runCloud)){
+                const meanAlt=altSum/altCount;
+                const rgb=runCloud?rayCloudColor(distanceKm,meanAlt):rayBandColor(normalSeparateWaterColorPass?false:!!runWater,distanceKm,meanAlt);
+                const r=rgb[0]/255,g=rgb[1]/255,b=rgb[2]/255;
+                let segment=[];
+                const flush=()=>{
+                  if(segment.length>=2){
+                    glTerrainXSkyline(colorStore,segment,bottomY,r,g,b,1);
+                    if(runWater)glTerrainXSkyline(maskStore,segment,bottomY,1,1,1,1);
+                    else glTerrainXSkyline(maskStore,segment,bottomY,0,0,0,0);
+                  }
+                  segment=[];
+                };
+                for(let i=0;i<points.length;i++){
+                  const p=points[i];
+                  if(!p){flush();continue;}
+                  if(segment.length&&Math.abs(p[0]-segment[segment.length-1][0])>maxJumpX)flush();
+                  segment.push(p);
+                }
+                flush();
+              }
+              runStart=runEnd+1;
+            }
+          }
+          const tb1=performance.now();
+          /* 比較の基準：Canvasで塗った直後の地形色と水面マスク。 */
+          const refColor=document.createElement("canvas");refColor.width=W;refColor.height=H;refColor.getContext("2d").drawImage(tctx.canvas,0,0);
+          const refMask=document.createElement("canvas");refMask.width=W;refMask.height=H;refMask.getContext("2d").drawImage(wmctx.canvas,0,0);
+          const td0=performance.now();
+          glTerrainXDraw(colorStore.data,colorStore.n,W,H);
+          const td1=performance.now();
+          const colorCompare=glTerrainXCompare(refColor,refMask,W,H);
+          const td2=performance.now();
+          glTerrainXDraw(maskStore.data,maskStore.n,W,H);
+          const td3=performance.now();
+          const maskCompare=glTerrainXCompareMask(refMask,W,H);
+          glTerrainX.result={
+            triangles:colorStore.n/3,
+            ms:{build:+(tb1-tb0).toFixed(2),drawColor:+(td1-td0).toFixed(2),drawMask:+(td3-td2).toFixed(2),canvasPaint:+__paintMs.toFixed(2)},
+            color:colorCompare.color,mask:maskCompare,ctxLost:glTerrainX.ctxLostCount
+          };
+          glTerrainX.lastRefColor=refColor;glTerrainX.lastRefMask=refMask;
+          glTerrainX.armed=false;
+        }
         /* メッシュの縦線。層の折れ線(横線)は上で集めているので、
            ここでは一定間隔の方位について、層をまたいで縦に繋ぐ線を足す。 */
         if(meshPath){
@@ -29741,7 +30305,7 @@ function drawPhoto(ctx,s){
           }
         }
         if(cloudSeaVisible) paintCloudSeaEffects(columns,cloudTopY,anyTopY,bottomY,cloudCtx);
-        drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount);
+        {const __o0=performance.now();drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount);terrainStageProf.overlays+=performance.now()-__o0;}
         if(sharedTerrainProjectionPass!=="replay"){wmctx.globalCompositeOperation="source-over";}
         if(terrainPickCtx)finishHighDetailTerrainPickFrame(painted>0);
         return painted>0;
@@ -30143,7 +30707,7 @@ function drawPhoto(ctx,s){
       function renderTerrainVariant(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
         const startedAt=performance.now();
         try{return renderTerrainVariantInner(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass);}
-        finally{terrainRenderMsAccum+=performance.now()-startedAt;}
+        finally{const __dt=performance.now()-startedAt;terrainRenderMsAccum+=__dt;terrainStageProf.terrain+=__dt;terrainStageProf.terrainN++;}
       }
       function renderTerrainVariantInner(targetCanvas,targetDayFactor,targetAtmosphere,projectionPass="off"){
         tctx=targetCanvas.getContext("2d");tctx.clearRect(0,0,W,H);
@@ -30165,6 +30729,7 @@ function drawPhoto(ctx,s){
           try{layeredPainted=drawLayeredTerrain();}
           finally{normalSeparateWaterColorPass=false;}
           if(layeredPainted){
+            const __w0=performance.now();
             if(!highDetailOn){
               if(projectionPass!=="replay"){
                 const fineMask=drawPhoto._normalFineWaterMaskCanvas||(drawPhoto._normalFineWaterMaskCanvas=document.createElement("canvas"));
@@ -30174,7 +30739,7 @@ function drawPhoto(ctx,s){
                 if(colorLayer.width!==W||colorLayer.height!==H){colorLayer.width=W;colorLayer.height=H;}
                 const colorContext=colorLayer.getContext("2d");colorContext.clearRect(0,0,W,H);
                 /* 海が画角にない内陸地点でも、直接投影する川・池・湖を必ず実行する。 */
-                drawNormalFineWaterMaskOnly(fineContext,colorContext);
+                {const __f0=performance.now();drawNormalFineWaterMaskOnly(fineContext,colorContext);terrainStageProf.fineWater+=performance.now()-__f0;}
                 {
                   /* 【v831】水面は「形」と「前後関係」を別々の担当から取り、ここで重ねる。
                        形     … 輪郭ポリゴンの直接投影（滑らか・前後関係を持たない）
@@ -30210,7 +30775,10 @@ function drawPhoto(ctx,s){
                   nearInlandContext.setTransform(1,0,0,1,0,0);
                   nearInlandContext.globalCompositeOperation="source-over";
                   nearInlandContext.clearRect(0,0,W,H);
-                  if(drawDirectInlandVectorWater(inlandMaskContext,inlandColorContext,nearInlandContext,WATER_SUBTRACT_MAX_KM)){
+                  const __i0=performance.now();
+                  const __inlandDrawn=drawDirectInlandVectorWater(inlandMaskContext,inlandColorContext,nearInlandContext,WATER_SUBTRACT_MAX_KM);
+                  terrainStageProf.inland+=performance.now()-__i0;
+                  if(__inlandDrawn){
                     /* A: 見えている帯で輪郭ポリゴンを切り抜く。 */
                     inlandMaskContext.save();
                     inlandMaskContext.globalCompositeOperation="destination-in";
@@ -30253,7 +30821,7 @@ function drawPhoto(ctx,s){
                   tctx.drawImage(colorLayer,0,0);
                   renderWaterMaskContext.clearRect(0,0,W,H);
                   renderWaterMaskContext.drawImage(fineMask,0,0);
-                  redrawStoredBridgeOverlay(tctx,terrainDayFactor);
+                  {const __br0=performance.now();redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br0;}
                 }
               }else{
                 /* 【v831】昼用は夜側で完成した最終マスクをそのまま使い、色だけ塗り直す。 */
@@ -30265,7 +30833,7 @@ function drawPhoto(ctx,s){
                   colorContext.setTransform(1,0,0,1,0,0);
                   colorContext.globalCompositeOperation="source-over";
                   colorContext.clearRect(0,0,W,H);
-                  drawNormalFineWaterMaskOnly(null,colorContext);
+                  {const __fc0=performance.now();drawNormalFineWaterMaskOnly(null,colorContext);terrainStageProf.fineColor+=performance.now()-__fc0;}
                   if(inlandColor&&inlandColor.width===W&&inlandColor.height===H){
                     colorContext.save();
                     colorContext.globalCompositeOperation="destination-over";
@@ -30280,9 +30848,10 @@ function drawPhoto(ctx,s){
                   }
                   tctx.drawImage(colorLayer,0,0);
                 }
-                redrawStoredBridgeOverlay(tctx,terrainDayFactor);
+                {const __br1=performance.now();redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br1;}
               }
             }
+            terrainStageProf.water+=performance.now()-__w0;
             return true;
           }
         }
@@ -30494,7 +31063,8 @@ function drawPhoto(ctx,s){
       /* 反射演出側で端末依存のCanvasエラーが起きても、太陽・月・軌跡を含む
          シミュレーション本体の描画は最後まで継続する。 */
       let waterReflectionDrawn=false;
-      try{waterReflectionDrawn=drawWaterReflections();}
+      const __r0=performance.now();
+      try{waterReflectionDrawn=drawWaterReflections();terrainStageProf.reflect+=performance.now()-__r0;}
       catch(reflectionError){console.warn("Water reflection drawing was skipped for this frame.",reflectionError);}
       if(waterReflectionDrawn) restoreBridgeForegroundAboveWater();
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
@@ -30844,7 +31414,7 @@ function drawPhoto(ctx,s){
 
   /* 【v930】夕焼けモード。トーンのあと、魚眼の像円の外より前に掛ける。
      太陽の画面位置が要るので toXY をそのまま渡す。 */
-  applySunsetMode(ctx,s,W,H,toXY);
+  {const __s0=performance.now();applySunsetMode(ctx,s,W,H,toXY);terrainStageProf.sunset+=performance.now()-__s0;}
   updateSunsetModeReadout(s);
 
   // 短い焦点距離では180°の像円がセンサー内に収まるため、像円の外側を黒くして円周魚眼らしく見せる。
@@ -31930,7 +32500,7 @@ function update(){
   requestRealTerrainProfile(state.lat,state.lon);
   requestMountainNames(state.lat,state.lon);
   drawDial(dialCtx,state);
-  if(!suppressPhotoDrawForUpdate) drawPhoto(photoCtx,state);
+  if(!suppressPhotoDrawForUpdate){const __d0=performance.now();drawPhoto(photoCtx,state);terrainStageProf.photo+=performance.now()-__d0;terrainStageProf.photoN++;}
   drawCompassStrip(compassCtx,state);
   /* 【v887】情報の一覧をここでも書き替える。
 
