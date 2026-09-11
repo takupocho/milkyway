@@ -5910,7 +5910,7 @@ function actMonReport(){
   lines.push(`大きさ別: ${cs.top}`);
   const names=Object.entries(actMon.rafNames).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
   lines.push(`rAF 累計 ${actMon.rafRun}（${names}）`);
-  lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"}`);
+  lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"} / 移動中の部分作り ${typeof walkSectorStats!=="undefined"?`部分${walkSectorStats.partial} 全${walkSectorStats.full}`:"-"}`);
   lines.push("─── 地形を作り直した理由（回数の多い順）───");
   for(const [w,n] of Object.entries(actMon.terrainWhyCount).sort((a,b)=>b[1]-a[1]).slice(0,8))lines.push(`×${n} ${w}`);
   const nb=Object.entries(actMon.nullBy).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ／ ");
@@ -5951,7 +5951,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="987-monitor-share";
+const APP_VERSION="988-walk-sector";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19597,7 +19597,13 @@ function waterDrawRadiusKm(){
 }
 function normalWaterFineLevelValue(){
   const slider=el&&el.normalWaterFineLevelSlider;
-  return clamp(Math.round(+(slider&&slider.value)||4),1,4);
+  const level=clamp(Math.round(+(slider&&slider.value)||4),1,4);
+  /* 【v988】省電力ON で移動している間だけ 2 まで（PC実測 1歩 207ms→80ms）。
+     止まると endWalk が元の値で全方位を作り直すので、止まった絵は今までと同じ。 */
+  let saving=false;
+  try{saving=powerSaveOn&&walkMoved&&walkActive();}catch(e){saving=false;}   /* 起動直後は宣言前（TDZ）に呼ばれるので守る */
+  if(saving)return Math.min(level,2);
+  return level;
 }
 function waterLayerDistancesForCurrentMode(){
   /* v790: 通常地形は従来の142層へ戻す。468層相当の追加点は
@@ -19684,6 +19690,9 @@ try{
       sunsetGl:(on)=>{sunsetGlOn=on!==false;update();return sunsetGlOn;},
       sunsetGlState:()=>({on:sunsetGlOn,fail:sunsetGl.fail,lost:sunsetGl.lost,ctxLostCount:sunsetGl.ctxLostCount,lastMs:sunsetGl.lastMs}),
       sunsetGlReset:()=>{sunsetGl.lastMs=0;},
+      /* 【v988】移動中の部分作り。 */
+      walkSector:(on)=>{walkSectorOn=on!==false;return walkSectorOn;},
+      walkSectorStats:()=>({...walkSectorStats}),
       /* 【v983】活動モニター。 */
       actMon:()=>actMon,actMonReport:()=>actMonReport(),actMonSample:()=>actMonSample(),
       /* 【v982】省電力。 */
@@ -22025,9 +22034,12 @@ function computeCoastlineSeaSegments(lat,lon,classifier){
   }
   return {nearKm,farKm};
 }
-async function buildRealTerrainProfile(lat,lon,token){
+async function buildRealTerrainProfile(lat,lon,token,partial){
+  /* 【v988】partial={azSet,previous} のときは azSet の方位だけ作り、残りは previous の行を使う。 */
+  const azimuths=[];
+  for(let az=0;az<360;az++)if(!partial||partial.azSet.has(az))azimuths.push(az);
   const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
-  const samples=[];
+  const samples=new Array(360).fill(null);
   const tilesByKey=new Map(observerRefs.map(t=>[t.key,t]));
   /* 目盛りの間の最高点を拾う（v614）。
 
@@ -22043,7 +22055,7 @@ async function buildRealTerrainProfile(lat,lon,token){
      水際が外へずれるのを避けるためで、そちらは従来どおり
      目盛り上の1点だけを見る。 */
   const PEAK_SUBSAMPLES=2;
-  for(let az=0;az<360;az++){
+  for(const az of azimuths){
     const ray=[];
     let previousKm=0;
     for(const distanceKm of TERRAIN_DISTANCES_KM){
@@ -22067,7 +22079,7 @@ async function buildRealTerrainProfile(lat,lon,token){
       ray.push({distanceKm,refs,peakRefs,lat:pLat,lon:pLon});
       previousKm=distanceKm;
     }
-    samples.push(ray);
+    samples[az]=ray;
   }
 
   // 富士山専用の高密度DEMサンプル。
@@ -22079,7 +22091,7 @@ async function buildRealTerrainProfile(lat,lon,token){
   const useFujiDetail=fujiDetailEnabled&&fujiInfo.distanceKm>=4&&fujiInfo.distanceKm<=92;
   if(useFujiDetail){
     const detailRadiusKm=Math.min(8,Math.max(2.5,fujiInfo.distanceKm*.45));
-    for(let az=0;az<360;az++){
+    for(const az of azimuths){
       const offsetDeg=((az-fujiInfo.bearing+540)%360)-180;
       const offsetRad=offsetDeg*D2R;
       const lateralKm=Math.abs(fujiInfo.distanceKm*Math.sin(offsetRad));
@@ -22150,10 +22162,10 @@ async function buildRealTerrainProfile(lat,lon,token){
   // 1巡目: 全方位×全距離の標高を先にグリッドとして取得する。
   // (2巡目で近傍セルどうしを比較し、海だけでなく湖沼のような「平らな水面」も検出するため)
   const nDist=TERRAIN_DISTANCES_KM.length;
-  const elevGrid=new Array(360);
-  const peakGrid=new Array(360);   // 目盛りの間も含めた最高点（稜線用）
+  const elevGrid=new Array(360).fill(null);
+  const peakGrid=new Array(360).fill(null);   // 目盛りの間も含めた最高点（稜線用）
   let validCount=0;
-  for(let az=0;az<360;az++){
+  for(const az of azimuths){
     const row=new Array(nDist);
     const peaks=new Array(nDist);
     for(let d=0;d<nDist;d++){
@@ -22179,7 +22191,8 @@ async function buildRealTerrainProfile(lat,lon,token){
   // 海岸・海上では標高を持つ陸地サンプルが少なくても正常。
   // DEMタイルの大半が取得できている場合に限り、nodataを海として地形生成を継続する。
   const seaLevelObserver=observerAtSea||observerElevation<=1;
-  if(validCount<720&&!(seaLevelObserver&&tileLoadRatio>=.6)) return null;
+  /* 【v988】部分作りのときは、作った方位のぶんだけで判定する。 */
+  if(validCount<Math.round(720*azimuths.length/360)&&!(seaLevelObserver&&tileLoadRatio>=.6)) return null;
 
   // 2巡目: 標高グリッドから稜線プロファイルと「水面らしさ」を算出する。
   // この時点では標高データのみで判定する(OSMの実際の水域ポリゴンは、取得に時間が
@@ -22207,7 +22220,24 @@ async function buildRealTerrainProfile(lat,lon,token){
   // 一方、海(標高データなし=nodata)はDEMが元々カバーしていない範囲そのものなので、
   // 距離を絞らず従来通り(50m〜90km)判定する。
   const WATER_CHECK_MIN_KM=0.005; // 観測者の三脚の真下など、ごく直近(5m未満)のみノイズとして判定対象から除外する
-  for(let az=0;az<360;az++){
+  /* 【v988】作らない方位は、直前の地形の行をそのまま使う。 */
+  if(partial){
+    const prev=partial.previous;
+    for(let az=0;az<360;az++){
+      if(partial.azSet.has(az))continue;
+      profile[az]=prev.profile[az];
+      terrainLayers.forEach((layer,index)=>{
+        const pl=prev.terrainLayers[index];
+        layer.profile[az]=pl.profile[az];layer.waterProfile[az]=pl.waterProfile[az];
+        layer.noDataWaterProfile[az]=pl.noDataWaterProfile[az];layer.knownWaterProfile[az]=pl.knownWaterProfile[az];
+        terrainLayerSources[index][az]=prev.terrainLayerSources[index][az];
+      });
+      nearSurfaceGrid[az]=prev.nearSurfaceGrid[az];rayGrid[az]=prev.rayGrid[az];
+      waterNearKm[az]=prev.waterNearKm[az];waterFarKm[az]=prev.waterFarKm[az];
+      noDataWaterNearKm[az]=prev.noDataWaterNearKm[az];noDataWaterFarKm[az]=prev.noDataWaterFarKm[az];
+    }
+  }
+  for(const az of azimuths){
     let highest=0;
     const layerHighest=new Array(terrainLayers.length).fill(0);
     const layerHighestSources=new Array(terrainLayers.length).fill(null);
@@ -22237,8 +22267,9 @@ async function buildRealTerrainProfile(lat,lon,token){
       const isNoData=isNoDataRaw&&(prevNoData||nextNoData); // 海: 距離を絞らず全距離で判定する
       // 海は距離方向だけでなく左右の方位も連続してnodataの場合に限る。
       // タイル読込失敗や局所欠損が360度の水面へ化けることを防ぐ。
-      const sidePrevNoData=!Number.isFinite(elevGrid[(az+359)%360][d]);
-      const sideNextNoData=!Number.isFinite(elevGrid[(az+1)%360][d]);
+      /* 【v988】隣の方位を作っていないとき（部分作りの端）は自分の行で代用する。 */
+      const sidePrevNoData=!Number.isFinite((elevGrid[(az+359)%360]||elevGrid[az])[d]);
+      const sideNextNoData=!Number.isFinite((elevGrid[(az+1)%360]||elevGrid[az])[d]);
       const isSeaNoData=isNoData&&sidePrevNoData&&sideNextNoData;
       const isKnown=distanceKm<=LAND_WATER_MAX_KM&&isInKnownWaterBody(sample.lat,sample.lon,elevation); // 陸地の水: 50m以内のみ
       const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>distanceKm>=band.min&&distanceKm<band.max);
@@ -22375,6 +22406,7 @@ async function buildRealTerrainProfile(lat,lon,token){
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
+    _freshAz:partial?partial.azSet:null   /* 【v988】今回作った方位（水域の当て直しはこの行だけ） */
   };
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
@@ -33498,9 +33530,10 @@ function applyCachedWaterRings(result){
     if(outer.minLon<minLon) minLon=outer.minLon;
     if(outer.maxLon>maxLon) maxLon=outer.maxLon;
   }
+  const freshAz=result._freshAz;   /* 【v988】部分作りなら、作った方位の行だけ当て直す（残りは判定済み） */
   [result.nearSurfaceGrid,result.rayGrid].forEach(grid=>{
     if(!grid) return;
-    grid.forEach(row=>row.forEach(point=>{
+    grid.forEach((row,az)=>{if(!row||(freshAz&&!freshAz.has(az)))return;row.forEach(point=>{
       if(!point) return;
       /* 局所高精細地形の円の中は、ここでは一切触らない。
 
@@ -33548,11 +33581,37 @@ function applyCachedWaterRings(result){
       if(!rings.length){point.water=false;return;}
       if(point.lat<minLat||point.lat>maxLat||point.lon<minLon||point.lon>maxLon){point.water=false;return;}
       point.water=pointInWaterRings(point.lat,point.lon,rings);
-    }));
+    });});
   });
   result._osmWaterRings=rings;
 }
 
+/* 【v988】移動中に作り直す方位の範囲。画面に出る幅（rayHalfSpanDeg と同じ式）＋8°。
+   直前の地形が揃っていないとき・幅が広すぎるとき（魚眼など）は null＝全方位。 */
+let walkSectorOn=true;
+const walkSectorStats={partial:0,full:0};
+function walkSectorForBuild(){
+  if(!walkSectorOn)return null;
+  const s=state;
+  if(!s||!Number.isFinite(s.facingAz)||!Number.isFinite(s.fovH)||!Number.isFinite(s.fovV))return null;
+  const prev=realTerrainState;
+  if(!prev||!prev.profile||!Array.isArray(prev.rayGrid)||prev.rayGrid.length!==360||!prev.terrainLayers
+    ||!prev.terrainLayerSources||!prev.nearSurfaceGrid||!prev.waterNearKm||!prev.waterFarKm
+    ||!prev.noDataWaterNearKm||!prev.noDataWaterFarKm)return null;
+  if(mobileLensMode==="fisheye"&&!arActive)return null;
+  const tanHalfH=Math.tan(clamp(s.fovH,1,179)*.5*D2R),tanHalfV=Math.tan(clamp(s.fovV,1,179)*.5*D2R);
+  const cosP=Math.cos(s.facingAlt*D2R),sinP=Math.sin(s.facingAlt*D2R);
+  const dA=cosP-tanHalfV*sinP,dB=cosP+tanHalfV*sinP;
+  const den=Math.min(dA>0?dA:Infinity,dB>0?dB:Infinity);
+  const corner=Number.isFinite(den)?Math.atan2(tanHalfH,den)*R2D:120;
+  const edgePad=clamp(s.fovH*.15,.6,7);
+  const half=Math.min(150,Math.max(s.fovH/2+edgePad,corner+Math.min(3,edgePad)))+8;
+  if(half>=120)return null;
+  const azSet=new Set();
+  const centre=Math.round(s.facingAz),reach=Math.ceil(half);
+  for(let d=-reach;d<=reach;d++)azSet.add(((centre+d)%360+360)%360);
+  return {azSet,previous:prev};
+}
 /* 移動先の地形を作り直す。多重実行を避け、実行中に来た要求は1回だけ後追いする。 */
 async function refreshTerrainWhileWalking(){
   if(walkBusy){ walkPending=true; return; }
@@ -33563,7 +33622,9 @@ async function refreshTerrainWhileWalking(){
     if(Number.isFinite(lat)&&Number.isFinite(lon)){
       const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
       const token=++realTerrainState.requestToken;
-      const result=await buildRealTerrainProfile(lat,lon,token);
+      const partial=walkSectorForBuild();   /* 【v988】見えている方位だけ */
+      if(partial)walkSectorStats.partial++;else walkSectorStats.full++;
+      const result=await buildRealTerrainProfile(lat,lon,token,partial);
       if(result&&token===realTerrainState.requestToken){
         /* 【v847】1.1km四方の取得単位をまたいだときだけ白紙に戻す。
            同じ単位の中を歩いている間は、下の当て直しで前のポリゴンを使い回す。 */
