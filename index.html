@@ -3949,6 +3949,36 @@
     .time-range-mode-btn{ padding:3px 7px; font-size:10.5px; }
     .time-range-mode-btn .mode-suffix{ display:none; }
   }
+
+  /* 【v972】PC版のUI整理。
+     ① ドライブモードはスマホ専用なので、PCではアイコンを出さない。
+     ② 左列の並びを「撮影日 → ベストタイム」に固定する（orderで明示。v973で利用者の希望の順へ）。
+     ③ 時刻・太陽・月・天の川のバーを、スマホと同じ寸法にする。 */
+  @media (min-width:761px){
+    #driveModeBtn{display:none;}
+    .datetime-row > .dt-col:first-child{display:flex;flex-direction:column;}
+    /* 【v973】利用者の希望で「撮影日 → ベストタイム」の順。 */
+    .datetime-row > .dt-col:first-child .date-picker-group{order:1;margin-top:0;}
+    .datetime-row > .dt-col:first-child #bestTimeDateNav{order:2;}
+    .datetime-row > .dt-col:first-child #bestTimeBar{order:3;margin-top:14px;}
+    /* 右列もスマホと同じ並びにする：時刻 → スライダー → 目盛り → 説明 → 月 → 太陽 → 天の川 */
+    .datetime-row > .dt-col:nth-child(2){display:flex;flex-direction:column;}
+    .dt-col label.dt-time-label{order:2;margin-bottom:-5px;}
+    #sliderTimelineRow{order:3;}
+    #tickTimelineRow{order:4;}
+    #rangeHint{order:5;}
+    #moonTimelineRow{order:6;}
+    #sunTimelineRow{order:7;}
+    #mwTimelineRow{order:8;}
+    #moonTimelineBar,#sunTimelineBar{height:30px;}
+    .timeline-row:has(#moonTimelineBar){margin-bottom:-4px;}
+    #mwTimelineRow{margin-bottom:20px;}
+    .slider-row{margin-top:-5px;}
+    .dt-time-label-left{gap:6px;}
+    .play-pause-btn{width:28px;height:28px;font-size:11.5px;margin:-2px 0;}
+    .time-range-mode-btn{padding:3px 7px;font-size:10.5px;}
+    .time-range-mode-btn .mode-suffix{display:none;}
+  }
   /* =========================================================
      「表示」ウインドウの見た目（v572）
      白ベースにし、透け具合を下げて背景の星空と混ざらないようにする。
@@ -5654,7 +5684,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="970-clock-seconds";
+const APP_VERSION="973-date-first";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19335,13 +19365,20 @@ function darumaIslandSilhouetteMatches(s){
    地形レイヤーから消えるので、水面の映り込みからも一緒に消える。 */
 function darumaSilhouetteSuppressRanges(s){
   if(!darumaIslandSilhouetteMatches(s))return null;
+  /* 【v971】切る高さ＝島影が持つ物理的な水平線（だるま判定と同じ定義）。 */
+  const horizonRaw=+darumaIslandSilhouette.physicalHorizon;
+  const horizon=Number.isFinite(horizonRaw)?horizonRaw:currentSeaHorizonAltitudeDeg();
   const ranges=[];
   for(const segment of darumaIslandSilhouette.segments){
     const center=+segment.centerAz,half=+segment.halfAngle,near=+segment.nearKm,far=+segment.farKm;
-    if([center,half,near,far].every(Number.isFinite)&&half>0&&far>near)ranges.push({center,half,near,far});
+    if([center,half,near,far].every(Number.isFinite)&&half>0&&far>near)ranges.push({center,half,near,far,horizon});
   }
   return ranges.length?ranges:null;
 }
+/* 【v971】v968は範囲内の陸の帯を丸ごと外していたが、その距離の陸には
+   **水平線より下に見えるもの**（少し高い所から見た平地・対岸）が大量にある。
+   丸ごと外すと中距離の地面が抜けて奥の層が透け、平たい塊になった（利用者の指摘）。
+   島影が肩代わりできるのは「水平線より上に出る部分」だけなので、そこだけ切り落とす。 */
 function darumaSilhouetteFilterBands(az,bands,ranges){
   if(!ranges||!bands||!bands.length)return bands;
   let range=null;
@@ -19349,7 +19386,15 @@ function darumaSilhouetteFilterBands(az,bands,ranges){
     if(Math.abs(darumaTelephotoAngleDifference(az,item.center))<=item.half){range=item;break;}
   }
   if(!range)return bands;
-  return bands.filter(band=>band.water||band.cloud||!(band.distanceKm>=range.near&&band.distanceKm<=range.far));
+  const horizon=range.horizon;
+  const out=[];
+  for(const band of bands){
+    if(band.water||band.cloud||!(band.distanceKm>=range.near&&band.distanceKm<=range.far)){out.push(band);continue;}
+    if(band.lo>=horizon)continue;                      /* 全部が水平線より上 → 島影に任せる */
+    if(band.hi>horizon)out.push({...band,hi:horizon}); /* 上だけ切る */
+    else out.push(band);
+  }
+  return out;
 }
 function darumaIslandProfilePointCount(silhouette=darumaIslandSilhouette){
   return silhouette&&Array.isArray(silhouette.segments)
