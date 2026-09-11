@@ -4938,6 +4938,11 @@
           </div>
 
           <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
+          <!-- 【v983】活動モニター。何が動き続けているかを実機で数える。 -->
+          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">📈 活動モニター（熱くなる原因さがし）</p>
+          <p class="map-hint" style="margin-top:4px;">画面の左下に1秒ごとの数字を出します。何もしていないのに「描」「rAF」「忙」が増え続けていれば、それが原因です。しばらく使ってから「記録を書き出す」を押すと、直近40秒ぶんが下に出て、クリップボードにも入ります。</p>
+          <div class="row2" style="margin-top:6px;"><button id="actMonShowBtn" type="button">画面に出す</button><button id="actMonCopyBtn" type="button" class="ghost">記録を書き出す</button></div>
+          <p id="actMonReadout" class="map-hint mono" style="margin-top:6px;white-space:pre-wrap;line-height:1.6;"></p>
           <!-- 【v982】省電力モード。 -->
           <button id="powerSaveBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🔋 省電力モード（コマ数の上限 30/秒）</span><span id="powerSaveState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:6px;">再生・ドラッグ・AR・歩く・ドローン・カメラワークのあいだだけ、描き直しを1秒に30回までにします。止まっているときはもともと描いていないので変わりません。絵は1画素も変わりません。既定はスマホON・PC OFF。</p>
@@ -5744,9 +5749,132 @@
 (function(){
 "use strict";
 
+/* =========================================================
+   【v983】活動モニター。何が動き続けているか・キャンバスの総量を実機で数える。
+   数えるだけで動きは変えない。
+   ========================================================= */
+const actMon={
+  draw:0,update:0,view:0,rafRun:0,rafNames:Object.create(null),timer:0,fetch:0,geo:0,orient:0,
+  busyMs:0,lastTick:0,canvasRefs:[],canvasMade:0,log:[],shown:false,started:performance.now(),
+  last:{draw:0,update:0,view:0,rafRun:0,timer:0,fetch:0,geo:0,orient:0,busyMs:0,terrainN:0,bandsN:0}
+};
+(function(){
+  const rafOrig=window.requestAnimationFrame.bind(window);
+  window.requestAnimationFrame=function(cb){
+    return rafOrig(function(ts){
+      actMon.rafRun++;
+      const key=(cb&&cb.name)||"匿名";
+      actMon.rafNames[key]=(actMon.rafNames[key]||0)+1;
+      return cb(ts);
+    });
+  };
+  const toOrig=window.setTimeout.bind(window),ivOrig=window.setInterval.bind(window);
+  window.setTimeout=function(cb,ms,...rest){
+    if(typeof cb!=="function")return toOrig(cb,ms,...rest);
+    return toOrig(function(){actMon.timer++;return cb.apply(this,rest);},ms);
+  };
+  window.setInterval=function(cb,ms,...rest){
+    if(typeof cb!=="function")return ivOrig(cb,ms,...rest);
+    return ivOrig(function(){actMon.timer++;return cb.apply(this,rest);},ms);
+  };
+  if(window.fetch){const fOrig=window.fetch.bind(window);window.fetch=function(...a){actMon.fetch++;return fOrig(...a);};}
+  const ceOrig=document.createElement.bind(document);
+  const HasWeakRef=typeof WeakRef==="function";
+  document.createElement=function(tag,...rest){
+    const node=ceOrig(tag,...rest);
+    if(String(tag).toLowerCase()==="canvas"){
+      actMon.canvasMade++;
+      actMon.canvasRefs.push(HasWeakRef?new WeakRef(node):node);
+      if(actMon.canvasRefs.length>4000)actMon.canvasRefs.splice(0,1000);
+    }
+    return node;
+  };
+  if(navigator.geolocation&&navigator.geolocation.watchPosition){
+    const wpOrig=navigator.geolocation.watchPosition.bind(navigator.geolocation);
+    navigator.geolocation.watchPosition=function(ok,err,opt){return wpOrig(function(p){actMon.geo++;return ok(p);},err,opt);};
+  }
+  window.addEventListener("deviceorientation",()=>{actMon.orient++;},{passive:true});
+  /* 忙しさ：100ms のタイマーがどれだけ遅れたか。 */
+  actMon.lastTick=performance.now();
+  ivOrig(()=>{
+    const now=performance.now(),lag=now-actMon.lastTick-100;
+    actMon.lastTick=now;
+    if(lag>0)actMon.busyMs+=lag;
+  },100);
+})();
+/* 生きているキャンバスを数える（弱参照が切れたものは除く）。DOM の中のものも含む。 */
+function actMonCanvasStats(){
+  const seen=new Set();let count=0,bytes=0;const sizes=Object.create(null);
+  const add=(c)=>{
+    if(!c||seen.has(c))return;seen.add(c);
+    const w=c.width|0,h=c.height|0;if(w<=0||h<=0)return;
+    count++;bytes+=w*h*4;
+    const key=w+"x"+h;sizes[key]=(sizes[key]||0)+1;
+  };
+  actMon.canvasRefs=actMon.canvasRefs.filter(ref=>{const c=(typeof WeakRef==="function"&&ref instanceof WeakRef)?ref.deref():ref;if(!c)return false;add(c);return true;});
+  document.querySelectorAll("canvas").forEach(add);
+  const top=Object.entries(sizes).sort((a,b)=>{const [aw,ah]=a[0].split("x").map(Number),[bw,bh]=b[0].split("x").map(Number);return bw*bh*b[1]-aw*ah*a[1];}).slice(0,6)
+    .map(([k,n])=>`${k}×${n}`).join(" ");
+  return {count,mb:bytes/1048576,top};
+}
+function actMonSample(){
+  const l=actMon.last;
+  const prof=(typeof terrainStageProf!=="undefined")?terrainStageProf:{terrainN:0,bandsN:0};
+  const s={
+    t:Math.round((performance.now()-actMon.started)/1000),
+    draw:actMon.draw-l.draw,update:actMon.update-l.update,view:actMon.view-l.view,
+    raf:actMon.rafRun-l.rafRun,timer:actMon.timer-l.timer,fetch:actMon.fetch-l.fetch,
+    geo:actMon.geo-l.geo,orient:actMon.orient-l.orient,
+    busy:Math.min(100,Math.round(actMon.busyMs-l.busyMs)/10),
+    terrain:prof.terrainN-l.terrainN,bands:prof.bandsN-l.bandsN
+  };
+  Object.assign(l,{draw:actMon.draw,update:actMon.update,view:actMon.view,rafRun:actMon.rafRun,timer:actMon.timer,fetch:actMon.fetch,geo:actMon.geo,orient:actMon.orient,busyMs:actMon.busyMs,terrainN:prof.terrainN,bandsN:prof.bandsN});
+  const cs=actMonCanvasStats();
+  s.canvas=cs.count;s.mb=Math.round(cs.mb);
+  actMon.log.push(s);if(actMon.log.length>180)actMon.log.shift();
+  return s;
+}
+function actMonLine(s){
+  return `${s.t}s 描${s.draw} 更${s.update} 視${s.view} rAF${s.raf} timer${s.timer} fetch${s.fetch} 位置${s.geo} 向き${s.orient} 忙${s.busy}% 地形${s.terrain} 帯${s.bands} canvas${s.canvas}枚 ${s.mb}MB`;
+}
+function actMonReport(){
+  const lines=[];
+  const ua=navigator.userAgent;
+  const os=/iP(hone|ad|od)/.test(ua)?"iOS":(/Android/.test(ua)?"Android":"PCなど");
+  lines.push(`版 ${APP_VERSION} / ${os} / 倍率 ${(window.devicePixelRatio||1).toFixed(1)} / 画面 ${window.innerWidth}x${window.innerHeight}`);
+  const mem=(performance&&performance.memory)?` / JSヒープ ${Math.round(performance.memory.usedJSHeapSize/1048576)}MB`:"";
+  const cs=actMonCanvasStats();
+  lines.push(`canvas 生存 ${cs.count}枚 ${cs.mb.toFixed(0)}MB（作った累計 ${actMon.canvasMade}枚）${mem}`);
+  lines.push(`大きさ別: ${cs.top}`);
+  const names=Object.entries(actMon.rafNames).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
+  lines.push(`rAF 累計 ${actMon.rafRun}（${names}）`);
+  lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"}`);
+  lines.push("─── 直近（1秒ごと）───");
+  for(const s of actMon.log.slice(-40))lines.push(actMonLine(s));
+  return lines.join("\n");
+}
+let actMonTimer=0,actMonBox=null;
+function actMonSetShown(on){
+  actMon.shown=!!on;
+  if(!actMonBox){
+    actMonBox=document.createElement("div");
+    actMonBox.id="actMonBox";
+    actMonBox.style.cssText="position:fixed;left:6px;bottom:6px;z-index:99999;padding:4px 6px;border-radius:5px;background:rgba(3,5,14,.78);color:#e6ecf8;font:600 9px/1.4 'IBM Plex Mono',monospace;white-space:pre;pointer-events:none;max-width:95vw;";
+    document.body.appendChild(actMonBox);
+  }
+  actMonBox.style.display=actMon.shown?"block":"none";
+  if(actMonTimer){clearInterval(actMonTimer);actMonTimer=0;}
+  if(actMon.shown){
+    actMonTimer=setInterval(()=>{
+      const s=actMonSample();
+      actMonBox.textContent=`描${s.draw} 更${s.update} 視${s.view} rAF${s.raf} tm${s.timer} f${s.fetch} 位${s.geo} 向${s.orient} 忙${s.busy}%\n地形${s.terrain} 帯${s.bands} canvas${s.canvas}枚 ${s.mb}MB ${s.t}s`;
+    },1000);
+  }
+}
+
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="982-power-save";
+const APP_VERSION="983-activity-monitor";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6964,7 +7092,8 @@ const el={
   sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
-  powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
+  powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
+  actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
   cameraCutList:$("cameraCutList"), cameraCutAddBtn:$("cameraCutAddBtn"), cameraCutDeleteBtn:$("cameraCutDeleteBtn"), cameraCutPlayBtn:$("cameraCutPlayBtn"),
@@ -12394,6 +12523,18 @@ function sunsetSelfTestReport(){
   }
   return lines.join("\n");
 }
+/* 【v983】活動モニターのボタン。 */
+if(el.actMonShowBtn)el.actMonShowBtn.addEventListener("click",()=>{
+  actMonSetShown(!actMon.shown);
+  el.actMonShowBtn.textContent=actMon.shown?"画面から消す":"画面に出す";
+});
+if(el.actMonCopyBtn)el.actMonCopyBtn.addEventListener("click",()=>{
+  if(!actMon.shown)actMonSample();
+  let text;
+  try{text=actMonReport();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
+  if(el.actMonReadout)el.actMonReadout.textContent=text;
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).catch(()=>{});
+});
 /* 【v982】省電力モードのスイッチ（設定→開発者 と 表示ポップアップの両方を同期）。 */
 let powerSaveReadoutTimer=0;
 function syncPowerSaveControls(){
@@ -19406,6 +19547,8 @@ try{
       sunsetGl:(on)=>{sunsetGlOn=on!==false;update();return sunsetGlOn;},
       sunsetGlState:()=>({on:sunsetGlOn,fail:sunsetGl.fail,lost:sunsetGl.lost,ctxLostCount:sunsetGl.ctxLostCount,lastMs:sunsetGl.lastMs}),
       sunsetGlReset:()=>{sunsetGl.lastMs=0;},
+      /* 【v983】活動モニター。 */
+      actMon:()=>actMon,actMonReport:()=>actMonReport(),actMonSample:()=>actMonSample(),
       /* 【v982】省電力。 */
       powerSave:(on)=>{setPowerSaveOn(on!==false);return powerSaveOn;},
       powerState:()=>({on:powerSaveOn,fps:powerGate.fps,skipped:powerGate.skipped,count:powerGate.count}),
@@ -24039,6 +24182,7 @@ let terrainRenderMsAccum=0;
 const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fineWater:0,fineColor:0,bridgeRedraw:0,inland:0,grown:0,smear:0,terrain:0,terrainN:0,reflect:0,sunset:0,photo:0,photoN:0};
 function drawPhoto(ctx,s){
   powerCountFrame();   /* 【v982】実測コマ数 */
+  actMon.draw++;   /* 【v983】 */
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
     highDetailFallbackPending=true;
@@ -32602,6 +32746,7 @@ function aimFineResolve(az,alt,focal){
   return fine;
 }
 function updateCameraViewOnly(){
+  actMon.view++;   /* 【v983】 */
   if(scheduledUpdateRaf){cameraViewSkip.pending++;return;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(!state){cameraViewSkip.noState++;update();return;}
@@ -32676,6 +32821,7 @@ function updateCameraViewOnly(){
 }
 
 function update(){
+  actMon.update++;   /* 【v983】 */
   refreshObservedPlaceIfMoved();   // v716: 今いる場所の地名を追いかける
   syncObserverEyeElevationDisplay();
   // ボタン操作などから即時update()が呼ばれた場合、待機中の同内容描画を重ねない。
