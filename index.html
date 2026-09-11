@@ -5740,7 +5740,7 @@
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="980-mobile-header";
+const APP_VERSION="981-gl-sunset";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11449,6 +11449,8 @@ function sunsetCpuCanvas(key,w,h){
 }
 /* src を写して色行列を掛け、その結果のキャンバスを返す。 */
 function sunsetMatrixDraw(key,src,w,h,m){
+  /* 【v981】WebGL が使えればそちらで。返すのは GL キャンバス（呼ぶ側はすぐ drawImage する）。 */
+  if(sunsetGlInit(w,h))return sunsetGlMatrixDraw(src,w,h,m);
   const canvas=sunsetCpuCanvas(key,w,h);
   const ctx=canvas.getContext("2d",{willReadFrequently:true});
   ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation="source-over";
@@ -11468,6 +11470,129 @@ function sunsetMatrixDraw(key,src,w,h,m){
   ctx.putImageData(image,0,0);
   return canvas;
 }
+/* =========================================================
+   【v981】画素の道を WebGL へ。filter が掛からない端末（iOS）用。
+   ========================================================= */
+let sunsetGlOn=true;   /* 検証用に切れる。__hd.sunsetGl(false) */
+const sunsetGl={canvas:null,gl:null,prog:null,loc:null,tex:null,vbo:null,lost:false,fail:false,ctxLostCount:0,lastMs:0};
+const SUNSET_GL_VS=`attribute vec2 aPos;varying vec2 vUv;
+void main(){vUv=vec2(aPos.x*.5+.5,.5-aPos.y*.5);gl_Position=vec4(aPos,0.,1.);}`;
+const SUNSET_GL_FS=`#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform sampler2D uTex;uniform mat3 uM;uniform vec3 uOff;uniform int uMode;uniform vec2 uLum;varying vec2 vUv;
+void main(){
+  vec4 c=texture2D(uTex,vUv);
+  vec3 o;
+  if(uMode==0){o=clamp(uM*c.rgb+uOff,0.,1.);}
+  else{
+    /* v958 の sunsetLumMasksCpu と同じ：輝度を 0〜255 に丸めてから一次式。 */
+    float l=floor(dot(c.rgb,vec3(.213,.715,.072))*255.+.5)/255.;
+    o=vec3(clamp(l*uLum.x+uLum.y,0.,1.));
+  }
+  gl_FragColor=vec4(o*c.a,c.a);   /* 出力は premultiplied */
+}`;
+function sunsetGlCompile(gl,type,src){
+  const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);
+  if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){const log=gl.getShaderInfoLog(sh);gl.deleteShader(sh);throw new Error(log||"shader");}
+  return sh;
+}
+function sunsetGlInit(w,h){
+  if(!sunsetGlOn||sunsetGl.fail)return false;
+  if(!sunsetGl.gl){
+    const canvas=document.createElement("canvas");
+    const opts={antialias:false,premultipliedAlpha:true,preserveDrawingBuffer:true,alpha:true,depth:false,stencil:false};
+    let gl=null;
+    try{gl=canvas.getContext("webgl2",opts)||canvas.getContext("webgl",opts);}catch(error){gl=null;}
+    if(!gl){sunsetGl.fail=true;return false;}
+    canvas.addEventListener("webglcontextlost",e=>{e.preventDefault();sunsetGl.lost=true;sunsetGl.ctxLostCount++;});
+    canvas.addEventListener("webglcontextrestored",()=>{sunsetGl.lost=false;sunsetGl.prog=null;});
+    sunsetGl.canvas=canvas;sunsetGl.gl=gl;
+  }
+  if(sunsetGl.lost)return false;
+  const gl=sunsetGl.gl;
+  if(!sunsetGl.prog){
+    try{
+      const prog=gl.createProgram();
+      gl.attachShader(prog,sunsetGlCompile(gl,gl.VERTEX_SHADER,SUNSET_GL_VS));
+      gl.attachShader(prog,sunsetGlCompile(gl,gl.FRAGMENT_SHADER,SUNSET_GL_FS));
+      gl.linkProgram(prog);
+      if(!gl.getProgramParameter(prog,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(prog)||"link");
+      sunsetGl.prog=prog;
+      sunsetGl.loc={aPos:gl.getAttribLocation(prog,"aPos"),uTex:gl.getUniformLocation(prog,"uTex"),uM:gl.getUniformLocation(prog,"uM"),
+        uOff:gl.getUniformLocation(prog,"uOff"),uMode:gl.getUniformLocation(prog,"uMode"),uLum:gl.getUniformLocation(prog,"uLum")};
+      const vbo=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vbo);
+      gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1, 1,-1, -1,1, 1,1]),gl.STATIC_DRAW);
+      sunsetGl.vbo=vbo;
+      const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      sunsetGl.tex=tex;
+      gl.disable(gl.BLEND);gl.disable(gl.DEPTH_TEST);
+    }catch(error){sunsetGl.fail=true;return false;}
+  }
+  if(sunsetGl.canvas.width!==w||sunsetGl.canvas.height!==h){sunsetGl.canvas.width=w;sunsetGl.canvas.height=h;}
+  gl.viewport(0,0,w,h);
+  return true;
+}
+/* src をテクスチャに写し、mode で描く。描いたあとの GL キャンバスを返す。 */
+function sunsetGlPass(src,w,h,mode,m,lum){
+  const gl=sunsetGl.gl,loc=sunsetGl.loc;
+  gl.useProgram(sunsetGl.prog);
+  gl.bindBuffer(gl.ARRAY_BUFFER,sunsetGl.vbo);
+  gl.enableVertexAttribArray(loc.aPos);gl.vertexAttribPointer(loc.aPos,2,gl.FLOAT,false,0,0);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,sunsetGl.tex);
+  if(src){
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src);
+  }
+  gl.uniform1i(loc.uTex,0);
+  gl.uniform1i(loc.uMode,mode);
+  if(mode===0){
+    gl.uniformMatrix3fv(loc.uM,false,new Float32Array([m[0],m[4],m[8], m[1],m[5],m[9], m[2],m[6],m[10]]));
+    gl.uniform3f(loc.uOff,m[3],m[7],m[11]);
+    gl.uniform2f(loc.uLum,1,0);
+  }else{
+    gl.uniformMatrix3fv(loc.uM,false,new Float32Array([1,0,0,0,1,0,0,0,1]));
+    gl.uniform3f(loc.uOff,0,0,0);
+    gl.uniform2f(loc.uLum,lum[0],lum[1]);
+  }
+  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  return sunsetGl.canvas;
+}
+/* 型2枚の写し先。willReadFrequently は付けない（CPU側に落ちると写しが遅くなる）。 */
+const sunsetGlOutCanvases=Object.create(null);
+function sunsetGlOutCanvas(key,w,h){
+  let canvas=sunsetGlOutCanvases[key];
+  if(!canvas)canvas=sunsetGlOutCanvases[key]=document.createElement("canvas");
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  return canvas;
+}
+function sunsetGlMatrixDraw(src,w,h,m){
+  const t0=performance.now();
+  const out=sunsetGlPass(src,w,h,0,m,null);
+  sunsetGl.lastMs+=performance.now()-t0;
+  return out;
+}
+function sunsetGlLumMasks(src,w,h){
+  const t0=performance.now();
+  const bright=sunsetGlOutCanvas("bright",w,h),guard=sunsetGlOutCanvas("guard",w,h);
+  const bc=bright.getContext("2d"),gc=guard.getContext("2d");
+  sunsetGlPass(src,w,h,1,null,[1.05*2.1,.5-.5*2.1]);
+  bc.setTransform(1,0,0,1,0,0);bc.globalCompositeOperation="copy";bc.globalAlpha=1;bc.filter="none";
+  bc.drawImage(sunsetGl.canvas,0,0);bc.globalCompositeOperation="source-over";
+  sunsetGlPass(null,w,h,1,null,[1.538*2.6,.5-.5*2.6]);   /* テクスチャはそのまま */
+  gc.setTransform(1,0,0,1,0,0);gc.globalCompositeOperation="copy";gc.globalAlpha=1;gc.filter="none";
+  gc.drawImage(sunsetGl.canvas,0,0);gc.globalCompositeOperation="source-over";
+  sunsetGl.lastMs+=performance.now()-t0;
+  return {bright,guard};
+}
 /* 型ふたつは値が決まっているので、行列は一度だけ作る。 */
 const SUNSET_BRIGHT_MATRIX=smMul(smContrast(2.1),smMul(smBrightness(1.05),smSaturate(0)));
 const SUNSET_GUARD_MATRIX=smMul(smContrast(2.6),smMul(smBrightness(1.538),smSaturate(0)));
@@ -11482,6 +11607,8 @@ function sunsetLumTable(brightness,contrast){
 const SUNSET_BRIGHT_LUT=sunsetLumTable(1.05,2.1);
 const SUNSET_GUARD_LUT=sunsetLumTable(1.538,2.6);
 function sunsetLumMasksCpu(src,w,h){
+  /* 【v981】WebGL が使えればそちらで。 */
+  if(sunsetGlInit(w,h))return sunsetGlLumMasks(src,w,h);
   const read=sunsetCpuCanvas("lum",w,h);
   const readCtx=read.getContext("2d",{willReadFrequently:true});
   readCtx.setTransform(1,0,0,1,0,0);readCtx.globalCompositeOperation="source-over";
@@ -12210,7 +12337,7 @@ function sunsetSelfTestReport(){
   lines.push(`夕焼け ${sunsetModeOn?"ON":"OFF"} / 効き ${Math.round(sunsetModeWeight(s)*100)}% / 太陽 ${alt===null?"—":alt.toFixed(1)+"°"} / AR ${arActive?"ON":"OFF"}`);
   const sizeOf=(m)=>!m?"なし":((m.width===canvas.width&&m.height===canvas.height)?"OK":`大きさ違い ${m.width}x${m.height}`);
   lines.push(`地形マスク ${sizeOf(drawPhoto._terrainLayerCanvas)} / 水面マスク ${sizeOf(drawPhoto._waterSurfaceMaskCanvas)}`);
-  lines.push(`掛け方 ${sunsetUseGpuFilter()?"GPU（filter）":"画素で計算（この端末はfilterが効かない）"}`);
+  lines.push(`掛け方 ${sunsetUseGpuFilter()?"GPU（filter）":(sunsetGlInit(canvas.width,canvas.height)?"WebGL（この端末はfilterが効かない）":"CPUで画素計算（filterもWebGLも効かない）")}`);
 
   /* 実際に1枚描いて、掛ける前と後の平均色を比べる。 */
   sunsetProbeArmed=true;sunsetProbeResult=null;
@@ -19211,6 +19338,10 @@ try{
       cameraPath:()=>({from:cameraMove.from,to:cameraMove.to,seconds:cameraMove.seconds,easing:cameraMove.easing}),
       /* 【v958】PCでも画素の道を通して、GPUと同じ絵になるか見比べるための入口。 */
       cpuFilter:(on)=>{sunsetForceCpuFilter=on!==false;update();return sunsetForceCpuFilter;},
+      /* 【v981】夕焼けの画素計算を WebGL にするか。false で v958 の CPU の道。 */
+      sunsetGl:(on)=>{sunsetGlOn=on!==false;update();return sunsetGlOn;},
+      sunsetGlState:()=>({on:sunsetGlOn,fail:sunsetGl.fail,lost:sunsetGl.lost,ctxLostCount:sunsetGl.ctxLostCount,lastMs:sunsetGl.lastMs}),
+      sunsetGlReset:()=>{sunsetGl.lastMs=0;},
       /* 【v961】既定のままなら元の数字と一致するか、外から確かめるための入口。 */
       overlayRGB:(group,part,t)=>overlayPartRGB(group,part,t),
       overlayAlpha:(group,t)=>overlayAlphaScale(group,t),
