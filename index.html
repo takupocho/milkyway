@@ -5016,6 +5016,12 @@
           <button id="glTerrainBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🧪 地形をWebGLで描く（実験）</span><span id="glTerrainState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:6px;">層の多角形を塗る段だけをGPUに任せます。見え方は同じになるはずです。雲海・地形メッシュ表示のときは従来どおり描きます。WebGL2が使えない端末では何も変わりません。</p>
           <p id="glTerrainReadout" class="map-hint mono" style="margin-top:4px;white-space:pre-wrap;"></p>
+          <!-- 【v998】衛星写真の見え方。 -->
+          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛰 衛星写真の見え方（表示→衛星写真がONのとき）</p>
+          <div class="field"><label class="top">昼の明るさ <span class="val mono" id="photoTuneDayVal">92%</span></label><input type="range" id="photoTuneDay" min="30" max="150" step="1" value="92"></div>
+          <div class="field"><label class="top">夜の明るさ <span class="val mono" id="photoTuneNightVal">22%</span></label><input type="range" id="photoTuneNight" min="0" max="80" step="1" value="22"></div>
+          <div class="field"><label class="top">遠くのかすみ <span class="val mono" id="photoTuneHazeVal">60%</span></label><input type="range" id="photoTuneHaze" min="0" max="150" step="5" value="60"></div>
+          <p class="map-hint" style="margin-top:2px;">夜も写真のまま暗くします（今までの夜の色には切り替えません）。「遠くのかすみ」を下げると遠くの山が暗く沈み、上げると空に溶けます。</p>
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛣 道路・線路・橋の色</p>
           <p class="map-hint" style="margin-top:4px;">代表の色だけを選びます。付属の部分（センターライン・枕木・橋脚など）は、<b>既定色との比</b>を保ったまま一緒に動くので、立体感は崩れません。既定の色のままなら見え方は変わりません。</p>
           <div id="overlayStylePanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
@@ -6026,7 +6032,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="997-photo-texture";
+const APP_VERSION="998-photo-tune";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7249,6 +7255,7 @@ const el={
   sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
+  photoTuneDay:$("photoTuneDay"), photoTuneDayVal:$("photoTuneDayVal"), photoTuneNight:$("photoTuneNight"), photoTuneNightVal:$("photoTuneNightVal"), photoTuneHaze:$("photoTuneHaze"), photoTuneHazeVal:$("photoTuneHazeVal"),   /* 【v998】 */
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
   actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
@@ -11549,6 +11556,9 @@ function powerCountFrame(){
 }
 /* 【v997】衛星写真テクスチャ。宣言はここ（起動時の同期が先に読む）。 */
 let photoTextureOn=false;
+/* 【v998】写真の見え方（％）。宣言はここ（起動時の同期が先に読む）。かすみの色は昼のかすみより暗め。 */
+const PHOTO_TUNE_DEFAULT={day:92,night:22,haze:60};
+const photoTune={...PHOTO_TUNE_DEFAULT,hazeRgb:[150,164,184]};
 /* 【v976】WebGL地形のスイッチと状態。定義時に設定画面の同期が読むので、ここで宣言する（TDZ回避）。 */
 let glTerrainOn=false;
 const glTerrain={canvas:null,gl:null,prog:null,buf:null,loc:null,lost:false,ctxLostCount:0,geomKey:null,geomCount:0,uploadedKey:null,lastBuildMs:0,lastDrawMs:0,frames:0};
@@ -12820,6 +12830,24 @@ function setPowerSaveOn(on){
 if(el.powerSaveBtn)el.powerSaveBtn.addEventListener("click",()=>setPowerSaveOn(!powerSaveOn));
 if(el.popupPowerSaveBtn)el.popupPowerSaveBtn.addEventListener("click",()=>setPowerSaveOn(!powerSaveOn));
 syncPowerSaveControls();
+/* 【v998】衛星写真の見え方のつまみ。 */
+function syncPhotoTuneControls(){
+  for(const key of ["day","night","haze"]){
+    const input=el["photoTune"+key[0].toUpperCase()+key.slice(1)],out=el["photoTune"+key[0].toUpperCase()+key.slice(1)+"Val"];
+    if(input&&String(input.value)!==String(photoTune[key]))input.value=String(photoTune[key]);
+    if(out)out.textContent=`${photoTune[key]}%`;
+  }
+}
+for(const key of ["day","night","haze"]){
+  const input=el["photoTune"+key[0].toUpperCase()+key.slice(1)];
+  if(!input)continue;
+  input.addEventListener("input",()=>{
+    photoTune[key]=Math.round(+input.value)||0;
+    syncPhotoTuneControls();
+    drawPhoto._terrainRenderKey=null;update();scheduleSaveSettings();
+  });
+}
+syncPhotoTuneControls();
 /* 【v976】WebGL地形のスイッチ。 */
 function syncGlTerrainControls(){
   if(!el.glTerrainBtn)return;
@@ -15907,6 +15935,7 @@ function collectPersistedSettings(){
     roadLinesVisible:roadLinesVisible,
     minorRoadsVisible:minorRoadsVisible,   /* 【v995】 */
     photoTextureOn:photoTextureOn,   /* 【v997】 */
+    photoTune:{day:photoTune.day,night:photoTune.night,haze:photoTune.haze},   /* 【v998】 */
     bridgeLinesVisible:bridgeLinesVisible,
     akashiBridgeHidden:akashiBridgeHidden,
     cloudSeaVisible:cloudSeaVisible,
@@ -16090,6 +16119,7 @@ async function loadPersistedSettings(){
     roadLinesVisible=!!s.roadLinesVisible;
     minorRoadsVisible=!!s.minorRoadsVisible;   /* 【v995】 */
     photoTextureOn=!!s.photoTextureOn;   /* 【v997】 */
+    if(s.photoTune&&typeof s.photoTune==="object"){for(const key of ["day","night","haze"]){const v=+s.photoTune[key];if(Number.isFinite(v))photoTune[key]=Math.round(v);}syncPhotoTuneControls();}   /* 【v998】 */
     cloudSeaVisible=s.cloudSeaVisible===true;
     pixelWalkerVisible=s.pixelWalkerVisible!==false;
     compassBarVisible=s.compassBarVisible!==false;
@@ -19907,7 +19937,7 @@ try{
       /* 【v997】衛星写真テクスチャ。 */
       photoTex:(on)=>{photoTextureOn=on!==false;if(photoTextureOn&&!glTerrainOn){glTerrainOn=true;syncGlTerrainControls();}drawPhoto._terrainRenderKey=null;syncDisplayPopupControls();update();return photoTextureOn;},
       photoTexState:()=>({on:photoTextureOn,key:photoAtlas.key,version:photoAtlas.version,fetched:photoAtlas.fetched,failed:photoAtlas.failed,levels:photoAtlas.levels.map(l=>({z:l.z,ready:l.ready}))}),
-      photoTexGain:(g)=>{if(Number.isFinite(g))photoAtlas.gain=g;drawPhoto._terrainRenderKey=null;update();return photoAtlas.gain;},
+      photoTune:(o)=>{Object.assign(photoTune,o||{});syncPhotoTuneControls();drawPhoto._terrainRenderKey=null;update();return {...photoTune};},
       /* 【v996】メッシュ版の塗り。false で v976 の多角形の塗り。 */
       glMesh:(on)=>{glMeshOn=on!==false;drawPhoto._terrainRenderKey=null;update();return {on:glMeshOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs};},
       masks:()=>({fine:drawPhoto._normalFineWaterMaskCanvas,water:drawPhoto._waterSurfaceMaskCanvas,terrain:drawPhoto._terrainLayerCanvas,color:drawPhoto._inlandVectorWaterColorCanvas}),
@@ -24459,7 +24489,7 @@ void main(){
   vCol=vec4(rgb,1.0);
   /* 【v997】写真テクスチャ用。水面と夜は写真を使わない。かすみは色と同じ式。 */
   vMerc=aMerc;
-  vTexW=w?0.0:uDay;
+  vTexW=w?0.0:1.0;   /* 【v998】夜も写真（暗くするだけ）。水面だけ今までの色 */
   vHaze=(d>1.0)?clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0):0.0;
   vRelief=relief;
 }`;
@@ -24469,7 +24499,7 @@ flat in vec4 vCol;in vec2 vMerc;flat in float vTexW;flat in float vHaze;flat in 
 uniform float uTexOn;uniform float uMode;
 uniform sampler2D uTex0;uniform sampler2D uTex1;uniform sampler2D uTex2;
 uniform vec4 uAtlas0;uniform vec4 uAtlas1;uniform vec4 uAtlas2;   /* (originX_z, originY_z, N, 2^(z-16)) */
-uniform vec3 uTexHaze;uniform float uTexGain;
+uniform vec3 uTexHaze;uniform float uTexGain;uniform float uTexNight;uniform float uTexHazeK;uniform float uDayF;
 out vec4 o;
 bool pick(vec4 a,out vec2 uv){
   if(a.z<=0.0)return false;
@@ -24484,8 +24514,12 @@ void main(){
   if(s.a<0.5&&pick(uAtlas1,uv)){s=texture(uTex1,uv);}
   if(s.a<0.5&&pick(uAtlas2,uv)){s=texture(uTex2,uv);}
   if(s.a<0.5)return;
-  vec3 tex=s.rgb*uTexGain;
-  tex=mix(tex,uTexHaze,vHaze);
+  /* 【v998】昼＝写真×昼の明るさ、夜＝写真×夜の明るさ（少し青く）。かすみは写真用の色を、弱めて掛ける。 */
+  vec3 dayTex=s.rgb*uTexGain;
+  dayTex=mix(dayTex,uTexHaze,vHaze*uTexHazeK);
+  vec3 nightTex=s.rgb*uTexNight*vec3(0.82,0.90,1.08);
+  nightTex=mix(nightTex,vec3(35.0,47.0,64.0)/255.0*0.9,vHaze*uTexHazeK);
+  vec3 tex=mix(nightTex,dayTex,uDayF);
   tex=clamp(tex*(0.88+vRelief*0.12),0.0,1.0);
   o=vec4(mix(vCol.rgb,tex,vTexW),1.0);
 }`;
@@ -24502,7 +24536,8 @@ void main(){
     uNearGrassKm:gl.getUniformLocation(prog,"uNearGrassKm"),uMode:gl.getUniformLocation(prog,"uMode"),
     uTexOn:gl.getUniformLocation(prog,"uTexOn"),uTex:[gl.getUniformLocation(prog,"uTex0"),gl.getUniformLocation(prog,"uTex1"),gl.getUniformLocation(prog,"uTex2")],
     uAtlas:[gl.getUniformLocation(prog,"uAtlas0"),gl.getUniformLocation(prog,"uAtlas1"),gl.getUniformLocation(prog,"uAtlas2")],
-    uTexHaze:gl.getUniformLocation(prog,"uTexHaze"),uTexGain:gl.getUniformLocation(prog,"uTexGain")};
+    uTexHaze:gl.getUniformLocation(prog,"uTexHaze"),uTexGain:gl.getUniformLocation(prog,"uTexGain"),
+    uTexNight:gl.getUniformLocation(prog,"uTexNight"),uTexHazeK:gl.getUniformLocation(prog,"uTexHazeK"),uDayF:gl.getUniformLocation(prog,"uDayF")};
   photoAtlasForgetTextures();   /* 【v997】コンテキストが作り直されたらテクスチャも作り直し */
   gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);
   x.uploadedKey=null;
@@ -24679,8 +24714,10 @@ function photoAtlasBindTextures(gl,L){
     }
     gl.uniform1i(L.uTex[i],i);
   });
-  gl.uniform3f(L.uTexHaze,196/255,208/255,218/255);
-  gl.uniform1f(L.uTexGain,photoAtlas.gain);
+  gl.uniform3f(L.uTexHaze,photoTune.hazeRgb[0]/255,photoTune.hazeRgb[1]/255,photoTune.hazeRgb[2]/255);
+  gl.uniform1f(L.uTexGain,photoTune.day/100);
+  gl.uniform1f(L.uTexNight,photoTune.night/100);
+  gl.uniform1f(L.uTexHazeK,photoTune.haze/100);
   return any;
 }
 /* 【v996】メッシュ版の builder。頂点の並びは glTerrainBuild と同じ [x,y,distKm,alt,water]。 */
@@ -24804,6 +24841,7 @@ function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGra
   if(!count||!buffer)return;
   gl.useProgram(x.prog);
   gl.uniform2f(L.uSize,W,H);gl.uniform1f(L.uDay,dayFactor);gl.uniform1f(L.uWaterAsLand,waterAsLand?1:0);
+  gl.uniform1f(L.uDayF,dayFactor);   /* 【v998】 */
   gl.uniform1f(L.uNearGrassKm,nearGrassKm);gl.uniform1f(L.uMode,mode);
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   const stride=GL_STRIDE*4;
@@ -26045,7 +26083,7 @@ function drawPhoto(ctx,s){
         cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
         (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length+(minorRoadsVisible?"m":""):"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off",
-        photoTextureOn?"tex"+photoAtlas.version:"tex-off"   /* 【v997】 */
+        photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}`:"tex-off"   /* 【v997】【v998】 */
       ].join("|");
       /* 【v911】夜は昼用レイヤーを作らない。
          作ったかどうかを鍵へ入れておかないと、
