@@ -6032,7 +6032,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="998-photo-tune";
+const APP_VERSION="999-photo-cache";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19936,7 +19936,7 @@ try{
       glTerrainCanvas:()=>glTerrain.canvas,
       /* 【v997】衛星写真テクスチャ。 */
       photoTex:(on)=>{photoTextureOn=on!==false;if(photoTextureOn&&!glTerrainOn){glTerrainOn=true;syncGlTerrainControls();}drawPhoto._terrainRenderKey=null;syncDisplayPopupControls();update();return photoTextureOn;},
-      photoTexState:()=>({on:photoTextureOn,key:photoAtlas.key,version:photoAtlas.version,fetched:photoAtlas.fetched,failed:photoAtlas.failed,levels:photoAtlas.levels.map(l=>({z:l.z,ready:l.ready}))}),
+      photoTexState:()=>({on:photoTextureOn,key:photoAtlas.key,version:photoAtlas.version,fetched:photoAtlas.fetched,fromCache:photoAtlas.fromCache,failed:photoAtlas.failed,levels:photoAtlas.levels.map(l=>({z:l.z,ready:l.ready,tile:l.tileKey,building:l.building}))}),
       photoTune:(o)=>{Object.assign(photoTune,o||{});syncPhotoTuneControls();drawPhoto._terrainRenderKey=null;update();return {...photoTune};},
       /* 【v996】メッシュ版の塗り。false で v976 の多角形の塗り。 */
       glMesh:(on)=>{glMeshOn=on!==false;drawPhoto._terrainRenderKey=null;update();return {on:glMeshOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs};},
@@ -21402,7 +21402,7 @@ function openExternalGeoCacheDb(){
    「最後に使った時刻」をlocalStorageの小さな表に持ち、古いものから消す。
    時刻を巨大な本体と一緒に書き戻すと1回数MBの書き込みになるため、別に持つ。 */
 const CACHE_TOUCH_KEY="mwsim.cacheTouch.v1";
-const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,"coastline-static-v1":200,"roads-static-v1":200,"roads-static-v2":200,"rails-static-v1":200,"bridges-static-v1":200,"bridges-static-v2":200,mountain:200};
+const CACHE_KEEP_COUNT={terrain:30,water:200,"coastline-v1":200,"roads-v1":200,"rails-v1":200,"bridges-v1":200,"coastline-static-v1":200,"roads-static-v1":200,"roads-static-v2":200,"photo-tile-v1":900,"rails-static-v1":200,"bridges-static-v1":200,"bridges-static-v2":200,mountain:200};
 let cacheTouchMap=(()=>{ try{ return JSON.parse(localStorage.getItem(CACHE_TOUCH_KEY))||{}; }catch(error){ return {}; } })();
 let cacheTouchSaveTimer=0;
 function saveCacheTouchMap(){
@@ -21501,7 +21501,7 @@ async function externalGeoCacheGet(id){
 async function externalGeoCacheSet(id,data){
   try{
     touchCacheEntry(id);
-    if(cacheKindOf(id)==="terrain") scheduleCachePrune(); // 重いのは地形だけなので、これを入れた時に整理する
+    if(cacheKindOf(id)==="terrain"||cacheKindOf(id)==="photo-tile-v1") scheduleCachePrune(); // 重いのは地形と写真。これを入れた時に整理する
     const db=await openExternalGeoCacheDb();
     await new Promise((resolve,reject)=>{const tx=db.transaction(EXTERNAL_GEO_CACHE_STORE,"readwrite");tx.objectStore(EXTERNAL_GEO_CACHE_STORE).put({id,data,savedAt:Date.now()});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
     externalGeoCacheIdAdd(id);
@@ -21522,6 +21522,7 @@ const CACHE_CATEGORIES=[
   {id:"rails",    label:"線路",                 test:id=>id.startsWith("rails-static-v1:")},
   {id:"bridges",  label:"橋",                   test:id=>id.startsWith("bridges-static-v2:")},
   {id:"comet",    label:"彗星の軌道要素",        test:id=>id.startsWith("comet-elements-v1")},
+  {id:"photo",    label:"衛星写真タイル",         test:id=>id.startsWith("photo-tile-v1:")},
   {id:"plan",     label:"撮影計画の保存水域",     test:id=>id.startsWith("plan-water-v1:")},
   {id:"mountain", label:"山名（取り直せません）",  test:id=>id.startsWith("mountain:"),warn:true}
 ];
@@ -24611,7 +24612,7 @@ const PHOTO_TILE_RADIUS=2;
 const PHOTO_ATLAS_N=PHOTO_TILE_RADIUS*2+1;
 const PHOTO_TILE_SRC=(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`;
 const PHOTO_TILE_SRC_FALLBACK=(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-const photoAtlas={key:"",origin16:null,levels:[],version:0,pending:0,fetched:0,failed:0,busy:false,gain:0.92};
+const photoAtlas={key:"",origin16:null,levels:[],version:0,pending:0,fetched:0,failed:0,fromCache:0,busy:false,gain:0.92};
 const photoTileMemo=new Map();   /* "z/x/y" → Promise<ImageBitmap|null> */
 let photoTileActive=0;const photoTileQueue=[];
 function photoMercatorTile(lat,lon,z){
@@ -24640,12 +24641,19 @@ function photoTilePump(){
     const job=photoTileQueue.shift();photoTileActive++;
     (async()=>{
       let bitmap=null;
-      for(const url of [PHOTO_TILE_SRC(job.z,job.x,job.y),PHOTO_TILE_SRC_FALLBACK(job.z,job.x,job.y)]){
+      const cacheId=`photo-tile-v1:${job.z}/${job.x}/${job.y}`;
+      /* 【v999】まず端末の保存から。 */
+      try{
+        const saved=await externalGeoCacheGet(cacheId);
+        if(saved&&typeof Blob!=="undefined"&&saved instanceof Blob&&saved.size>0){bitmap=await createImageBitmap(saved);photoAtlas.fromCache++;}
+      }catch(e){bitmap=null;}
+      if(!bitmap)for(const url of [PHOTO_TILE_SRC(job.z,job.x,job.y),PHOTO_TILE_SRC_FALLBACK(job.z,job.x,job.y)]){
         try{
           const r=await fetch(url,{mode:"cors",cache:"force-cache"});
           if(!r.ok)continue;
           const blob=await r.blob();
           bitmap=await createImageBitmap(blob);
+          externalGeoCacheSet(cacheId,blob).catch?.(()=>{});   /* 【v999】保存（待たない） */
           break;
         }catch(e){bitmap=null;}
       }
@@ -24659,25 +24667,29 @@ function photoTilePump(){
 function photoAtlasEnsure(lat,lon){
   if(!photoTextureOn||!Number.isFinite(lat)||!Number.isFinite(lon))return;
   const [X16,Y16]=photoMercatorTile(lat,lon,16);
-  const key=`${Math.floor(X16)},${Math.floor(Y16)}`;
-  if(photoAtlas.key===key)return;
-  photoAtlas.key=key;photoAtlas.origin16=[Math.floor(X16),Math.floor(Y16)];
-  photoAtlas.levels=PHOTO_TILE_ZOOMS.map(z=>{
-    const [X,Y]=photoMercatorTile(lat,lon,z);
-    return {z,ox:Math.floor(X)-PHOTO_TILE_RADIUS,oy:Math.floor(Y)-PHOTO_TILE_RADIUS,canvas:null,texture:null,ready:false,dirty:false};
-  });
-  const myKey=key;
+  photoAtlas.origin16=[Math.floor(X16),Math.floor(Y16)];   /* 頂点の原点（メッシュと同じ式） */
+  photoAtlas.key=`${photoAtlas.origin16[0]},${photoAtlas.origin16[1]}`;
+  /* 【v999】段ごとに、観測地点のその段のタイルが変わったときだけ作り直す。古い段は新しいのが出来るまで出したまま。 */
+  if(photoAtlas.levels.length!==PHOTO_TILE_ZOOMS.length){
+    photoAtlas.levels=PHOTO_TILE_ZOOMS.map(z=>({z,tileKey:"",ox:0,oy:0,canvas:null,texture:null,ready:false,dirty:false,building:""}));
+  }
   photoAtlas.levels.forEach(level=>{
+    const [X,Y]=photoMercatorTile(lat,lon,level.z);
+    const tx=Math.floor(X),ty=Math.floor(Y),tileKey=`${tx},${ty}`;
+    if(level.tileKey===tileKey||level.building===tileKey)return;
+    level.building=tileKey;
+    const ox=tx-PHOTO_TILE_RADIUS,oy=ty-PHOTO_TILE_RADIUS;
     const canvas=document.createElement("canvas");canvas.width=canvas.height=PHOTO_ATLAS_N*256;
     const c=canvas.getContext("2d");
     const jobs=[];
     for(let dy=0;dy<PHOTO_ATLAS_N;dy++)for(let dx=0;dx<PHOTO_ATLAS_N;dx++){
-      jobs.push(photoTileFetch(level.z,level.ox+dx,level.oy+dy).then(bitmap=>{
+      jobs.push(photoTileFetch(level.z,ox+dx,oy+dy).then(bitmap=>{
         if(bitmap){c.drawImage(bitmap,dx*256,dy*256,256,256);}
       }));
     }
     Promise.all(jobs).then(()=>{
-      if(photoAtlas.key!==myKey)return;   /* もう別の地点 */
+      if(level.building!==tileKey)return;   /* もっと新しい作り直しが始まっている */
+      level.building="";level.tileKey=tileKey;level.ox=ox;level.oy=oy;
       level.canvas=canvas;level.ready=true;level.dirty=true;photoAtlas.version++;
       drawPhoto._terrainRenderKey=null;
       if(typeof scheduleUpdate==="function")scheduleUpdate();
