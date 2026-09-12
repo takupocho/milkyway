@@ -2420,23 +2420,53 @@
   body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #photoCanvas,
   body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #meteorCanvas,
   body.fs-sim .fs-photo-slot .photo-canvas-wrap.portrait #walkerFxCanvas{width:100%;}
+  /* 【v991】写真の下：日付の行・時刻の行・スライダー・目盛りは固定。帯（月・太陽・天の川）は残りに入れ、
+     入り切らなければ帯の部分だけスクロール。 */
   .fs-bottom{
-    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:2px;
-    padding:4px 10px 8px;overflow:hidden;
+    flex:1;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;gap:3px;
+    padding:6px 10px 6px;overflow:hidden;
   }
-  .fs-bottom .dt-time-label{margin:0;}
+  .fs-bottom>*{flex:0 0 auto;}
+  .fs-bottom .dt-time-label{margin:0;order:2;}
   .fs-bottom .timeline-row{margin:0;}
+  .fs-bottom .best-time-date-nav{order:1;display:flex;justify-content:center;}
+  .fs-bottom #sliderTimelineRow{order:3;}
+  .fs-bottom #tickTimelineRow{order:4;}
+  .fs-bars{
+    order:5;flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    display:flex;flex-direction:column;gap:2px;padding-top:2px;
+  }
+  .fs-bars>*{flex:0 0 auto;}
+  .fs-bars #moonTimelineRow{order:1;}
+  .fs-bars #sunTimelineRow{order:2;}
+  .fs-bars #mwTimelineRow{order:3;}
+  /* 【v991】閉じる（✕）は右の列（保存・読込・写真）と同じ x・同じ大きさで、列の一番上。 */
   .fs-exit-btn{
-    position:absolute;top:10px;right:10px;z-index:320;
-    width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;
+    position:absolute;top:7px;right:7px;z-index:320;
+    width:39px;height:39px;padding:0;display:flex;align-items:center;justify-content:center;
     border:1px solid rgba(255,255,255,.62);border-radius:50%;
     background:rgba(8,12,26,.62);color:#fff;
     -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
   }
   .fs-exit-btn svg{width:22px;height:22px;}
-  /* 保存・読込は右上（top:9px right:9px）にいる。バツと同じ場所なので下へずらす。
-     実測でバツが「保存」を覆っていた。 */
-  body.fs-sim .plan-quick-actions{top:56px;}
+  body.fs-sim .plan-quick-actions{top:52px;}
+  /* 【v991】焦点距離のバッジを左上（丸アイコンの列の一番上）へ。丸アイコンは44px下げる。 */
+  body.fs-sim .photo-canvas-wrap .focal-badge{
+    position:absolute;left:11px;top:7px;z-index:13;
+    display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1;
+    font-size:14px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);
+  }
+  body.fs-sim .photo-canvas-wrap .focal-badge::before{
+    content:"焦点距離";display:block;font-family:'Inter',sans-serif;font-size:7px;font-weight:600;
+    letter-spacing:.02em;color:rgba(255,255,255,.72);margin-bottom:1px;
+  }
+  body.fs-sim .photo-canvas-wrap .focal-badge-unit{font-size:8px;color:rgba(255,255,255,.72);}
+  body.fs-sim .photo-canvas-wrap .focal-badge-fisheye-name{font-size:8px;}
+  body.fs-sim .photo-canvas-wrap .focal-quick{z-index:330;}
+  body.fs-sim .photo-canvas-wrap .mobile-sky-search-control{top:53px;}
+  body.fs-sim .photo-canvas-wrap .mobile-shot-plan-btn{top:97px;}
+  body.fs-sim .photo-canvas-wrap .mobile-camera-cut-btn{top:141px;}
   /* 小地図は元から「写真の下端から下へ伸びる」作り。
      全画面のときだけ、残りいっぱい・画面幅いっぱいにする。 */
   body.fs-sim .drone-map-panel{width:100%;left:0;transform:none;border-radius:0;}
@@ -4327,7 +4357,7 @@
   <!-- 【v956】全画面モードの器。中身は入るときに引っ越してくる。 -->
   <div id="fsOverlay" class="fs-overlay" aria-hidden="true">
     <div id="fsPhotoSlot" class="fs-photo-slot"></div>
-    <div id="fsBottom" class="fs-bottom"></div>
+    <div id="fsBottom" class="fs-bottom"><div id="fsBars" class="fs-bars"></div></div>
     <button id="fsExitBtn" type="button" class="fs-exit-btn" aria-label="全画面表示を終了する" title="全画面表示を終了">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/></svg>
     </button>
@@ -5965,7 +5995,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="990-plans-idb";
+const APP_VERSION="991-fs-ui";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14662,8 +14692,19 @@ function enterFullscreenSim(){
   const wrap=document.querySelector(".photo-canvas-wrap");
   const timeLabel=document.querySelector(".dt-time-label");
   fsMoveNode(wrap,el.fsPhotoSlot);
+  /* 【v991】焦点距離のバッジと、その窓を写真の上へ。 */
+  if(el.focalBadge)fsMoveNode(el.focalBadge,wrap);
+  if(el.focalQuick)fsMoveNode(el.focalQuick,wrap);
+  /* 【v991】日付の行 → 時刻の行 → スライダー → 目盛り → 帯（スクロール可）。並びは CSS の order。 */
+  const fsBars=document.getElementById("fsBars");
+  fsMoveNode(document.getElementById("bestTimeDateNav"),el.fsBottom);
   fsMoveNode(timeLabel,el.fsBottom);
   fsMoveNode(document.getElementById("sliderTimelineRow"),el.fsBottom);
+  fsMoveNode(document.getElementById("tickTimelineRow"),el.fsBottom);
+  fsMoveNode(document.getElementById("moonTimelineRow"),fsBars);
+  fsMoveNode(document.getElementById("sunTimelineRow"),fsBars);
+  fsMoveNode(document.getElementById("mwTimelineRow"),fsBars);
+  if(el.focalQuick)setFocalQuickOpen(false);
   update();
   /* 【v962】ここまでで動いていたら戻す。 */
   const notes=[];
