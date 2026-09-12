@@ -4950,6 +4950,8 @@
           <div class="row2" style="margin-top:6px;"><button id="actMonShowBtn" type="button">画面に出す</button><button id="actMonCopyBtn" type="button" class="ghost">記録を書き出す</button></div>
           <!-- 【v987】テキストで渡せるように。 -->
           <div class="row2" style="margin-top:6px;"><button id="actMonClipBtn" type="button" class="ghost">📋 コピー</button><button id="actMonShareBtn" type="button" class="ghost">📤 共有…</button></div>
+          <!-- 【v989】道路の取り直し試験。 -->
+          <button id="actMonRoadTestBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">🛣 道路を今すぐ取り直す（試験）</button>
           <p id="actMonCopyStatus" class="map-hint" style="margin-top:4px;"></p>
           <textarea id="actMonReadout" readonly spellcheck="false" style="width:100%;min-height:160px;margin-top:6px;padding:8px;border:1px solid var(--line,#2a3345);border-radius:8px;background:rgba(0,0,0,.25);color:var(--star-white);font:11px/1.5 'IBM Plex Mono',monospace;white-space:pre;overflow:auto;-webkit-user-select:text;user-select:text;"></textarea>
           <!-- 【v982】省電力モード。 -->
@@ -5911,6 +5913,18 @@ function actMonReport(){
   const names=Object.entries(actMon.rafNames).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ");
   lines.push(`rAF 累計 ${actMon.rafRun}（${names}）`);
   lines.push(`省電力 ${typeof powerSaveOn!=="undefined"&&powerSaveOn?"ON":"OFF"} / 地形GL ${typeof glTerrainOn!=="undefined"&&glTerrainOn?"ON":"OFF"} / 夕焼け ${typeof sunsetModeOn!=="undefined"&&sunsetModeOn?"ON":"OFF"} / 移動中の部分作り ${typeof walkSectorStats!=="undefined"?`部分${walkSectorStats.partial} 全${walkSectorStats.full}`:"-"}`);
+  /* 【v989】道路・線路・橋・彗星の状態。 */
+  try{
+    const st=(name,s)=>`${name} ${s.key||"-"} ways=${Array.isArray(s.ways)?s.ways.length:"null"} loading=${!!s.loading}`;
+    lines.push(`表示: 道路${roadLinesVisible?"ON":"OFF"} 線路${railLinesVisible?"ON":"OFF"} 橋${bridgeLinesVisible?"ON":"OFF"} 彗星${cometsVisible?"ON":"OFF"}`);
+    lines.push(st("道路",osmRoadState));lines.push(st("線路",osmRailState));
+    lines.push(`橋 ${osmBridgeState.key||"-"} ways=${Array.isArray(osmBridgeState.ways)?osmBridgeState.ways.length:"null"} status=${osmBridgeState.status}`);
+    lines.push(`彗星 state=${cometLoadState||"-"} n=${cometElements?cometElements.length:0} 失敗=${cometLastError||"なし"}`);
+    lines.push(`静的タイル 完了${staticVectorDoneCount} 失敗${staticVectorFailCount} 待ち${staticVectorFetchQueue.length} 実行中${staticVectorFetchActive} 最後の失敗=${staticVectorLastError?`${staticVectorLastError.at} ${staticVectorLastError.message} ${staticVectorLastError.url}`:"なし"}`);
+    lines.push(`保存索引 ${externalGeoCacheIdIndex?externalGeoCacheIdIndex.size+"件":"未作成"} / 地点 ${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`);
+    const sl=savedLocationsStoreState;
+    lines.push(`撮影計画 ${Array.isArray(savedObservingLocations)?savedObservingLocations.length:"?"}件 読込元=${sl.source||"-"} 保存 IndexedDB=${sl.db===null?"未":(sl.db?"○":"×")} localStorage=${sl.ls===null?"未":(sl.ls?"○":"×")} 大きさ=${Math.round(sl.bytes/1024)}KB / localStorage合計=${(()=>{try{let n=0;for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);n+=(localStorage.getItem(k)||"").length;}return Math.round(n/1024)+"KB";}catch(e){return "?";}})()} / 起動 ${window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches?"ホーム画面":"ブラウザ"}`);
+  }catch(e){lines.push(`状態の読み出しで例外 ${e&&e.message}`);}
   lines.push("─── 地形を作り直した理由（回数の多い順）───");
   for(const [w,n] of Object.entries(actMon.terrainWhyCount).sort((a,b)=>b[1]-a[1]).slice(0,8))lines.push(`×${n} ${w}`);
   const nb=Object.entries(actMon.nullBy).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([k,n])=>`${k}:${n}`).join(" ／ ");
@@ -5951,7 +5965,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="988-walk-sector";
+const APP_VERSION="990-plans-idb";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6177,9 +6191,11 @@ async function loadCometElements(){
       }
     }catch(e2){}
     cometLoadState="failed";
+    cometLastError=String(e&&e.message||e);   /* 【v989】 */
     return null;
   }
 }
+let cometLastError="";
 
 /* 軌道要素と時刻から、太陽を中心にした位置(黄道座標・AU)を出す。 */
 function cometHeliocentric(c,jd){
@@ -7174,6 +7190,7 @@ const el={
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
   actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
+  actMonRoadTestBtn:$("actMonRoadTestBtn"),   /* 【v989】 */
   worldGridBrightness:$("worldGridBrightness"), worldGridBrightnessVal:$("worldGridBrightnessVal"),   /* 【v984】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
   cameraMovePanel:$("cameraMovePanel"), cameraMoveSetFromBtn:$("cameraMoveSetFromBtn"), cameraMoveSetToBtn:$("cameraMoveSetToBtn"),
@@ -12653,6 +12670,20 @@ if(el.actMonCopyBtn)el.actMonCopyBtn.addEventListener("click",()=>{
   actMonCopyText();
 });
 if(el.actMonClipBtn)el.actMonClipBtn.addEventListener("click",()=>{actMonCopyText();});
+/* 【v989】保存を通さず、静的タイルから道路を直接取ってみる。 */
+if(el.actMonRoadTestBtn)el.actMonRoadTestBtn.addEventListener("click",async()=>{
+  const lat=+el.lat.value,lon=+el.lon.value;
+  actMonSetStatus(`道路を取り直し中… (${lat.toFixed(4)},${lon.toFixed(4)})`);
+  const t0=performance.now();
+  try{
+    const ways=await fetchStaticRoadWays(lat,lon,OSM_ROAD_RADIUS_KM);
+    actMonSetStatus(`道路 ${Array.isArray(ways)?ways.length:"?"}本 取れました（${Math.round(performance.now()-t0)}ms）。表示ONなら描き直します`);
+    if(roadLinesVisible&&Array.isArray(ways)){osmRoadState={key:`${lat.toFixed(2)},${lon.toFixed(2)}`,ways,loading:false};drawPhoto._terrainRenderKey=null;update();}
+  }catch(error){
+    actMonSetStatus(`道路の取り直しに失敗: ${String(error&&error.message||error)}（${Math.round(performance.now()-t0)}ms）`);
+  }
+  if(el.actMonReadout){el.actMonReadout.value=actMonReport();}
+});
 if(el.actMonShareBtn)el.actMonShareBtn.addEventListener("click",async()=>{
   const text=el.actMonReadout?el.actMonReadout.value:"";
   if(!text){actMonSetStatus("先に「記録を書き出す」を押してください");return;}
@@ -15637,13 +15668,30 @@ function openPlanPhotoDb(){
   if(planPhotoDbPromise) return planPhotoDbPromise;
   planPhotoDbPromise=new Promise((resolve,reject)=>{
     if(!window.indexedDB){reject(new Error("IndexedDB unavailable"));return;}
-    const request=indexedDB.open(PLAN_PHOTO_DB_NAME,1);
-    request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains("photos"))db.createObjectStore("photos",{keyPath:"id"});};
+    /* 【v990】版2：撮影計画の本体を置く "kv" ストアを足す。 */
+    const request=indexedDB.open(PLAN_PHOTO_DB_NAME,2);
+    request.onupgradeneeded=()=>{const db=request.result;
+      if(!db.objectStoreNames.contains("photos"))db.createObjectStore("photos",{keyPath:"id"});
+      if(!db.objectStoreNames.contains("kv"))db.createObjectStore("kv");
+    };
     request.onsuccess=()=>resolve(request.result);
     request.onerror=()=>reject(request.error||new Error("写真保存領域を開けませんでした"));
   });
   return planPhotoDbPromise;
 }
+/* 【v990】撮影計画の本体（JSON 文字列）を IndexedDB に置く。 */
+async function planKvGet(key){
+  const db=await openPlanPhotoDb();
+  if(!db.objectStoreNames.contains("kv"))throw new Error("kv store missing");
+  return new Promise((resolve,reject)=>{const request=db.transaction("kv","readonly").objectStore("kv").get(key);request.onsuccess=()=>resolve(request.result===undefined?null:request.result);request.onerror=()=>reject(request.error);});
+}
+async function planKvSet(key,value){
+  const db=await openPlanPhotoDb();
+  if(!db.objectStoreNames.contains("kv"))throw new Error("kv store missing");
+  return new Promise((resolve,reject)=>{const tx=db.transaction("kv","readwrite");tx.objectStore("kv").put(value,key);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});
+}
+let savedLocationsStoreState={db:null,ls:null,bytes:0,at:0,source:""};
+let savedLocationsSaveWarned=false;
 async function planPhotoGet(id){
   if(!id) return null;const db=await openPlanPhotoDb();
   return new Promise((resolve,reject)=>{const request=db.transaction("photos","readonly").objectStore("photos").get(id);request.onsuccess=()=>resolve(request.result||null);request.onerror=()=>reject(request.error);});
@@ -16509,14 +16557,42 @@ function renderSavedLocationSelect(selectedId=""){
   if(selectedId) el.savedLocationSelect.value=selectedId;
 }
 async function saveObservingLocations(){
-  await persistentSet(SAVED_LOCATIONS_KEY,JSON.stringify(savedObservingLocations));
+  /* 【v990】写真が IndexedDB にある計画は、サムネイルの data URL を保存文字列から外す（読み込み時に作り直す）。 */
+  const lean=savedObservingLocations.map(location=>{
+    if(location&&location.photoId&&location.photoPreviewDataUrl){const copy={...location};delete copy.photoPreviewDataUrl;return copy;}
+    return location;
+  });
+  const json=JSON.stringify(lean);
+  let okDb=false,okLs=false;
+  try{await planKvSet(SAVED_LOCATIONS_KEY,json);okDb=true;}catch(e){}
+  try{localStorage.setItem(SAVED_LOCATIONS_KEY,json);okLs=true;}
+  catch(e){
+    /* 容量超えなど。IndexedDB に入っていれば、古い localStorage の写しが残らないよう消しておく。 */
+    if(okDb){try{localStorage.removeItem(SAVED_LOCATIONS_KEY);}catch(e2){}}
+  }
+  if(typeof window.storage!=="undefined"){try{await window.storage.set(SAVED_LOCATIONS_KEY,json,false);}catch(e){}}
+  savedLocationsStoreState={db:okDb,ls:okLs,bytes:json.length,at:Date.now(),source:savedLocationsStoreState.source};
+  if(!okDb&&!okLs&&!savedLocationsSaveWarned){
+    savedLocationsSaveWarned=true;
+    try{alert(`撮影計画を端末に保存できませんでした（${Math.round(json.length/1024)}KB）。\nこのまま閉じると消えます。データをエクスポートして控えてください。`);}catch(e){}
+  }
 }
 async function loadSavedLocations(){
+  /* 【v990】IndexedDB → 無ければ localStorage/window.storage（今までの保存）→ IndexedDB へ移す。 */
+  let stored=null,source="";
+  try{stored=await planKvGet(SAVED_LOCATIONS_KEY);if(stored)source="IndexedDB";}catch(e){stored=null;}
+  if(!stored){
+    try{stored=await persistentGet(SAVED_LOCATIONS_KEY);if(stored)source="localStorage";}catch(e){stored=null;}
+  }
   try{
-    const stored=await persistentGet(SAVED_LOCATIONS_KEY);
     savedObservingLocations=stored?JSON.parse(stored):[];
     if(!Array.isArray(savedObservingLocations)) savedObservingLocations=[];
   }catch(e){savedObservingLocations=[];}
+  savedLocationsStoreState.source=source||"なし";
+  if(source==="localStorage"&&savedObservingLocations.length){
+    /* 今までの保存を IndexedDB へ移す。失敗しても localStorage は残るので害はない。 */
+    try{await planKvSet(SAVED_LOCATIONS_KEY,stored);savedLocationsStoreState.db=true;}catch(e){}
+  }
   await repairSavedPlanPhotoLinks();
   renderSavedLocationSelect();
   renderSavedPlansList();
@@ -16524,6 +16600,15 @@ async function loadSavedLocations(){
 async function repairSavedPlanPhotoLinks(){
   let changed=false;
   for(const location of savedObservingLocations){
+    /* 【v990】保存文字列から外したサムネイルを、IndexedDB の写真から作り直す（保存はしない）。 */
+    if(location.photoId&&!location.photoPreviewDataUrl){
+      try{
+        const record=await planPhotoGet(location.photoId);
+        const thumb=planPhotoBlob(record,false);
+        if(thumb)location.photoPreviewDataUrl=await blobToDataUrl(thumb);
+      }catch(e){}
+      continue;
+    }
     if(locationHasPhoto(location))continue;
     const expectedId=`photo_${location.id}`;
     try{
@@ -20875,6 +20960,8 @@ function decodeStaticVectorGeometry(feature){
   return parts;
 }
 function staticVectorTileUrl(z,x,y){return `https://vector.openstreetmap.org/${STATIC_VECTOR_VERSION}/${z}/${x}/${y}.mvt`;}
+/* 【v989】診断用。 */
+let staticVectorLastError=null,staticVectorFailCount=0,staticVectorDoneCount=0;
 function pumpStaticVectorFetchQueue(){
   while(staticVectorFetchActive<6&&staticVectorFetchQueue.length){
     const job=staticVectorFetchQueue.shift();staticVectorFetchActive++;
@@ -20901,8 +20988,12 @@ function pumpStaticVectorFetchQueue(){
           }finally{clearTimeout(timer);}
         }
         if(lastError)throw lastError;
-      }catch(error){job.reject(error);}
-      finally{staticVectorFetchActive--;pumpStaticVectorFetchQueue();}
+      }catch(error){
+        staticVectorLastError={at:new Date().toISOString().slice(11,19),url:job.url,message:String(error&&error.message||error)};   /* 【v989】 */
+        staticVectorFailCount++;
+        job.reject(error);
+      }
+      finally{staticVectorFetchActive--;staticVectorDoneCount++;pumpStaticVectorFetchQueue();}
     })();
   }
 }
