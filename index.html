@@ -2478,9 +2478,10 @@
   .az-guide{
     position:absolute;bottom:calc(var(--sim-inset-y,0px) + 40px);z-index:14;display:none;
     padding:5px 9px;border-radius:14px;background:rgba(8,12,26,.55);border:1px solid rgba(255,255,255,.22);
-    color:rgba(226,232,246,.88);font:700 12px/1 'Inter',sans-serif;letter-spacing:.04em;white-space:nowrap;pointer-events:none;
-    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+    color:rgba(226,232,246,.88);font:700 12px/1 'Inter',sans-serif;letter-spacing:.04em;white-space:nowrap;pointer-events:auto;cursor:pointer;
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);touch-action:manipulation;-webkit-user-select:none;user-select:none;
   }
+  .az-guide:active{background:rgba(232,166,89,.4);}
   /* スティック（器の端から 6px・90px）の内側。器の端が基準（写真の余白ではない）。 */
   .az-guide.left{left:104px;}
   .az-guide.right{right:104px;}
@@ -4970,6 +4971,10 @@
             <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">太陽</p>
             <div class="field"><label class="top">白さ <span class="val mono" id="sunsetSunWhiteVal">100%</span></label><input type="range" id="sunsetSunWhite" min="0" max="100" step="1" value="100"></div>
             <div class="field"><label class="top">大きさ <span class="val mono" id="sunsetSunSizeVal">100%</span></label><input type="range" id="sunsetSunSize" min="50" max="500" step="5" value="100"></div>
+            <!-- 【v993】ズーム追従。 -->
+            <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">ズーム追従</p>
+            <div class="field"><label class="top">基準の焦点距離 <span class="val mono" id="sunsetZoomRefVal">50mm</span></label><input type="range" id="sunsetZoomRef" min="0" max="300" step="5" value="50"></div>
+            <p class="map-hint" style="margin-top:2px;">太陽まわりの光・水面の明るさの範囲・光の道の幅と長さを<b>角度</b>で決めます。この焦点距離のときは今までと同じ見え方で、長いレンズでは比例して大きく・短いレンズでは小さくなります。0 にすると画面の大きさ基準（今までどおり）。</p>
             <p class="map-hint" style="margin-top:6px;">「明るさ」のうち<b>全体の明るさ</b>は足す光、<b>近く／遠くの明るさ</b>は残し具合（100%で素通し、0%で真っ黒）です。太陽まわりの輝きと光の道は、太陽が水平線へ近づくほど弱まり、水平線より下では消えます。</p>
             <p id="sunsetModeReadout" class="map-hint mono" style="margin-top:6px;"></p>
             <!-- 【v932】夕陽の設定の保存・呼び出し。夕焼けにも色々あるので何通りでも持てる。 -->
@@ -6017,7 +6022,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="992-fs-ui2";
+const APP_VERSION="993-sunset-zoom";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7233,6 +7238,7 @@ const el={
   sunsetFrontLit:$("sunsetFrontLit"), sunsetFrontLitVal:$("sunsetFrontLitVal"),
   sunsetSunWhite:$("sunsetSunWhite"), sunsetSunWhiteVal:$("sunsetSunWhiteVal"),
   sunsetSunSize:$("sunsetSunSize"), sunsetSunSizeVal:$("sunsetSunSizeVal"),
+  sunsetZoomRef:$("sunsetZoomRef"), sunsetZoomRefVal:$("sunsetZoomRefVal"),   /* 【v993】 */
   sunsetModeReadout:$("sunsetModeReadout"),
   sunsetPresetName:$("sunsetPresetName"), sunsetPresetSaveBtn:$("sunsetPresetSaveBtn"), sunsetPresetDeleteBtn:$("sunsetPresetDeleteBtn"),
   sunsetPresetSelect:$("sunsetPresetSelect"), sunsetPresetLoadBtn:$("sunsetPresetLoadBtn"), sunsetPresetStatus:$("sunsetPresetStatus"),
@@ -11512,7 +11518,8 @@ const SUNSET_MODE_DEFAULT={strength:94,saturate:400,red:88,yellow:15,vivid:132,c
   waterLift:84,waterBack:37,waterGlow:0,waterFar:100,waterSpread:118,
   rayGlow:300,rayWidth:45,rayLength:400,
   groundNear:63,groundFar:44,groundSpread:88,frontLit:40,
-  sunWhite:100,sunSize:100};
+  sunWhite:100,sunSize:100,
+  zoomRef:50};   /* 【v993】ズーム追従の基準の焦点距離(mm)。0 で画面基準（今までどおり） */
 const sunsetMode={...SUNSET_MODE_DEFAULT};
 /* 既定値を差し替えた版。端末に古い既定が保存されていても、
    版番号が合わない保存は**一度だけ読み飛ばして**新しい既定にする（v935と同じ手）。 */
@@ -11521,7 +11528,7 @@ const SUNSET_MODE_KEYS=["Strength","Saturate","Red","Yellow","Vivid","Contrast",
   "SkyLift","SkyNear","SkyFar","SkyGlow","GlowHue","GlowFade","SkyLinger","HorizonRed","SkySpread",
   "WaterLift","WaterBack","WaterGlow","WaterFar","WaterSpread",
   "RayGlow","RayWidth","RayLength",
-  "GroundNear","GroundFar","GroundSpread","FrontLit","SunWhite","SunSize"];
+  "GroundNear","GroundFar","GroundSpread","FrontLit","SunWhite","SunSize","ZoomRef"];
 function sunsetModeKey(name){return name[0].toLowerCase()+name.slice(1);}
 function readSunsetModeControls(){
   for(const name of SUNSET_MODE_KEYS){
@@ -11535,7 +11542,9 @@ function syncSunsetModeControls(){
   readSunsetModeControls();
   for(const name of SUNSET_MODE_KEYS){
     const out=el["sunset"+name+"Val"];
-    if(out)out.textContent=`${sunsetMode[sunsetModeKey(name)]}%`;
+    if(!out)continue;
+    const v=sunsetMode[sunsetModeKey(name)];
+    out.textContent=name==="ZoomRef"?(v>0?`${v}mm`:"追従しない"):`${v}%`;   /* 【v993】 */
   }
   if(el.sunsetModeBtn){
     el.sunsetModeBtn.classList.toggle("active",sunsetModeOn);
@@ -12137,6 +12146,10 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const sunBehind=aimFade<=.02;
   const sun=(point&&!sunBehind)?{x:point[0],y:point[1]}:{x:cw*.5,y:-diagonal*4};
   const sunRadius=(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
+  /* 【v993】ズーム追従。画面の対角で決めていた半径を、基準の焦点距離との比で伸縮させる＝角度で決めるのと同じ。 */
+  const zoomRef=Number.isFinite(sunsetMode.zoomRef)?sunsetMode.zoomRef:0;
+  const zoomK=(zoomRef>0&&Number.isFinite(s.focalLength))?clamp((s.focalLength*(s.sensor&&s.sensor.crop||1))/zoomRef,.05,60):1;
+  const zoomDiag=diagonal*zoomK;
   /* 【v931】水平線へ近づくほど弱まる。
      【v933】つまみを下げていても水平線では消えるよう、`Math.min` で押さえる。 */
   /* 【v937】向きを掛ける前の値も使う（太陽のにじみの幅）。 */
@@ -12197,7 +12210,7 @@ function applySunsetMode(ctx,s,W,H,toXY){
   }
 
   /* ③ 空。遠くを暗くし、全体を持ち上げ、太陽まわりに光を足す。 */
-  const skyRadius=diagonal*.5*(sunsetMode.skySpread/100);
+  const skyRadius=zoomDiag*.5*(sunsetMode.skySpread/100);   /* 【v993】 */
   sunsetFieldPass(ctx,cw,ch,sun,skyRadius,skyRadius,
     [[0,sunsetGray(sunsetMode.skyNear)],[1,sunsetGray(sunsetMode.skyFar)]],
     skyMask,true,"multiply",weight);
@@ -12233,7 +12246,7 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const backlight=sunsetBacklightFactor(s);
   const frontLit=1-backlight;
   if(groundMask&&groundFade>.002){
-    const groundRadius=diagonal*.5*(sunsetMode.groundSpread/100);
+    const groundRadius=zoomDiag*.5*(sunsetMode.groundSpread/100);   /* 【v993】 */
     const nearValue=100+(sunsetMode.groundNear-100)*backlight;
     const farValue=100+(sunsetMode.groundFar-100)*backlight;
     sunsetFieldPass(ctx,cw,ch,sun,groundRadius,groundRadius,
@@ -12252,7 +12265,7 @@ function applySunsetMode(ctx,s,W,H,toXY){
      【v932】水面マスクは「範囲」なので、その上の橋やKMZの画素も含む。
      明暗の型を掛けて、**明るいところにだけ**光が乗るようにする。 */
   if(waterOk){
-    const waterRadius=diagonal*.5*(sunsetMode.waterSpread/100);
+    const waterRadius=zoomDiag*.5*(sunsetMode.waterSpread/100);   /* 【v993】 */
     sunsetFieldPass(ctx,cw,ch,sun,waterRadius,waterRadius,
       [[0,sunsetGray(100)],[1,sunsetGray(sunsetMode.waterFar)]],
       waterMask,false,"multiply",weight);
@@ -12277,8 +12290,8 @@ function applySunsetMode(ctx,s,W,H,toXY){
     /* 【v933】光の道は、沈むのに合わせて**長さも**短くする。水平線で消える。 */
     if(sunsetMode.rayGlow>0&&horizonFade>.002){
       const ray=clamp(sunsetMode.rayGlow/100,0,3);
-      const rayHalfWidth=Math.max(2,diagonal*.125*(sunsetMode.rayWidth/100));
-      const rayHalfLength=Math.max(4,diagonal*.5*(sunsetMode.rayLength/100)*(.12+.88*horizonFade));
+      const rayHalfWidth=Math.max(2,zoomDiag*.125*(sunsetMode.rayWidth/100));   /* 【v993】 */
+      const rayHalfLength=Math.max(4,zoomDiag*.5*(sunsetMode.rayLength/100)*(.12+.88*horizonFade));
       sunsetFieldPass(ctx,cw,ch,sun,rayHalfWidth,rayHalfLength,
         [[0,rgba(colors.core,1)],[.3,rgba(colors.core,.7)],[.7,rgba(colors.mid,.24)],[1,rgba(colors.edge,0)]],
         waterMask,false,"lighter",weight*horizonFade*glowScale*Math.min(1,ray),brightMask,protect);
@@ -32137,6 +32150,20 @@ function drawPhoto(ctx,s){
 const COMPASS_LABELS = {0:"北",45:"北東",90:"東",135:"南東",180:"南",225:"南西",270:"西",315:"北西"};
 /* 【v992】方位ガイド。画角 [facingAz-fovH/2, facingAz+fovH/2] に 45°刻みの方位が1つも無いときだけ出す。 */
 let azGuideLastText="";
+/* 【v993】ガイドを押すと、その方位へ一気に向く。 */
+function azGuideJump(node){
+  const az=+(node&&node.dataset&&node.dataset.az);
+  if(!Number.isFinite(az))return;
+  if(typeof cameraMoveOverride!=="undefined"&&cameraMoveOverride)return;
+  el.facingAz.value=String(norm360(az));
+  el.facingAz.dispatchEvent(new Event("input",{bubbles:true}));
+}
+for(const id of ["azGuideLeft","azGuideRight"]){
+  const node=document.getElementById(id);
+  if(!node)continue;
+  node.addEventListener("pointerdown",e=>{e.stopPropagation();},{passive:true});
+  node.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();azGuideJump(node);});
+}
 function syncAzGuides(s){
   const left=document.getElementById("azGuideLeft"),right=document.getElementById("azGuideRight");
   if(!left||!right)return;
@@ -32149,6 +32176,7 @@ function syncAzGuides(s){
       const l=((Math.floor(lo/45)*45)%360+360)%360;
       const r=((Math.ceil(hi/45)*45)%360+360)%360;
       text=`←${COMPASS_LABELS[l]}|${COMPASS_LABELS[r]}→`;
+      left.dataset.az=String(l);right.dataset.az=String(r);   /* 【v993】押したときの向き先 */
     }
   }
   if(text===azGuideLastText)return;
