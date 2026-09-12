@@ -6023,7 +6023,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="995-minor-roads";
+const APP_VERSION="996-gl-mesh";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19887,6 +19887,8 @@ try{
       /* 【v976】本線のスイッチ。 */
       glTerrain:(on)=>{glTerrainOn=on!==false;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();return {on:glTerrainOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs,drawMs:glTerrain.lastDrawMs,lost:glTerrain.ctxLostCount};},
       glTerrainCanvas:()=>glTerrain.canvas,
+      /* 【v996】メッシュ版の塗り。false で v976 の多角形の塗り。 */
+      glMesh:(on)=>{glMeshOn=on!==false;drawPhoto._terrainRenderKey=null;update();return {on:glMeshOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs};},
       masks:()=>({fine:drawPhoto._normalFineWaterMaskCanvas,water:drawPhoto._waterSurfaceMaskCanvas,terrain:drawPhoto._terrainLayerCanvas,color:drawPhoto._inlandVectorWaterColorCanvas}),
       terrainRefCanvas:()=>({color:glTerrainX.lastRefColor,mask:glTerrainX.lastRefMask}),
       stageProfileReset:()=>{for(const k of Object.keys(terrainStageProf))terrainStageProf[k]=0;},
@@ -24505,6 +24507,87 @@ function glTerrainBuild(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,p
         runs++;
       }
       runStart=runEnd+1;
+    }
+  }
+  return {data,count:n/GL_STRIDE,runs};
+}
+/* 【v996】メッシュ版の builder。頂点の並びは glTerrainBuild と同じ [x,y,distKm,alt,water]。 */
+let glMeshOn=true;
+function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,projector,bottomY,maxJumpX){
+  let data=glTerrainScratch,n=0,runs=0;
+  const need=(extra)=>{if(n+extra>data.length){let size=data.length*2;while(size<n+extra)size*=2;const bigger=new Float32Array(size);bigger.set(data.subarray(0,n));data=glTerrainScratch=bigger;}};
+  const C=columns.length;
+  if(C<2)return {data,count:0,runs:0};
+  const colSin=new Float64Array(C),colCos=new Float64Array(C);
+  for(let c=0;c<C;c++){colSin[c]=projector.azSin(columns[c].az);colCos[c]=projector.azCos(columns[c].az);}
+  const tmp=[0,0];
+  const P=C-1;   /* 列の対の数 */
+  /* 1巡目：層ごとに run を切り、対 (c,c+1) の稜線（run の端は min に丸める）と投影を控える。
+     Canvas と同じく、alt が全列でひとつ遠い層と同じ層は「無い」ものとして飛ばす。 */
+  const use=new Uint8Array(layerCount);
+  const pxA=new Float32Array(layerCount*P),pyA=new Float32Array(layerCount*P),pxB=new Float32Array(layerCount*P),pyB=new Float32Array(layerCount*P);
+  const ok=new Uint8Array(layerCount*P);
+  const pairWater=new Uint8Array(layerCount*P),pairCloud=new Uint8Array(layerCount*P),pairAlt=new Float32Array(layerCount*P);
+  for(let k=layerCount-1;k>=0;k--){
+    if(k<layerCount-1){
+      let changed=false;
+      for(let c=0;c<C;c++){if(altGrid[c*layerCount+k]!==altGrid[c*layerCount+k+1]){changed=true;break;}}
+      if(!changed)continue;
+    }
+    use[k]=1;
+    const base=k*P;
+    let runStart=0;
+    while(runStart<C){
+      const runWater=waterGrid[runStart*layerCount+k],runCloud=cloudGrid[runStart*layerCount+k];
+      let runEnd=runStart;
+      while(runEnd+1<C&&waterGrid[(runEnd+1)*layerCount+k]===runWater&&cloudGrid[(runEnd+1)*layerCount+k]===runCloud)runEnd++;
+      const ownLastAlt=altGrid[runEnd*layerCount+k];
+      let altSum=0,altCount=0;
+      for(let c=runStart;c<=Math.min(C-1,runEnd+1);c++){
+        const alt=c>runEnd?Math.min(altGrid[c*layerCount+k],ownLastAlt):altGrid[c*layerCount+k];
+        altSum+=alt;altCount++;
+      }
+      const meanAlt=altCount?altSum/altCount:0;
+      for(let c=runStart;c<=runEnd&&c<P;c++){
+        const i=base+c;
+        pairWater[i]=runWater?1:0;pairCloud[i]=runCloud?1:0;pairAlt[i]=meanAlt;
+        const a0=altGrid[c*layerCount+k];
+        const a1=(c+1<=runEnd)?altGrid[(c+1)*layerCount+k]:Math.min(altGrid[(c+1)*layerCount+k],ownLastAlt);
+        let good=1;
+        if(projector.project(colSin[c],colCos[c],a0,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){pxA[i]=tmp[0];pyA[i]=tmp[1];}else good=0;
+        if(good&&projector.project(colSin[c+1],colCos[c+1],a1,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){pxB[i]=tmp[0];pyB[i]=tmp[1];}else good=0;
+        if(good&&Math.abs(pxB[i]-pxA[i])>maxJumpX)good=0;
+        ok[i]=good;
+      }
+      runs++;runStart=runEnd+1;
+    }
+  }
+  /* 2巡目：奥から順に、層 k の稜線（遠）と、ひとつ近い「使う層」の稜線（近）に挟まれた四角形を色 k で。
+     いちばん近い層の下は画面下端まで。 */
+  const put=(x,y,d,a,w)=>{data[n++]=x;data[n++]=y;data[n++]=d;data[n++]=a;data[n++]=w;};
+  const tri=(x1,y1,x2,y2,x3,y3,d,a,w)=>{need(GL_STRIDE*3);put(x1,y1,d,a,w);put(x2,y2,d,a,w);put(x3,y3,d,a,w);};
+  for(let k=layerCount-1;k>=0;k--){
+    if(!use[k])continue;
+    let near=k-1;while(near>=0&&!use[near])near--;
+    const distanceKm=layerKm[k],base=k*P,nbase=near>=0?near*P:-1;
+    for(let c=0;c<P;c++){
+      const i=base+c;
+      if(!ok[i]||pairCloud[i])continue;
+      const w=pairWater[i],a=pairAlt[i];
+      const x1=pxA[i],y1=pyA[i],x2=pxB[i],y2=pyB[i];
+      let x3=x2,y3=bottomY,x4=x1,y4=bottomY;
+      if(nbase>=0&&ok[nbase+c]){x3=pxB[nbase+c];y3=pyB[nbase+c];x4=pxA[nbase+c];y4=pyA[nbase+c];}
+      if(y1===y4&&y2===y3&&x1===x4&&x2===x3)continue;
+      const dl=y4-y1,dr=y3-y2;
+      if(dl*dr<0){
+        const tt=dl/(dl-dr);
+        const xi=x1+(x2-x1)*tt,yi=y1+(y2-y1)*tt;
+        tri(x1,y1,xi,yi,x4,y4,distanceKm,a,w);
+        tri(x2,y2,xi,yi,x3,y3,distanceKm,a,w);
+      }else{
+        tri(x1,y1,x2,y2,x3,y3,distanceKm,a,w);
+        tri(x1,y1,x3,y3,x4,y4,distanceKm,a,w);
+      }
     }
   }
   return {data,count:n/GL_STRIDE,runs};
@@ -30836,12 +30919,12 @@ function drawPhoto(ctx,s){
         /* 【v976】WebGLの道。雲海・メッシュ表示・写真からの選択（pick）のコマは従来どおり。 */
         let glDrawn=false;
         if(glTerrainOn&&!cloudCtx&&!terrainPickCtx&&!meshPath&&glTerrainInit(W,H)){
-          const glKey=terrainGeometryKey+"|gl";
+          const glKey=terrainGeometryKey+"|gl"+(glMeshOn?"m":"");   /* 【v996】 */
           let geom=(sharedTerrainProjectionCache&&sharedTerrainProjectionCache.glGeometry&&sharedTerrainProjectionCache.glGeometry.key===glKey)
             ?sharedTerrainProjectionCache.glGeometry.geom:null;
           if(!geom){
             const gb0=performance.now();
-            geom=glTerrainBuild(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,fastProjector,bottomY,maxJumpX);
+            geom=(glMeshOn?glTerrainBuildMesh:glTerrainBuild)(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,fastProjector,bottomY,maxJumpX);   /* 【v996】 */
             glTerrain.lastBuildMs=performance.now()-gb0;
             if(sharedTerrainProjectionCache)sharedTerrainProjectionCache.glGeometry={key:glKey,geom};
           }
