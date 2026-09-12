@@ -2453,9 +2453,9 @@
   body.fs-sim .plan-quick-actions{top:52px;}
   /* 【v991】焦点距離のバッジを左上（丸アイコンの列の一番上）へ。丸アイコンは44px下げる。 */
   body.fs-sim .photo-canvas-wrap .focal-badge{
-    position:absolute;left:11px;top:7px;z-index:13;
-    display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1;
-    font-size:14px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);
+    position:absolute;left:9px;top:10px;width:36px;z-index:13;
+    display:inline-flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1;
+    font-size:14px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);white-space:nowrap;
   }
   body.fs-sim .photo-canvas-wrap .focal-badge::before{
     content:"焦点距離";display:block;font-family:'Inter',sans-serif;font-size:7px;font-weight:600;
@@ -2464,9 +2464,28 @@
   body.fs-sim .photo-canvas-wrap .focal-badge-unit{font-size:8px;color:rgba(255,255,255,.72);}
   body.fs-sim .photo-canvas-wrap .focal-badge-fisheye-name{font-size:8px;}
   body.fs-sim .photo-canvas-wrap .focal-quick{z-index:330;}
-  body.fs-sim .photo-canvas-wrap .mobile-sky-search-control{top:53px;}
-  body.fs-sim .photo-canvas-wrap .mobile-shot-plan-btn{top:97px;}
-  body.fs-sim .photo-canvas-wrap .mobile-camera-cut-btn{top:141px;}
+  body.fs-sim .photo-canvas-wrap .mobile-sky-search-control{top:60px;}
+  body.fs-sim .photo-canvas-wrap .mobile-shot-plan-btn{top:104px;}
+  body.fs-sim .photo-canvas-wrap .mobile-camera-cut-btn{top:148px;}
+  /* 【v992】時刻の行は1行に。fsBottom では .dt-col の flex が効かないので、ここで並べる。 */
+  .fs-bottom .dt-time-label{
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:nowrap;white-space:nowrap;
+  }
+  .fs-bottom .dt-time-label .val{font-size:14px;}
+  .fs-bottom .dt-time-label-left{flex:0 0 auto;}
+  .fs-bottom .time-range-mode-btn{padding:3px 7px;font-size:10.5px;}
+  /* 【v992】方位ガイド。望遠で画角の中に方位名が無いとき、左右のスティックの内側に出す。 */
+  .az-guide{
+    position:absolute;bottom:calc(var(--sim-inset-y,0px) + 40px);z-index:14;display:none;
+    padding:5px 9px;border-radius:14px;background:rgba(8,12,26,.55);border:1px solid rgba(255,255,255,.22);
+    color:rgba(226,232,246,.88);font:700 12px/1 'Inter',sans-serif;letter-spacing:.04em;white-space:nowrap;pointer-events:none;
+    -webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);
+  }
+  /* スティック（器の端から 6px・90px）の内側。器の端が基準（写真の余白ではない）。 */
+  .az-guide.left{left:104px;}
+  .az-guide.right{right:104px;}
+  .az-guide.show{display:block;}
+  body.ar-active .az-guide,.photo-canvas-wrap.osm-map-open .az-guide{display:none!important;}
   /* 小地図は元から「写真の下端から下へ伸びる」作り。
      全画面のときだけ、残りいっぱい・画面幅いっぱいにする。 */
   body.fs-sim .drone-map-panel{width:100%;left:0;transform:none;border-radius:0;}
@@ -5305,6 +5324,9 @@
                 <div id="highDetailStatusLabel" class="high-detail-status-label" hidden aria-live="polite"></div>
                 <button id="darumaTelephotoBanner" type="button" class="daruma-telephoto-banner" hidden aria-live="polite"></button>
               </div>
+              <!-- 【v992】方位ガイド。望遠で画角の中に方位名が無いとき、左右に最も近い8方位を出す。 -->
+              <span id="azGuideLeft" class="az-guide left" aria-hidden="true"></span>
+              <span id="azGuideRight" class="az-guide right" aria-hidden="true"></span>
               <!-- スマホ縦構図のときだけ出る画面内コントローラー。配置はドローン送信機のMode 2に合わせている。 -->
               <div class="drone-sticks" id="droneSticks">
                 <div class="drone-stick left" id="droneStickLeft" aria-label="上昇下降と旋回">
@@ -5995,7 +6017,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="991-fs-ui";
+const APP_VERSION="992-fs-ui2";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16574,7 +16596,7 @@ function classifyObservedPlace(placeName){
 function savedLocationSort(a,b){
   const ai=PREFECTURE_ORDER.indexOf(a.prefecture),bi=PREFECTURE_ORDER.indexOf(b.prefecture);
   const ap=ai<0?999:ai,bp=bi<0?999:bi;
-  return ap-bp||a.city.localeCompare(b.city,"ja")||a.title.localeCompare(b.title,"ja");
+  return ap-bp||String(a.city||"").localeCompare(String(b.city||""),"ja")||String(a.title||"").localeCompare(String(b.title||""),"ja");   /* 【v992】欠けても落ちない */
 }
 function renderSavedLocationSelect(selectedId=""){
   el.savedLocationSelect.textContent="";
@@ -24493,6 +24515,7 @@ const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fi
 function drawPhoto(ctx,s){
   powerCountFrame();   /* 【v982】実測コマ数 */
   actMon.draw++;   /* 【v983】 */
+  if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
   const W=ctx.canvas.width, H=ctx.canvas.height;
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
     highDetailFallbackPending=true;
@@ -32112,6 +32135,29 @@ function drawPhoto(ctx,s){
    6.5 方位目盛りバー描画 (撮影シミュレーション画像の下、写っている画角と連動)
    ========================================================= */
 const COMPASS_LABELS = {0:"北",45:"北東",90:"東",135:"南東",180:"南",225:"南西",270:"西",315:"北西"};
+/* 【v992】方位ガイド。画角 [facingAz-fovH/2, facingAz+fovH/2] に 45°刻みの方位が1つも無いときだけ出す。 */
+let azGuideLastText="";
+function syncAzGuides(s){
+  const left=document.getElementById("azGuideLeft"),right=document.getElementById("azGuideRight");
+  if(!left||!right)return;
+  let text="";
+  if(s&&Number.isFinite(s.facingAz)&&Number.isFinite(s.fovH)&&s.fovH<90&&!arActive){
+    const half=s.fovH/2,lo=s.facingAz-half,hi=s.facingAz+half;
+    let inside=false;
+    for(let k=Math.ceil(lo/45)*45;k<=hi;k+=45){inside=true;break;}
+    if(!inside){
+      const l=((Math.floor(lo/45)*45)%360+360)%360;
+      const r=((Math.ceil(hi/45)*45)%360+360)%360;
+      text=`←${COMPASS_LABELS[l]}|${COMPASS_LABELS[r]}→`;
+    }
+  }
+  if(text===azGuideLastText)return;
+  azGuideLastText=text;
+  if(!text){left.classList.remove("show");right.classList.remove("show");return;}
+  const [a,b]=text.split("|");
+  left.textContent=a;right.textContent=b;
+  left.classList.add("show");right.classList.add("show");
+}
 function angDiff(a,b){ // aからbへの最短差分(-180〜180)
   let d=(b-a)%360; if(d>180) d-=360; if(d<-180) d+=360; return d;
 }
