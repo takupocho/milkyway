@@ -6034,7 +6034,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1000-water-toggle";
+const APP_VERSION="1001-kmz-ground";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -12137,6 +12137,7 @@ function sunsetGray(percent){
    模型は地形レイヤーに入っていないので、島影（v940）と同じく別に形を取る。
    半透明の面も「形」としては隠したいので、自分を重ねてalphaを持ち上げる。 */
 let sunsetKmzMaskCanvas=null;
+let sunsetWaterCutCanvas=null;   /* 【v1001】水面の型から KMZ を引いたもの */
 function sunsetKmzShapeMask(s,toXY,W,H){
   if(typeof kmzSlots==="undefined"||!Array.isArray(kmzSlots))return null;
   if(!kmzSlots.some(slot=>slot&&slot.visible!==false&&slot.model))return null;
@@ -12229,7 +12230,7 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const guardMask=lumMasks?lumMasks.guard:(protect>.002?sunsetDarkGuardMask(canvas,cw,ch):null);
 
   const terrainMask=drawPhoto._terrainLayerCanvas;
-  const waterMask=drawPhoto._waterSurfaceMaskCanvas;
+  let waterMask=drawPhoto._waterSurfaceMaskCanvas;   /* 【v1001】KMZ があれば下で引いた型に差し替える */
   const terrainOk=!!(terrainMask&&terrainMask.width===cw&&terrainMask.height===ch);
   const waterOk=!!(waterMask&&waterMask.width===cw&&waterMask.height===ch);
   /* 【v940】空のマスクは「地形 ＋ 島影」。
@@ -12250,16 +12251,33 @@ function applySunsetMode(ctx,s,W,H,toXY){
     skyMask=combined;
   }
 
-  /* 地上だけのマスク（地形 － 水面）。水面はこのあと別に輝かせるので抜いておく。 */
+  /* 【v1001】KMZ 模型は「地上」として扱う。
+     地形の型に入っていないので、水平線より上の屋根は ① の橙が最後まで戻されず、
+     堀や海の上に重なる壁は水面として扱われて橙の帯が残っていた（姫路城）。
+     水面の型からは KMZ を引く（水面の映り込みの段は "reflection" なので型に入らず、そのまま水面）。 */
+  if(kmzMask&&waterOk){
+    const cut=sunsetWaterCutCanvas=sunsetCanvas(sunsetWaterCutCanvas,cw,ch);
+    const cutCtx=sunsetResetContext(cut);
+    cutCtx.drawImage(waterMask,0,0,cw,ch);
+    cutCtx.globalCompositeOperation="destination-out";
+    cutCtx.drawImage(kmzMask,0,0,cw,ch);
+    cutCtx.globalCompositeOperation="source-over";
+    waterMask=cut;
+  }
+
+  /* 地上だけのマスク（地形 － 水面 ＋ KMZ）。水面はこのあと別に輝かせるので抜いておく。 */
   let groundMask=null;
-  if(terrainOk){
-    if(waterOk){
+  if(terrainOk||kmzMask){
+    if(waterOk||kmzMask){
       const built=sunsetMaskCanvas=sunsetCanvas(sunsetMaskCanvas,cw,ch);
       const builtCtx=sunsetResetContext(built);
-      builtCtx.drawImage(terrainMask,0,0,cw,ch);
-      builtCtx.globalCompositeOperation="destination-out";
-      builtCtx.drawImage(waterMask,0,0,cw,ch);
-      builtCtx.globalCompositeOperation="source-over";
+      if(terrainOk)builtCtx.drawImage(terrainMask,0,0,cw,ch);
+      if(waterOk){
+        builtCtx.globalCompositeOperation="destination-out";
+        builtCtx.drawImage(waterMask,0,0,cw,ch);
+        builtCtx.globalCompositeOperation="source-over";
+      }
+      if(kmzMask)builtCtx.drawImage(kmzMask,0,0,cw,ch);   /* 【v1001】 */
       groundMask=built;
     }else groundMask=terrainMask;
   }
