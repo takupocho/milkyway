@@ -5699,6 +5699,7 @@
               <li>天の川の実写: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">ESO/S. Brunier</a> ・ <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>（投影して使用）</li>
               <li>衛星写真テクスチャ: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院（全国最新写真〈シームレス〉）</a>・予備 Esri World Imagery</li>
               <li>地形・標高: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院</a>（標高タイルを加工して作成）</li>
+              <li>水域の面: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院ベクトルタイル</a>（水域面を加工して作成）</li>
               <li>水域・道路・線路・橋・地図: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>（ODbL・Shortbread静的ベクトルタイル）</li>
               <li>航空写真: Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community</li>
             </ul>
@@ -6034,7 +6035,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1002-fisheye-sel814g";
+const APP_VERSION="1003-gsi-vector-water";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19072,15 +19073,73 @@ function worldMapDecodeTile(pixels){
   }
   return out;
 }
+/* 【v1003】水面の元：国土地理院ベクトルタイル（experimental_bvmap, z4〜16）の waterarea 面。
+   淡色地図の水色の画素は、橋の絵や注記の文字のところが水色でなく「陸」になっていた
+   （橋に近づくと川が陸になる・川や海に地名の形の陸が出る）。面のデータなら穴が開かない。
+   海も面で入っている（沖合のタイルにも面がある）。同じ CDN・同じ CORS。
+   z17 の段は z16 のタイルの該当 1/4 を 2倍で塗る（細かさは z16 の 2m/px のまま）。 */
+let worldMapSource=(()=>{try{return new URLSearchParams(location.search).get("watersrc")==="pale"?"pale":"vector";}catch(e){return "vector";}})();   /* "vector"（既定）／"pale"（v1002 までの淡色地図。?watersrc=pale で比較用） */
+const WORLD_MAP_VECTOR_MAX_Z=16;
+const worldMapVectorTileCache=new Map();   /* "z/x/y" -> Promise<layers|null> */
+let worldMapRasterCanvas=null;
+function worldMapVectorTileUrl(z,x,y){return `https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/${z}/${x}/${y}.pbf`;}
+function worldMapFetchVectorTile(z,x,y){
+  const key=`${z}/${x}/${y}`;
+  if(worldMapVectorTileCache.has(key))return worldMapVectorTileCache.get(key);
+  const promise=fetch(worldMapVectorTileUrl(z,x,y),{mode:"cors",cache:"force-cache"})
+    .then(r=>{ if(r.status===404||r.status===204) return null; if(!r.ok) throw new Error(`bvmap ${r.status}`); return r.arrayBuffer(); })
+    .then(buffer=>buffer?(buffer.byteLength?parseStaticVectorTile(buffer):new Map()):null)
+    .catch(error=>{worldMapVectorTileCache.delete(key);throw error;});
+  worldMapVectorTileCache.set(key,promise);
+  while(worldMapVectorTileCache.size>160)worldMapVectorTileCache.delete(worldMapVectorTileCache.keys().next().value);
+  return promise;
+}
+/* waterarea の面を 256×256 に塗って、今までと同じ Uint8Array（水=1）にする。
+   MVT の面は外側が時計回り・穴が反時計回りなので nonzero で塗れば穴が抜ける。 */
+function worldMapRasterizeWater(layers,z,x,y,srcZ){
+  const out=new Uint8Array(256*256);
+  const layer=layers&&layers.get("waterarea");
+  if(!layer||!layer.features||!layer.features.length)return out;
+  const canvas=worldMapRasterCanvas||(worldMapRasterCanvas=document.createElement("canvas"));
+  if(canvas.width!==256||canvas.height!==256){canvas.width=256;canvas.height=256;}
+  const c=canvas.getContext("2d",{willReadFrequently:true});
+  c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,256,256);
+  const extent=layer.extent||4096,shift=z-srcZ,mult=2**shift,scale=256*mult/extent;
+  const qx=x-((x>>shift)<<shift),qy=y-((y>>shift)<<shift);
+  c.setTransform(scale,0,0,scale,-qx*256,-qy*256);
+  c.fillStyle="#fff";
+  c.beginPath();
+  let any=false;
+  for(const feature of layer.features){
+    if(feature.type!==3)continue;
+    for(const ring of decodeStaticVectorGeometry(feature)){
+      if(ring.length<3)continue;
+      c.moveTo(ring[0][0],ring[0][1]);
+      for(let i=1;i<ring.length;i++)c.lineTo(ring[i][0],ring[i][1]);
+      c.closePath();any=true;
+    }
+  }
+  if(!any)return out;
+  c.fill("nonzero");
+  c.setTransform(1,0,0,1,0,0);
+  const d=c.getImageData(0,0,256,256).data;
+  for(let i=0,q=3;i<out.length;i++,q+=4)if(d[q]>=128)out[i]=1;
+  return out;
+}
 function worldMapRequestTile(z,x,y){
   const level=worldMapLevelMap(z),key=worldTileKey(x,y);
   if(level.has(key)) return;
   level.set(key,"loading");
   worldMapPending++;
-  fetch(`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,{mode:"cors",cache:"force-cache"})
-    .then(r=>{ if(!r.ok) throw new Error(`map ${r.status}`); return r.blob(); })
-    .then(imageBlobToPixels)
-    .then(pixels=>{ level.set(key,pixels?worldMapDecodeTile(pixels):null);worldMapMemo.delete(z);worldMapTiles++; })
+  const job=worldMapSource==="vector"
+    ?(()=>{const srcZ=Math.min(z,WORLD_MAP_VECTOR_MAX_Z),shift=z-srcZ;
+        return worldMapFetchVectorTile(srcZ,x>>shift,y>>shift).then(layers=>layers?worldMapRasterizeWater(layers,z,x,y,srcZ):null);})()
+    :fetch(`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,{mode:"cors",cache:"force-cache"})
+      .then(r=>{ if(!r.ok) throw new Error(`map ${r.status}`); return r.blob(); })
+      .then(imageBlobToPixels)
+      .then(pixels=>pixels?worldMapDecodeTile(pixels):null);
+  job
+    .then(tile=>{ level.set(key,tile);worldMapMemo.delete(z);if(tile)worldMapTiles++; })
     .catch(()=>{ level.set(key,null); })
     .finally(()=>{
       worldMapPending--;
@@ -19974,6 +20033,8 @@ try{
       /* 【v976】本線のスイッチ。 */
       glTerrain:(on)=>{glTerrainOn=on!==false;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();return {on:glTerrainOn,count:glTerrain.geomCount,buildMs:glTerrain.lastBuildMs,drawMs:glTerrain.lastDrawMs,lost:glTerrain.ctxLostCount};},
       glTerrainCanvas:()=>glTerrain.canvas,
+      /* 【v1003】水面の元（?watersrc=pale で淡色地図に戻して比べる）。 */
+      worldMapSource:()=>({source:worldMapSource,tiles:worldMapTiles,pending:worldMapPending,vectorTiles:worldMapVectorTileCache.size}),
       /* 【v997】衛星写真テクスチャ。 */
       photoTex:(on)=>{photoTextureOn=on!==false;if(photoTextureOn&&!glTerrainOn){glTerrainOn=true;syncGlTerrainControls();}drawPhoto._terrainRenderKey=null;syncDisplayPopupControls();update();return photoTextureOn;},
       photoTexState:()=>({on:photoTextureOn,key:photoAtlas.key,version:photoAtlas.version,fetched:photoAtlas.fetched,fromCache:photoAtlas.fromCache,failed:photoAtlas.failed,levels:photoAtlas.levels.map(l=>({z:l.z,ready:l.ready,tile:l.tileKey,building:l.building}))}),
