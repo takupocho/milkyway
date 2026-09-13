@@ -1641,6 +1641,17 @@
   .drone-map-btn.active{background:var(--core-amber);color:#1c1120;border-color:var(--core-amber);}
   /* 距離ボタンを地図切替アイコンの上に置く。 */
   .drone-map-layer-btn{right:8px;top:8px;}
+  /* 【v1008】現在地を追うボタン（地図切替の下）と、現在地からの距離。 */
+  .drone-map-track-btn{right:8px;top:44px;}
+  .drone-map-track-readout{position:absolute;left:8px;bottom:8px;z-index:600;max-width:calc(100% - 60px);padding:4px 7px;border-radius:6px;
+    background:rgba(16,20,42,.86);color:#fff;font:600 10px/1.35 'IBM Plex Mono',monospace;white-space:pre-line;pointer-events:none;}
+  .drone-map-track-readout:empty{display:none;}
+  .geo-track-icon{background:transparent;border:0;}
+  .geo-track-dot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.45),0 2px 6px rgba(0,0,0,.5);}
+  .osm-track-readout{position:absolute;left:50%;top:44px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);z-index:1000;
+    padding:5px 8px;border-radius:5px;background:rgba(16,20,42,.86);color:#fff;font:600 10.5px/1.4 'IBM Plex Mono',monospace;white-space:pre-line;text-align:center;cursor:pointer;}
+  .osm-track-readout:empty{display:none;}
+  .osm-map-actions button.tracking{border-color:#7fc8ff;color:#bfe5ff;box-shadow:0 0 0 2px rgba(127,200,255,.25);}
   /* 計測中の終了ボタンと距離表示。地図の上に重ねる。 */
   .drone-measure-end-btn{
     position:absolute;z-index:601;left:50%;transform:translateX(-50%);top:8px;
@@ -5477,6 +5488,7 @@
                   <div id="osmGoogleImportStatus" class="osm-import-status" aria-live="polite"></div>
                 </div>
                 </div>
+                <div id="osmTrackReadout" class="osm-track-readout" aria-live="polite" title="押すと現在地へ"></div>
                 <button id="osmMapCoordinate" type="button" class="osm-map-coordinate" aria-label="選択地点の緯度と経度をコピー" title="タップして緯度・経度をコピー"></button>
               </div>
               <!-- v663: 地図モードの6つのボタンは、地図パネルの中ではなく器の右端に置く。
@@ -5488,6 +5500,10 @@
                 </button>
                 <button id="osmLocateBtn" type="button" class="map-help" data-help="現在地を自動取得" aria-label="現在地へ移動" data-tooltip="現在地" title="現在地">
                   <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="9" fill="rgba(255,255,255,.72)"/><circle cx="16" cy="16" r="5.2" fill="#3432a6" stroke="#fff" stroke-width="2"/></svg>
+                </button>
+                <!-- 【v1008】現在地を追う（ON/OFF）。 -->
+                <button id="osmTrackBtn" type="button" class="map-help" data-help="現在地を追う（青い点と、撮影位置までの距離）" aria-label="現在地を追う" aria-pressed="false" data-tooltip="現在地を追う" title="現在地を追う（青い点と、撮影位置までの距離）">
+                  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="8.5" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="16" r="3.2" fill="currentColor"/><path d="M16 3.5v5M16 23.5v5M3.5 16h5M23.5 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
                 <button id="osmApplyBtn" type="button" class="primary map-help has-dash-ring" data-help="観測地点への設定" aria-label="選択した位置を観測地点に設定" data-tooltip="この場所に設定" title="この場所に設定">
                   <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M5 10.5 11 8l8 2.5 8-3v15l-8 3-8-2.5-6 2.5v-15Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M11 8.3v14.4M19 10.8v14.4" stroke="currentColor" stroke-width="1.4"/><path d="M15 7a4 4 0 1 1 8 0c0 3-4 7-4 7s-4-4-4-7Z" fill="currentColor" stroke="#fff" stroke-width="1.1"/><circle cx="19" cy="7" r="1.6" fill="#10142a"/></svg>
@@ -5761,6 +5777,9 @@
               </button>
               <div id="droneMapPanel" class="drone-map-panel" aria-label="現在地と撮影方位の小地図">
                 <div id="droneMap" class="drone-map"></div>
+                <!-- 【v1008】現在地を追う。ON のあいだ青い点と、撮影位置までの距離が出る。 -->
+                <button id="droneMapTrackBtn" type="button" class="drone-map-btn drone-map-track-btn" aria-pressed="false" aria-label="現在地を追う" title="現在地を追う（青い点）"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="8.5" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="16" r="3.2" fill="currentColor"/><path d="M16 3.5v5M16 23.5v5M3.5 16h5M23.5 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+                <div id="droneMapTrackReadout" class="drone-map-track-readout" aria-live="polite"></div>
                 <button id="droneMapLayerBtn" type="button" class="drone-map-btn drone-map-layer-btn" aria-pressed="false" aria-label="衛星画像に切り替える" title="地図／衛星画像切替"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg></button>
               </div>
             </div>
@@ -6112,7 +6131,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1007-fav-places";
+const APP_VERSION="1008-geo-track";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7265,6 +7284,7 @@ const el={
   simInfoPanel:$("simInfoPanel"), popupInfoBtn:$("popupInfoBtn"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"), osmPlaceSuggest:$("osmPlaceSuggest"),
+  droneMapTrackBtn:$("droneMapTrackBtn"), droneMapTrackReadout:$("droneMapTrackReadout"), osmTrackBtn:$("osmTrackBtn"), osmTrackReadout:$("osmTrackReadout"),   /* 【v1008】 */
   favPlacesBtn:$("favPlacesBtn"), favPlacesOverlay:$("favPlacesOverlay"), favPlacesCloseBtn:$("favPlacesCloseBtn"), favEditBox:$("favEditBox"), favEditCoord:$("favEditCoord"), favEditName:$("favEditName"), favEditKindRow:$("favEditKindRow"), favEditDeleteBtn:$("favEditDeleteBtn"), favEditSaveBtn:$("favEditSaveBtn"), favEditStatus:$("favEditStatus"), favCount:$("favCount"), favFilterRow:$("favFilterRow"), favSearch:$("favSearch"), favList:$("favList"),   /* 【v1007】 */
   lightPollutionToggleBtn:$("lightPollutionToggleBtn"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
@@ -8893,6 +8913,12 @@ function ensureDroneMap(){
     scheduleSaveSettings();
   });
   droneMapMarker=L.circleMarker([lat,lon],{radius:4.5,color:"#ffffff",weight:2,fillColor:"#ff4f9a",fillOpacity:1,interactive:false}).addTo(droneMapInstance);
+  /* 【v1008】登録地点と現在地。 */
+  droneMapInstance.on("popupopen",e=>{
+    const node=e.popup&&e.popup.getElement&&e.popup.getElement();if(!node)return;
+    node.querySelectorAll('.fav-popup button[data-act="mini-go"]').forEach(btn=>btn.addEventListener("click",()=>favMiniGo(btn.closest(".fav-popup").dataset.id)));
+  });
+  try{favRefreshMiniMarkers();geoTrackRender();}catch(e){}   /* 起動直後は宣言前（TDZ）のことがある */
   return droneMapInstance;
 }
 function syncDroneMap(currentState=state){
@@ -8915,6 +8941,7 @@ function syncDroneMap(currentState=state){
     droneMapProgrammatic=false;
   }
   droneMapMarker.setLatLng([lat,lon]);
+  if(typeof geoTrackRender==="function"&&geoTrackOn)geoTrackRender();   /* 【v1008】撮影位置が変わったので距離も */
   // 扇形は画面上の見た目の大きさを一定に保ちたいので、画素で決めた半径をメートルへ直す。
   const size=map.getSize();
   if(!size.x||!size.y) return;
@@ -8967,6 +8994,83 @@ function refreshDroneMapSize(delayMs=60){
 }
 /* 小地図の出し入れ（v657）。ドローンモードとは切り離し、いつでも使える。 */
 let droneMapOpen=false;
+/* =========================================================
+   【v1008】現在地を追う（大きい地図・小地図の両方）
+   ========================================================= */
+let geoTrackOn=false,geoTrackWatchId=null,geoTrackPos=null,geoTrackError="",geoTrackCentered=false;
+let geoTrackBig={dot:null,ring:null},geoTrackMini={dot:null,ring:null};
+function geoTrackIcon(){return L.divIcon({className:"geo-track-icon",html:'<div class="geo-track-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]});}
+function geoTrackSet(on,{silent=false}={}){
+  on=!!on;
+  if(on&&!navigator.geolocation){if(!silent)alert("この環境では位置情報を取得できません。");on=false;}
+  geoTrackOn=on;
+  if(geoTrackWatchId!==null){try{navigator.geolocation.clearWatch(geoTrackWatchId);}catch(e){}geoTrackWatchId=null;}
+  if(on){
+    geoTrackCentered=false;geoTrackError="";
+    geoTrackWatchId=navigator.geolocation.watchPosition(pos=>{
+      geoTrackPos={lat:pos.coords.latitude,lon:pos.coords.longitude,acc:pos.coords.accuracy,at:Date.now()};
+      geoTrackError="";
+      geoTrackRender();
+    },err=>{
+      geoTrackError=err&&err.code===1?"位置情報が許可されていません":"現在地を取得できません";
+      geoTrackRender();
+    },{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+  }else{
+    geoTrackPos=null;geoTrackError="";
+  }
+  geoTrackSyncButtons();
+  geoTrackRender();
+  if(!silent)scheduleSaveSettings();
+}
+function geoTrackSyncButtons(){
+  if(el.osmTrackBtn){el.osmTrackBtn.classList.toggle("tracking",geoTrackOn);el.osmTrackBtn.setAttribute("aria-pressed",String(geoTrackOn));el.osmTrackBtn.setAttribute("aria-label",geoTrackOn?"現在地の追従を止める":"現在地を追う");}
+  if(el.droneMapTrackBtn){el.droneMapTrackBtn.classList.toggle("active",geoTrackOn);el.droneMapTrackBtn.setAttribute("aria-pressed",String(geoTrackOn));}
+}
+function geoTrackFormat(km){return km<1?`${Math.round(km*1000)}m`:(km<10?`${km.toFixed(2)}km`:`${km.toFixed(1)}km`);}
+function geoTrackDir(bearing){const names=["北","北北東","北東","東北東","東","東南東","南東","南南東","南","南南西","南西","西南西","西","西北西","北西","北北西"];return names[Math.round(norm360(bearing)/22.5)%16];}
+function geoTrackText(withPin){
+  if(!geoTrackOn)return "";
+  try{osmCandidateLat;}catch(e){return "";}   /* TDZ */
+  if(geoTrackError)return geoTrackError;
+  if(!geoTrackPos)return "現在地を取得中…";
+  const lines=[];
+  const lat0=+el.lat.value,lon0=+el.lon.value;
+  if(Number.isFinite(lat0)&&Number.isFinite(lon0)){
+    const r=terrainDistanceAndBearing(geoTrackPos.lat,geoTrackPos.lon,lat0,lon0);
+    lines.push(`現在地 → 撮影位置 ${geoTrackFormat(r.distanceKm)}（${geoTrackDir(r.bearing)}）`);
+  }
+  if(withPin&&Number.isFinite(osmCandidateLat)&&Number.isFinite(osmCandidateLon)&&(Math.abs(osmCandidateLat-lat0)>1e-5||Math.abs(osmCandidateLon-lon0)>1e-5)){
+    const r=terrainDistanceAndBearing(geoTrackPos.lat,geoTrackPos.lon,osmCandidateLat,osmCandidateLon);
+    lines.push(`現在地 → ピン ${geoTrackFormat(r.distanceKm)}（${geoTrackDir(r.bearing)}）`);
+  }
+  if(Number.isFinite(geoTrackPos.acc))lines.push(`精度 ±${Math.round(geoTrackPos.acc)}m`);
+  return lines.join("\n");
+}
+function geoTrackPlace(map,store){
+  if(!map||typeof window.L==="undefined")return;
+  if(!geoTrackOn||!geoTrackPos){
+    if(store.dot){map.removeLayer(store.dot);store.dot=null;}
+    if(store.ring){map.removeLayer(store.ring);store.ring=null;}
+    return;
+  }
+  const ll=[geoTrackPos.lat,geoTrackPos.lon],acc=Number.isFinite(geoTrackPos.acc)?Math.min(2000,geoTrackPos.acc):0;
+  if(!store.ring)store.ring=L.circle(ll,{radius:acc,color:"#1a73e8",weight:1,fillColor:"#1a73e8",fillOpacity:.12,interactive:false}).addTo(map);
+  else{store.ring.setLatLng(ll);store.ring.setRadius(acc);}
+  if(!store.dot)store.dot=L.marker(ll,{icon:geoTrackIcon(),interactive:false,keyboard:false,zIndexOffset:950}).addTo(map);
+  else store.dot.setLatLng(ll);
+}
+function geoTrackRender(){
+  if(typeof osmMapInstance!=="undefined"&&osmMapInstance){
+    geoTrackPlace(osmMapInstance,geoTrackBig);
+    if(geoTrackOn&&geoTrackPos&&!geoTrackCentered&&osmMapScreenOpen){geoTrackCentered=true;osmMapInstance.setView([geoTrackPos.lat,geoTrackPos.lon],Math.max(14,osmMapInstance.getZoom()));}
+  }
+  if(typeof droneMapInstance!=="undefined"&&droneMapInstance)geoTrackPlace(droneMapInstance,geoTrackMini);
+  if(el.osmTrackReadout)el.osmTrackReadout.textContent=geoTrackText(true);
+  if(el.droneMapTrackReadout)el.droneMapTrackReadout.textContent=geoTrackText(false);
+}
+if(el.osmTrackBtn)el.osmTrackBtn.addEventListener("click",()=>{geoTrackCentered=false;geoTrackSet(!geoTrackOn);});
+if(el.droneMapTrackBtn)el.droneMapTrackBtn.addEventListener("click",()=>geoTrackSet(!geoTrackOn));
+if(el.osmTrackReadout)el.osmTrackReadout.addEventListener("click",()=>{if(geoTrackPos&&osmMapInstance)osmMapInstance.setView([geoTrackPos.lat,geoTrackPos.lon],Math.max(15,osmMapInstance.getZoom()));});
 function syncDroneMapPanel(){
   document.body.classList.toggle("drone-map-open",droneMapOpen);
   if(!el.droneMapTabBtn) return;
@@ -9299,6 +9403,7 @@ function setOsmCandidate(lat,lon,moveMap=false){
   updateOsmCoordinateLabel();
   updateOsmFovOverlay();
   syncOsmApplyHighlight();
+  if(typeof geoTrackRender==="function"&&geoTrackOn)geoTrackRender();   /* 【v1008】ピンまでの距離 */
 }
 function destinationLatLng(lat,lon,bearing,distanceMeters){
   const earthRadius=6371008.8;
@@ -9509,6 +9614,7 @@ function initOsmMap(){
   osmMapInstance.on("zoomend",updateOsmFovOverlay);
   setOsmCandidate(lat,lon);
   favRefreshMarkers();   /* 【v1007】 */
+  geoTrackRender();      /* 【v1008】 */
   return true;
 }
 /* =========================================================
@@ -9522,6 +9628,8 @@ let favPlacesLoaded=false;
 let favKindVisible={shoot:true,parking:true,interest:true};
 let favMarkerLayer=null;          /* L.layerGroup */
 const favMarkers=new Map();       /* id -> L.marker */
+let favMiniLayer=null;            /* 【v1008】小地図 */
+const favMiniMarkers=new Map();
 let favEditing=null;              /* 編集中 {id} または {lat,lon}（新規） */
 let favEditKind="shoot";
 let favPlacesRemovedPlanIds=[];   /* 消した「計画から来た地点」の planId。復活させない */
@@ -9601,6 +9709,32 @@ function favRefreshMarkers(){
     }
   }
   for(const [id,marker] of favMarkers){if(!seen.has(id)){favMarkerLayer.removeLayer(marker);favMarkers.delete(id);}}
+  favRefreshMiniMarkers();
+}
+/* 【v1008】小地図。押すと名前と「ここを撮影位置に」。小地図は「中心＝撮影位置」なので、中心を動かして確定させる。 */
+function favRefreshMiniMarkers(){
+  if(typeof droneMapInstance==="undefined"||!droneMapInstance||typeof window.L==="undefined")return;
+  if(!favMiniLayer)favMiniLayer=L.layerGroup().addTo(droneMapInstance);
+  const seen=new Set();
+  for(const place of favPlaces){
+    if(!favKindVisible[favKindOf(place.kind)])continue;
+    seen.add(place.id);
+    let marker=favMiniMarkers.get(place.id);
+    if(!marker){
+      marker=L.marker([place.lat,place.lon],{icon:favMarkerIcon(place.kind),keyboard:false});
+      marker.bindPopup(()=>{const p=favPlaces.find(x=>x.id===place.id)||place;const k=FAV_KINDS[favKindOf(p.kind)];
+        return `<div class="fav-popup" data-id="${p.id}"><div class="fav-popup-name">${escapeHtml(p.name||"（名前なし）")}</div><div class="fav-popup-kind">${k.emoji} ${k.label}</div><div class="fav-popup-btns"><button type="button" class="primary" data-act="mini-go">ここを撮影位置に</button></div></div>`;},
+        {closeButton:true,autoPan:false});
+      marker.addTo(favMiniLayer);favMiniMarkers.set(place.id,marker);
+    }else{marker.setLatLng([place.lat,place.lon]);marker.setIcon(favMarkerIcon(place.kind));}
+  }
+  for(const [id,marker] of favMiniMarkers){if(!seen.has(id)){favMiniLayer.removeLayer(marker);favMiniMarkers.delete(id);}}
+}
+function favMiniGo(id){
+  const place=favPlaces.find(p=>p.id===id);if(!place||!droneMapInstance)return;
+  droneMapInstance.closePopup();
+  el.lat.value=place.lat.toFixed(6);el.lon.value=place.lon.toFixed(6);el.citySelect.value=0;droneMapKey="";
+  update();scheduleSaveSettings();
 }
 async function favPopupAction(id,act){
   const place=favPlaces.find(p=>p.id===id);if(!place)return;
@@ -16400,6 +16534,7 @@ function collectPersistedSettings(){
     controllerVisible:droneModeOn,   // v696: 旧droneModeOnと別の名前にして、既定ONへ切り替える
     droneModeOn:droneModeOn,
     droneMapOpen:droneMapOpen,
+    geoTrackOn:geoTrackOn,   /* 【v1008】 */
     skylineOpacity:el.skylineOpacitySlider.value,
     showBelowHorizon:showBelowHorizon,
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
@@ -16604,6 +16739,7 @@ async function loadPersistedSettings(){
        コントローラーは既定で出す方針に変えたので、新しい項目だけを見る。 */
     droneModeOn=("controllerVisible" in s)?!!s.controllerVisible:true;
     droneMapOpen=!!s.droneMapOpen;
+    if(s.geoTrackOn&&!geoTrackOn)setTimeout(()=>geoTrackSet(true,{silent:true}),1500);   /* 【v1008】現場で開き直しても続く */
     if(typeof syncDroneModeButton==="function") syncDroneModeButton();
     if(typeof refreshDroneMapSize==="function") refreshDroneMapSize();
     setSimAddressLabel();
