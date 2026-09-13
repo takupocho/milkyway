@@ -6035,7 +6035,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1003-gsi-vector-water";
+const APP_VERSION="1004-az-wrap";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8289,6 +8289,14 @@ let aimControlDragging=false;
 });
 [el.focalLength,el.facingAz,el.facingAlt]
   .forEach(inp=>inp.addEventListener("input",scheduleCameraViewUpdate));
+/* 【v1004】方位スライダーの矢印キーは端（0°／359°）で止まるのがブラウザの既定。端では一周させる。 */
+el.facingAz.addEventListener("keydown",e=>{
+  const right=e.key==="ArrowRight"||e.key==="ArrowUp",left=e.key==="ArrowLeft"||e.key==="ArrowDown";
+  if(!right&&!left)return;
+  const value=+el.facingAz.value,step=Math.max(1,+el.facingAz.step||1);
+  if(right&&value>=359-step+1){e.preventDefault();el.facingAz.value=String(norm360(value+step));el.facingAz.dispatchEvent(new Event("input",{bubbles:true}));}
+  else if(left&&value<=step-1){e.preventDefault();el.facingAz.value=String(norm360(value-step));el.facingAz.dispatchEvent(new Event("input",{bubbles:true}));}
+});
 /* ツマを動かしたら、位置をmmへ直して隠し入力へ入れ、
    従来どおり el.focalLength の input を発火させる。 */
 el.focalRange.addEventListener("input",()=>{
