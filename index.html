@@ -2632,6 +2632,14 @@
   }
   .osm-import-buttons button.primary{border-color:#7fc8ff;color:#d9efff;}
   .osm-import-status{min-height:17px;margin-top:7px;font:600 10.5px/1.5 'Inter',sans-serif;color:#f3c47d;}
+  /* 【v1005】検索候補 */
+  .osm-place-suggest{list-style:none;margin:6px 0 0;padding:0;border:1px solid rgba(127,200,255,.45);border-radius:8px;background:rgba(255,255,255,.06);max-height:220px;overflow:auto;}
+  .osm-place-suggest li{display:flex;flex-direction:column;gap:2px;padding:7px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.08);}
+  .osm-place-suggest li:last-child{border-bottom:0;}
+  .osm-place-suggest li:hover,.osm-place-suggest li.active{background:rgba(127,200,255,.18);}
+  .osm-place-suggest .name{font:700 12.5px/1.3 'Inter',sans-serif;color:#fff;}
+  .osm-place-suggest .sub{font:500 10.5px/1.3 'Inter',sans-serif;color:rgba(255,255,255,.65);}
+  .osm-place-suggest li.hint{cursor:default;color:rgba(255,255,255,.6);font:500 10.5px/1.4 'Inter',sans-serif;}
   #lightPollutionToggleBtn.layer-active{border-color:#7fc8ff;color:#bfe5ff;}
   /* v663: 地図の下ではなく、上部の真ん中に出す。 */
   .osm-map-coordinate{
@@ -5424,9 +5432,11 @@
                 <div id="mapMeasureReadout" class="map-measure-readout" aria-live="polite"></div>
                 <div id="osmGoogleImportOverlay" class="osm-import-overlay" aria-hidden="true">
                 <div id="osmGoogleImportPanel" class="osm-import-panel" role="dialog" aria-modal="true" aria-labelledby="osmImportTitle">
-                  <div id="osmImportTitle" class="osm-import-title">Googleマップの場所を読み込む</div>
-                  <div class="osm-import-help">Googleマップの「共有→リンクをコピー」で取得した文章・URL、または緯度と経度を貼り付けてください。</div>
-                  <textarea id="osmGoogleImportInput" class="osm-import-input" inputmode="url" placeholder="例：https://www.google.com/maps/@35.12345,134.56789,15z&#10;または 35.12345, 134.56789"></textarea>
+                  <div id="osmImportTitle" class="osm-import-title">場所を検索・読み込む</div>
+                  <div class="osm-import-help">地名・施設名（例：姫路城、掬星台）を入力すると候補が出ます。Googleマップの共有リンク・共有文、または緯度と経度の貼り付けもできます。</div>
+                  <textarea id="osmGoogleImportInput" class="osm-import-input" placeholder="例：姫路城&#10;https://www.google.com/maps/@35.12345,134.56789,15z&#10;35.12345, 134.56789"></textarea>
+                  <!-- 【v1005】検索候補 -->
+                  <ul id="osmPlaceSuggest" class="osm-place-suggest" role="listbox" hidden></ul>
                   <div class="osm-import-buttons">
                     <button id="osmGooglePasteBtn" type="button">貼り付け</button>
                     <button id="osmGoogleImportCloseBtn" type="button">閉じる</button>
@@ -5701,6 +5711,7 @@
               <li>地形・標高: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院</a>（標高タイルを加工して作成）</li>
               <li>水域の面: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院ベクトルタイル</a>（水域面を加工して作成）</li>
               <li>水域・道路・線路・橋・地図: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>（ODbL・Shortbread静的ベクトルタイル）</li>
+              <li>場所の検索: <a href="https://photon.komoot.io/" target="_blank" rel="noopener noreferrer">Photon</a>（komoot・OpenStreetMap データ）・<a href="https://msearch.gsi.go.jp/address-search/AddressSearch" target="_blank" rel="noopener noreferrer">国土地理院 住所検索API</a></li>
               <li>航空写真: Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community</li>
             </ul>
           </details>
@@ -6035,7 +6046,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1004-az-wrap";
+const APP_VERSION="1005-place-search";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7187,7 +7198,7 @@ const el={
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   simInfoPanel:$("simInfoPanel"), popupInfoBtn:$("popupInfoBtn"),
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
-  osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"),
+  osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"), osmPlaceSuggest:$("osmPlaceSuggest"),
   lightPollutionToggleBtn:$("lightPollutionToggleBtn"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
@@ -9511,19 +9522,118 @@ function sharedAddressCandidates(raw){
   return withoutUrls.split(/[\r\n]+/).map(line=>line.trim())
     .filter(line=>line.length>=3&&line.length<=100&&!/^(共有|リンク|Google ?マップ|地図で見る)/i.test(line));
 }
+/* 【v1005】地名・施設名の検索。Photon（komoot・OSM）を先に、国土地理院の住所検索を後に。
+   Photon は施設名（城・橋・展望台・駅・公園…）に強く、国土地理院は住所・字名に強い。
+   同じ名前で 1km 以内のものは 1 つにまとめる。 */
+const PLACE_KIND_JA={castle:"城",bridge:"橋",viewpoint:"展望",park:"公園",station:"駅",peak:"山頂",volcano:"火山",
+  attraction:"名所",lighthouse:"灯台",beach:"浜",island:"島",cape:"岬",bay:"湾",reservoir:"貯水池",lake:"湖",river:"川",
+  water:"水域",dam:"ダム",temple:"寺",shrine:"神社",place_of_worship:"寺社",tower:"塔",camp_site:"キャンプ場",
+  aerodrome:"空港",harbour:"港",bus_stop:"バス停",stop:"停留所",city:"市",town:"町",village:"村",hamlet:"集落",
+  suburb:"地区",neighbourhood:"地区",quarter:"地区",locality:"地名",administrative:"行政区",waterfall:"滝",
+  cliff:"崖",rock:"岩",stone:"岩",spring:"泉",hot_spring:"温泉",observatory:"天文台",monument:"記念碑",memorial:"碑",
+  museum:"博物館",zoo:"動物園",aquarium:"水族館",theme_park:"遊園地",golf_course:"ゴルフ場",ferry_terminal:"港",
+  hotel:"ホテル",school:"学校",university:"大学",hospital:"病院",parking:"駐車場",fuel:"GS",stadium:"競技場"};
+function placeQueryLooksLikeText(raw){
+  const s=String(raw||"").trim();
+  if(!s||/https?:\/\//i.test(s))return false;
+  if(/^-?\d{1,3}(?:\.\d+)?\s*[,、 ]\s*-?\d{1,3}(?:\.\d+)?$/.test(s))return false;
+  return s.length>=2&&s.length<=60;
+}
+async function searchPlacesPhoton(query,signal){
+  const lat=+el.lat.value,lon=+el.lon.value;
+  const bias=(Number.isFinite(lat)&&Number.isFinite(lon))?`&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&location_bias_scale=0.2`:"";
+  const response=await fetch(`https://photon.komoot.io/api/?limit=8&q=${encodeURIComponent(query)}${bias}`,{cache:"no-store",signal});
+  if(!response.ok)throw new Error(`photon ${response.status}`);
+  const json=await response.json();
+  return (json.features||[]).map(f=>{
+    const p=f.properties||{},c=f.geometry&&f.geometry.coordinates;
+    const coordinate=c&&validImportedCoordinate(c[1],c[0]);
+    if(!coordinate||!p.name)return null;
+    const kind=PLACE_KIND_JA[p.osm_value]||PLACE_KIND_JA[p.osm_key]||(p.type==="city"||p.type==="district"?"地名":"");
+    const area=[p.state,p.county,p.city,p.district].filter((v,i,a)=>v&&a.indexOf(v)===i&&!/^[A-Za-z0-9\s\-.,']+$/.test(v)).join(" ");   /* 英語表記の市名（Himeji など）は省く */
+    return {...coordinate,name:p.name,sub:[area,kind].filter(Boolean).join("　"),source:"photon"};
+  }).filter(Boolean);
+}
+async function searchPlacesGsi(query,signal){
+  const response=await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`,{cache:"no-store",signal});
+  if(!response.ok)throw new Error(`gsi ${response.status}`);
+  const features=await response.json();
+  return (Array.isArray(features)?features:[]).slice(0,8).map(f=>{
+    const c=f.geometry&&f.geometry.coordinates,title=f.properties&&f.properties.title;
+    const coordinate=c&&validImportedCoordinate(c[1],c[0]);
+    if(!coordinate||!title)return null;
+    return {...coordinate,name:title,sub:"国土地理院",source:"gsi"};
+  }).filter(Boolean);
+}
+async function searchPlaces(query,signal){
+  const [photon,gsi]=await Promise.all([
+    searchPlacesPhoton(query,signal).catch(()=>[]),
+    searchPlacesGsi(query,signal).catch(()=>[])
+  ]);
+  const out=[];
+  for(const item of [...photon,...gsi]){
+    const dup=out.some(o=>o.name===item.name&&Math.hypot((o.lat-item.lat)*111,(o.lon-item.lon)*91)<1);
+    if(!dup)out.push(item);
+    if(out.length>=10)break;
+  }
+  return out;
+}
 async function findImportedAddress(raw){
   const candidates=sharedAddressCandidates(raw);
   for(const query of candidates.slice(0,4)){
     try{
-      const response=await fetch(`https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(query)}`,{cache:"no-store"});
-      if(!response.ok) continue;
-      const features=await response.json();
-      const coordinates=features?.[0]?.geometry?.coordinates;
-      const result=coordinates&&validImportedCoordinate(coordinates[1],coordinates[0]);
-      if(result) return {...result,label:features[0]?.properties?.title||query};
+      const found=await searchPlaces(query);
+      if(found.length)return {lat:found[0].lat,lon:found[0].lon,label:found[0].name};
     }catch(e){}
   }
   return null;
+}
+/* 候補の表示。入力から 350ms 後、2文字以上。古い応答は捨てる。 */
+let placeSuggestTimer=0,placeSuggestSeq=0,placeSuggestAbort=null,placeSuggestItems=[];
+function placeSuggestHide(){
+  placeSuggestItems=[];
+  if(el.osmPlaceSuggest){el.osmPlaceSuggest.hidden=true;el.osmPlaceSuggest.innerHTML="";}
+  if(placeSuggestAbort){placeSuggestAbort.abort();placeSuggestAbort=null;}
+}
+function placeSuggestRender(items,query){
+  const list=el.osmPlaceSuggest;if(!list)return;
+  list.innerHTML="";placeSuggestItems=items;
+  if(!items.length){
+    const li=document.createElement("li");li.className="hint";li.textContent=`「${query}」に合う場所が見つかりませんでした`;
+    list.appendChild(li);list.hidden=false;return;
+  }
+  items.forEach((item,index)=>{
+    const li=document.createElement("li");li.setAttribute("role","option");li.dataset.index=String(index);
+    const name=document.createElement("span");name.className="name";name.textContent=item.name;
+    const sub=document.createElement("span");sub.className="sub";sub.textContent=item.sub||"";
+    li.appendChild(name);li.appendChild(sub);
+    li.addEventListener("click",()=>placeSuggestPick(index));
+    list.appendChild(li);
+  });
+  list.hidden=false;
+}
+function placeSuggestPick(index){
+  const item=placeSuggestItems[index];if(!item)return;
+  setOsmCandidate(item.lat,item.lon,true);
+  el.osmGoogleImportStatus.textContent=`${item.name} — 緯度 ${item.lat.toFixed(5)} / 経度 ${item.lon.toFixed(5)}へ移動しました。「閉じる」で地図を確認してください。`;
+  placeSuggestHide();
+}
+function placeSuggestSchedule(){
+  clearTimeout(placeSuggestTimer);
+  const raw=el.osmGoogleImportInput.value.trim();
+  if(!placeQueryLooksLikeText(raw)){placeSuggestHide();return;}
+  placeSuggestTimer=setTimeout(async()=>{
+    const query=el.osmGoogleImportInput.value.trim();
+    if(!placeQueryLooksLikeText(query))return;
+    const seq=++placeSuggestSeq;
+    if(placeSuggestAbort)placeSuggestAbort.abort();
+    const controller=placeSuggestAbort=(typeof AbortController!=="undefined")?new AbortController():null;
+    try{
+      const items=await searchPlaces(query,controller&&controller.signal);
+      if(seq!==placeSuggestSeq)return;
+      placeSuggestRender(items,query);
+    }catch(e){ if(seq===placeSuggestSeq)placeSuggestRender([],query); }
+  },350);
 }
 async function importGoogleMapsLocation(){
   const raw=el.osmGoogleImportInput.value.trim();
@@ -9597,7 +9707,7 @@ el.osmGoogleOpenBtn.addEventListener("click",()=>{
   const opened=window.open(url,"_blank","noopener,noreferrer");
   if(opened) opened.opener=null;
 });
-el.osmGoogleImportCloseBtn.addEventListener("click",()=>setGoogleMapsImportOpen(false));
+el.osmGoogleImportCloseBtn.addEventListener("click",()=>{placeSuggestHide();setGoogleMapsImportOpen(false);});
 el.osmGoogleImportOverlay.addEventListener("click",e=>{
   if(e.target===el.osmGoogleImportOverlay) setGoogleMapsImportOpen(false);
 });
@@ -9605,6 +9715,14 @@ document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&el.osmGoogleImportOverlay.classList.contains("show")) setGoogleMapsImportOpen(false);
 });
 el.osmGoogleImportRunBtn.addEventListener("click",importGoogleMapsLocation);
+/* 【v1005】入力しながら候補。Enter は先頭の候補（無ければ「場所を読み込む」）、Shift+Enter は改行。 */
+el.osmGoogleImportInput.addEventListener("input",placeSuggestSchedule);
+el.osmGoogleImportInput.addEventListener("keydown",e=>{
+  if(e.key==="Enter"&&!e.shiftKey&&!e.isComposing){
+    e.preventDefault();
+    if(placeSuggestItems.length)placeSuggestPick(0);else importGoogleMapsLocation();
+  }else if(e.key==="Escape"&&!el.osmPlaceSuggest.hidden){e.stopPropagation();placeSuggestHide();}
+});
 el.osmGooglePasteBtn.addEventListener("click",async()=>{
   try{
     if(!navigator.clipboard?.readText) throw new Error("clipboard unavailable");
