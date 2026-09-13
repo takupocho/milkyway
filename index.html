@@ -1646,8 +1646,14 @@
   .drone-map-track-readout{position:absolute;left:8px;bottom:8px;z-index:600;max-width:calc(100% - 60px);padding:4px 7px;border-radius:6px;
     background:rgba(16,20,42,.86);color:#fff;font:600 10px/1.35 'IBM Plex Mono',monospace;white-space:pre-line;pointer-events:none;}
   .drone-map-track-readout:empty{display:none;}
-  .geo-track-icon{background:transparent;border:0;}
-  .geo-track-dot{width:16px;height:16px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 2px rgba(26,115,232,.45),0 2px 6px rgba(0,0,0,.5);}
+  .geo-track-icon{background:transparent;border:0;overflow:visible;}
+  /* 【v1009】現在地の点は 18px 固定（Leaflet の divIcon は画面の画素なので縮尺で変わらない）。波紋で「ここ」。 */
+  .geo-track-dot{position:relative;width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-sizing:border-box;box-shadow:0 0 0 2px rgba(26,115,232,.45),0 2px 6px rgba(0,0,0,.5);}
+  .geo-track-dot::before,.geo-track-dot::after{content:"";position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
+    border:2px solid rgba(26,115,232,.9);background:rgba(26,115,232,.25);animation:geoTrackPulse 2.4s ease-out infinite;pointer-events:none;}
+  .geo-track-dot::after{animation-delay:1.2s;}
+  @keyframes geoTrackPulse{0%{transform:scale(1);opacity:.9;}100%{transform:scale(4.2);opacity:0;}}
+  @media (prefers-reduced-motion:reduce){.geo-track-dot::before,.geo-track-dot::after{animation:none;display:none;}}
   .osm-track-readout{position:absolute;left:50%;top:44px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 12px);z-index:1000;
     padding:5px 8px;border-radius:5px;background:rgba(16,20,42,.86);color:#fff;font:600 10.5px/1.4 'IBM Plex Mono',monospace;white-space:pre-line;text-align:center;cursor:pointer;}
   .osm-track-readout:empty{display:none;}
@@ -2697,7 +2703,7 @@
     border:0;
   }
   /* 【v1007】登録地点のマーカー（種類で色と絵）。 */
-  .fav-marker-icon{background:transparent;border:0;}
+  .fav-marker-icon{background:transparent;border:0;}   /* divIcon＝画面の画素なので縮尺で大きさは変わらない */
   .fav-marker{width:26px;height:26px;box-sizing:border-box;border:2px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
     display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.55);}
   .fav-marker span{transform:rotate(45deg);font-size:13px;line-height:1;}
@@ -5548,6 +5554,7 @@
                     <button type="button" data-kind="parking" aria-pressed="true">🅿 駐車場</button>
                     <button type="button" data-kind="interest" aria-pressed="true">⭐ 気になる所</button>
                   </div>
+                  <div class="plan-modal-actions" style="justify-content:flex-start;margin:0 0 8px;"><button id="favFitAllBtn" type="button">登録地点が全部入るように地図を合わせる</button></div>
                   <input id="favSearch" class="plan-save-name" type="search" placeholder="名前で探す">
                   <ul id="favList" class="fav-list"></ul>
                   <p class="plan-modal-help" style="margin:8px 0 0;">一覧を押すと地図がその場所へ動きます。地図のマーカーを押すと「この場所を選ぶ」「編集」「削除」ができます。種類のボタンで地図に出す・出さないを切り替えます。</p>
@@ -6131,7 +6138,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1008-geo-track";
+const APP_VERSION="1009-marker-fix";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7285,7 +7292,7 @@ const el={
   osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"), osmPlaceSuggest:$("osmPlaceSuggest"),
   droneMapTrackBtn:$("droneMapTrackBtn"), droneMapTrackReadout:$("droneMapTrackReadout"), osmTrackBtn:$("osmTrackBtn"), osmTrackReadout:$("osmTrackReadout"),   /* 【v1008】 */
-  favPlacesBtn:$("favPlacesBtn"), favPlacesOverlay:$("favPlacesOverlay"), favPlacesCloseBtn:$("favPlacesCloseBtn"), favEditBox:$("favEditBox"), favEditCoord:$("favEditCoord"), favEditName:$("favEditName"), favEditKindRow:$("favEditKindRow"), favEditDeleteBtn:$("favEditDeleteBtn"), favEditSaveBtn:$("favEditSaveBtn"), favEditStatus:$("favEditStatus"), favCount:$("favCount"), favFilterRow:$("favFilterRow"), favSearch:$("favSearch"), favList:$("favList"),   /* 【v1007】 */
+  favPlacesBtn:$("favPlacesBtn"), favPlacesOverlay:$("favPlacesOverlay"), favPlacesCloseBtn:$("favPlacesCloseBtn"), favEditBox:$("favEditBox"), favEditCoord:$("favEditCoord"), favEditName:$("favEditName"), favEditKindRow:$("favEditKindRow"), favEditDeleteBtn:$("favEditDeleteBtn"), favEditSaveBtn:$("favEditSaveBtn"), favEditStatus:$("favEditStatus"), favCount:$("favCount"), favFilterRow:$("favFilterRow"), favSearch:$("favSearch"), favList:$("favList"), favFitAllBtn:$("favFitAllBtn"),   /* 【v1007】 */
   lightPollutionToggleBtn:$("lightPollutionToggleBtn"),
   skyInfoPopup:$("skyInfoPopup"), skyInfoTitle:$("skyInfoTitle"), skyInfoBody:$("skyInfoBody"),
   showSkyLabelsBtn:$("showSkyLabelsBtn"), showSkyLabelsState:$("showSkyLabelsState"),
@@ -8999,7 +9006,7 @@ let droneMapOpen=false;
    ========================================================= */
 let geoTrackOn=false,geoTrackWatchId=null,geoTrackPos=null,geoTrackError="",geoTrackCentered=false;
 let geoTrackBig={dot:null,ring:null},geoTrackMini={dot:null,ring:null};
-function geoTrackIcon(){return L.divIcon({className:"geo-track-icon",html:'<div class="geo-track-dot"></div>',iconSize:[16,16],iconAnchor:[8,8]});}
+function geoTrackIcon(){return L.divIcon({className:"geo-track-icon",html:'<div class="geo-track-dot"></div>',iconSize:[18,18],iconAnchor:[9,9]});}
 function geoTrackSet(on,{silent=false}={}){
   on=!!on;
   if(on&&!navigator.geolocation){if(!silent)alert("この環境では位置情報を取得できません。");on=false;}
@@ -9686,6 +9693,7 @@ function favPopupHtml(place){
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function favRefreshMarkers(){
+  favRefreshMiniMarkers();   /* 【v1009】小地図は大きい地図が無くても更新する */
   if(!osmMapInstance||typeof window.L==="undefined")return;
   if(!favMarkerLayer){
     favMarkerLayer=L.layerGroup().addTo(osmMapInstance);
@@ -9709,7 +9717,6 @@ function favRefreshMarkers(){
     }
   }
   for(const [id,marker] of favMarkers){if(!seen.has(id)){favMarkerLayer.removeLayer(marker);favMarkers.delete(id);}}
-  favRefreshMiniMarkers();
 }
 /* 【v1008】小地図。押すと名前と「ここを撮影位置に」。小地図は「中心＝撮影位置」なので、中心を動かして確定させる。 */
 function favRefreshMiniMarkers(){
@@ -9854,6 +9861,14 @@ el.favFilterRow.addEventListener("click",e=>{
   favPlacesSave();favRefreshMarkers();favRenderList();
 });
 el.favSearch.addEventListener("input",favRenderList);
+/* 【v1009】表示中の種類の登録地点が全部入るように地図を合わせる。 */
+el.favFitAllBtn.addEventListener("click",()=>{
+  const pts=favPlaces.filter(p=>favKindVisible[favKindOf(p.kind)]).map(p=>[p.lat,p.lon]);
+  if(!pts.length||!osmMapInstance)return;
+  favSetOverlayOpen(false);
+  if(pts.length===1)osmMapInstance.setView(pts[0],15);
+  else osmMapInstance.fitBounds(L.latLngBounds(pts),{padding:[40,40],maxZoom:16});
+});
 function setGoogleMapsImportOpen(open){
   el.osmGoogleImportOverlay.classList.toggle("show",!!open);
   el.osmGoogleImportOverlay.setAttribute("aria-hidden",open?"false":"true");
