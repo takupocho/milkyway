@@ -6142,7 +6142,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1013-kmz-alt-zero";
+const APP_VERSION="1014-akashi-alt-zero";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7738,7 +7738,7 @@ function refreshKmzBuildingControls(redraw=true){
 el.kmzBuildingSelectBtn.addEventListener("click",()=>{el.kmzBuildingInput.value="";el.kmzBuildingInput.click();});
 /* 【v880】読み込むと**新しいスロットを足して選択する**（上書きしない）。
    `slotId` を渡すと、そのスロットの中身を差し替える（撮影計画からの復元で使う）。 */
-/* 【v1013】applyKmlAltitude: KML の標高も入れる（内蔵の明石海峡大橋だけ true）。利用者のファイルは基部の標高 0 から始める。 */
+/* 【v1013】applyKmlAltitude: KML の標高も入れる。【v1014】内蔵の明石海峡大橋も含めて既定 false（基部の標高は 0 から）。 */
 async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,applyKmlAltitude=false,sourceDataUrl="",slotId=null}={}){
   const entries=await readKmzEntries(arrayBuffer),decoder=new TextDecoder("utf-8");
     const kmlName=[...entries.keys()].find(name=>name.toLowerCase()==="doc.kml")||[...entries.keys()].find(name=>name.toLowerCase().endsWith(".kml"));
@@ -10580,7 +10580,7 @@ async function syncAkashiBuiltin(){
         const bin=atob(AKASHI_KMZ_BASE64),bytes=new Uint8Array(bin.length);
         for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
         const prevActive=kmzActiveId;
-        await loadKmzBuildingBytes(bytes.buffer,"明石海峡大橋（内蔵）",{applyKmlLocation:true,applyKmlAltitude:true,sourceDataUrl:""});
+        await loadKmzBuildingBytes(bytes.buffer,"明石海峡大橋（内蔵）",{applyKmlLocation:true,applyKmlAltitude:false,sourceDataUrl:""});   /* 【v1014】基部の標高は内蔵も 0 */
         const slot=kmzActiveSlot();
         if(slot&&!akashiBridgeHidden){kmzSlots=kmzSlots.filter(s=>s!==slot);}   /* 読んでいる間に OFF にされた */
         else if(slot){slot.builtin="akashi";}
