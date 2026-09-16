@@ -836,6 +836,12 @@
     text-align:center;
     white-space:nowrap;
     cursor:pointer;
+    /* 【v1023】行の高さを固定。空のときも文字の大きさが変わっても、上の帯の高さが変わらない
+       （移動中に地名を取り直すたびに帯が縮んで、写真が縦に揺れて見えていた）。 */
+    display:block;
+    height:12px;
+    line-height:12px;
+    min-width:1px;
   }
   .today-date-main{
     font-family:'Fraunces',serif;
@@ -6143,7 +6149,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1022-drone-speed";
+const APP_VERSION="1023-place-jitter";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -17193,7 +17199,9 @@ let currentObservedPlaceLat=null,currentObservedPlaceLon=null;
 function setObservedPlaceDisplay(text, isStatus){
   el.observedPlaceName.textContent = `観測地点：${text}`;
   if(isStatus){
-    el.todayDatePlace.textContent="";
+    /* 【v1023】取得中も前の地名を出したまま（消すと帯の高さが変わって画面が縦に揺れる）。
+       まだ一度も取れていないときだけ空白で行を確保する。 */
+    if(!el.todayDatePlace.textContent)el.todayDatePlace.textContent="\u00a0";
     return;
   }
   currentObservedPlaceName=text;
