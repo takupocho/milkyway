@@ -6142,7 +6142,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1018-walk-near-rebuild";
+const APP_VERSION="1019-walk-water";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -23695,8 +23695,9 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
       !!(resultObj.observerWaterEvidence.coastline&&resultObj.observerWaterEvidence.coastline.water)||meshObserverWater.water;
     // 同じ地点キーのまま水域形状だけが更新されたことを描画キャッシュへ通知する。
     resultObj._renderRevision=(resultObj._renderRevision||0)+1;
-    if(realTerrainState.key===key){
+    if(realTerrainState.key===key||resultObj===realTerrainState){   /* 【v1019】歩いて鍵が変わっていても、対象が今の地形なら描き直す */
       realTerrainState._renderRevision=resultObj._renderRevision;
+      drawPhoto._terrainRenderKey=null;
       if(typeof update==="function") update();
     }
     /* 【v850】手前だけの下ごしらえだったときは、ここで本番を始める。
@@ -34834,7 +34835,9 @@ function applyMapWaterToGrids(target){
 function applyCachedWaterRings(result){
   const rings=realTerrainState._osmWaterRings||[];
   const ways=realTerrainState._osmCoastlineWays;
-  if(!result||(!rings.length&&!(Array.isArray(ways)&&ways.length))) return;
+  /* 【v1019】リングも海岸線も無いときでも帰らない。地図の水域面（worldMap）は当てる。
+     （帰ると、升目をまたいだ直後の歩きで水域が DEM 任せになり、沖に島・足元に丸い陸が出た） */
+  if(!result) return;
   const originLat=+el.lat.value, originLon=+el.lon.value;
   const metrePerDegLonHere=Math.max(1,111320*Math.cos(originLat*D2R));
   const localRockOn=!!(localDetailTerrainEnabled&&localDetailTerrainData);
@@ -34909,12 +34912,12 @@ function applyCachedWaterRings(result){
            水面すれすれの点は海のまま残る。 */
         point.water=true;point.coastlineSeaCandidate=true;point.baseCoastlineSea=true;return;
       }
-      if(!rings.length){point.water=false;return;}
+      if(!rings.length)return;   /* 【v1019】リングが無ければ、地形の判定（欠損＝海）をそのまま */
       if(point.lat<minLat||point.lat>maxLat||point.lon<minLon||point.lon>maxLon){point.water=false;return;}
       point.water=pointInWaterRings(point.lat,point.lon,rings);
     });});
   });
-  result._osmWaterRings=rings;
+  if(rings.length)result._osmWaterRings=rings;   /* 【v1019】無いときに [] を書いて「取得済み」に見せない */
 }
 
 /* 【v988】移動中に作り直す方位の範囲。画面に出る幅（rayHalfSpanDeg と同じ式）＋8°。
@@ -34962,6 +34965,11 @@ async function refreshTerrainWhileWalking(){
         dropStaleWaterState(lat,lon);
         applyCachedWaterRings(result);
         Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...result});
+        /* 【v1019】升目をまたいでリングを捨てた直後（または未取得）は、新しい升目の水域を取りに行く。
+           取得中は _osmRefinePending が二重起動を止める。届いたら realTerrainState の格子へ当てて描き直す。 */
+        if(!(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length)&&!realTerrainState._osmRefinePending){
+          try{refineTerrainWaterWithOsm(lat,lon,key,realTerrainState);}catch(e){}
+        }
         applyDroneAltitudeHold(); // 新しい地面標高に合わせて飛行高度を保つ
         document.body.classList.add("real-terrain-visible");
         drawPhoto._terrainRenderKey=null;
