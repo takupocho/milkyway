@@ -6149,7 +6149,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1023-place-jitter";
+const APP_VERSION="1024-ridge-peak";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19329,7 +19329,12 @@ const TERRAIN_DISTANCES_KM=(()=>{
 
      見かけの大きさは距離に反比例するので、目盛りも距離に比例させる。
      9%ずつ伸ばすと、2.4kmでの間隔は約216m（従来の1,000mから4.6倍細かい）。 */
-  for(let km=1.05;km<=90;km*=1.09) out.push(+km.toFixed(3));
+  /* 【v1024】1〜6km は 3% 刻み（2.4km で 72m、以前は 216m）。描く層もこの目盛りなので、
+     目盛りが粗いと、目が地形より上（ドローン）のとき層の上端が 1 目盛りぶん（2km・300m 下で最大 0.8°）
+     跳ねながら動き、歩くと山が上下して見えた。3% で 0.26°（約 1〜2 画素）。6km より先は従来の 9%。 */
+  let km=1.05;
+  for(;km<=6;km*=1.03) out.push(+km.toFixed(3));
+  for(km=+(km).toFixed(3);km<=90;km*=1.09) out.push(+km.toFixed(3));
   return out;
 })();
 const TERRAIN_DISTANCE_BANDS=[
@@ -19366,7 +19371,7 @@ const TERRAIN_DISTANCE_BANDS=[
    完全に無くなったので、地形の作り方は v893〜v900 と**同一**になった。
    よって8が正しく、**すでに保存されている綺麗な地形がそのまま再利用される。**
    （v901で9へ上げたのは、KMZの高密度点を rayGrid から出した＝作り方が変わったため） */
-const TERRAIN_CACHE_FORMAT=9;   /* 【v1021】タイルの境の補間を直したので、保存済み地形を作り直す */
+const TERRAIN_CACHE_FORMAT=10;   /* 【v1024】稜線の点が実際の距離を持つようになった */   /* 【v1021】タイルの境の補間を直したので、保存済み地形を作り直す */
 /* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
    保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
 function kmzTerrainSignature(){
@@ -19390,6 +19395,14 @@ function kmzTerrainSignature(){
    KMZの位置が影響するのは「模型の足元の高密度点」だけで、
    地形本体にも水域にも関係が無い。そちらは `ensureKmzDetailGrid` が
    独立して用意する。 */
+/* 【v1024】稜線の点は「作ったときの目の高さから一番高く見える点」なので、目の高さが 30m 以上違うときは作り直す。
+   （地上で作った地形をドローンで使うと、目盛りの間の点の選び方が合わず、歩くと山が上下して見える） */
+function terrainCacheUsableForEye(obj){
+  if(!obj||!Number.isFinite(obj._selectEyeM))return true;   // 古い保存・目の高さ不明
+  const ground=Number.isFinite(obj.observerElevation)?obj.observerElevation:0;
+  const eyeNow=(Number.isFinite(droneHoldElevation)&&cameraRiseM>0)?droneHoldElevation:ground+eyeHeightAboveGroundM();
+  return Math.abs(eyeNow-obj._selectEyeM)<=30;
+}
 function terrainCacheId(key){
   return `terrain:v${TERRAIN_CACHE_FORMAT}:${key}`;
 }
@@ -23098,7 +23111,8 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
      水面の判定には使わない。沖の点が少し内陸の陸を拾って
      水際が外へずれるのを避けるためで、そちらは従来どおり
      目盛り上の1点だけを見る。 */
-  const PEAK_SUBSAMPLES=2;
+  /* 【v1024】下見は目盛りの幅に応じて増やす。6km までは約 40m に 1 点（2〜6）、その先は約 150m に 1 点（2〜4）。位置も控える。 */
+  const peakSubsampleCount=(gapKm,distanceKm)=>distanceKm<=6?clamp(Math.round(gapKm*1000/40),1,5):clamp(Math.round(gapKm*1000/200),2,3);
   for(const az of azimuths){
     const ray=[];
     let previousKm=0;
@@ -23114,11 +23128,13 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
       const gapKm=distanceKm-previousKm;
       const peakRefs=[];
       if(distanceKm>1.2&&gapKm>.05){
-        for(let k=1;k<=PEAK_SUBSAMPLES;k++){
-          const subKm=distanceKm-gapKm*k/(PEAK_SUBSAMPLES+1);
+        const n=peakSubsampleCount(gapKm,distanceKm);
+        for(let k=1;k<=n;k++){
+          const subKm=distanceKm-gapKm*k/(n+1);
           const [sLat,sLon]=terrainDestination(lat,lon,az,subKm);
           const sub=zooms.map(z=>terrainTilePoint(sLat,sLon,z));
           addTileRefs(sub);
+          sub.subKm=subKm;sub.subLat=sLat;sub.subLon=sLon;   /* 【v1024】 */
           peakRefs.push(sub);
         }
       }
@@ -23206,16 +23222,25 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerAtSea=true;
   }
   let eyeElevation=observerElevation+1.6;   /* 【v1020】1巡目のあとで海の上と分かれば下げる */
+  /* 【v1024】目盛りの間で「一番高く見える」点を選ぶための目の高さ。標高が一番高い点ではない：
+     ドローンのように目が地形より上にあると、同じ高さでも遠い点のほうが高く見える（見える面はそちら）。
+     標高で選ぶと、歩くたびに選ばれる点が隣へ移って見かけの高さが 0.3° 前後跳ねた。
+     飛行中は保持している絶対標高（droneHoldElevation）、それ以外は地面＋今の視点の高さ。 */
+  const selectEye=(Number.isFinite(droneHoldElevation)&&cameraRiseM>0)?droneHoldElevation:observerElevation+eyeHeightAboveGroundM();
+  const R76=2*6371000*(7/6);
+  const apparentOf=(e,km)=>{const m=km*1000;return (e-selectEye-m*m/R76)/m;};
 
   // 1巡目: 全方位×全距離の標高を先にグリッドとして取得する。
   // (2巡目で近傍セルどうしを比較し、海だけでなく湖沼のような「平らな水面」も検出するため)
   const nDist=TERRAIN_DISTANCES_KM.length;
   const elevGrid=new Array(360).fill(null);
   const peakGrid=new Array(360).fill(null);   // 目盛りの間も含めた最高点（稜線用）
+  const peakPosGrid=new Array(360).fill(null); /* 【v1024】その最高点の {distanceKm,lat,lon}（目盛り上なら null） */
   let validCount=0;
   for(const az of azimuths){
     const row=new Array(nDist);
     const peaks=new Array(nDist);
+    const peakPos=new Array(nDist).fill(null);
     for(let d=0;d<nDist;d++){
       const sample=samples[az][d];
       if(!sample){   /* 【v1018】直前の行の点（遠く）。稜線の高さもそのまま */
@@ -23232,16 +23257,20 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
       if(elevation===undefined) elevation=await elevationFromRefs(sample.refs);
       row[d]=elevation; // 数値、または標高データなし(海など)ならnull
       if(Number.isFinite(elevation)) validCount++;
-      let peak=Number.isFinite(elevation)?elevation:null;
+      let peak=Number.isFinite(elevation)?elevation:null,peakAt=null;
+      let peakApp=Number.isFinite(elevation)?apparentOf(elevation,sample.distanceKm):-Infinity;
       for(const sub of (sample.peakRefs||[])){
         let value=elevationFromRefsSync(sub);
         if(value===undefined) value=await elevationFromRefs(sub);
-        if(Number.isFinite(value)&&(peak===null||value>peak)) peak=value;
+        if(!Number.isFinite(value))continue;
+        const app=apparentOf(value,sub.subKm);   /* 【v1024】一番高く見える点 */
+        if(app>peakApp){peakApp=app;peak=value;peakAt={distanceKm:sub.subKm,lat:sub.subLat,lon:sub.subLon};}
       }
-      peaks[d]=peak;
+      peaks[d]=peak;peakPos[d]=peakAt;
     }
     elevGrid[az]=row;
     peakGrid[az]=peaks;
+    peakPosGrid[az]=peakPos;
   }
   // 海岸・海上では標高を持つ陸地サンプルが少なくても正常。
   // DEMタイルの大半が取得できている場合に限り、nodataを海として地形生成を継続する。
@@ -23303,13 +23332,18 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     const layerNoDataCount=new Array(terrainLayers.length).fill(0);
     const layerKnownCount=new Array(terrainLayers.length).fill(0);
     for(let d=0;d<nDist;d++){
-      const distanceKm=TERRAIN_DISTANCES_KM[d];
       const reused=samples[az][d]?null:prevRowPoint(az,d);   /* 【v1018】遠くは直前の点 */
       const sample=samples[az][d]||reused||{lat:NaN,lon:NaN};
       const elevation=elevGrid[az][d];
       /* 見かけの高さに使う標高。目盛りの間の頂を含む。
          水か陸かの判定はこれまでどおり elevation だけを見る。 */
       const ridgeElevation=Number.isFinite(peakGrid[az][d])?peakGrid[az][d]:elevation;
+      /* 【v1024】点の距離・位置は最高点（下見で拾った頂）のもの。目盛りの距離に置くと、歩いて稜線が
+         隣の目盛りへ移るたびに見かけの高さが最大 6% 飛び、山が上下して見えた。
+         使い回す点（v1018）は直前の距離・位置を引き継ぐ。水の判定（isKnown など）は目盛り上の標本のまま。 */
+      const peakAt=peakPosGrid[az]&&peakPosGrid[az][d];
+      const distanceKm=peakAt?peakAt.distanceKm:(reused&&Number.isFinite(reused.distanceKm)?reused.distanceKm:TERRAIN_DISTANCES_KM[d]);
+      const pointLat=peakAt?peakAt.lat:sample.lat,pointLon=peakAt?peakAt.lon:sample.lon;
       const isNoDataRaw=!Number.isFinite(elevation);
       // 標高タイルの読み込みが1点だけたまたま失敗した場合も「標高データなし」になり得るため、
       // それだけで「海」と判定してしまうと、実際には山などの陸地なのに、その1点のせいで
@@ -23358,7 +23392,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
         const water=isSeaNoData||isKnown;
         const meshAlt=Number.isFinite(apparentAlt)?apparentAlt:(isSeaNoData?-Math.atan2(1.6,metres)*R2D:null);
         const point=Number.isFinite(meshAlt)?{
-          distanceKm,lat:sample.lat,lon:sample.lon,alt:meshAlt,water,baseNoData:isSeaNoData,baseKnown:isKnown,
+          distanceKm,lat:pointLat,lon:pointLon,alt:meshAlt,water,baseNoData:isSeaNoData,baseKnown:isKnown,
           baseElevation:Number.isFinite(ridgeElevation)?ridgeElevation:null,
           _fresh:!reused   /* 【v1018】水域の当て直しは新しく作った点だけ */
         }:null;
@@ -23494,6 +23528,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
     rowCentre,   /* 【v1018】 */
+    _selectEyeM:selectEye,   /* 【v1024】稜線の点を選んだときの目の海抜。大きく違う高さから見るときは作り直す */
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
     _freshAz:partial?partial.azSet:null   /* 【v988】今回作った方位。【v1018】他の方位は point._fresh の点だけ当て直す */
   };
@@ -23854,7 +23889,7 @@ function requestRealTerrainProfile(lat,lon){
   if(sameSpot){setExternalDataStatus("elevation","ready");setExternalDataStatus("fuji","ready","専用情報準備済み");return;}
   if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
-  if(cached){
+  if(cached&&terrainCacheUsableForEye(cached)){   /* 【v1024】 */
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
@@ -23911,7 +23946,7 @@ function requestRealTerrainProfile(lat,lon){
       // レイマーチ用のrayGridを持たない旧キャッシュ(v511以前)は採用せず、一度だけ作り直す。
       // これが無いと、コードを更新しても古い保存データのせいで従来経路のまま動いてしまう。
       const savedHasRayGrid=!!(saved&&Array.isArray(saved.rayGrid)&&saved.rayGrid.length===360);
-      if(saved&&Array.isArray(saved.profile)&&saved.profile.length===360&&Array.isArray(saved.terrainLayerSources)&&saved.terrainLayerSources.length===TERRAIN_DISTANCE_BANDS.length&&(TERRAIN_RENDERER!=="raymarch"||savedHasRayGrid)){result=saved;fromPersistent=true;}
+      if(saved&&Array.isArray(saved.profile)&&saved.profile.length===360&&Array.isArray(saved.terrainLayerSources)&&saved.terrainLayerSources.length===TERRAIN_DISTANCE_BANDS.length&&(TERRAIN_RENDERER!=="raymarch"||savedHasRayGrid)&&terrainCacheUsableForEye(saved)){result=saved;fromPersistent=true;}   /* 【v1024】目の高さも見る */
       // 全距離を1枚のメッシュへ統一する改修を一時的に入れていた期間に保存されたキャッシュは、
       // メッシュ用グリッドが1km以遠まで入っている。描画側を元に戻した後もそのまま使うと
       // 遠方までメッシュで描いてしまうため、1km以内だけへ揃え直す。
