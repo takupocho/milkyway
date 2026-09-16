@@ -540,12 +540,13 @@
     /* 【v980】丸ボタン6つは左に固定。日付と月は右寄せ。焦点距離は2行目の左。
        住所は日付の下に重ねる（幅に数えない）ので、長くても行が崩れない。 */
     .photo-sticky-wrap .toggle-btn-row{
-      margin-bottom:6px; padding:0 6px;
+      margin-bottom:14px; padding:0 6px;   /* 【v1026】住所（日付の下に重ねる）が写真に掛からない余白 */
       flex-wrap:wrap;
       align-items:center;
       justify-content:flex-start;
       row-gap:4px;
       gap:4px;
+      position:relative;   /* 【v1026】焦点距離の札を帯の左下に重ねる基準 */
     }
     .constellation-toggle-btn{padding:4px 7px;font-size:10px;border-radius:6px;}
     .toggle-btn-row .header-date-moon{
@@ -584,12 +585,16 @@
     .toggle-btn-row #moonTodayIcon{width:22px;height:22px;}
     .toggle-btn-row .moon-today-name{font-size:12px;}
     .toggle-btn-row .moon-today-name rt{font-size:7.5px;}
+    /* 【v1026】焦点距離の札は行の高さに数えず、帯の左下（写真の左の余白）に重ねる。
+       v980〜v1025 は 2 行目に置いていたので、幅 400〜760px では札だけの 2 行目ができて帯が 2 段になり、
+       写真がその分下がっていた（利用者の端末 412px で確認）。 */
     .toggle-btn-row .focal-badge{
       order:3;
+      position:absolute;left:10px;top:100%;z-index:3;
       font-size:12px;
       line-height:1;
       align-items:flex-start;
-      margin:0 0 0 6px;
+      margin:6px 0 0;
       min-width:34px;
     }
     .toggle-btn-row .focal-badge::before{
@@ -609,10 +614,8 @@
        2 行目を作らないので帯は 1 段のまま、写真がその分上がる。
        焦点距離の札は行の高さに数えず、帯の左下（写真の左の余白）に重ねる。 */
     @media (max-width:400px){
-      .photo-sticky-wrap .toggle-btn-row{position:relative;margin-bottom:14px;}   /* 住所（日付の下）が写真に掛からない余白 */
       .toggle-btn-row .toggle-row-break{order:2;}
       .toggle-btn-row .header-date-moon{order:1;margin-bottom:0;gap:6px;}
-      .toggle-btn-row .focal-badge{position:absolute;left:10px;top:100%;margin:6px 0 0;order:3;z-index:3;}
     }
     #cardTitleRow .card-title{width:100%;}
     .best-time-bar{cursor:pointer;}
@@ -4090,12 +4093,10 @@
     .mobile-camera-cut-btn.has-next{color:var(--core-amber);border-color:var(--core-amber);opacity:.95;}
     .mobile-camera-cut-btn.playing{color:#ff8a97;border-color:#ff8a97;opacity:.95;}
     body.ar-active .mobile-camera-cut-btn{display:none;}
-    /* 【v1025】幅 400px 以下は焦点距離の札が写真の左上の余白に重なるので、左の列を 22px 下げる。 */
-    @media (max-width:400px){
-      .mobile-sky-search-control{top:31px;}
-      .mobile-shot-plan-btn{top:75px;}
-      .mobile-camera-cut-btn{top:119px;}
-    }
+    /* 【v1026】焦点距離の札が写真の左上の余白に重なるので、左の列を 22px 下げる（スマホ幅全部）。 */
+    .mobile-sky-search-control{top:31px;}
+    .mobile-shot-plan-btn{top:75px;}
+    .mobile-camera-cut-btn{top:119px;}
 
     .osm-map-actions{top:50%;right:6px;gap:6px;}
     .osm-map-actions button{width:43px;height:40px;border-radius:12px;}
@@ -6160,7 +6161,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1025-mobile-header";
+const APP_VERSION="1026-mobile-header2";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
