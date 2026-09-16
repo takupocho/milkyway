@@ -2180,9 +2180,15 @@
   /* 【v880】読み込み済みの模型の一覧。1行が1つ。 */
   .kmz-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
   .kmz-list:empty{display:none;}
-  .kmz-row{display:grid;grid-template-columns:20px 1fr 30px 26px;align-items:center;gap:6px;
+  .kmz-row{display:grid;grid-template-columns:14px 20px 1fr 30px 26px;align-items:center;gap:6px;
     padding:6px 7px;border-radius:7px;border:1px solid rgba(126,154,208,.26);
     background:rgba(5,10,24,.34);cursor:pointer;}
+  /* 【v1028】並べ替えのつまみ。押して上下に動かす。 */
+  .kmz-row .kmz-grip{font-size:12px;line-height:1;color:var(--dim-2);text-align:center;
+    cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;letter-spacing:-2px;}
+  .kmz-row.dragging{opacity:.55;border-style:dashed;}
+  .kmz-row.dragging .kmz-grip{cursor:grabbing;}
+  .kmz-list-hint{font-size:9px;color:var(--dim-2);margin:2px 0 0 2px;}
   .kmz-row.active{border-color:rgba(150,205,255,.8);background:rgba(30,62,112,.5);}
   .kmz-row .kmz-num{font-size:10px;text-align:center;color:var(--dim-2);
     font-variant-numeric:tabular-nums;}
@@ -6162,7 +6168,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1027-mobile-date-align";
+const APP_VERSION="1028-kmz-reorder";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7633,7 +7639,14 @@ function renderKmzList(){
   kmzSlots.forEach((slot,index)=>{
     const row=document.createElement("div");
     row.className="kmz-row"+(slot.id===kmzActiveId?" active":"")+(slot.visible===false?" off":"");
-    row.addEventListener("click",()=>kmzSelectSlot(slot.id));
+    row.dataset.slotId=slot.id;
+    row.addEventListener("click",()=>{if(kmzDragState.moved)return;kmzSelectSlot(slot.id);});
+
+    /* 【v1028】つまみ。押して上下に動かすと並び（＝描く順、下ほど手前）が変わる。 */
+    const grip=document.createElement("div");
+    grip.className="kmz-grip";grip.textContent="⋮⋮";grip.title="押して上下に動かすと順番が変わります（下ほど手前に描く）";
+    grip.addEventListener("pointerdown",event=>kmzDragStart(event,row));
+    row.appendChild(grip);
 
     const num=document.createElement("div");
     num.className="kmz-num";num.textContent=String(index+1);
@@ -7668,12 +7681,63 @@ function renderKmzList(){
 
     list.appendChild(row);
   });
+  if(kmzSlots.length>1){
+    const hint=document.createElement("div");hint.className="kmz-list-hint";
+    hint.textContent="⋮⋮ を押して上下に動かすと順番を入れ替えられます（下の行ほど手前に描きます）";
+    list.appendChild(hint);
+  }
   if(el.kmzBuildingActiveLabel){
     const slot=kmzActiveSlot();
     el.kmzBuildingActiveLabel.textContent=kmzSlots.length
       ? `▼ 下の操作は「${slot?slot.fileName||"建物":"—"}」に対して行われます`
       : "";
   }
+}
+/* 【v1028】一覧のドラッグ＆ドロップ。つまみを押して上下に動かし、離したら kmzSlots を並べ替える。
+   動かしている間は行そのものを DOM の中で入れ替えて見せる（プレースホルダー不要）。 */
+const kmzDragState={row:null,pointerId:null,moved:false,startY:0};
+function kmzDragStart(event,row){
+  if(kmzDragState.row)return;
+  event.preventDefault();event.stopPropagation();
+  kmzDragState.row=row;kmzDragState.pointerId=event.pointerId;kmzDragState.moved=false;kmzDragState.startY=event.clientY;
+  row.classList.add("dragging");
+  try{event.currentTarget.setPointerCapture(event.pointerId);}catch(e){}
+  const grip=event.currentTarget;
+  const onMove=e=>{
+    if(e.pointerId!==kmzDragState.pointerId)return;
+    e.preventDefault();
+    if(Math.abs(e.clientY-kmzDragState.startY)>3)kmzDragState.moved=true;
+    const list=row.parentElement;if(!list)return;
+    const rows=[...list.querySelectorAll(".kmz-row")].filter(r=>r!==row);
+    let before=null;
+    for(const r of rows){const b=r.getBoundingClientRect();if(e.clientY<b.top+b.height/2){before=r;break;}}
+    if(before){if(row.nextElementSibling!==before)list.insertBefore(row,before);}
+    else{const last=rows[rows.length-1];if(last&&last.nextElementSibling!==row)list.insertBefore(row,last.nextElementSibling);}
+  };
+  const onEnd=e=>{
+    if(e.pointerId!==kmzDragState.pointerId)return;
+    grip.removeEventListener("pointermove",onMove);grip.removeEventListener("pointerup",onEnd);grip.removeEventListener("pointercancel",onEnd);
+    try{grip.releasePointerCapture(e.pointerId);}catch(err){}
+    row.classList.remove("dragging");
+    const list=row.parentElement;
+    const moved=kmzDragState.moved;
+    kmzDragState.row=null;kmzDragState.pointerId=null;
+    if(list&&moved){
+      const order=[...list.querySelectorAll(".kmz-row")].map(r=>r.dataset.slotId);
+      const next=[];
+      for(const id of order){const slot=kmzSlots.find(s=>String(s.id)===id);if(slot&&!next.includes(slot))next.push(slot);}
+      for(const slot of kmzSlots)if(!next.includes(slot))next.push(slot);
+      kmzSlots=next;
+      renderKmzList();refreshKmzBuildingControls();
+      drawPhoto._terrainRenderKey=null;update();
+      setKmzBuildingStatus("順番を入れ替えました（下の行ほど手前に描きます）。","ready");
+    }
+    /* 動かさずに離した＝行の選択にしない（つまみは選ばない） */
+    setTimeout(()=>{kmzDragState.moved=false;},0);
+  };
+  grip.addEventListener("pointermove",onMove);
+  grip.addEventListener("pointerup",onEnd);
+  grip.addEventListener("pointercancel",onEnd);
 }
 /* 【v880】1つだけ削除する。消したら隣を選び直す。 */
 function kmzRemoveSlot(id){
