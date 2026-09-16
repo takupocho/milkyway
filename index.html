@@ -6142,7 +6142,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1019-walk-water";
+const APP_VERSION="1021-tile-seam";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19357,7 +19357,7 @@ const TERRAIN_DISTANCE_BANDS=[
    完全に無くなったので、地形の作り方は v893〜v900 と**同一**になった。
    よって8が正しく、**すでに保存されている綺麗な地形がそのまま再利用される。**
    （v901で9へ上げたのは、KMZの高密度点を rayGrid から出した＝作り方が変わったため） */
-const TERRAIN_CACHE_FORMAT=8;
+const TERRAIN_CACHE_FORMAT=9;   /* 【v1021】タイルの境の補間を直したので、保存済み地形を作り直す */
 /* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
    保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
 function kmzTerrainSignature(){
@@ -20137,8 +20137,33 @@ function terrainTilePoint(lat,lon,z){
   const xf=(lon+180)/360*n;
   const yf=(1-Math.asinh(Math.tan(clampedLat*D2R))/Math.PI)/2*n;
   const x=Math.floor(xf),y=Math.floor(yf);
-  const pixelX=clamp((xf-x)*256,0,255),pixelY=clamp((yf-y)*256,0,255);
+  /* 【v1021】上限は 255.999。255 で止めると端の 1 画素ぶんの位置が全部同じになる。 */
+  const pixelX=clamp((xf-x)*256,0,255.999),pixelY=clamp((yf-y)*256,0,255.999);
   return {z,x,y,px:Math.floor(pixelX),py:Math.floor(pixelY),pixelX,pixelY,key:`${z}/${x}/${y}`};
+}
+/* 【v1021】端から半画素以内の点は、補間に隣のタイルの画素が要る。その隣（最大 3 枚）。 */
+function terrainTileNeighbourRefs(ref){
+  const out=[];
+  const dx=ref.pixelX<.5?-1:ref.pixelX>255.5?1:0,dy=ref.pixelY<.5?-1:ref.pixelY>255.5?1:0;
+  if(!dx&&!dy)return out;
+  const n=2**ref.z;
+  const add=(ax,ay)=>{const x=(((ref.x+ax)%n)+n)%n,y=ref.y+ay;if(y<0||y>=n)return;out.push({z:ref.z,x,y,key:`${ref.z}/${x}/${y}`});};
+  if(dx)add(dx,0);if(dy)add(0,dy);if(dx&&dy)add(dx,dy);
+  return out;
+}
+function terrainTileNeighbourKey(ref,dx,dy){
+  const n=2**ref.z;
+  return `${ref.z}/${(((ref.x+dx)%n)+n)%n}/${ref.y+dy}`;
+}
+/* 【v1021】隣のタイルも読んでから補間する（非同期の道）。 */
+async function elevationAtRefBilinear(ref){
+  const pixels=await loadGsiDemTile(ref);
+  if(!pixels)return null;
+  const nb=terrainTileNeighbourRefs(ref);
+  if(!nb.length)return decodeGsiElevationBilinear(pixels,ref.pixelX,ref.pixelY);
+  const nbPixels=await Promise.all(nb.map(tile=>loadGsiDemTile(tile)));
+  const map=new Map(nb.map((tile,i)=>[tile.key,nbPixels[i]]));
+  return decodeGsiElevationBilinear(pixels,ref.pixelX,ref.pixelY,(dx,dy)=>map.get(terrainTileNeighbourKey(ref,dx,dy))||null);
 }
 async function imageBlobToPixels(blob){
   let source=null,url="";
@@ -20375,7 +20400,7 @@ function highDetailElevationAt(lat,lon){
   const span=(2**15)*256;
   const xf=(lon+180)/360*span;
   const yf=(1-Math.asinh(Math.tan(clamp(lat,-85.05112878,85.05112878)*D2R))/Math.PI)/2*span;
-  const x0=Math.floor(xf),y0=Math.floor(yf),fx=xf-x0,fy=yf-y0;
+  const x0=Math.floor(xf-.5),y0=Math.floor(yf-.5),fx=xf-.5-x0,fy=yf-.5-y0;   /* 【v1021】画素の中心 */
   let sum=0,weight=0;
   for(let j=0;j<2;j++) for(let i=0;i<2;i++){
     const gx=x0+i,gy=y0+j;
@@ -20838,18 +20863,27 @@ function decodeGsiElevation(pixels,px,py){
 }
 // 指定座標を囲む4画素から標高を双線形補間する。
 // 従来の1画素固定で発生していた数m単位の段差を抑え、近距離斜面の輪郭を滑らかにする。
-function decodeGsiElevationBilinear(pixels,pixelX,pixelY){
+/* 【v1021】画素の値は画素の**中心**の標高。0.5 ずらして中心どうしで補間する。
+   タイルの端では隣のタイルの画素と補間する（neighbour(dx,dy) が隣の画素を返すとき）。
+   隣が無いときだけ、従来どおり端の画素で止める。
+   （従来は端で止めていたので、タイルの境の手前に 1 画素の平らな棚と段ができ、
+     方位ごとに段の距離目盛りがずれて「歯」の列になっていた。） */
+function decodeGsiElevationBilinear(pixels,pixelX,pixelY,neighbour){
   if(!pixels) return null;
-  const x0=clamp(Math.floor(pixelX),0,255),y0=clamp(Math.floor(pixelY),0,255);
-  const x1=Math.min(255,x0+1),y1=Math.min(255,y0+1);
-  const fx=clamp(pixelX-x0,0,1),fy=clamp(pixelY-y0,0,1);
-  const e00=decodeGsiElevation(pixels,x0,y0),e10=decodeGsiElevation(pixels,x1,y0);
-  const e01=decodeGsiElevation(pixels,x0,y1),e11=decodeGsiElevation(pixels,x1,y1);
+  const u=pixelX-.5,v=pixelY-.5;
+  const x0=Math.floor(u),y0=Math.floor(v),fx=u-x0,fy=v-y0;
+  const get=(gx,gy)=>{
+    const dx=gx<0?-1:gx>255?1:0,dy=gy<0?-1:gy>255?1:0;
+    if(!dx&&!dy) return decodeGsiElevation(pixels,gx,gy);
+    const n=neighbour?neighbour(dx,dy):null;
+    return n?decodeGsiElevation(n,gx-dx*256,gy-dy*256):decodeGsiElevation(pixels,clamp(gx,0,255),clamp(gy,0,255));
+  };
+  const e00=get(x0,y0),e10=get(x0+1,y0),e01=get(x0,y0+1),e11=get(x0+1,y0+1);
   if([e00,e10,e01,e11].every(Number.isFinite)){
     return lerp(lerp(e00,e10,fx),lerp(e01,e11,fx),fy);
   }
-  // 海岸線など4画素の一部がnodataの場合、陸海を不自然に混ぜず最寄り画素へ戻す。
-  return decodeGsiElevation(pixels,clamp(Math.round(pixelX),0,255),clamp(Math.round(pixelY),0,255));
+  // 海岸線など4画素の一部がnodataの場合、陸海を不自然に混ぜず「点を含む画素」へ戻す。
+  return decodeGsiElevation(pixels,clamp(Math.floor(pixelX),0,255),clamp(Math.floor(pixelY),0,255));
 }
 
 /* =========================================================
@@ -21329,7 +21363,7 @@ function darumaTelephotoElevationAt(lat,lon,fineTiles,parentSeaKeys,parentDemTil
   const span=(2**DARUMA_TELEPHOTO_FINE_Z)*256;
   const xf=(lon+180)/360*span;
   const yf=(1-Math.asinh(Math.tan(clamp(lat,-85.05112878,85.05112878)*D2R))/Math.PI)/2*span;
-  const x0=Math.floor(xf),y0=Math.floor(yf),fx=xf-x0,fy=yf-y0;
+  const x0=Math.floor(xf-.5),y0=Math.floor(yf-.5),fx=xf-.5-x0,fy=yf-.5-y0;   /* 【v1021】画素の中心 */
   let sum=0,weight=0,known=false;
   for(let j=0;j<2;j++)for(let i=0;i<2;i++){
     const gx=x0+i,gy=y0+j,key=`${gx>>8}/${gy>>8}`,tile=fineTiles.get(key);
@@ -23034,10 +23068,14 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
   }
   const azimuths=[];
   for(let az=0;az<360;az++)azimuths.push(az);
+  worldMapEnsureTiles(lat,lon);   /* 【v1020】地図の水域面は DEM タイルを待つ間に取っておく */
   const prevRowPoint=(az,d)=>{const r=partial&&partial.previous.rayGrid&&partial.previous.rayGrid[az];return r?r[d]:null;};
   const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
   const samples=new Array(360).fill(null);
-  const tilesByKey=new Map(observerRefs.map(t=>[t.key,t]));
+  const tilesByKey=new Map();
+  /* 【v1021】端から半画素以内の点は、隣のタイルも一緒に取る（境をまたいで補間するため）。 */
+  const addTileRefs=list=>{for(const t of list){tilesByKey.set(t.key,t);for(const nb of terrainTileNeighbourRefs(t))if(!tilesByKey.has(nb.key))tilesByKey.set(nb.key,nb);}};
+  addTileRefs(observerRefs);
   /* 目盛りの間の最高点を拾う（v614）。
 
      稜線は「その方向で一番高いもの」で決まるので、目盛りの上を
@@ -23062,7 +23100,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
       const primaryZoom=distanceKm<=3?14:distanceKm<=15?12:10;
       const zooms=primaryZoom===14?[14,12,10]:primaryZoom===12?[12,10]:[10];
       const refs=zooms.map(z=>terrainTilePoint(pLat,pLon,z));
-      refs.forEach(t=>tilesByKey.set(t.key,t));
+      addTileRefs(refs);
       /* 間隔が広い遠方だけ下見する。足元(1km以内)は元々細かいので不要。 */
       const gapKm=distanceKm-previousKm;
       const peakRefs=[];
@@ -23071,7 +23109,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
           const subKm=distanceKm-gapKm*k/(PEAK_SUBSAMPLES+1);
           const [sLat,sLon]=terrainDestination(lat,lon,az,subKm);
           const sub=zooms.map(z=>terrainTilePoint(sLat,sLon,z));
-          sub.forEach(t=>tilesByKey.set(t.key,t));
+          addTileRefs(sub);
           peakRefs.push(sub);
         }
       }
@@ -23101,7 +23139,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
       for(let distanceKm=startKm;distanceKm<=endKm+.001;distanceKm+=.25){
         const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
         const refs=[terrainTilePoint(pLat,pLon,12),terrainTilePoint(pLat,pLon,10)];
-        refs.forEach(tile=>tilesByKey.set(tile.key,tile));
+        addTileRefs(refs);
         fujiDetailRays[az].push({distanceKm,refs});
       }
     }
@@ -23133,14 +23171,16 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
   function elevationFromRefsSync(refs){
     for(const ref of refs){
       if(!resolvedTilePixels.has(ref.key)) return undefined;
-      const elevation=decodeGsiElevationBilinear(resolvedTilePixels.get(ref.key),ref.pixelX,ref.pixelY);
+      /* 【v1021】端では隣のタイル（addTileRefs で一緒に読んである）と補間 */
+      const elevation=decodeGsiElevationBilinear(resolvedTilePixels.get(ref.key),ref.pixelX,ref.pixelY,
+        (dx,dy)=>resolvedTilePixels.get(terrainTileNeighbourKey(ref,dx,dy))||null);
       if(Number.isFinite(elevation)) return elevation;
     }
     return null;
   }
   async function elevationFromRefs(refs){
     for(const ref of refs){
-      const elevation=decodeGsiElevationBilinear(await loadGsiDemTile(ref),ref.pixelX,ref.pixelY);
+      const elevation=await elevationAtRefBilinear(ref);   /* 【v1021】 */
       if(Number.isFinite(elevation)) return elevation;
     }
     return null;
@@ -23156,7 +23196,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerElevation=0;
     observerAtSea=true;
   }
-  const eyeElevation=observerElevation+1.6;
+  let eyeElevation=observerElevation+1.6;   /* 【v1020】1巡目のあとで海の上と分かれば下げる */
 
   // 1巡目: 全方位×全距離の標高を先にグリッドとして取得する。
   // (2巡目で近傍セルどうしを比較し、海だけでなく湖沼のような「平らな水面」も検出するため)
@@ -23196,6 +23236,17 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
   }
   // 海岸・海上では標高を持つ陸地サンプルが少なくても正常。
   // DEMタイルの大半が取得できている場合に限り、nodataを海として地形生成を継続する。
+  /* 【v1020】観測地点が地図で水（海）の上で、DEM の値が 15m 以下で、100m 以内に DEM 欠損（海）があれば、
+     標高は海面 0。DEM10B の崖の裾（由良では 12.8m）が海へ張り出していて、海の上で目が 14m になっていた。
+     湖は DEM が湖面の高さ（欠損なし）なのでそのまま。地図タイルが無いときは触らない。 */
+  if(!observerAtSea&&Number.isFinite(observerElevation)&&observerElevation<=15&&worldMapWaterForDistance(lat,lon,0)===true){
+    let seaNear=false;
+    for(let az=0;az<360&&!seaNear;az+=6){
+      const row=elevGrid[az];if(!row)continue;
+      for(let d=0;d<nDist&&TERRAIN_DISTANCES_KM[d]<=.1;d++){if(!Number.isFinite(row[d])){seaNear=true;break;}}
+    }
+    if(seaNear){observerElevation=0;observerAtSea=true;eyeElevation=1.6;}
+  }
   const seaLevelObserver=observerAtSea||observerElevation<=1;
   /* 【v988】部分作りのときは、作った方位のぶんだけで判定する。 */
   if(validCount<Math.round(720*azimuths.length/360)&&!(seaLevelObserver&&tileLoadRatio>=.6)) return null;
@@ -23400,6 +23451,33 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
       if(layer.profile[az]>WATER_MAX_VISIBLE_ALT_DEG) layer.waterProfile[az]=0;
     }
   });
+  /* 【v1020】作った直後に地図の水域面を当てる（新しい点だけ）。タイルが無ければ触らない。 */
+  worldMapEnsureTiles(lat,lon);
+  {
+    const grids=[nearSurfaceGrid,rayGrid];
+    let anyMap=false;
+    for(const grid of grids)for(let az=0;az<360;az++){
+      const row=grid[az];if(!row)continue;
+      for(const point of row){
+        if(!point||point._fresh===false)continue;
+        const w=worldMapWaterForDistance(point.lat,point.lon,(point.distanceKm||0)*1000);
+        if(w===null)continue;
+        anyMap=true;
+        if(w===true){point.water=true;continue;}
+        if(point.baseNoData||point.baseKnown)continue;
+        point.water=false;
+      }
+    }
+    if(anyMap){
+      /* 水際の距離も格子から更新（足元の塗りと仮想前進が見る）。 */
+      for(let az=0;az<360;az++){
+        const row=rayGrid[az];if(!row)continue;
+        let near=null,far=null;
+        for(const point of row){if(point&&point.water){if(near===null)near=point.distanceKm;far=point.distanceKm;}}
+        waterNearKm[az]=near;waterFarKm[az]=far;
+      }
+    }
+  }
   const initialMeshObserverWater=classifyObserverWaterFromNearGrid(nearSurfaceGrid);
   return {
     profile,terrainLayers,terrainLayerSources,observerElevation,observerAtSea,
@@ -24264,7 +24342,7 @@ async function buildKmzDetailGrid(signature){
     for(const detail of rays[az]){
       let elevation=null;
       for(const ref of detail.refs){
-        const value=decodeGsiElevationBilinear(await loadGsiDemTile(ref),ref.pixelX,ref.pixelY);
+        const value=await elevationAtRefBilinear(ref);   /* 【v1021】端では隣のタイルと補間 */
         if(Number.isFinite(value)){elevation=value;break;}
       }
       if(!Number.isFinite(elevation)) continue;
