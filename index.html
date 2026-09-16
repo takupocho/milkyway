@@ -5390,11 +5390,12 @@
                 <div id="drivePanel" class="drive-panel" aria-hidden="true">
                   <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
                 </div>
-                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降速度の調整、長押しで最速下降"></div>
+                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降の速さの設定、長押しで最速下降"></div>
+                <!-- 【v1022】自動で上昇・下降する画面をやめ、F/V・左スティックで上昇・下降する速さの設定にした。 -->
                 <div id="droneAltitudeSpeedPanel" class="drone-altitude-speed-panel" hidden>
-                  <div class="drone-altitude-speed-title"><span>上昇・下降速度</span><span id="droneAltitudeSpeedVal">下降 8m/秒</span></div>
-                  <input id="droneAltitudeSpeedSlider" type="range" min="-30" max="30" step="1" value="-8" aria-label="ドローンの上昇下降速度">
-                  <div class="drone-altitude-speed-scale"><span>下降 30</span><span>停止</span><span>上昇 30m/秒</span></div>
+                  <div class="drone-altitude-speed-title"><span>上昇・下降の速さ</span><span id="droneAltitudeSpeedVal">8m/秒</span></div>
+                  <input id="droneAltitudeSpeedSlider" type="range" min="1" max="60" step="1" value="8" aria-label="ドローンの上昇・下降の速さ">
+                  <div class="drone-altitude-speed-scale"><span>1m/秒</span><span>Shiftで4倍</span><span>60m/秒</span></div>
                 </div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
                 <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
@@ -6142,7 +6143,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1021-tile-seam";
+const APP_VERSION="1022-drone-speed";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11184,7 +11185,7 @@ let tripodHeightM=1.6;
 /* 国土地理院DEMの地面標高には含まれない、展望台・屋上・防波堤などの追加高さ(m)。 */
 let viewpointOffsetM=0;
 /* キーボードで上昇した高さ(m)。三脚の高さに足して視点の高さになる。
-   0で地面(＝三脚の高さのまま)、最大300m。
+   0で地面(＝三脚の高さのまま)、最大4000m（【v1022】300m から引き上げ）。
    地形の見かけ高度は各点の実標高から描画時に計算し直しているので、
    上昇しても地形データの取り直しは要らず、描き直すだけで反映される。
 
@@ -11192,7 +11193,7 @@ let viewpointOffsetM=0;
    絶対標高を保てる幅でもある（下の applyDroneAltitudeHold 参照）。
    150mだと、150mまで上げた状態で100m低い土地へ移動したときに
    上限で頭打ちになり、絶対標高が地面と一緒に下がっていた。 */
-const CAMERA_RISE_MAX_M=300;
+const CAMERA_RISE_MAX_M=4000;   /* 【v1022】300 → 4000 */
 let cameraRiseM=0;
 /* ドローンで保つ絶対標高(m)。上昇中は「離陸地点の標高＋上昇量」を覚えておき、
    移動先の地面が上下しても同じ標高に留まる(実機の気圧高度と同じ挙動)。
@@ -11247,10 +11248,18 @@ function syncTripodHeightControl(){
   syncObserverEyeElevationDisplay();
   syncDroneBadge();
 }
-/* 【v730】高度表示の短押し／長押しから使う自動上昇・下降。 */
+/* 【v1022】F/V キー・左スティックで上昇・下降する速さ（m/秒）。高度表示を押して出る画面で設定する。 */
+let droneVerticalSpeedMps=8;
+const DRONE_VERTICAL_SPEED_MIN=1,DRONE_VERTICAL_SPEED_MAX=60;
+function syncDroneVerticalSpeedControl(){
+  if(el.droneAltitudeSpeedSlider)el.droneAltitudeSpeedSlider.value=droneVerticalSpeedMps;
+  syncDroneAltitudeSpeedLabel();
+}
+/* 【v730】自動上昇・下降。【v1022】残っているのは高度表示の長押し（強制下降）だけ。 */
 let droneAutoVerticalRaf=0,droneAutoVerticalSpeedMps=-8,droneAutoVerticalLastTime=0,droneAutoVerticalLastDraw=0;
-/* 【v869】長押しの強制下降はいちばん速い -30m/秒。 */
+/* 【v869】長押しの強制下降はいちばん速い -30m/秒。【v1022】設定の速さがそれより速ければそちら。 */
 const DRONE_FORCED_DESCENT_MPS=-30;
+function droneForcedDescentMps(){return -Math.max(-DRONE_FORCED_DESCENT_MPS,droneVerticalSpeedMps);}
 /* 【v869】強制下降は**緊急用の一時的な上書き**なので、終わったら元の速度へ戻す。
    戻さないと、一度長押ししただけで普段使いの速度が -30 に置き換わってしまう。
    null は「上書き中ではない」。 */
@@ -11258,20 +11267,13 @@ let droneForcedDescentPreviousSpeed=null;
 function droneAutoVerticalActive(){ return !!droneAutoVerticalRaf; }
 function syncDroneAltitudeSpeedLabel(){
   if(!el.droneAltitudeSpeedVal) return;
-  const speed=Math.round(droneAutoVerticalSpeedMps);
-  el.droneAltitudeSpeedVal.textContent=speed>0?`上昇 ${speed}m/秒`:speed<0?`下降 ${Math.abs(speed)}m/秒`:"停止";
+  el.droneAltitudeSpeedVal.textContent=`${Math.round(droneVerticalSpeedMps)}m/秒`;   /* 【v1022】 */
 }
 function stopDroneAutoVertical(syncAll=true){
   const wasActive=!!droneAutoVerticalRaf;
   if(droneAutoVerticalRaf) cancelAnimationFrame(droneAutoVerticalRaf);
   droneAutoVerticalRaf=0;droneAutoVerticalLastTime=0;droneAutoVerticalLastDraw=0;
-  /* 【v869】強制下降が終わったら、長押し前の速度設定へ戻す。 */
-  if(wasActive&&droneForcedDescentPreviousSpeed!==null){
-    droneAutoVerticalSpeedMps=droneForcedDescentPreviousSpeed;
-    droneForcedDescentPreviousSpeed=null;
-    if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.value=droneAutoVerticalSpeedMps;
-    syncDroneAltitudeSpeedLabel();
-  }
+  droneForcedDescentPreviousSpeed=null;   /* 【v1022】スライダーは速さの設定になったので戻す物は無い */
   if(el.droneBadge) el.droneBadge.classList.remove("auto-moving");
   syncDroneBadge();
   /* 【v731】自動移動中は写真だけを更新し、停止した瞬間に全UIを1回同期する。 */
@@ -11279,9 +11281,7 @@ function stopDroneAutoVertical(syncAll=true){
 }
 function startDroneAutoVertical(speedMps){
   stopDroneAutoVertical(false);
-  droneAutoVerticalSpeedMps=clamp(Math.round(speedMps),-30,30);
-  if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.value=droneAutoVerticalSpeedMps;
-  syncDroneAltitudeSpeedLabel();
+  droneAutoVerticalSpeedMps=clamp(Math.round(speedMps),-DRONE_VERTICAL_SPEED_MAX,DRONE_VERTICAL_SPEED_MAX);   /* 【v1022】スライダーには触らない */
   if(!droneAutoVerticalSpeedMps) return;
   stopDroneDescent();
   droneAutoVerticalLastTime=performance.now();droneAutoVerticalLastDraw=0;
@@ -11359,9 +11359,7 @@ if(el.droneBadge){
       /* 【v869】長押しは強制的に最速で下降。別の操作なので速度画面は閉じる。
          いまの速度を控えておき、着地して止まったら戻す。 */
       toggleDroneAltitudeSpeedPanel(false);
-      const previous=droneForcedDescentPreviousSpeed!==null?droneForcedDescentPreviousSpeed:droneAutoVerticalSpeedMps;
-      startDroneAutoVertical(DRONE_FORCED_DESCENT_MPS);
-      droneForcedDescentPreviousSpeed=previous;   // startの中で書き換わるので後で入れる
+      startDroneAutoVertical(droneForcedDescentMps());   /* 【v1022】 */
     },550);
     event.preventDefault();event.stopPropagation();
   });
@@ -11388,13 +11386,10 @@ if(el.droneBadge){
   });
 }
 if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.addEventListener("input",()=>{
-  /* 【v869】自分でスライダーを動かしたなら、それが最終の意思。
-     強制下降の「あとで元へ戻す」約束はここで破棄する。
-     破棄しないと、強制下降中に「停止」へ動かしたとき
-     停止ではなく元の速度へ戻ってしまう。 */
-  droneForcedDescentPreviousSpeed=null;
-  const speed=clamp(Math.round(+el.droneAltitudeSpeedSlider.value||0),-30,30);
-  if(speed) startDroneAutoVertical(speed);else{droneAutoVerticalSpeedMps=0;stopDroneAutoVertical();syncDroneAltitudeSpeedLabel();}
+  /* 【v1022】上昇・下降の速さの設定。動かすのは F/V・左スティック。 */
+  droneVerticalSpeedMps=clamp(Math.round(+el.droneAltitudeSpeedSlider.value||8),DRONE_VERTICAL_SPEED_MIN,DRONE_VERTICAL_SPEED_MAX);
+  syncDroneAltitudeSpeedLabel();
+  scheduleSaveSettings();
 });
 /* 上部の並びの高さを測って、時計をその下へ逃がす。
    高度表示・住所は出たり消えたりするので、固定値ではなく実際の高さで決める。 */
@@ -16542,6 +16537,7 @@ function collectPersistedSettings(){
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
     tripodHeight:el.tripodHeight.value, viewpointOffset:el.viewpointOffset.value,
     walkSpeed:el.walkSpeed.value,
+    droneVerticalSpeed:droneVerticalSpeedMps,   /* 【v1022】 */
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -16814,6 +16810,11 @@ async function loadPersistedSettings(){
       el.walkSpeed.value=clamp(Number.isFinite(saved)?saved:WALK_SPEED_MPS,2,16);
     }
     syncWalkSpeedControl();
+    if(s.droneVerticalSpeed!==undefined){   /* 【v1022】 */
+      const saved=Number(s.droneVerticalSpeed);
+      droneVerticalSpeedMps=clamp(Number.isFinite(saved)?Math.round(saved):8,DRONE_VERTICAL_SPEED_MIN,DRONE_VERTICAL_SPEED_MAX);
+    }
+    syncDroneVerticalSpeedControl();
     if(s.viewpointOffset!==undefined){
       const saved=Number(s.viewpointOffset);
       el.viewpointOffset.value=clamp(Number.isFinite(saved)?saved:0,0,500);
@@ -34790,19 +34791,21 @@ function walkBaseSpeedMps(){
 }
 function walkSpeedMps(fast){
   const base=walkBaseSpeedMps();
-  return (fast?base*(WALK_SPEED_FAST_MPS/WALK_SPEED_MPS):base)*(1+cameraRiseM/50);
+  return (fast?base*(WALK_SPEED_FAST_MPS/WALK_SPEED_MPS):base)*walkRiseFactor();
 }
+/* 【v1022】上限が 4000m になったので、高度補正は 1000m（21倍）で頭打ち。 */
+function walkRiseFactor(){return 1+Math.min(cameraRiseM,1000)/50;}
 function syncWalkSpeedControl(){
   if(!el.walkSpeed||!el.walkSpeedVal) return;
   const base=walkBaseSpeedMps();
   /* 1コマの飛び幅も一緒に出す。ここが「カクカク」の正体なので、
      数字で見えたほうが決めやすい。dtは0.25秒で頭打ちなのでそれを使う。 */
-  const perFrame=base*(1+cameraRiseM/50)*.25;
+  const perFrame=base*walkRiseFactor()*.25;
   el.walkSpeedVal.textContent=`${base} m/s（1コマ約${perFrame<10?perFrame.toFixed(1):Math.round(perFrame)}m）`;
 }
 const TURN_DEG_PER_SEC=45;      // A/D の方位の回る速さ
 const PITCH_DEG_PER_SEC=30;     // W/S の仰角の変わる速さ
-const RISE_MPS=8;               // F/V の上昇下降の速さ
+function riseMps(){return droneVerticalSpeedMps;}   // F/V・左スティックの上昇下降の速さ【v1022】設定から
 let walkForward=0,walkStrafe=0,walkFast=false;
 let walkTurn=0,walkPitch=0,walkRise=0;
 let walkRaf=0,walkLastTime=0,walkBusy=false,walkPending=false,walkMoved=false;
@@ -34828,7 +34831,7 @@ function applyViewKeys(dt,fast){
     viewChanged=true;
   }
   if(walkRise!==0){
-    const next=clamp(cameraRiseM+walkRise*RISE_MPS*(fast?4:1)*dt,0,CAMERA_RISE_MAX_M);
+    const next=clamp(cameraRiseM+walkRise*riseMps()*(fast?4:1)*dt,0,CAMERA_RISE_MAX_M);
     if(next!==cameraRiseM){
       cameraRiseM=next;
       // ここで決めた高さの絶対標高を覚え、移動中はこの標高を保つ。
@@ -34845,11 +34848,19 @@ function applyViewKeys(dt,fast){
 /* 移動先の地面標高に合わせて上昇量を引き直し、絶対標高を保つ。
    実機のドローンと同じで、尾根へ寄れば地面が迫り上がって相対高度は下がる。
    地面より下へは潜らせず、上限も超えさせない。 */
+const DRONE_GROUND_CLEARANCE_M=10;   /* 【v1022】地面に押し上げられるときの地面からの高さ */
 function applyDroneAltitudeHold(){
   if(droneHoldElevation===null) return false;
   const ground=groundElevationM();
   if(ground===null) return false;
-  const next=clamp(droneHoldElevation-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
+  let next=clamp(droneHoldElevation-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
+  /* 【v1022】地面が保持高度より高い（尾根が迫る）ときは、地面の 10m 上へ押し上げ、**そこを新しい保持高度にする**。
+     これまでは押し上げたあと地面が下がると元の保持高度へ戻っていたので、尾根を越えるたびに上下していた。
+     押し上げられた先で水平に飛び続ける＝真っ直ぐ動く。下がるのは自分で下降したときだけ。 */
+  if(next<DRONE_GROUND_CLEARANCE_M){
+    next=Math.min(DRONE_GROUND_CLEARANCE_M,CAMERA_RISE_MAX_M);
+    droneHoldElevation=ground+viewpointOffsetM+tripodHeightM+next;
+  }
   if(Math.abs(next-cameraRiseM)<.05) return false;
   cameraRiseM=next;
   syncTripodHeightControl();
