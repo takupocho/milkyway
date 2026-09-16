@@ -5077,10 +5077,6 @@
           <button id="glTerrainBtn" type="button" class="toggle-btn" style="margin-top:14px;"><span>🧪 地形をWebGLで描く（実験）</span><span id="glTerrainState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
           <p class="map-hint" style="margin-top:6px;">層の多角形を塗る段だけをGPUに任せます。見え方は同じになるはずです。雲海・地形メッシュ表示のときは従来どおり描きます。WebGL2が使えない端末では何も変わりません。</p>
           <p id="glTerrainReadout" class="map-hint mono" style="margin-top:4px;white-space:pre-wrap;"></p>
-          <!-- 【v1017】足元メッシュ -->
-          <button id="nearMeshBtn" type="button" class="toggle-btn" style="margin-top:12px;"><span>🦶 足元メッシュ（半径120mを1枚の面で）</span><span id="nearMeshState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
-          <p class="map-hint" style="margin-top:6px;">自分のまわり半径120mを、Google Earth と同じ「1枚の3Dの面」で描きます。カメラの高さは面の自分の真下から取るので、足元の壁・割れが出ません。WebGL地形がONのときだけ効きます。</p>
-          <p id="nearMeshReadout" class="map-hint mono" style="margin-top:4px;white-space:pre-wrap;"></p>
           <!-- 【v998】衛星写真の見え方。 -->
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛰 衛星写真の見え方（表示→衛星写真がONのとき）</p>
           <div class="field"><label class="top">昼の明るさ <span class="val mono" id="photoTuneDayVal">92%</span></label><input type="range" id="photoTuneDay" min="30" max="150" step="1" value="92"></div>
@@ -6146,7 +6142,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1017-near-mesh";
+const APP_VERSION="1018-walk-near-rebuild";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7375,7 +7371,6 @@ const el={
   sunsetCopyBtn:$("sunsetCopyBtn"), sunsetCopyReadout:$("sunsetCopyReadout"),
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
-  nearMeshBtn:$("nearMeshBtn"), nearMeshState:$("nearMeshState"), nearMeshReadout:$("nearMeshReadout"),   /* 【v1017】 */
   photoTuneDay:$("photoTuneDay"), photoTuneDayVal:$("photoTuneDayVal"), photoTuneNight:$("photoTuneNight"), photoTuneNightVal:$("photoTuneNightVal"), photoTuneHaze:$("photoTuneHaze"), photoTuneHazeVal:$("photoTuneHazeVal"),   /* 【v998】 */
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
@@ -12172,11 +12167,6 @@ const PHOTO_TUNE_DEFAULT={day:92,night:22,haze:60};
 const photoTune={...PHOTO_TUNE_DEFAULT,hazeRgb:[150,164,184]};
 /* 【v976】WebGL地形のスイッチと状態。定義時に設定画面の同期が読むので、ここで宣言する（TDZ回避）。 */
 let glTerrainOn=false;
-let nearMeshOn=true;   /* 【v1017】足元メッシュ。宣言はここ（起動時の同期が先に読む） */
-const NEAR_MESH_RADIUS_M=120,NEAR_MESH_STEP_M=2.5,NEAR_MESH_SNAP_M=20,NEAR_MESH_ZOOM=14,NEAR_MESH_FINE_ZOOM=15;
-let nearMeshFine=true;   /* 5m データ（dem5a/5b/5c）を先に使う。無い所は 10m データ */
-const nearMesh={key:"",lat:0,lon:0,n:0,elev:null,water:null,shade:null,ready:false,building:false,version:0,waterLevel:0,tiles:0,lastBuildMs:0,lastGeomMs:0,triangles:0,error:""};
-let nearMeshScratch=null;   /* 三角形の入れもの。最初の使用時に確保 */
 const glTerrain={canvas:null,gl:null,prog:null,buf:null,loc:null,lost:false,ctxLostCount:0,geomKey:null,geomCount:0,uploadedKey:null,lastBuildMs:0,lastDrawMs:0,frames:0};
 /* 【v947】利用者が実機で詰めた値。書き出しの1行をそのまま既定にした。 */
 const SUNSET_MODE_DEFAULT={strength:94,saturate:400,red:88,yellow:15,vivid:132,contrast:126,protect:19,softPeak:92,
@@ -13497,19 +13487,6 @@ if(el.glTerrainBtn)el.glTerrainBtn.addEventListener("click",()=>{
   glTerrainOn=!glTerrainOn;drawPhoto._terrainRenderKey=null;update();syncGlTerrainControls();scheduleSaveSettings();
 });
 syncGlTerrainControls();
-/* 【v1017】足元メッシュ */
-function syncNearMeshControls(){
-  if(!el.nearMeshBtn)return;
-  el.nearMeshBtn.classList.toggle("active",nearMeshOn);
-  el.nearMeshState.textContent=nearMeshOn?"ON":"OFF";
-  if(el.nearMeshReadout)el.nearMeshReadout.textContent=nearMeshOn
-    ?`格子 ${nearMesh.n}×${nearMesh.n}（${NEAR_MESH_STEP_M}m）／ 三角形 ${nearMesh.triangles} ／ 組む ${nearMesh.lastGeomMs.toFixed(1)}ms ／ 水面 ${nearMesh.waterLevel.toFixed(1)}m ／ 5mデータ ${Math.round((nearMesh.fineRatio||0)*100)}% ／ タイル ${nearMesh.tiles}${nearMesh.error?" ／ "+nearMesh.error:""}`
-    :"";
-}
-if(el.nearMeshBtn)el.nearMeshBtn.addEventListener("click",()=>{
-  nearMeshOn=!nearMeshOn;drawPhoto._terrainRenderKey=null;update();syncNearMeshControls();scheduleSaveSettings();
-});
-syncNearMeshControls();
 setInterval(()=>{if(el.powerSaveReadout&&el.powerSaveReadout.isConnected&&el.powerSaveReadout.offsetParent!==null)syncPowerSaveControls();},1000);   /* 【v982】見えているときだけ */
 if(el.sunsetSelfTestBtn)el.sunsetSelfTestBtn.addEventListener("click",()=>{
   let text;
@@ -16627,7 +16604,6 @@ function collectPersistedSettings(){
     overlayStyleRevision:OVERLAY_STYLE_REVISION,   // 【v961】
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
-    nearMeshOn:nearMeshOn,   // 【v1017】
     powerSaveOn:powerSaveOn,   // 【v982】
     worldGridBrightness:worldGridBrightness,   // 【v984】
     sunsetModeOn:sunsetModeOn,   // 【v929】
@@ -16873,7 +16849,6 @@ async function loadPersistedSettings(){
     }
     syncOverlayStyleControls();
     if(s.glTerrainOn!==undefined){glTerrainOn=s.glTerrainOn===true;syncGlTerrainControls();}   /* 【v976】 */
-    if(s.nearMeshOn!==undefined){nearMeshOn=s.nearMeshOn!==false;syncNearMeshControls();}   /* 【v1017】 */
     if(s.powerSaveOn!==undefined){powerSaveOn=s.powerSaveOn===true;syncPowerSaveControls();}   /* 【v982】 */
     if(Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
@@ -20716,11 +20691,8 @@ try{
       darumaShape:(shape)=>{drawPhoto._darumaShapeForce=shape||null;update();return {sun:drawPhoto._sunsetSunPx,shape:drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce};},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
-      nearMeshFine:(on)=>{nearMeshFine=on!==false;nearMesh.key="";drawPhoto._terrainRenderKey=null;update();return nearMeshFine;},
-      nearMeshDebugDraw:(mode,depth)=>{const x=glTerrain;if(!x.gl||!x.nearCount)return null;const W=x.canvas.width,H=x.canvas.height;glTerrainDrawBuffer(x.bufNear,x.nearCount,mode,W,H,1,false,0.06,false,false,depth!==false);const s=document.createElement('canvas');s.width=W/2;s.height=H/2;s.getContext('2d').drawImage(x.canvas,0,0,W/2,H/2);return s.toDataURL('image/png');},
-      nearMeshSolo:(on)=>{nearMesh.solo=!!on;drawPhoto._terrainRenderKey=null;update();return nearMesh.solo;},
-      nearMesh:(on)=>{if(on!==undefined){nearMeshOn=!!on;drawPhoto._terrainRenderKey=null;update();syncNearMeshControls();}return {on:nearMeshOn,paints:nearMesh.paints||0,frameFlag:drawPhoto._nearMeshDrawnFrame,fine:nearMesh.fineRatio,key:nearMesh.key,n:nearMesh.n,ready:nearMesh.ready,version:nearMesh.version,triangles:nearMesh.triangles,geomMs:nearMesh.lastGeomMs,buildMs:nearMesh.lastBuildMs,waterLevel:nearMesh.waterLevel,tiles:nearMesh.tiles,error:nearMesh.error,cam:(()=>{const lat=+el.lat.value,lon=+el.lon.value;const mLon=Math.max(1,111320*Math.cos(lat*D2R));return nearMeshElevationAt((lon-nearMesh.lon)*mLon,(lat-nearMesh.lat)*111320);})()};},
-      nearMeshRow:(az,n)=>{const lat=+el.lat.value,lon=+el.lon.value;const mLon=Math.max(1,111320*Math.cos(lat*D2R));const camE=(lon-nearMesh.lon)*mLon,camN=(lat-nearMesh.lat)*111320;const out=[];const h=(nearMesh.n-1)/2;for(let d=2.5;d<=(n||60);d+=2.5){const ee=camE+Math.sin(az*D2R)*d,nn=camN+Math.cos(az*D2R)*d;const e=nearMeshElevationAt(ee,nn);const j=Math.round(ee/NEAR_MESH_STEP_M+h),i=Math.round(nn/NEAR_MESH_STEP_M+h);const w=(nearMesh.water&&i>=0&&j>=0&&i<nearMesh.n&&j<nearMesh.n)?nearMesh.water[i*nearMesh.n+j]:"?";const pLat=nearMesh.lat+nn/111320,pLon=nearMesh.lon+ee/mLon;const mw=worldMapWaterForDistance(pLat,pLon,d);out.push(`${d}:${Number.isFinite(e)?e.toFixed(1):"?"}${w?"W":""}${mw===null?"n":(mw?"m":"")}`);}return out.join(" ");},
+      step:(f,s)=>{stepObserver(f,s||0);return [el.lat.value,el.lon.value];},
+      rayRow:(az,n)=>{const g=realTerrainState.rayGrid;if(!g)return null;const a=((Math.round(az)%360)+360)%360,row=g[a]||[];const rc=realTerrainState.rowCentre&&realTerrainState.rowCentre[a];return {observer:realTerrainState.observerElevation,key:realTerrainState.key,rowCentre:rc,pts:row.slice(0,n||30).map(p=>p?({d:p.distanceKm,e:Number.isFinite(p.baseElevation)?+p.baseElevation.toFixed(1):null,alt:+p.alt.toFixed(2),w:p.water?1:0,f:p._fresh===false?0:1}):null)};},
       meteorWindow:()=>({ok:meteorNightWindow(state),sunAlt:state&&state.sunAltAz&&state.sunAltAz.alt,set:state&&state.sunRiseSet&&state.sunRiseSet.set,rise:state&&state.sunRiseSet&&state.sunRiseSet.rise}),   /* 【v1015】 */
       injectKmz:(lat,lon,w,hgt)=>{
         const a=w/2,tri=[],box=[[-a,-a,0],[a,-a,0],[a,a,0],[-a,a,0],[-a,-a,hgt],[a,-a,hgt],[a,a,hgt],[-a,a,hgt]];
@@ -23047,9 +23019,22 @@ function computeCoastlineSeaSegments(lat,lon,classifier){
   return {nearKm,farKm};
 }
 async function buildRealTerrainProfile(lat,lon,token,partial){
-  /* 【v988】partial={azSet,previous} のときは azSet の方位だけ作り、残りは previous の行を使う。 */
+  /* 【v988】partial={azSet,previous} のときは azSet の方位だけ全距離を作る。
+     【v1018】残りの方位も**足元（NEAR_REBUILD_KM 以内）は今の位置から作り直す**。遠くだけ直前の行を使う。
+     直前の行の中心が今の位置から STALE_ROW_M 以上離れていれば、その方位も全距離作り直す。
+     （v988〜v1017 は残りの方位を丸ごと直前の位置の光線で済ませていたため、動いたあとに向きを変えると
+       足元が別の場所の地面になり、壁・割れ・水際の段差が出ていた。） */
+  const NEAR_REBUILD_KM=.3,STALE_ROW_M=60;
+  const fullAz=new Set();
+  for(let az=0;az<360;az++){
+    if(!partial||partial.azSet.has(az)){fullAz.add(az);continue;}
+    const prev=partial.previous,prevRow=prev.rayGrid&&prev.rayGrid[az],pc=prev.rowCentre&&prev.rowCentre[az];
+    if(!prevRow||prevRow.length!==TERRAIN_DISTANCES_KM.length||!pc){fullAz.add(az);continue;}
+    if(terrainDistanceAndBearing(lat,lon,pc[0],pc[1]).distanceKm*1000>STALE_ROW_M)fullAz.add(az);
+  }
   const azimuths=[];
-  for(let az=0;az<360;az++)if(!partial||partial.azSet.has(az))azimuths.push(az);
+  for(let az=0;az<360;az++)azimuths.push(az);
+  const prevRowPoint=(az,d)=>{const r=partial&&partial.previous.rayGrid&&partial.previous.rayGrid[az];return r?r[d]:null;};
   const observerRefs=[terrainTilePoint(lat,lon,14),terrainTilePoint(lat,lon,12),terrainTilePoint(lat,lon,10)];
   const samples=new Array(360).fill(null);
   const tilesByKey=new Map(observerRefs.map(t=>[t.key,t]));
@@ -23070,7 +23055,9 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
   for(const az of azimuths){
     const ray=[];
     let previousKm=0;
+    const fullRow=fullAz.has(az);
     for(const distanceKm of TERRAIN_DISTANCES_KM){
+      if(!fullRow&&distanceKm>NEAR_REBUILD_KM){ray.push(null);previousKm=distanceKm;continue;}   /* 【v1018】遠くは直前の行 */
       const [pLat,pLon]=terrainDestination(lat,lon,az,distanceKm);
       const primaryZoom=distanceKm<=3?14:distanceKm<=15?12:10;
       const zooms=primaryZoom===14?[14,12,10]:primaryZoom===12?[12,10]:[10];
@@ -23182,6 +23169,13 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     const peaks=new Array(nDist);
     for(let d=0;d<nDist;d++){
       const sample=samples[az][d];
+      if(!sample){   /* 【v1018】直前の行の点（遠く）。稜線の高さもそのまま */
+        const pp=prevRowPoint(az,d);
+        const e=(pp&&!pp.baseNoData&&Number.isFinite(pp.baseElevation))?pp.baseElevation:null;
+        row[d]=e;peaks[d]=e;
+        if(Number.isFinite(e)) validCount++;
+        continue;
+      }
       /* 【v865】まず同期で引く。**`await 非同期関数()` は中身が即座に返しても
          マイクロタスクを1往復する**ので、関数の中だけ直しても効かない。
          呼び出し側をこう書き換えないと意味がない。 */
@@ -23232,22 +23226,10 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
   // 一方、海(標高データなし=nodata)はDEMが元々カバーしていない範囲そのものなので、
   // 距離を絞らず従来通り(50m〜90km)判定する。
   const WATER_CHECK_MIN_KM=0.005; // 観測者の三脚の真下など、ごく直近(5m未満)のみノイズとして判定対象から除外する
-  /* 【v988】作らない方位は、直前の地形の行をそのまま使う。 */
-  if(partial){
-    const prev=partial.previous;
-    for(let az=0;az<360;az++){
-      if(partial.azSet.has(az))continue;
-      profile[az]=prev.profile[az];
-      terrainLayers.forEach((layer,index)=>{
-        const pl=prev.terrainLayers[index];
-        layer.profile[az]=pl.profile[az];layer.waterProfile[az]=pl.waterProfile[az];
-        layer.noDataWaterProfile[az]=pl.noDataWaterProfile[az];layer.knownWaterProfile[az]=pl.knownWaterProfile[az];
-        terrainLayerSources[index][az]=prev.terrainLayerSources[index][az];
-      });
-      nearSurfaceGrid[az]=prev.nearSurfaceGrid[az];rayGrid[az]=prev.rayGrid[az];
-      waterNearKm[az]=prev.waterNearKm[az];waterFarKm[az]=prev.waterFarKm[az];
-      noDataWaterNearKm[az]=prev.noDataWaterNearKm[az];noDataWaterFarKm[az]=prev.noDataWaterFarKm[az];
-    }
+  /* 【v1018】行ごとに「遠くをどの中心で作ったか」。全距離作った行は今の位置、足元だけの行は直前の中心を引き継ぐ。 */
+  const rowCentre=new Array(360);
+  for(let az=0;az<360;az++){
+    rowCentre[az]=fullAz.has(az)?[lat,lon]:((partial&&partial.previous.rowCentre&&partial.previous.rowCentre[az])||[lat,lon]);
   }
   for(const az of azimuths){
     let highest=0;
@@ -23262,7 +23244,8 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     const layerKnownCount=new Array(terrainLayers.length).fill(0);
     for(let d=0;d<nDist;d++){
       const distanceKm=TERRAIN_DISTANCES_KM[d];
-      const sample=samples[az][d];
+      const reused=samples[az][d]?null:prevRowPoint(az,d);   /* 【v1018】遠くは直前の点 */
+      const sample=samples[az][d]||reused||{lat:NaN,lon:NaN};
       const elevation=elevGrid[az][d];
       /* 見かけの高さに使う標高。目盛りの間の頂を含む。
          水か陸かの判定はこれまでどおり elevation だけを見る。 */
@@ -23316,8 +23299,14 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
         const meshAlt=Number.isFinite(apparentAlt)?apparentAlt:(isSeaNoData?-Math.atan2(1.6,metres)*R2D:null);
         const point=Number.isFinite(meshAlt)?{
           distanceKm,lat:sample.lat,lon:sample.lon,alt:meshAlt,water,baseNoData:isSeaNoData,baseKnown:isKnown,
-          baseElevation:Number.isFinite(ridgeElevation)?ridgeElevation:null
+          baseElevation:Number.isFinite(ridgeElevation)?ridgeElevation:null,
+          _fresh:!reused   /* 【v1018】水域の当て直しは新しく作った点だけ */
         }:null;
+        if(point&&reused){   /* 【v1018】遠くの点は直前の水陸判定を引き継ぐ（当て直し済み） */
+          point.water=!!reused.water;point.baseNoData=!!reused.baseNoData;point.baseKnown=!!reused.baseKnown;
+          if(reused.coastlineSeaCandidate)point.coastlineSeaCandidate=true;
+          if(reused.baseCoastlineSea)point.baseCoastlineSea=true;
+        }
         // 既存経路は従来どおり1km以内だけ。レイマーチ用は全距離を保持する。
         // rayGridは欠損もnullのまま詰めて、添字が必ず TERRAIN_DISTANCES_KM の距離番号と
         // 一致するようにする(方位間を補間する際、同じ距離どうしで比較するため)。
@@ -23417,8 +23406,9 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
+    rowCentre,   /* 【v1018】 */
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
-    _freshAz:partial?partial.azSet:null   /* 【v988】今回作った方位（水域の当て直しはこの行だけ） */
+    _freshAz:partial?partial.azSet:null   /* 【v988】今回作った方位。【v1018】他の方位は point._fresh の点だけ当て直す */
   };
 }
 // OSMの水域ポリゴンを使って、標高ベースの水面判定(各距離帯のwaterProfile)を後から上書き・補強する。
@@ -25200,9 +25190,9 @@ function glTerrainInit(W,H){
   /* rayBandColor() の移植。定数は本体と同じ値（mixRGBの四捨五入は省く：差は1階調以内）。 */
   const vs=`#version 300 es
 in vec2 aPos;in float aDist;in float aAlt;in float aWater;in vec2 aMerc;
-uniform vec2 uSize;uniform float uDay;uniform float uWaterAsLand;uniform float uNearGrassKm;uniform float uMode;uniform float uDepth;
-flat out vec3 vLand;flat out vec3 vWaterCol;out float vWater;
-out vec2 vMerc;flat out float vHaze;flat out float vRelief;
+uniform vec2 uSize;uniform float uDay;uniform float uWaterAsLand;uniform float uNearGrassKm;uniform float uMode;
+flat out vec4 vCol;
+out vec2 vMerc;flat out float vTexW;flat out float vHaze;flat out float vRelief;
 const vec3 LNN=vec3(10.,12.,10.)/255.,LNF=vec3(25.,30.,28.)/255.;
 const vec3 LDN=vec3(62.,78.,48.)/255.,LDF=vec3(104.,118.,92.)/255.;
 const vec3 LNH=vec3(35.,47.,64.)/255.,LDH=vec3(196.,208.,218.)/255.;
@@ -25210,33 +25200,30 @@ const vec3 WNN=vec3(54.,49.,69.)/255.,WNF=vec3(44.,40.,57.)/255.;
 const vec3 WDN=vec3(146.,172.,215.)/255.,WDF=vec3(132.,159.,205.)/255.;
 const vec3 WNH=vec3(52.,47.,66.)/255.,WDH=vec3(120.,146.,186.)/255.;
 const vec3 GN=vec3(22.,30.,21.)/255.,GD=vec3(108.,138.,68.)/255.;
-/* 陸と水の色を両方作る。どちらを使うかは断片側（vWater を補間して決める＝水際が三角形の中を通る）。 */
-vec3 shadeFor(bool w,float d,float relief){
-  float depth=clamp(d,0.0,1.0);
+void main(){
+  vec2 c=vec2(aPos.x/uSize.x*2.0-1.0,1.0-aPos.y/uSize.y*2.0);
+  gl_Position=vec4(c,0.0,1.0);
+  if(uMode>0.5){vCol=aWater>0.5?vec4(1.0):vec4(0.0);return;}
+  bool w=(uWaterAsLand<0.5)&&(aWater>0.5);
+  float d=aDist;float depth=clamp(d,0.0,1.0);
   vec3 night=w?mix(WNN,WNF,depth):mix(LNN,LNF,depth);
   vec3 day=w?mix(WDN,WDF,depth):mix(LDN,LDF,depth);
   if(d>1.0){float haze=clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0);night=mix(night,w?WNH:LNH,haze);day=mix(day,w?WDH:LDH,haze);}
   if(!w&&d<uNearGrassKm){float t=clamp(1.0-d/uNearGrassKm,0.0,1.0);float nm=t*t*(3.0-2.0*t);night=mix(night,GN,nm);day=mix(day,GD,nm);}
   vec3 rgb=mix(night,day,uDay);
-  if(!w){rgb=clamp(rgb*(0.88+relief*0.12),0.0,1.0);}
-  return rgb;
-}
-void main(){
-  vec2 c=vec2(aPos.x/uSize.x*2.0-1.0,1.0-aPos.y/uSize.y*2.0);
-  /* 【v1017】足元メッシュは距離を奥行きにして、面どうしの前後を画素ごとに決める（0〜0.5km）。 */
-  gl_Position=vec4(c,uDepth>0.5?(clamp(aDist/0.5,0.0,1.0)*2.0-1.0):0.0,1.0);
   float relief=clamp((aAlt+8.0)/24.0,0.0,1.0);
-  vLand=shadeFor(false,aDist,relief);
-  vWaterCol=shadeFor(true,aDist,relief);
-  vWater=aWater;
+  if(!w){rgb=clamp(rgb*(0.88+relief*0.12),0.0,1.0);}
+  vCol=vec4(rgb,1.0);
+  /* 【v997】写真テクスチャ用。水面と夜は写真を使わない。かすみは色と同じ式。 */
   vMerc=aMerc;
-  vHaze=(aDist>1.0)?clamp(1.0-exp(-(aDist-1.0)/16.0),0.0,1.0):0.0;
+  vTexW=w?0.0:1.0;   /* 【v998】夜も写真（暗くするだけ）。水面だけ今までの色 */
+  vHaze=(d>1.0)?clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0):0.0;
   vRelief=relief;
 }`;
   const fs=`#version 300 es
 precision highp float;   /* uniform の精度を頂点側と揃える（ES 3.0 は断片でも highp 必須） */
-flat in vec3 vLand;flat in vec3 vWaterCol;in float vWater;in vec2 vMerc;flat in float vHaze;flat in float vRelief;
-uniform float uTexOn;uniform float uMode;uniform float uWaterAsLand;
+flat in vec4 vCol;in vec2 vMerc;flat in float vTexW;flat in float vHaze;flat in float vRelief;
+uniform float uTexOn;uniform float uMode;
 uniform sampler2D uTex0;uniform sampler2D uTex1;uniform sampler2D uTex2;
 uniform vec4 uAtlas0;uniform vec4 uAtlas1;uniform vec4 uAtlas2;   /* (originX_z, originY_z, N, 2^(z-16)) */
 uniform vec3 uTexHaze;uniform float uTexGain;uniform float uTexNight;uniform float uTexHazeK;uniform float uDayF;
@@ -25247,14 +25234,8 @@ bool pick(vec4 a,out vec2 uv){
   return uv.x>=0.0&&uv.y>=0.0&&uv.x<1.0&&uv.y<1.0;
 }
 void main(){
-  /* 水か陸かは頂点の水の重み（補間）で決める。mode 3＝面の足あと（全部白）、mode 2＝水の色だけ、mode 1＝水面マスク。 */
-  bool rawWater=vWater>0.5;
-  if(uMode>2.5){o=vec4(1.0);return;}
-  if(uMode>1.5){o=rawWater?vec4(vWaterCol,1.0):vec4(0.0);return;}
-  if(uMode>0.5){o=rawWater?vec4(1.0):vec4(0.0);return;}
-  bool w=(uWaterAsLand<0.5)&&rawWater;
-  o=vec4(w?vWaterCol:vLand,1.0);
-  if(uTexOn<0.5||w)return;
+  o=vCol;
+  if(uMode>0.5||uTexOn<0.5||vTexW<=0.001)return;
   vec2 uv;vec4 s=vec4(0.0);
   if(pick(uAtlas0,uv)){s=texture(uTex0,uv);}
   if(s.a<0.5&&pick(uAtlas1,uv)){s=texture(uTex1,uv);}
@@ -25267,7 +25248,7 @@ void main(){
   nightTex=mix(nightTex,vec3(35.0,47.0,64.0)/255.0*0.9,vHaze*uTexHazeK);
   vec3 tex=mix(nightTex,dayTex,uDayF);
   tex=clamp(tex*(0.88+vRelief*0.12),0.0,1.0);
-  o=vec4(tex,1.0);
+  o=vec4(mix(vCol.rgb,tex,vTexW),1.0);
 }`;
   const make=(type,src)=>{const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);
     if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){console.warn("[glTerrain]",gl.getShaderInfoLog(sh));return null;}return sh;};
@@ -25279,7 +25260,7 @@ void main(){
   x.loc={aPos:gl.getAttribLocation(prog,"aPos"),aDist:gl.getAttribLocation(prog,"aDist"),aAlt:gl.getAttribLocation(prog,"aAlt"),aWater:gl.getAttribLocation(prog,"aWater"),
     aMerc:gl.getAttribLocation(prog,"aMerc"),
     uSize:gl.getUniformLocation(prog,"uSize"),uDay:gl.getUniformLocation(prog,"uDay"),uWaterAsLand:gl.getUniformLocation(prog,"uWaterAsLand"),
-    uNearGrassKm:gl.getUniformLocation(prog,"uNearGrassKm"),uMode:gl.getUniformLocation(prog,"uMode"),uDepth:gl.getUniformLocation(prog,"uDepth"),
+    uNearGrassKm:gl.getUniformLocation(prog,"uNearGrassKm"),uMode:gl.getUniformLocation(prog,"uMode"),
     uTexOn:gl.getUniformLocation(prog,"uTexOn"),uTex:[gl.getUniformLocation(prog,"uTex0"),gl.getUniformLocation(prog,"uTex1"),gl.getUniformLocation(prog,"uTex2")],
     uAtlas:[gl.getUniformLocation(prog,"uAtlas0"),gl.getUniformLocation(prog,"uAtlas1"),gl.getUniformLocation(prog,"uAtlas2")],
     uTexHaze:gl.getUniformLocation(prog,"uTexHaze"),uTexGain:gl.getUniformLocation(prog,"uTexGain"),
@@ -25477,243 +25458,6 @@ function photoAtlasBindTextures(gl,L){
   gl.uniform1f(L.uTexHazeK,photoTune.haze/100);
   return any;
 }
-/* =========================================================
-   【v1017】足元メッシュ（Google Earth 方式の近景）
-
-   半径 NEAR_MESH_RADIUS_M の東西南北の格子を DEM から双線形で作り、1枚の 3D の面として
-   WebGL の奥行きバッファで描く。カメラは面の自分の真下の高さ＋目の高さ。
-   格子の中心は 20m 刻みに丸めた位置に固定（動いても面は動かず、カメラだけが面の上を動く）。
-   帯方式の地形はそのまま先に描き、その上に重ねる（近いものは必ず手前）。
-   ========================================================= */
-function nearMeshCentre(lat,lon){
-  const mLat=111320,mLon=Math.max(1,111320*Math.cos(lat*D2R));
-  const cLat=Math.round(lat*mLat/NEAR_MESH_SNAP_M)*NEAR_MESH_SNAP_M/mLat;
-  const cLon=Math.round(lon*mLon/NEAR_MESH_SNAP_M)*NEAR_MESH_SNAP_M/mLon;
-  return {cLat,cLon,mLat,mLon};
-}
-/* 観測地点まわりの格子を用意する。タイルが揃うまでは前の格子をそのまま使う。 */
-function nearMeshEnsure(lat,lon){
-  if(!nearMeshOn||!Number.isFinite(lat)||!Number.isFinite(lon))return;
-  const {cLat,cLon,mLat,mLon}=nearMeshCentre(lat,lon);
-  const key=`${cLat.toFixed(6)},${cLon.toFixed(6)}|${worldMapTiles}`;   /* 水域面が届いたら作り直す */
-  if(nearMesh.key===key||nearMesh.building===key)return;
-  nearMesh.building=key;
-  const n=Math.round(NEAR_MESH_RADIUS_M*2/NEAR_MESH_STEP_M)+1,h=(n-1)/2;
-  const refs=new Array(n*n),tilesByKey=new Map(),fineByKey=new Map();
-  const useFine=nearMeshFine;
-  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
-    const north=(i-h)*NEAR_MESH_STEP_M,east=(j-h)*NEAR_MESH_STEP_M;
-    const pLat=cLat+north/mLat,pLon=cLon+east/mLon;
-    const ref=terrainTilePoint(pLat,pLon,NEAR_MESH_ZOOM);
-    const fine=useFine?terrainTilePoint(pLat,pLon,NEAR_MESH_FINE_ZOOM):null;
-    refs[i*n+j]={ref,fine,lat:pLat,lon:pLon,dist:Math.hypot(north,east)};
-    tilesByKey.set(ref.key,ref);
-    if(fine)fineByKey.set(fine.key,fine);
-  }
-  worldMapEnsureTiles(lat,lon);
-  const tiles=[...tilesByKey.values()],fineTiles=[...fineByKey.values()];
-  /* 5m データ（dem5a→5b→5c）は z15。loadLocalDetailDemTile は層ごとの画素の配列を返す。 */
-  Promise.all([Promise.all(tiles.map(tile=>loadGsiDemTile(tile))),Promise.all(fineTiles.map(tile=>loadLocalDetailDemTile(tile)))]).then(([pixelsList,fineList])=>{
-    if(nearMesh.building!==key)return;
-    const t0=performance.now();
-    const pixelsByKey=new Map();tiles.forEach((tile,i)=>pixelsByKey.set(tile.key,pixelsList[i]));
-    const finePixelsByKey=new Map();fineTiles.forEach((tile,i)=>finePixelsByKey.set(tile.key,fineList[i]||[]));
-    const elev=new Float32Array(n*n),water=new Uint8Array(n*n);
-    let waterLevel=Infinity,anyLand=false,fineCount=0;
-    for(let k=0;k<n*n;k++){
-      const r=refs[k];
-      let e=null;
-      if(r.fine){
-        for(const src of finePixelsByKey.get(r.fine.key)||[]){
-          const v=decodeGsiElevationBilinear(src,r.fine.pixelX,r.fine.pixelY);
-          if(Number.isFinite(v)){e=v;fineCount++;break;}
-        }
-      }
-      if(!Number.isFinite(e))e=decodeGsiElevationBilinear(pixelsByKey.get(r.ref.key),r.ref.pixelX,r.ref.pixelY);
-      const mapWater=worldMapWaterForDistance(r.lat,r.lon,r.dist);
-      const isWater=mapWater===true||!Number.isFinite(e);
-      water[k]=isWater?1:0;
-      elev[k]=Number.isFinite(e)?e:NaN;
-      if(isWater&&Number.isFinite(e))waterLevel=Math.min(waterLevel,e);
-      if(!isWater&&Number.isFinite(e))anyLand=true;
-    }
-    if(!Number.isFinite(waterLevel))waterLevel=0;
-    /* 水面は水平。つながった水域ごとに、その中の最低の DEM 値に揃える（海は欠損なので 0）。
-       格子内に海と池が両方あっても、池が海面まで落ちない。 */
-    {
-      const comp=new Int32Array(n*n).fill(-1);const stack=[];let compCount=0;
-      for(let k0=0;k0<n*n;k0++){
-        if(!water[k0]||comp[k0]>=0)continue;
-        const id=compCount++;let level=Infinity;stack.push(k0);comp[k0]=id;const members=[];
-        while(stack.length){
-          const k=stack.pop();members.push(k);
-          if(Number.isFinite(elev[k]))level=Math.min(level,elev[k]);
-          const i=(k/n)|0,j=k%n;
-          const nb=[j>0?k-1:-1,j<n-1?k+1:-1,i>0?k-n:-1,i<n-1?k+n:-1];
-          for(const m of nb)if(m>=0&&water[m]&&comp[m]<0){comp[m]=id;stack.push(m);}
-        }
-        if(!Number.isFinite(level))level=0;
-        for(const k of members)elev[k]=level;
-      }
-    }
-    /* 陰影：面の傾きと光の向き（昼は太陽、夜は北西の空明かり）。値は 0.3〜1。 */
-    const shade=new Float32Array(n*n);
-    for(let i=0;i<n;i++)for(let j=0;j<n;j++){
-      const k=i*n+j;
-      const e0=elev[k];if(!Number.isFinite(e0)){shade[k]=.65;continue;}
-      const ex1=elev[i*n+Math.min(n-1,j+1)],ex0=elev[i*n+Math.max(0,j-1)];
-      const ey1=elev[Math.min(n-1,i+1)*n+j],ey0=elev[Math.max(0,i-1)*n+j];
-      const dzdx=(Number.isFinite(ex1)&&Number.isFinite(ex0))?(ex1-ex0)/(2*NEAR_MESH_STEP_M):0;
-      const dzdy=(Number.isFinite(ey1)&&Number.isFinite(ey0))?(ey1-ey0)/(2*NEAR_MESH_STEP_M):0;
-      /* 法線 (-dzdx,-dzdy,1)・光 (east,north,up)=(−0.5,0.4,0.77)（北西やや上）。 */
-      const len=Math.hypot(dzdx,dzdy,1);
-      const dot=(-dzdx*(-0.5)+(-dzdy)*0.4+1*0.77)/len;
-      shade[k]=water[k]?.8:clamp(.35+.65*clamp(dot,0,1),.3,1);
-    }
-    Object.assign(nearMesh,{key,lat:cLat,lon:cLon,n,elev,water,shade,ready:anyLand||true,building:false,waterLevel,tiles:tiles.length+fineTiles.length,fineRatio:fineCount/(n*n),lastBuildMs:performance.now()-t0});
-    nearMesh.version++;
-    drawPhoto._terrainRenderKey=null;
-    if(typeof scheduleUpdate==="function")scheduleUpdate();
-  }).catch(error=>{nearMesh.error=String(error&&error.message||error);if(nearMesh.building===key)nearMesh.building=false;});
-}
-/* 格子の任意の点の高さ（双線形）。格子外や欠損は null。 */
-function nearMeshElevationAt(east,north){
-  if(!nearMesh.ready||!nearMesh.elev)return null;
-  const n=nearMesh.n,h=(n-1)/2;
-  const fx=east/NEAR_MESH_STEP_M+h,fy=north/NEAR_MESH_STEP_M+h;
-  const x0=Math.floor(fx),y0=Math.floor(fy);
-  if(x0<0||y0<0||x0+1>=n||y0+1>=n)return null;
-  const tx=fx-x0,ty=fy-y0,e=nearMesh.elev;
-  const e00=e[y0*n+x0],e10=e[y0*n+x0+1],e01=e[(y0+1)*n+x0],e11=e[(y0+1)*n+x0+1];
-  if(![e00,e10,e01,e11].every(Number.isFinite))return null;
-  return lerp(lerp(e00,e10,tx),lerp(e01,e11,tx),ty);
-}
-/* 観測地点（lat,lon）から見た三角形を作る。頂点の並びは帯の地形と同じ [x,y,distKm,shadeAlt,water,mx,my]。
-   カメラの高さ＝面の自分の真下の高さ＋目の高さ（面と自分の高さがずれない）。 */
-function nearMeshGeometry(lat,lon,projector,W,H,maxJumpX,merc,s){
-  const t0=performance.now();
-  if(!nearMeshScratch)nearMeshScratch=new Float32Array(GL_STRIDE*3*2*12000);
-  const out={data:nearMeshScratch,count:0,camElev:null};
-  if(!nearMesh.ready||!nearMesh.elev)return out;
-  const n=nearMesh.n,h=(n-1)/2,step=NEAR_MESH_STEP_M;
-  const mLat=111320,mLon=Math.max(1,111320*Math.cos(lat*D2R));
-  const camN=(lat-nearMesh.lat)*mLat,camE=(lon-nearMesh.lon)*mLon;   /* 格子の中心から見た自分の位置 */
-  if(Math.abs(camN)>NEAR_MESH_RADIUS_M*.6||Math.abs(camE)>NEAR_MESH_RADIUS_M*.6)return out;   /* 格子が古い（作り直し待ち） */
-  let ground=nearMeshElevationAt(camE,camN);
-  if(!Number.isFinite(ground))ground=Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:0;
-  const camElev=ground+eyeHeightAboveGroundM();
-  out.camElev=camElev;out.ground=ground;
-  /* カメラの基底（fastProjector と同じ）。zc＝正面方向の奥行き(m)。 */
-  const F=toVec(s.facingAz,s.facingAlt);
-  const facingSin=Math.sin(s.facingAz*D2R),facingCos=Math.cos(s.facingAz*D2R);
-  const elev=nearMesh.elev,water=nearMesh.water,shade=nearMesh.shade;
-  /* 頂点：カメラから見た (east,north,up) と奥行き。 */
-  const ve=new Float32Array(n*n),vn=new Float32Array(n*n),vu=new Float32Array(n*n),zc=new Float32Array(n*n),fin=new Uint8Array(n*n);
-  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
-    const k=i*n+j,e=elev[k];
-    if(!Number.isFinite(e))continue;
-    const east=(j-h)*step-camE,north=(i-h)*step-camN,up=e-camElev;
-    ve[k]=east;vn[k]=north;vu[k]=up;zc[k]=east*F[0]+north*F[1]+up*F[2];fin[k]=1;
-  }
-  /* この奥行き(m)より手前で三角形を切る。魚眼は θ=90°（zc=0）が像円の縁なのでほぼ 0、通常レンズは 0.3m。 */
-  const NEAR_PLANE=(mobileLensMode==="fisheye"&&!arActive)?0.02:0.3;
-  let data=out.data,q=0;
-  const need=(extra)=>{if(q+extra>data.length){let size=data.length*2;while(size<q+extra)size*=2;const bigger=new Float32Array(size);bigger.set(data.subarray(0,q));data=nearMeshScratch=out.data=bigger;}};
-  const tmp=[0,0];
-  /* 1頂点を投影して書く。戻り値は成功/失敗。 */
-  const emit=(east,north,up,sh,w)=>{
-    const horiz=Math.hypot(east,north);
-    let sinAz,cosAz;
-    if(horiz<1e-6){sinAz=facingSin;cosAz=facingCos;}else{sinAz=east/horiz;cosAz=north/horiz;}
-    const altDeg=Math.atan2(up,Math.max(1e-6,horiz))*R2D;
-    if(!projector.project(sinAz,cosAz,altDeg,tmp)||!Number.isFinite(tmp[0])||!Number.isFinite(tmp[1]))return false;
-    data[q++]=tmp[0];data[q++]=tmp[1];data[q++]=Math.hypot(horiz,up)/1000;data[q++]=sh*24-8;data[q++]=w;
-    data[q++]=merc.x(1,east/1000);data[q++]=merc.y(1,north/1000);
-    return true;
-  };
-  const azOf=(east,north)=>Math.atan2(east,north)*R2D;
-  const azGap=(a,b)=>{const d=Math.abs(a-b)%360;return d>180?360-d:d;};
-  /* 三角形を書く。奥行き NEAR_PLANE で切って、手前側だけ残す（最大4頂点→2三角形）。
-     投影は直線ではない（魚眼はもちろん、通常レンズでも近くの大きな三角形は歪む）ので、
-     カメラから見た角の大きさが SPLIT_DEG を超える三角形は 4 つに割ってから投影する。 */
-  const SPLIT_DEG=5,SPLIT_MAX=5;
-  const cosSplit=Math.cos(SPLIT_DEG*D2R);
-  const poly=[];
-  const dirCos=(p,r)=>{const lp=Math.hypot(p[0],p[1],p[2]),lr=Math.hypot(r[0],r[1],r[2]);if(lp<1e-6||lr<1e-6)return 1;return (p[0]*r[0]+p[1]*r[1]+p[2]*r[2])/(lp*lr);};
-  const mid=(p,r)=>[(p[0]+r[0])/2,(p[1]+r[1])/2,(p[2]+r[2])/2,(p[3]+r[3])/2,(p[4]+r[4])/2];   /* 水の重みも補間（0〜1） */
-  const zOf=(v)=>v[0]*F[0]+v[1]*F[1]+v[2]*F[2];
-  const emitTri=(v0,v1,v2,depth)=>{
-    const z0=zOf(v0),z1=zOf(v1),z2=zOf(v2);
-    if(z0<NEAR_PLANE&&z1<NEAR_PLANE&&z2<NEAR_PLANE)return;
-    if(depth<SPLIT_MAX&&(dirCos(v0,v1)<cosSplit||dirCos(v1,v2)<cosSplit||dirCos(v0,v2)<cosSplit)){
-      const m01=mid(v0,v1),m12=mid(v1,v2),m20=mid(v2,v0);
-      emitTri(v0,m01,m20,depth+1);emitTri(m01,v1,m12,depth+1);emitTri(m20,m12,v2,depth+1);emitTri(m01,m12,m20,depth+1);
-      return;
-    }
-    const vs=[v0,v1,v2],zs=[z0,z1,z2];
-    poly.length=0;
-    for(let i=0;i<3;i++){
-      const p=vs[i],r=vs[(i+1)%3],zp=zs[i],zr=zs[(i+1)%3];
-      if(zp>=NEAR_PLANE)poly.push(p);
-      if((zp>=NEAR_PLANE)!==(zr>=NEAR_PLANE)){
-        const t=(NEAR_PLANE-zp)/(zr-zp);
-        poly.push([p[0]+(r[0]-p[0])*t,p[1]+(r[1]-p[1])*t,p[2]+(r[2]-p[2])*t,p[3]+(r[3]-p[3])*t,p[4]+(r[4]-p[4])*t]);
-      }
-    }
-    if(poly.length<3)return;
-    const azs=poly.map(v=>azOf(v[0],v[1]));
-    for(let i=0;i<azs.length;i++)for(let j=i+1;j<azs.length;j++)if(azGap(azs[i],azs[j])>120)return;
-    for(let i=1;i+1<poly.length;i++){
-      need(GL_STRIDE*3);
-      const q0=q;
-      if(!emit(...poly[0])||!emit(...poly[i])||!emit(...poly[i+1])){q=q0;}
-    }
-  };
-  const vtx=(k)=>[ve[k],vn[k],vu[k],shade[k],water[k]];
-  const tri=(a,b,c)=>{
-    if(!fin[a]||!fin[b]||!fin[c])return;
-    emitTri(vtx(a),vtx(b),vtx(c),0);
-  };
-  for(let i=0;i<n-1;i++)for(let j=0;j<n-1;j++){
-    const a=i*n+j,b=a+1,c=a+n+1,d=a+n;
-    /* 水と陸が混じる四角形は、対角線を水陸の境目に沿わせる（3つ同じ側が一方の三角形に）。 */
-    if(water[a]===water[c]&&water[b]!==water[d]){tri(a,b,d);tri(b,c,d);}else{tri(a,b,c);tri(a,c,d);}
-  }
-  out.count=q/GL_STRIDE;
-  nearMesh.triangles=out.count/3;nearMesh.lastGeomMs=performance.now()-t0;
-  return out;
-}
-function nearMeshUpload(geom){
-  const x=glTerrain,gl=x.gl;
-  if(!x.bufNear)x.bufNear=gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER,x.bufNear);
-  gl.bufferData(gl.ARRAY_BUFFER,geom.data.subarray(0,geom.count*GL_STRIDE),gl.DYNAMIC_DRAW);
-  x.nearCount=geom.count;
-}
-function nearMeshDraw(mode,W,H,dayFactor,waterAsLand,nearGrassKm){
-  if(!glTerrain.nearCount)return;
-  glTerrainDrawBuffer(glTerrain.bufNear,glTerrain.nearCount,mode,W,H,dayFactor,waterAsLand,nearGrassKm,false,true,true);
-}
-/* 【v1017】水面の段のあとで、足元メッシュの範囲だけ「水の色」と「最終の水面マスク」を面から決め直す。
-   Canvas の水面の段（帯 ∩ 輪郭…）は足元では不安定なので、この範囲では面の水陸をそのまま信じる。 */
-function nearMeshPaintWater(tctx,maskCtx,W,H,dayFactor,nearGrassKm){
-  if(!nearMeshOn||!glTerrain.nearCount||!glTerrain.gl)return false;
-  const gl=glTerrain.gl,x=glTerrain;
-  nearMesh.paints=(nearMesh.paints||0)+1;
-  /* 面の範囲を陸も水も面の色（陸は写真）で描き直す。Canvas の水面の段が面の陸に塗った水を消す。 */
-  glTerrainDrawBuffer(x.bufNear,x.nearCount,0,W,H,dayFactor,false,nearGrassKm,false,false,true);
-  tctx.save();tctx.setTransform(1,0,0,1,0,0);tctx.globalCompositeOperation="source-over";tctx.drawImage(x.canvas,0,0);tctx.restore();
-  if(maskCtx){
-    /* 面の足あとでマスクを消してから、面の水を足す。 */
-    glTerrainDrawBuffer(x.bufNear,x.nearCount,3,W,H,dayFactor,false,nearGrassKm,false,false,true);
-    maskCtx.save();maskCtx.setTransform(1,0,0,1,0,0);
-    maskCtx.globalCompositeOperation="destination-out";maskCtx.drawImage(x.canvas,0,0);
-    glTerrainDrawBuffer(x.bufNear,x.nearCount,1,W,H,dayFactor,false,nearGrassKm,false,false,true);
-    maskCtx.globalCompositeOperation="source-over";maskCtx.drawImage(x.canvas,0,0);
-    maskCtx.restore();
-  }
-  return true;
-}
 /* 【v996】メッシュ版の builder。頂点の並びは glTerrainBuild と同じ [x,y,distKm,alt,water]。 */
 let glMeshOn=true;
 function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,projector,bottomY,maxJumpX,originLat,originLon){
@@ -25828,15 +25572,12 @@ function glTerrainDrawFine(mode,W,H,dayFactor,nearGrassKm){
   /* 縁の1px（Canvasの stroke 相当）。消さずに重ねる。 */
   glTerrainDrawBuffer(glTerrain.bufFineLines,glTerrain.fineLineCount||0,mode,W,H,dayFactor,false,nearGrassKm,true);
 }
-function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGrassKm,lines,keep,depth){
+function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGrassKm,lines,keep){
   const x=glTerrain,gl=x.gl,L=x.loc;
   gl.viewport(0,0,W,H);
-  if(!lines&&!keep){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
+  if(!lines){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
   if(!count||!buffer)return;
   gl.useProgram(x.prog);
-  /* 【v1017】depth：奥行きバッファで前後を決める（足元メッシュ）。帯の地形は今までどおり順序で。 */
-  if(depth){gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.clearDepth(1);gl.clear(gl.DEPTH_BUFFER_BIT);}else gl.disable(gl.DEPTH_TEST);
-  gl.uniform1f(L.uDepth,depth?1:0);
   gl.uniform2f(L.uSize,W,H);gl.uniform1f(L.uDay,dayFactor);gl.uniform1f(L.uWaterAsLand,waterAsLand?1:0);
   gl.uniform1f(L.uDayF,dayFactor);   /* 【v998】 */
   gl.uniform1f(L.uNearGrassKm,nearGrassKm);gl.uniform1f(L.uMode,mode);
@@ -25851,7 +25592,6 @@ function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGra
   const texOn=photoTextureOn&&mode===0&&!lines&&photoAtlasBindTextures(gl,L);
   gl.uniform1f(L.uTexOn,texOn?1:0);
   gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,count);
-  if(depth)gl.disable(gl.DEPTH_TEST);
 }
 /* 【v978】細密水面の四角形を溜める入れもの（地形用とは別）。 */
 let glFineScratch=new Float32Array(GL_STRIDE*6*8192);
@@ -25889,13 +25629,6 @@ function drawPhoto(ctx,s){
   actMon.draw++;   /* 【v983】 */
   if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
   const W=ctx.canvas.width, H=ctx.canvas.height;
-  /* 【v1017】足元メッシュが使えるときは、観測地点の標高を「面の自分の真下」から取る。
-     帯の地形（遠景）も同じ目の高さで計算されるので、120m の境目で段差にならない。 */
-  if(nearMeshOn&&glTerrainOn&&nearMesh.ready&&!realTerrainState.observerAtSea&&Number.isFinite(realTerrainState.observerElevation)){
-    const mLon=Math.max(1,111320*Math.cos(s.lat*D2R));
-    const g=nearMeshElevationAt((s.lon-nearMesh.lon)*mLon,(s.lat-nearMesh.lat)*111320);
-    if(Number.isFinite(g)&&Math.abs(g-realTerrainState.observerElevation)>.01){realTerrainState.observerElevation=g;drawPhoto._terrainRenderKey=null;}
-  }
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
     highDetailFallbackPending=true;
     showHighDetailStatus("方位・仰角・焦点距離が変わったため、画面内高精細を終了しました。","info",5200);
@@ -27088,8 +26821,7 @@ function drawPhoto(ctx,s){
         cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
         (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length+(minorRoadsVisible?"m":""):"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off",
-        photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}${photoWaterOff()?"/nowater":""}`:"tex-off",   /* 【v997】【v998】【v1000】 */
-        nearMeshOn?`near${nearMesh.version}`:"near-off"   /* 【v1017】 */
+        photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}${photoWaterOff()?"/nowater":""}`:"tex-off"   /* 【v997】【v998】【v1000】 */
       ].join("|");
       /* 【v911】夜は昼用レイヤーを作らない。
          作ったかどうかを鍵へ入れておかないと、
@@ -32147,7 +31879,7 @@ function drawPhoto(ctx,s){
         // 奥から手前へ。各層は「そこまでに見える面」を画面下端まで塗る。
         const __p0=performance.now();
         /* 【v976】WebGLの道。雲海・メッシュ表示・写真からの選択（pick）のコマは従来どおり。 */
-        let glDrawn=false;drawPhoto._nearMeshDrawnFrame=false;   /* 【v1017】 */
+        let glDrawn=false;
         if(glTerrainOn&&!cloudCtx&&!terrainPickCtx&&!meshPath&&glTerrainInit(W,H)){
           const glKey=terrainGeometryKey+"|gl"+(glMeshOn?"m":"");   /* 【v996】 */
           if(photoTextureOn)photoAtlasEnsure(s.lat,s.lon);   /* 【v997】 */
@@ -32162,21 +31894,10 @@ function drawPhoto(ctx,s){
           const gd0=performance.now();
           glTerrainUpload(geom,glKey);
           const nearGrassRangeKm=Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000);
-          /* 【v1017】足元メッシュ。帯の上に、自分のまわり半径120mの本当の面を重ねる。 */
-          let nearGeom=null;
-          if(nearMeshOn){
-            nearMeshEnsure(s.lat,s.lon);
-            nearGeom=nearMeshGeometry(s.lat,s.lon,fastProjector,W,H,maxJumpX,photoMercatorBasis(s.lat,s.lon),s);
-            if(nearGeom.count)nearMeshUpload(nearGeom);else glTerrain.nearCount=0;
-          }else glTerrain.nearCount=0;
-          drawPhoto._nearMeshDrawnFrame=glTerrain.nearCount>0;
-          if(nearMesh.solo){glTerrain.gl.viewport(0,0,W,H);glTerrain.gl.clearColor(0,0,0,0);glTerrain.gl.clear(glTerrain.gl.COLOR_BUFFER_BIT);}   /* 検証用：足元メッシュだけ */
-          else glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm);   /* 【v1000】水域OFFなら水も陸の色（写真） */
-          nearMeshDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm);
+          glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm);   /* 【v1000】水域OFFなら水も陸の色（写真） */
           tctx.drawImage(glTerrain.canvas,0,0);
           if(sharedTerrainProjectionPass!=="replay"&&!photoWaterOff()){
             glTerrainDraw(1,W,H,terrainDayFactor,false,nearGrassRangeKm);
-            nearMeshDraw(1,W,H,terrainDayFactor,false,nearGrassRangeKm);
             wmctx.drawImage(glTerrain.canvas,0,0);
           }
           glTerrain.lastDrawMs=performance.now()-gd0;glTerrain.frames++;
@@ -32932,13 +32653,6 @@ function drawPhoto(ctx,s){
                 }
                 {const __br1=performance.now();redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br1;}
               }
-            }
-            /* 【v1017】足元メッシュの範囲は、水の色と最終マスクを面から決め直す（写真の水域OFFのときは触らない）。 */
-            if(drawPhoto._nearMeshDrawnFrame&&nearMeshOn&&glTerrain.nearCount&&!photoWaterOff()){
-              const __n0=performance.now();
-              nearMeshPaintWater(tctx,projectionPass!=="replay"?renderWaterMaskContext:null,W,H,terrainDayFactor,Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000));
-              redrawStoredBridgeOverlay(tctx,terrainDayFactor);
-              terrainStageProf.water+=performance.now()-__n0;
             }
             terrainStageProf.water+=performance.now()-__w0;
             return true;
@@ -35149,8 +34863,9 @@ function applyCachedWaterRings(result){
   const freshAz=result._freshAz;   /* 【v988】部分作りなら、作った方位の行だけ当て直す（残りは判定済み） */
   [result.nearSurfaceGrid,result.rayGrid].forEach(grid=>{
     if(!grid) return;
-    grid.forEach((row,az)=>{if(!row||(freshAz&&!freshAz.has(az)))return;row.forEach(point=>{
+    grid.forEach((row,az)=>{if(!row)return;const rowFresh=!freshAz||freshAz.has(az);row.forEach(point=>{
       if(!point) return;
+      if(!rowFresh&&point._fresh===false) return;   /* 【v1018】直前の判定を引き継いだ遠くの点 */
       /* 局所高精細地形の円の中は、ここでは一切触らない。
 
          マスクは17.2m格子なので、それより小さい沖の岩を表現できない。
