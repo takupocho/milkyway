@@ -4605,6 +4605,19 @@
         <h2 class="ctrl-group-toggle">星座・惑星設定<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <button id="showSkyLabelsBtn" type="button" class="toggle-btn"><span>🏷 名称を表示(星座・惑星・太陽・月)</span><span id="showSkyLabelsState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
+          <!-- 【v1033】星の大きさ。焦点距離に依らず固定で、等級で変わる。 -->
+          <div class="field" style="margin-top:10px;">
+            <label class="top">星座の星の大きさ <span class="val mono" id="constStarSizeVal">100%</span></label>
+            <input type="range" id="constStarSize" min="50" max="200" step="5" value="100" aria-label="星座の星の大きさ">
+            <div class="range-labels"><span>← 50% 小さく</span><span>200% 大きく →</span></div>
+            <p class="range-hint">星座の点と線の太さ。焦点距離を変えても大きさは変わらず、明るい星ほど大きく描きます。</p>
+          </div>
+          <div class="field">
+            <label class="top">恒星の大きさ <span class="val mono" id="namedStarSizeVal">100%</span></label>
+            <input type="range" id="namedStarSize" min="50" max="200" step="5" value="100" aria-label="恒星の大きさ">
+            <div class="range-labels"><span>← 50%</span><span>200% →</span></div>
+            <p class="range-hint">恒星リストの星（シリウス・アンタレスなど）の芯と光芒の大きさ。色は星の色指数から付けます（アンタレスは赤み）。</p>
+          </div>
           <button id="autoShowShowerConstBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌠 流星群の極大1週間前後に星座自動表示</span><span id="autoShowShowerConstState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
 
           <div class="sub-collapse" style="margin-top:10px;">
@@ -6170,7 +6183,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1032-road-drape";
+const APP_VERSION="1033-star-size";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6944,7 +6957,9 @@ function starBrightnessFromMag(mag){
    実際の夜空では一部の明るい星を除いて色はごく淡いので、STAR_COLOR_SATURATIONで
    従来の白色(STAR_BASE_RGB)側へ寄せる。0で従来どおりの白一色、1で黒体色そのまま。 */
 const STAR_BASE_RGB=[255,250,240], STAR_COLOR_SATURATION=0.35;
-function starRgbFromBV(bv){
+function starRgbFromBV(bv){return starRgbFromBVSat(bv,STAR_COLOR_SATURATION);}
+/* 【v1033】飽和度を指定できる版。星座の星・名前付き恒星は背景より濃く色を付ける。 */
+function starRgbFromBVSat(bv,sat){
   const kelvin=4600*(1/(0.92*bv+1.7)+1/(0.92*bv+0.62));
   const t=clamp(kelvin,1500,40000)/100;
   const r=t<=66?255:329.698727446*Math.pow(t-60,-0.1332047592);
@@ -6952,7 +6967,7 @@ function starRgbFromBV(bv){
   const b=t>=66?255:(t<=19?0:138.5177312231*Math.log(t-10)-305.0447927307);
   const peak=Math.max(r,g,b,1);
   const hue=[r,g,b];
-  return STAR_BASE_RGB.map((base,i)=>Math.round(lerp(base,clamp(hue[i]/peak*255,0,255),STAR_COLOR_SATURATION))).join(",");
+  return STAR_BASE_RGB.map((base,i)=>Math.round(lerp(base,clamp(hue[i]/peak*255,0,255),sat))).join(",");
 }
 
 const STARS=[];
@@ -6962,11 +6977,45 @@ for(let offset=0;offset+12<=STAR_CATALOG_B36.length;offset+=12){
   const mag=parseInt(STAR_CATALOG_B36.slice(offset+8,offset+10),36)/100-2;
   const bv=parseInt(STAR_CATALOG_B36.slice(offset+10,offset+12),36)/100-1;
   STARS.push({
-    ra,dec,mag,
+    ra,dec,mag,bv,   /* 【v1033】bv も持つ（星座の星の色付けに使う） */
     brightness:starBrightnessFromMag(mag),
     rgb:starRgbFromBV(bv),
     sinDec:sin(dec),cosDec:cos(dec),tanDec:tan(dec),
   });
+}
+
+/* 【v1033】星座の星・名前付き恒星をカタログと突き合わせる（0.6° 以内で一番明るい星。STARS は明るい順）。
+   返り値 {mag,bv,rgb} または null（カタログに無い暗い星）。一度引いたら覚える。 */
+const starCatalogMatchCache=new Map();
+function starCatalogMatch(ra,dec){
+  const key=ra.toFixed(4)+","+dec.toFixed(4);
+  if(starCatalogMatchCache.has(key))return starCatalogMatchCache.get(key);
+  const cosD=Math.cos(dec*D2R),limit=.6;
+  let found=null;
+  for(let i=0;i<STARS.length;i++){
+    const st=STARS[i];
+    if(Math.abs(st.dec-dec)>limit)continue;
+    let dRa=Math.abs(st.ra-ra);if(dRa>180)dRa=360-dRa;
+    if(dRa*cosD>limit)continue;
+    if(Math.hypot(dRa*cosD,st.dec-dec)<=limit){found=st;break;}
+  }
+  let result=null;
+  if(found){
+    /* 色：黒体色を濃いめ（飽和 0.75）に。赤い星（B−V>1.2）は黒体色だと橙止まりなので、緑と青を落として赤みを足す。 */
+    const rgb=starRgbFromBVSat(found.bv,.75).split(",").map(Number);
+    if(found.bv>1.2){const k=clamp(1-.28*(found.bv-1.2),.6,1);rgb[1]=Math.round(rgb[1]*k);rgb[2]=Math.round(rgb[2]*k*k);}
+    result={mag:found.mag,bv:found.bv,rgb:rgb.join(",")};
+  }
+  starCatalogMatchCache.set(key,result);
+  return result;
+}
+/* 等級 → 大きさの倍率。1等星 1.36、3等星 1.12、5等星 0.88。不明は 1。 */
+function starSizeFactorOfMag(mag){return Number.isFinite(mag)?clamp(1.3-.12*(mag-1.5),.65,1.5):1;}
+/* 【v1033】設定の倍率（50〜200%）。 */
+let constStarSizePct=100,namedStarSizePct=100;
+function syncStarSizeControls(){
+  if(el.constStarSize){el.constStarSize.value=constStarSizePct;if(el.constStarSizeVal)el.constStarSizeVal.textContent=`${constStarSizePct}%`;}
+  if(el.namedStarSize){el.namedStarSize.value=namedStarSizePct;if(el.namedStarSizeVal)el.namedStarSizeVal.textContent=`${namedStarSizePct}%`;}
 }
 
 /* 日本地図(都道府県境界の簡易輪郭)データ。地図ピッカー(パン・ズーム対応)描画用 */
@@ -7306,6 +7355,7 @@ const el={
   shutter:$("shutter"), ssVal:$("ssVal"),
   tripodHeight:$("tripodHeight"), tripodHeightVal:$("tripodHeightVal"),
   walkSpeed:$("walkSpeed"), walkSpeedVal:$("walkSpeedVal"),
+  constStarSize:$("constStarSize"), constStarSizeVal:$("constStarSizeVal"), namedStarSize:$("namedStarSize"), namedStarSizeVal:$("namedStarSizeVal"),
   viewpointOffset:$("viewpointOffset"), observerEyeElevationVal:$("observerEyeElevationVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
@@ -11675,6 +11725,15 @@ async function updateSimAddress(lat,lon){
 el.walkSpeed.addEventListener("input",()=>{
   syncWalkSpeedControl();
   scheduleSaveSettings();
+});
+/* 【v1033】星の大きさ */
+if(el.constStarSize)el.constStarSize.addEventListener("input",()=>{
+  constStarSizePct=clamp(Math.round(+el.constStarSize.value||100),50,200);
+  syncStarSizeControls();update();scheduleSaveSettings();
+});
+if(el.namedStarSize)el.namedStarSize.addEventListener("input",()=>{
+  namedStarSizePct=clamp(Math.round(+el.namedStarSize.value||100),50,200);
+  syncStarSizeControls();update();scheduleSaveSettings();
 });
 el.tripodHeight.addEventListener("input",()=>{
   syncTripodHeightControl();
@@ -16727,6 +16786,7 @@ function collectPersistedSettings(){
     tripodHeight:el.tripodHeight.value, viewpointOffset:el.viewpointOffset.value,
     walkSpeed:el.walkSpeed.value,
     droneVerticalSpeed:droneVerticalSpeedMps,   /* 【v1022】 */
+    constStarSizePct:constStarSizePct,namedStarSizePct:namedStarSizePct,   /* 【v1033】 */
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -17010,6 +17070,9 @@ async function loadPersistedSettings(){
       droneVerticalSpeedMps=clamp(Number.isFinite(saved)?Math.round(saved):8,DRONE_VERTICAL_SPEED_MIN,DRONE_VERTICAL_SPEED_MAX);
     }
     syncDroneVerticalSpeedControl();
+    if(Number.isFinite(+s.constStarSizePct))constStarSizePct=clamp(Math.round(+s.constStarSizePct),50,200);   /* 【v1033】 */
+    if(Number.isFinite(+s.namedStarSizePct))namedStarSizePct=clamp(Math.round(+s.namedStarSizePct),50,200);
+    syncStarSizeControls();
     if(s.viewpointOffset!==undefined){
       const saved=Number(s.viewpointOffset);
       el.viewpointOffset.value=clamp(Number.isFinite(saved)?saved:0,0,500);
@@ -26848,9 +26911,21 @@ function drawPhoto(ctx,s){
   // 星座。流星群シーズンの対象星座は、星座全体・個別表示がOFFでも強制表示する。
   const autoShowConstName = autoShowShowerConst ? (getActiveMeteorShower()?.constellationName || null) : null;
   const constellationAltAzForReflection=waterReflectionEnabled?new Map():null;
+  /* 【v1033】名前付き恒星の画面位置（星座名のラベルを避けるため）。描画は下で行う。 */
+  const namedStarScreen=[];
+  if(namedStarsVisible){
+    NAMED_STARS.forEach(ns=>{
+      if(namedStarVisibility[ns.key]===false) return;
+      const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);
+      if(!showBelowHorizon && aa.alt<-2) return;
+      const p=toXY(aa.az,aa.alt);
+      if(p&&Number.isFinite(p[0])&&Number.isFinite(p[1]))namedStarScreen.push({x:p[0],y:p[1],name:ns.name});
+    });
+  }
+  const constScale=constStarSizePct/100,namedScale=namedStarSizePct/100;
   if(constellationsVisible||autoShowConstName){
     ctx.strokeStyle="rgba(160,205,255,0.6)";
-    ctx.lineWidth=1.3*arSizeScale;
+    ctx.lineWidth=1.2*arSizeScale*constScale;   /* 【v1033】線は星の大きさに連動 */
     const skyConstellationRight=W+40,skyConstellationBottom=H+40;
     const skyConstellationMaxLineWidth=W*1.5;
     CONSTELLATIONS.forEach(c=>{
@@ -26873,20 +26948,32 @@ function drawPhoto(ctx,s){
         }
       }
       let visN=0, sumX=0, sumY=0;
-      ctx.fillStyle="rgba(210,230,255,0.95)";
       for(let pointIndex=0;pointIndex<pts.length;pointIndex++){
         const p=pts[pointIndex];
         if(!p) continue;
         if(p[0]<-40||p[0]>skyConstellationRight||p[1]<-40||p[1]>skyConstellationBottom) continue;
         visN++; sumX+=p[0]; sumY+=p[1];
-        ctx.beginPath(); ctx.arc(p[0],p[1],2.8*arSizeScale,0,Math.PI*2);
+        /* 【v1033】大きさは等級、色は B−V から（カタログに無い星は従来の大きさ・色） */
+        const match=starCatalogMatch(c.stars[pointIndex].ra,c.stars[pointIndex].dec);
+        const radius=2.4*arSizeScale*constScale*starSizeFactorOfMag(match?match.mag:null);
+        ctx.fillStyle=match?`rgba(${match.rgb},0.95)`:"rgba(210,230,255,0.95)";
+        ctx.beginPath(); ctx.arc(p[0],p[1],radius,0,Math.PI*2);
         ctx.fill();
       }
       if(visN>=2 && showSkyLabels){
         ctx.font=`${(15+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="rgba(200,222,255,0.85)";
         ctx.textAlign="center";
-        const lx=sumX/visN, ly=sumY/visN-16;
+        const lx=sumX/visN;let ly=sumY/visN-16;
+        /* 【v1033】名前付き恒星のラベル（星の右横）と重なりそうなら上へ逃がす */
+        {
+          const halfW=ctx.measureText(c.name).width/2+8;
+          for(const ns of namedStarScreen){
+            const nsLabelX1=ns.x+13-6,nsLabelX2=ns.x+13+ctx.measureText(ns.name).width+6;
+            if(nsLabelX2<lx-halfW||nsLabelX1>lx+halfW)continue;
+            if(Math.abs(ns.y-ly)<26){ly=ns.y-30;break;}
+          }
+        }
         ctx.fillText(c.name, lx, ly);
         ctx.textAlign="left";
         const cw=ctx.measureText(c.name).width;
@@ -26930,11 +27017,18 @@ function drawPhoto(ctx,s){
       const p=toXY(aa.az,aa.alt);
       if(!p || p[0]<-40 || p[0]>W+40 || p[1]<-40 || p[1]>H+40) return;
       const [x,y]=p;
-      const g=ctx.createRadialGradient(x,y,0,x,y,11*arSizeScale);
-      g.addColorStop(0,"rgba(255,255,255,0.95)");
-      g.addColorStop(1,"rgba(255,255,255,0)");
-      ctx.beginPath(); ctx.arc(x,y,11*arSizeScale,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-      ctx.beginPath(); ctx.arc(x,y,3*arSizeScale,0,Math.PI*2); ctx.fillStyle="#ffffff"; ctx.fill();
+      /* 【v1033】大きさは設定×等級、色は B−V（アンタレス・ベテルギウスは赤み、リゲルは青白）。 */
+      const match=starCatalogMatch(ns.ra,ns.dec);
+      const mf=starSizeFactorOfMag(match?match.mag:null);
+      const tint=match?match.rgb:"255,255,255";
+      const glowR=10*arSizeScale*namedScale*(.75+.25*mf),coreR=2.5*arSizeScale*namedScale*mf;
+      const g=ctx.createRadialGradient(x,y,0,x,y,glowR);
+      g.addColorStop(0,`rgba(${tint},0.95)`);
+      g.addColorStop(.45,`rgba(${tint},0.35)`);
+      g.addColorStop(1,`rgba(${tint},0)`);
+      ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      const core=match?match.rgb.split(",").map(v=>Math.round(lerp(255,+v,.45))).join(","):"255,255,255";
+      ctx.beginPath(); ctx.arc(x,y,coreR,0,Math.PI*2); ctx.fillStyle=`rgb(${core})`; ctx.fill();
       if(showSkyLabels){
         ctx.font=`600 ${(15+labelFontBump)*uiScale}px Inter, sans-serif`;
         ctx.fillStyle="#ffffff";
