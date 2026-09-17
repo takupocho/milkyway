@@ -6170,7 +6170,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1031-shiratori-builtin";
+const APP_VERSION="1032-road-drape";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -30652,6 +30652,24 @@ function drawPhoto(ctx,s){
           while(k<layerCount-1&&layerKm[k]<distanceKm) k++;
           return !!waterGrid[c*layerCount+k];
         };
+        /* 【v1032】描いた地形の面の見かけ高度。列（方位）と層（距離）で線形補間する。
+           層 k の多角形は「層 k-1 の上端 → 層 k の上端」を列ごとに結んだ面なので、この値はその面の上に乗る。
+           道路・線路の断面をこれに貼り付ける（DEM から別経路で出した高さだと数 m ずれて浮く・沈む）。 */
+        const drawnAltAt=(azDeg,distanceKm)=>{
+          if(columnSpan<=0||columns.length<2) return null;
+          const f=(azDeg-columnStart)/columnSpan*(columns.length-1);
+          if(!Number.isFinite(f)||f<-.5||f>columns.length-.5) return null;
+          const c0=clamp(Math.floor(f),0,columns.length-1),c1=Math.min(columns.length-1,c0+1),tc=clamp(f-c0,0,1);
+          let k=0;
+          while(k<layerCount-1&&layerKm[k]<distanceKm) k++;
+          if(k<1) return null;   // 最初の層より手前は貼らない
+          const kmLo=layerKm[k-1],kmHi=layerKm[k];
+          const u=kmHi>kmLo?clamp((distanceKm-kmLo)/(kmHi-kmLo),0,1):1;
+          const at=c=>{const lo=altGrid[c*layerCount+k-1],hi=altGrid[c*layerCount+k];return lo+(hi-lo)*u;};
+          const a0=at(c0),a1=at(c1);
+          if(!Number.isFinite(a0)||!Number.isFinite(a1)) return null;
+          return a0+(a1-a0)*tc;
+        };
         const visibleAltAt=(azDeg,distanceKm)=>{
           const c=columnIndexAt(azDeg);
           if(c<0) return null;
@@ -31053,6 +31071,14 @@ function drawPhoto(ctx,s){
             if(Number.isFinite(upElev)&&Number.isFinite(downElev)){
               /* 道路としてありえる範囲(±15%)で頭打ちにする。 */
               crossGrade=clamp((upElev-downElev)/(2*CROSS_SLOPE_BASE_M),-.15,.15);
+            }
+            /* 【v1032】描いた地形の面に貼り付ける：中心の見かけ高度を altGrid の補間値にし、それに合う標高へ置き換える。
+               （altFromElevation の逆：elevation = 目の海抜 + 丸み + tan(高度)×距離） */
+            {
+              const drawn=drawnAltAt(az,distanceKm);
+              if(Number.isFinite(drawn)){
+                elevation=eyeElevationNow+distanceM*distanceM/EARTH_DROP+Math.tan(drawn*D2R)*distanceM;
+              }
             }
             return {
               centre:groundVec(eastM,northM,elevation),
