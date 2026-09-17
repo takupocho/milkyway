@@ -4631,6 +4631,12 @@
             <div class="range-labels"><span>← 4° 穏やか（短く細い）</span><span>18° 荒れ（長く太い） →</span></div>
             <p class="range-hint">ムーンロード・ビーナスロードの長さと幅。低い天体ほど岸の近くまで伸びます。</p>
           </div>
+          <div class="field">
+            <label class="top">光の道の根元の太さ（水平線側） <span class="val mono" id="roadBaseWidthVal">50%</span></label>
+            <input type="range" id="roadBaseWidth" min="0" max="100" step="5" value="50" aria-label="光の道の根元の太さ">
+            <div class="range-labels"><span>← 0% 先細り</span><span>100% 水平線から同じ太さ →</span></div>
+            <p class="range-hint">0% は水平線側が細く手前で広がる形、100% は水平線際から手前と同じ太さの柱。</p>
+          </div>
           <button id="autoShowShowerConstBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌠 流星群の極大1週間前後に星座自動表示</span><span id="autoShowShowerConstState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
 
           <div class="sub-collapse" style="margin-top:10px;">
@@ -6196,7 +6202,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1035-planet-road";
+const APP_VERSION="1036-road-base-width";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7318,10 +7324,11 @@ function planetMagnitude(key,jd){
 function planetSizeFactorOfMag(mag){return Number.isFinite(mag)?clamp(1.45-.16*(mag+2),.45,1.5):1;}
 /* 等級 → 光の道の明るさ。金星 1、木星 .65、火星 −1 等 .43／+1.5 等 .08、土星 .17。 */
 function planetRoadBrightnessOfMag(mag){return Number.isFinite(mag)?clamp(1-(mag+4.4)/6,.08,1):.4;}
-let planetSizePct=100,seaWaveSlopeDeg=10;
+let planetSizePct=100,seaWaveSlopeDeg=10,roadBaseWidthPct=50;   /* 【v1036】根元の太さ */
 function syncPlanetSizeControls(){
   if(el.planetSize){el.planetSize.value=planetSizePct;if(el.planetSizeVal)el.planetSizeVal.textContent=`${planetSizePct}%`;}
   if(el.seaWave){el.seaWave.value=seaWaveSlopeDeg;if(el.seaWaveVal)el.seaWaveVal.textContent=`${seaWaveSlopeDeg}°`;}
+  if(el.roadBaseWidth){el.roadBaseWidth.value=roadBaseWidthPct;if(el.roadBaseWidthVal)el.roadBaseWidthVal.textContent=`${roadBaseWidthPct}%`;}
 }
 
 /* =========================================================
@@ -7402,6 +7409,7 @@ const el={
   walkSpeed:$("walkSpeed"), walkSpeedVal:$("walkSpeedVal"),
   constStarSize:$("constStarSize"), constStarSizeVal:$("constStarSizeVal"), namedStarSize:$("namedStarSize"), namedStarSizeVal:$("namedStarSizeVal"),
   planetSize:$("planetSize"), planetSizeVal:$("planetSizeVal"), seaWave:$("seaWave"), seaWaveVal:$("seaWaveVal"),
+  roadBaseWidth:$("roadBaseWidth"), roadBaseWidthVal:$("roadBaseWidthVal"),
   viewpointOffset:$("viewpointOffset"), observerEyeElevationVal:$("observerEyeElevationVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
@@ -11785,6 +11793,10 @@ if(el.namedStarSize)el.namedStarSize.addEventListener("input",()=>{
 if(el.planetSize)el.planetSize.addEventListener("input",()=>{
   planetSizePct=clamp(Math.round(+el.planetSize.value||100),50,200);
   syncPlanetSizeControls();update();scheduleSaveSettings();
+});
+if(el.roadBaseWidth)el.roadBaseWidth.addEventListener("input",()=>{   /* 【v1036】 */
+  roadBaseWidthPct=clamp(Math.round(+el.roadBaseWidth.value||0),0,100);
+  syncPlanetSizeControls();drawPhoto._terrainRenderKey=null;update();scheduleSaveSettings();
 });
 if(el.seaWave)el.seaWave.addEventListener("input",()=>{
   seaWaveSlopeDeg=clamp(Math.round(+el.seaWave.value||10),4,18);
@@ -16843,6 +16855,7 @@ function collectPersistedSettings(){
     droneVerticalSpeed:droneVerticalSpeedMps,   /* 【v1022】 */
     constStarSizePct:constStarSizePct,namedStarSizePct:namedStarSizePct,   /* 【v1033】 */
     planetSizePct:planetSizePct,seaWaveSlopeDeg:seaWaveSlopeDeg,   /* 【v1035】 */
+    roadBaseWidthPct:roadBaseWidthPct,   /* 【v1036】 */
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -17129,6 +17142,7 @@ async function loadPersistedSettings(){
     syncStarSizeControls();
     if(Number.isFinite(+s.planetSizePct))planetSizePct=clamp(Math.round(+s.planetSizePct),50,200);   /* 【v1035】 */
     if(Number.isFinite(+s.seaWaveSlopeDeg))seaWaveSlopeDeg=clamp(Math.round(+s.seaWaveSlopeDeg),4,18);
+    if(Number.isFinite(+s.roadBaseWidthPct))roadBaseWidthPct=clamp(Math.round(+s.roadBaseWidthPct),0,100);   /* 【v1036】 */
     syncPlanetSizeControls();
     /* 【v1034】撮影場所の追加高さも設定から復元しない。常に 0m（撮影計画を読めばその値）。 */
     el.viewpointOffset.value="0";
@@ -27850,7 +27864,10 @@ function drawPhoto(ctx,s){
             const tilt=(beta-alpha)/2;
             const w=Math.exp(-tilt*tilt/(2*sd*sd));
             if(w<.015)continue;
-            const halfDeg=Math.max(.12,.9*sigma*Math.sin(beta*D2R)+.06);
+            /* 【v1036】根元の太さ：p=0 で sinβ に比例（先細り）、p=1 で手前（βTo）と同じ幅の柱。 */
+            const pBase=clamp(roadBaseWidthPct/100,0,1);
+            const betaRef=Math.min(betaTo,alpha+.35*sigma);   // 柱の太さの基準（反射点の少し手前）
+            const halfDeg=Math.max(.12,.9*sigma*(pBase*Math.sin(betaRef*D2R)+(1-pBase)*Math.sin(beta*D2R))+.06);
             const l=at(-halfDeg,beta),r=at(halfDeg,beta);
             const half=(l&&r)?Math.max(1.2,Math.abs(r[0]-l[0])/2):Math.max(1.2,3*reflectionCanvasScale);
             rows.push({x:c[0],y:c[1],half,w,k});
@@ -27874,7 +27891,7 @@ function drawPhoto(ctx,s){
             const count=Math.round(row.w*(1.2+2.4*density)+(base>.5?.5:0));
             for(let q=0;q<count;q++){
               const u=noise(row.k*5+q,3),len=noise(row.k*5+q,4);
-              const cx=row.x+(u-.5)*row.half*1.7;
+              const cx=row.x+(u-.5)*row.half*1.5;
               const hl=Math.max(.8,row.half*(.06+.28*len));
               const a=base*row.w*(.35+.65*noise(row.k*5+q,5));
               if(a<.01)continue;
