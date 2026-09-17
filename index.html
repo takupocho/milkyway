@@ -4618,6 +4618,19 @@
             <div class="range-labels"><span>← 50%</span><span>200% →</span></div>
             <p class="range-hint">恒星リストの星（シリウス・アンタレスなど）の芯と光芒の大きさ。色は星の色指数から付けます（アンタレスは赤み）。</p>
           </div>
+          <!-- 【v1035】惑星の大きさ（等級から）と、水面の光の道の広がり -->
+          <div class="field">
+            <label class="top">惑星の大きさ <span class="val mono" id="planetSizeVal">100%</span></label>
+            <input type="range" id="planetSize" min="50" max="200" step="5" value="100" aria-label="惑星の大きさ">
+            <div class="range-labels"><span>← 50%</span><span>200% →</span></div>
+            <p class="range-hint">その日の実際の等級で大きさが変わります（金星・木星は大きく、遠い火星や土星は小さく、天王星・海王星は点）。</p>
+          </div>
+          <div class="field">
+            <label class="top">光の道の広がり（海面の波） <span class="val mono" id="seaWaveVal">10°</span></label>
+            <input type="range" id="seaWave" min="4" max="18" step="1" value="10" aria-label="海面の波の傾き">
+            <div class="range-labels"><span>← 4° 穏やか（短く細い）</span><span>18° 荒れ（長く太い） →</span></div>
+            <p class="range-hint">ムーンロード・ビーナスロードの長さと幅。低い天体ほど岸の近くまで伸びます。</p>
+          </div>
           <button id="autoShowShowerConstBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>🌠 流星群の極大1週間前後に星座自動表示</span><span id="autoShowShowerConstState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
 
           <div class="sub-collapse" style="margin-top:10px;">
@@ -6183,7 +6196,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1033-star-size";
+const APP_VERSION="1035-planet-road";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7279,6 +7292,38 @@ function planetRaDec(key,jd){
   return {ra,dec,dist};
 }
 
+/* 【v1035】惑星の見かけの等級（Meeus）。r＝太陽距離、Δ＝地球距離、i＝位相角。土星の環は平均的な傾き 15° で置く。 */
+function planetMagnitude(key,jd){
+  const d=jd-2451543.5;
+  const sunGeo=planetHeliocentric(PLANET_ELEMENTS.sun,d);
+  const p=planetHeliocentric(PLANET_ELEMENTS[key],d);
+  const r=Math.hypot(p.xh,p.yh,p.zh);
+  const R=Math.hypot(sunGeo.xh,sunGeo.yh,sunGeo.zh);
+  const delta=Math.hypot(p.xh+sunGeo.xh,p.yh+sunGeo.yh,p.zh);
+  const cosI=clamp((r*r+delta*delta-R*R)/(2*r*delta),-1,1);
+  const i=Math.acos(cosI)*R2D;
+  const base=5*Math.log10(Math.max(1e-6,r*delta));
+  switch(key){
+    case "mercury": return -0.42+base+.0380*i-.000273*i*i+2.0e-6*i*i*i;
+    case "venus":   return -4.40+base+.0009*i+.000239*i*i-6.5e-7*i*i*i;
+    case "mars":    return -1.52+base+.016*i;
+    case "jupiter": return -9.40+base+.005*i;
+    case "saturn":  { const B=15*D2R; return -8.88+base+.044*i-2.60*Math.sin(B)+1.25*Math.sin(B)*Math.sin(B); }
+    case "uranus":  return -7.19+base;
+    case "neptune": return -6.87+base;
+  }
+  return 0;
+}
+/* 等級 → 惑星の大きさの倍率。金星・木星 1.5、火星 −1 等 1.29／+1.5 等 .89、土星 1.0、天王星・海王星 .45。 */
+function planetSizeFactorOfMag(mag){return Number.isFinite(mag)?clamp(1.45-.16*(mag+2),.45,1.5):1;}
+/* 等級 → 光の道の明るさ。金星 1、木星 .65、火星 −1 等 .43／+1.5 等 .08、土星 .17。 */
+function planetRoadBrightnessOfMag(mag){return Number.isFinite(mag)?clamp(1-(mag+4.4)/6,.08,1):.4;}
+let planetSizePct=100,seaWaveSlopeDeg=10;
+function syncPlanetSizeControls(){
+  if(el.planetSize){el.planetSize.value=planetSizePct;if(el.planetSizeVal)el.planetSizeVal.textContent=`${planetSizePct}%`;}
+  if(el.seaWave){el.seaWave.value=seaWaveSlopeDeg;if(el.seaWaveVal)el.seaWaveVal.textContent=`${seaWaveSlopeDeg}°`;}
+}
+
 /* =========================================================
    2. 設定値 (都市プリセット・センサー・光害レベル・ISO)
    ========================================================= */
@@ -7356,6 +7401,7 @@ const el={
   tripodHeight:$("tripodHeight"), tripodHeightVal:$("tripodHeightVal"),
   walkSpeed:$("walkSpeed"), walkSpeedVal:$("walkSpeedVal"),
   constStarSize:$("constStarSize"), constStarSizeVal:$("constStarSizeVal"), namedStarSize:$("namedStarSize"), namedStarSizeVal:$("namedStarSizeVal"),
+  planetSize:$("planetSize"), planetSizeVal:$("planetSizeVal"), seaWave:$("seaWave"), seaWaveVal:$("seaWaveVal"),
   viewpointOffset:$("viewpointOffset"), observerEyeElevationVal:$("observerEyeElevationVal"),
   sensor:$("sensor"), lp:$("lp"),
   orientationSeg:$("orientationSeg"), mobileOrientationToggleBtn:$("mobileOrientationToggleBtn"),
@@ -11734,6 +11780,15 @@ if(el.constStarSize)el.constStarSize.addEventListener("input",()=>{
 if(el.namedStarSize)el.namedStarSize.addEventListener("input",()=>{
   namedStarSizePct=clamp(Math.round(+el.namedStarSize.value||100),50,200);
   syncStarSizeControls();update();scheduleSaveSettings();
+});
+/* 【v1035】惑星の大きさ・海面の波 */
+if(el.planetSize)el.planetSize.addEventListener("input",()=>{
+  planetSizePct=clamp(Math.round(+el.planetSize.value||100),50,200);
+  syncPlanetSizeControls();update();scheduleSaveSettings();
+});
+if(el.seaWave)el.seaWave.addEventListener("input",()=>{
+  seaWaveSlopeDeg=clamp(Math.round(+el.seaWave.value||10),4,18);
+  syncPlanetSizeControls();drawPhoto._terrainRenderKey=null;update();scheduleSaveSettings();
 });
 el.tripodHeight.addEventListener("input",()=>{
   syncTripodHeightControl();
@@ -16783,10 +16838,11 @@ function collectPersistedSettings(){
     lat:el.lat.value, lon:el.lon.value, tz:el.tz.value, citySelect:el.citySelect.value,
     focalLength:el.focalLength.value, aperture:el.aperture.value, isoSlider:el.isoSlider.value,
     shutter:el.shutter.value, sensor:el.sensor.value, lp:el.lp.value, orientation:orientation,
-    tripodHeight:el.tripodHeight.value, viewpointOffset:el.viewpointOffset.value,
+    /* 【v1034】三脚の高さ・撮影場所の追加高さは設定に保存しない（更新すると 160cm・0m に戻る）。撮影計画にだけ入る。 */
     walkSpeed:el.walkSpeed.value,
     droneVerticalSpeed:droneVerticalSpeedMps,   /* 【v1022】 */
     constStarSizePct:constStarSizePct,namedStarSizePct:namedStarSizePct,   /* 【v1033】 */
+    planetSizePct:planetSizePct,seaWaveSlopeDeg:seaWaveSlopeDeg,   /* 【v1035】 */
     mobileLensMode:mobileLensMode,
     normalLensFocalLength:normalLensFocalLength,
     fisheyeLensFocalLength:fisheyeLensFocalLength,
@@ -17056,10 +17112,8 @@ async function loadPersistedSettings(){
     if(typeof syncDroneModeButton==="function") syncDroneModeButton();
     if(typeof refreshDroneMapSize==="function") refreshDroneMapSize();
     setSimAddressLabel();
-    if(s.tripodHeight!==undefined){
-      const saved=Math.round(+s.tripodHeight); // 0cmを160cmへ化けさせないため || は使わない
-      el.tripodHeight.value=clamp(Number.isFinite(saved)?saved:160,0,200);
-    }
+    /* 【v1034】三脚の高さは設定から復元しない。ページを開いたときは常に 160cm（撮影計画を読めばその値）。 */
+    el.tripodHeight.value=160;
     if(s.walkSpeed!==undefined){
       const saved=Number(s.walkSpeed);   // 【v867】古い保存には無いので既定10
       el.walkSpeed.value=clamp(Number.isFinite(saved)?saved:WALK_SPEED_MPS,2,16);
@@ -17073,10 +17127,11 @@ async function loadPersistedSettings(){
     if(Number.isFinite(+s.constStarSizePct))constStarSizePct=clamp(Math.round(+s.constStarSizePct),50,200);   /* 【v1033】 */
     if(Number.isFinite(+s.namedStarSizePct))namedStarSizePct=clamp(Math.round(+s.namedStarSizePct),50,200);
     syncStarSizeControls();
-    if(s.viewpointOffset!==undefined){
-      const saved=Number(s.viewpointOffset);
-      el.viewpointOffset.value=clamp(Number.isFinite(saved)?saved:0,0,500);
-    }
+    if(Number.isFinite(+s.planetSizePct))planetSizePct=clamp(Math.round(+s.planetSizePct),50,200);   /* 【v1035】 */
+    if(Number.isFinite(+s.seaWaveSlopeDeg))seaWaveSlopeDeg=clamp(Math.round(+s.seaWaveSlopeDeg),4,18);
+    syncPlanetSizeControls();
+    /* 【v1034】撮影場所の追加高さも設定から復元しない。常に 0m（撮影計画を読めばその値）。 */
+    el.viewpointOffset.value="0";
     syncViewpointOffsetControl();
     syncTripodHeightControl();
     invalidateCurrentEyeTerrainProfile();
@@ -18219,8 +18274,9 @@ async function applySavedObservingPlan(location){
   }
   if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
   if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
-  if(Number.isFinite(+location.tripodHeight)) el.tripodHeight.value=clamp(Math.round(+location.tripodHeight),0,200);
-  if(Number.isFinite(+location.viewpointOffset)) el.viewpointOffset.value=clamp(+location.viewpointOffset,0,500);
+  /* 【v1034】撮影計画に無ければ既定（160cm・0m）へ戻す（前の計画の値を引きずらない） */
+  el.tripodHeight.value=Number.isFinite(+location.tripodHeight)?clamp(Math.round(+location.tripodHeight),0,200):160;
+  el.viewpointOffset.value=Number.isFinite(+location.viewpointOffset)?clamp(+location.viewpointOffset,0,500):0;
   syncViewpointOffsetControl();syncTripodHeightControl();invalidateCurrentEyeTerrainProfile();
   /* 島影は日付ではなく観測地点と視点高へ結び付け、通信前に軽量データから復元する。 */
   applyDarumaIslandSilhouetteFromPlan(location.darumaIslandSilhouette||null);
@@ -27090,7 +27146,8 @@ function drawPhoto(ctx,s){
       if(!pt) return;
       const [x,y]=pt;
       if(x<-40||x>W+40||y<-40||y>H+40) return;
-      const r=(pl.key==="venus"?5.5:pl.key==="jupiter"?5:4)*(W/1200);
+      /* 【v1035】大きさは実際の等級から。設定の倍率も掛ける。 */
+      const r=4*(W/1200)*(planetSizePct/100)*planetSizeFactorOfMag(planetMagnitude(pl.key,s.jd));
       const glowR=r*3;
       const g=ctx.createRadialGradient(x,y,0,x,y,glowR);
       g.addColorStop(0,`rgba(${pl.color},0.55)`);
@@ -27754,8 +27811,89 @@ function drawPhoto(ctx,s){
         // 波の一つ一つを小さな鏡として扱うサングリッターの見え方へ寄せる。
         // 遠方は細く密、手前ほど横へ広くなる短い反射群で構成し、一本の縦線は描かない。
         // この反射Canvasには最後に水域マスクが掛かるため、川の曲がり・中州・岸で自然に途切れる。
+        /* 【v1035】月・惑星・恒星の光の道。波面を小さな鏡として扱う。
+           天体の高さ α、波の傾きの幅 σ（設定）。俯角 β の水面で反射するには波面が t=(β−α)/2 傾いていればよく、
+           その確率は exp(−t²/2s²)（s=.55σ）。道は β＝α−2.2σ〜α+2.2σ の範囲＝低い天体ほど岸の近くまで伸びる。
+           横の広がりは sin β に比例（手前ほど広い）。淡い柱＋きらめきの二層。太陽は従来の drawCelestialLightRoad。 */
+        function drawGlitterRoad(aa,brightness,color,kind,visibilityOverride){
+          const altitudeLimit=24;
+          if(!aa||aa.alt<=0||aa.alt>=altitudeLimit||!isConfirmedWaterDirection(aa.az)) return;
+          const wrapped=((aa.az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,tt=wrapped-i0;
+          const ridgeAlt=activeTerrainProfile?lerp(activeTerrainProfile[i0]||0,activeTerrainProfile[i1]||0,tt):0;
+          if(aa.alt<=ridgeAlt+.08) return;   // 山に隠れた天体の道は出さない
+          const sigma=clamp(seaWaveSlopeDeg,2,30),sd=sigma*.55,alpha=aa.alt;
+          const betaFrom=Math.max(.05,alpha-2.2*sigma),betaTo=Math.min(85,alpha+2.2*sigma);
+          const visibility=Number.isFinite(visibilityOverride)?clamp(visibilityOverride,0,1):vis;
+          const lowFactor=Math.pow(clamp(1-alpha/altitudeLimit,0,1),1.1);
+          const base=clamp(visibility*clamp(brightness,0,1)*lowFactor*(kind==="moon"?1.25:1),0,1);
+          if(base<.01) return;
+          const at=(azOff,beta)=>{const p=toXY(norm360(aa.az+azOff),-beta);return (p&&Number.isFinite(p[0])&&Number.isFinite(p[1]))?p:null;};
+          const top=at(0,betaFrom),bottom=at(0,betaTo);
+          if(!top||!bottom) return;
+          if(top[0]<-120||top[0]>W+120) return;
+          const span=Math.abs(bottom[1]-top[1]);
+          if(span<3) return;
+          const rowStep=Math.max(1.6,2.2*reflectionCanvasScale);
+          const nRows=clamp(Math.round(span/rowStep),12,420);
+          /* 時刻に連動したきらめきの位相（静止画では固定、再生中だけ入れ替わる）。 */
+          const shimmerPeriodSec=kind==="moon"?22:28;
+          const glitterClock=((((s.jd%1)+1)%1)*86400)/shimmerPeriodSec;
+          const glitterFrame=Math.floor(glitterClock),glitterBlendRaw=glitterClock-glitterFrame;
+          const glitterBlend=glitterBlendRaw*glitterBlendRaw*(3-2*glitterBlendRaw);
+          const hash=(index,salt,frame)=>{const v=Math.sin((index+1)*12.9898+aa.az*78.233+aa.alt*19.17+salt*31.417+frame*7.193)*43758.5453;return v-Math.floor(v);};
+          const noise=(index,salt)=>lerp(hash(index,salt,glitterFrame),hash(index,salt,glitterFrame+1),glitterBlend);
+          const rows=[];
+          for(let k=0;k<=nRows;k++){
+            const beta=lerp(betaFrom,betaTo,k/nRows);
+            const c=at(0,beta);if(!c)continue;
+            if(c[1]<-20||c[1]>H+20)continue;
+            const tilt=(beta-alpha)/2;
+            const w=Math.exp(-tilt*tilt/(2*sd*sd));
+            if(w<.015)continue;
+            const halfDeg=Math.max(.12,.9*sigma*Math.sin(beta*D2R)+.06);
+            const l=at(-halfDeg,beta),r=at(halfDeg,beta);
+            const half=(l&&r)?Math.max(1.2,Math.abs(r[0]-l[0])/2):Math.max(1.2,3*reflectionCanvasScale);
+            rows.push({x:c[0],y:c[1],half,w,k});
+          }
+          if(rows.length<2) return;
+          ctx.save();ctx.globalCompositeOperation="lighter";ctx.lineCap="round";
+          /* 1) 淡い連続した柱。行ごとに横方向のグラデーション。 */
+          const rowH=Math.max(1.2,span/nRows+.6);
+          for(const row of rows){
+            const a=base*row.w*.40;
+            if(a<.004)continue;
+            const g=ctx.createLinearGradient(row.x-row.half,row.y,row.x+row.half,row.y);
+            g.addColorStop(0,`rgba(${color},0)`);g.addColorStop(.35,`rgba(${color},${a})`);
+            g.addColorStop(.65,`rgba(${color},${a})`);g.addColorStop(1,`rgba(${color},0)`);
+            ctx.fillStyle=g;ctx.fillRect(row.x-row.half,row.y-rowH/2,row.half*2,rowH);
+          }
+          /* 2) きらめき：行ごとに数本の短い横線。明るい行ほど多く・濃く。 */
+          const lineW=Math.max(.6,(.9+.5*base)*reflectionCanvasScale);
+          for(const row of rows){
+            const density=noise(row.k,2);
+            const count=Math.round(row.w*(1.2+2.4*density)+(base>.5?.5:0));
+            for(let q=0;q<count;q++){
+              const u=noise(row.k*5+q,3),len=noise(row.k*5+q,4);
+              const cx=row.x+(u-.5)*row.half*1.7;
+              const hl=Math.max(.8,row.half*(.06+.28*len));
+              const a=base*row.w*(.35+.65*noise(row.k*5+q,5));
+              if(a<.01)continue;
+              ctx.strokeStyle=`rgba(${color},${clamp(a,0,.95)})`;
+              ctx.lineWidth=lineW*(.7+.6*len);
+              ctx.beginPath();ctx.moveTo(cx-hl,row.y);ctx.lineTo(cx+hl,row.y);ctx.stroke();
+            }
+          }
+          /* 3) 反射点まわりの芯（水平線に近い頭の部分を少し強める）。 */
+          const head=rows.reduce((best,row)=>row.w>best.w?row:best,rows[0]);
+          const headR=Math.max(2,head.half*.9);
+          const hg=ctx.createRadialGradient(head.x,head.y,0,head.x,head.y,headR*2.2);
+          hg.addColorStop(0,`rgba(${color},${base*.55})`);hg.addColorStop(1,`rgba(${color},0)`);
+          ctx.fillStyle=hg;ctx.beginPath();ctx.ellipse(head.x,head.y,headR*2.2,Math.max(2,rowH*2.5),0,0,Math.PI*2);ctx.fill();
+          ctx.restore();
+        }
         function drawCelestialLightRoad(aa,strength,color="255,232,180",kind="moon",visibilityOverride=null){
           const isSun=kind==="sun",altitudeLimit=isSun?20:24;
+          if(!isSun) return drawGlitterRoad(aa,strength,color,kind,visibilityOverride);   /* 【v1035】月・惑星は新しい道 */
           if(!aa||aa.alt<=0||aa.alt>=altitudeLimit||!isConfirmedWaterDirection(aa.az)) return;
           /* 光路は画面上の固定pxではなく、レンズの投影倍率へ追従させる。
              縦の長さは焦点距離に比例させる一方、横幅・反射片の太さ・間隔まで同じ倍率にすると、
@@ -27921,6 +28059,7 @@ function drawPhoto(ctx,s){
             const aa=raDecToAltAz(ns.ra,ns.dec,s.jd,s.lat,s.lon);if(aa.alt<=0)return;
             const p=toXY(aa.az,-aa.alt);if(!p||p[0]<-12||p[0]>W+12||p[1]<-12||p[1]>H+12)return;
             drawCelestialReflection(p,namedStarStrength[ns.key]||.65,"248,250,255",2);
+            drawCelestialLightRoad(aa,.18*(namedStarStrength[ns.key]||.65),"238,243,255","star");   /* 【v1035】控えめな道 */
           });
           ctx.restore();
         }
@@ -27995,8 +28134,9 @@ function drawPhoto(ctx,s){
             const position=planetRaDec(planet.key,s.jd);
             const aa=raDecToAltAz(position.ra,position.dec,s.jd,s.lat,s.lon);if(aa.alt<=0)return;
             const point=toXY(aa.az,-aa.alt);if(!point)return;
-            drawCelestialReflection(point,planetStrength[planet.key]||.55,planet.color,1.18);
-            if(planet.key==="venus") drawCelestialLightRoad(aa,1,"255,235,190","venus");
+            const roadB=planetRoadBrightnessOfMag(planetMagnitude(planet.key,s.jd));   /* 【v1035】等級から */
+            drawCelestialReflection(point,Math.max(.25,roadB),planet.color,1.18);
+            drawCelestialLightRoad(aa,roadB,planet.key==="venus"?"255,235,190":planet.color,"planet");
           });
           ctx.restore();
         }
