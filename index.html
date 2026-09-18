@@ -6203,7 +6203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1038-keep-water-rings";
+const APP_VERSION="1039-water-diag-line";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9521,6 +9521,13 @@ function updateSimInfoPanel(){
     /* 【v882】海面線をいま何度に置いているか。スイッチの状態を画面で読めるようにする。 */
     /* 【v896】既定がONなので毎回[ON]と出す意味がない。OFFのときだけ印を付ける。 */
     `海面線 ${renderedSeaHorizonAltDeg().toFixed(3)}°${seaHorizonRealistic?"":" [OFF]"}`,
+    (()=>{try{
+      const rings=realTerrainState._osmWaterRings||[];
+      const map=highDetailMapWaterAvailable();
+      const lvl=normalWaterFineLevelValue();
+      const st=realTerrainState._osmRefinePending?"取得中":(realTerrainState._osmWaterRingsStale?"前の升目":"あり");
+      return `水域 形状${rings.length}(${rings.length?st:"なし"})・地図${map?"○":"×"}(${worldMapTiles}枚/待${worldMapPending})・細分化${lvl}・省電力${powerSaveOn?"ON":"OFF"}${walkActive()?"・移動中":""}`;
+    }catch(e){return "水域 —";}})(),   /* 【v1039】水際の細分化が働く条件。ガタガタの切り分け用 */
     `v${APP_VERSION}`
   ].filter(Boolean).join("\n");
 }
