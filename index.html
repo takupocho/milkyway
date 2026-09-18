@@ -6203,7 +6203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1043-road-over-water";
+const APP_VERSION="1044-water-atlas";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9526,7 +9526,7 @@ function updateSimInfoPanel(){
       const map=highDetailMapWaterAvailable();
       const lvl=normalWaterFineLevelValue();
       const st=realTerrainState._osmRefinePending?"取得中":(realTerrainState._osmWaterRingsStale?"前の升目":"あり");
-      return `水域 形状${rings.length}(${rings.length?st:"なし"})・地図${map?"○":"×"}(${worldMapTiles}枚/待${worldMapPending})・細分化${lvl}・省電力${powerSaveOn?"ON":"OFF"}${walkActive()?"・移動中":""}`;
+      return `水域 形状${rings.length}(${rings.length?st:"なし"})・地図${map?"○":"×"}(${worldMapTiles}枚/待${worldMapPending})・面${waterAtlas.ready?"○":"×"}(${waterAtlas.fetched}枚${waterAtlas.failed?"/欠"+waterAtlas.failed:""}${waterAtlas.building?"/作成中":""})・細分化${lvl}・省電力${powerSaveOn?"ON":"OFF"}${walkActive()?"・移動中":""}`;
     }catch(e){return "水域 —";}})(),   /* 【v1039】水際の細分化が働く条件。ガタガタの切り分け用 */
     `v${APP_VERSION}`
   ].filter(Boolean).join("\n");
@@ -25672,8 +25672,8 @@ function glTerrainInit(W,H){
   const vs=`#version 300 es
 in vec2 aPos;in float aDist;in float aAlt;in float aWater;in vec2 aMerc;
 uniform vec2 uSize;uniform float uDay;uniform float uWaterAsLand;uniform float uNearGrassKm;uniform float uMode;
-flat out vec4 vCol;
-out vec2 vMerc;flat out float vTexW;flat out float vHaze;flat out float vRelief;
+flat out vec4 vColL;flat out vec4 vColW;flat out float vWater;flat out float vSteep;   /* 【v1044】陸の色・水の色・頂点の水陸旗・急な升目 */
+out vec2 vMerc;flat out float vHaze;flat out float vRelief;
 const vec3 LNN=vec3(10.,12.,10.)/255.,LNF=vec3(25.,30.,28.)/255.;
 const vec3 LDN=vec3(62.,78.,48.)/255.,LDF=vec3(104.,118.,92.)/255.;
 const vec3 LNH=vec3(35.,47.,64.)/255.,LDH=vec3(196.,208.,218.)/255.;
@@ -25684,30 +25684,28 @@ const vec3 GN=vec3(22.,30.,21.)/255.,GD=vec3(108.,138.,68.)/255.;
 void main(){
   vec2 c=vec2(aPos.x/uSize.x*2.0-1.0,1.0-aPos.y/uSize.y*2.0);
   gl_Position=vec4(c,0.0,1.0);
-  if(uMode>0.5){vCol=aWater>0.5?vec4(1.0):vec4(0.0);return;}
-  bool w=(uWaterAsLand<0.5)&&(aWater>0.5);
+  vMerc=aMerc;vWater=aWater-2.0*floor(aWater/2.0);vSteep=aWater>=2.0?1.0:0.0;   /* aWater = 水陸旗 + 2×急な升目 */
+  /* 【v1044】水か陸かは断片側で決める（アトラスが覆う画素は画素ごと）。ここは両方の色を用意するだけ。 */
   float d=aDist;float depth=clamp(d,0.0,1.0);
-  vec3 night=w?mix(WNN,WNF,depth):mix(LNN,LNF,depth);
-  vec3 day=w?mix(WDN,WDF,depth):mix(LDN,LDF,depth);
-  if(d>1.0){float haze=clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0);night=mix(night,w?WNH:LNH,haze);day=mix(day,w?WDH:LDH,haze);}
-  if(!w&&d<uNearGrassKm){float t=clamp(1.0-d/uNearGrassKm,0.0,1.0);float nm=t*t*(3.0-2.0*t);night=mix(night,GN,nm);day=mix(day,GD,nm);}
-  vec3 rgb=mix(night,day,uDay);
+  vec3 nightL=mix(LNN,LNF,depth),dayL=mix(LDN,LDF,depth);
+  vec3 nightW=mix(WNN,WNF,depth),dayW=mix(WDN,WDF,depth);
+  float haze=(d>1.0)?clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0):0.0;
+  if(d>1.0){nightL=mix(nightL,LNH,haze);dayL=mix(dayL,LDH,haze);nightW=mix(nightW,WNH,haze);dayW=mix(dayW,WDH,haze);}
+  if(d<uNearGrassKm){float t=clamp(1.0-d/uNearGrassKm,0.0,1.0);float nm=t*t*(3.0-2.0*t);nightL=mix(nightL,GN,nm);dayL=mix(dayL,GD,nm);}
   float relief=clamp((aAlt+8.0)/24.0,0.0,1.0);
-  if(!w){rgb=clamp(rgb*(0.88+relief*0.12),0.0,1.0);}
-  vCol=vec4(rgb,1.0);
-  /* 【v997】写真テクスチャ用。水面と夜は写真を使わない。かすみは色と同じ式。 */
-  vMerc=aMerc;
-  vTexW=w?0.0:1.0;   /* 【v998】夜も写真（暗くするだけ）。水面だけ今までの色 */
-  vHaze=(d>1.0)?clamp(1.0-exp(-(d-1.0)/16.0),0.0,1.0):0.0;
+  vColL=vec4(clamp(mix(nightL,dayL,uDay)*(0.88+relief*0.12),0.0,1.0),1.0);
+  vColW=vec4(mix(nightW,dayW,uDay),1.0);
+  vHaze=haze;
   vRelief=relief;
 }`;
   const fs=`#version 300 es
 precision highp float;   /* uniform の精度を頂点側と揃える（ES 3.0 は断片でも highp 必須） */
-flat in vec4 vCol;in vec2 vMerc;flat in float vTexW;flat in float vHaze;flat in float vRelief;
-uniform float uTexOn;uniform float uMode;
+flat in vec4 vColL;flat in vec4 vColW;flat in float vWater;flat in float vSteep;in vec2 vMerc;flat in float vHaze;flat in float vRelief;
+uniform float uTexOn;uniform float uMode;uniform float uWaterAsLand;
 uniform sampler2D uTex0;uniform sampler2D uTex1;uniform sampler2D uTex2;
 uniform vec4 uAtlas0;uniform vec4 uAtlas1;uniform vec4 uAtlas2;   /* (originX_z, originY_z, N, 2^(z-16)) */
 uniform vec3 uTexHaze;uniform float uTexGain;uniform float uTexNight;uniform float uTexHazeK;uniform float uDayF;
+uniform sampler2D uWaterTex;uniform vec4 uWaterAtlas;uniform float uWaterOn;   /* 【v1044】水域アトラス（r=水、g=タイルが届いた） */
 out vec4 o;
 bool pick(vec4 a,out vec2 uv){
   if(a.z<=0.0)return false;
@@ -25715,8 +25713,17 @@ bool pick(vec4 a,out vec2 uv){
   return uv.x>=0.0&&uv.y>=0.0&&uv.x<1.0&&uv.y<1.0;
 }
 void main(){
-  o=vCol;
-  if(uMode>0.5||uTexOn<0.5||vTexW<=0.001)return;
+  /* 【v1044】アトラスが覆う画素は画素ごとに水陸を決める。覆わない画素は頂点の旗（光線方式）。 */
+  bool covered=false,texWater=false;
+  /* 急な升目（岸の斜面）はアトラスを使わない：水面を斜面に貼ると岸を這い上がって牙のように見える（精進湖の対岸で実測）。 */
+  if(uWaterOn>0.5&&vSteep<0.5){vec2 wuv;if(pick(uWaterAtlas,wuv)){vec4 wv=texture(uWaterTex,wuv);covered=wv.g>0.5;texWater=covered&&wv.r>0.5;}}
+  bool waterFrag=covered?texWater:(vWater>0.5);
+  if(uMode>2.5){o=(covered&&texWater)?vColW:vec4(0.0);return;}
+  if(uMode>1.5){o=covered?vec4(1.0):vec4(0.0);return;}
+  if(uMode>0.5){o=waterFrag?vec4(1.0):vec4(0.0);return;}
+  if(uWaterAsLand>0.5)waterFrag=false;
+  o=waterFrag?vColW:vColL;
+  if(uTexOn<0.5||waterFrag)return;
   vec2 uv;vec4 s=vec4(0.0);
   if(pick(uAtlas0,uv)){s=texture(uTex0,uv);}
   if(s.a<0.5&&pick(uAtlas1,uv)){s=texture(uTex1,uv);}
@@ -25729,7 +25736,7 @@ void main(){
   nightTex=mix(nightTex,vec3(35.0,47.0,64.0)/255.0*0.9,vHaze*uTexHazeK);
   vec3 tex=mix(nightTex,dayTex,uDayF);
   tex=clamp(tex*(0.88+vRelief*0.12),0.0,1.0);
-  o=vec4(mix(vCol.rgb,tex,vTexW),1.0);
+  o=vec4(tex,1.0);
 }`;
   const make=(type,src)=>{const sh=gl.createShader(type);gl.shaderSource(sh,src);gl.compileShader(sh);
     if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){console.warn("[glTerrain]",gl.getShaderInfoLog(sh));return null;}return sh;};
@@ -25745,8 +25752,10 @@ void main(){
     uTexOn:gl.getUniformLocation(prog,"uTexOn"),uTex:[gl.getUniformLocation(prog,"uTex0"),gl.getUniformLocation(prog,"uTex1"),gl.getUniformLocation(prog,"uTex2")],
     uAtlas:[gl.getUniformLocation(prog,"uAtlas0"),gl.getUniformLocation(prog,"uAtlas1"),gl.getUniformLocation(prog,"uAtlas2")],
     uTexHaze:gl.getUniformLocation(prog,"uTexHaze"),uTexGain:gl.getUniformLocation(prog,"uTexGain"),
-    uTexNight:gl.getUniformLocation(prog,"uTexNight"),uTexHazeK:gl.getUniformLocation(prog,"uTexHazeK"),uDayF:gl.getUniformLocation(prog,"uDayF")};
+    uTexNight:gl.getUniformLocation(prog,"uTexNight"),uTexHazeK:gl.getUniformLocation(prog,"uTexHazeK"),uDayF:gl.getUniformLocation(prog,"uDayF"),
+    uWaterTex:gl.getUniformLocation(prog,"uWaterTex"),uWaterAtlas:gl.getUniformLocation(prog,"uWaterAtlas"),uWaterOn:gl.getUniformLocation(prog,"uWaterOn")};   /* 【v1044】 */
   photoAtlasForgetTextures();   /* 【v997】コンテキストが作り直されたらテクスチャも作り直し */
+  waterAtlasForgetTexture();   /* 【v1044】 */
   gl.disable(gl.DEPTH_TEST);gl.disable(gl.BLEND);gl.disable(gl.CULL_FACE);
   x.uploadedKey=null;
   return true;
@@ -25869,6 +25878,81 @@ function photoTilePump(){
       photoTileActive--;photoTilePump();
     })();
   }
+}
+/* =========================================================
+   【v1044】水域アトラス。地理院ベクトルタイル（bvmap z16）の waterarea の面を、観測地点の周り 5×5 枚を
+   512px/枚（≒1.2m/px）で塗る。r=水、g=タイルが届いた（届かなかった升目は g=0 のまま＝覆わない）。
+   頂点の aMerc（z16 タイル原点）で写真と同じ式で引く。
+   ========================================================= */
+const WATER_ATLAS_Z=16,WATER_ATLAS_RADIUS=2,WATER_ATLAS_N=WATER_ATLAS_RADIUS*2+1,WATER_ATLAS_TILE_PX=512;
+const WATER_ATLAS_STEEP_M=2.5;   /* 升目の遠近の地面の高さ差がこれを超えたらアトラスを貼らない（岸の斜面） */
+const waterAtlas={origin16:null,tileKey:"",building:"",ox:0,oy:0,canvas:null,texture:null,ready:false,dirty:false,version:0,fetched:0,failed:0};
+function waterAtlasPaintTile(c,layers,dx,dy){
+  const px=WATER_ATLAS_TILE_PX;
+  c.save();
+  c.setTransform(1,0,0,1,0,0);c.beginPath();c.rect(dx*px,dy*px,px,px);c.clip();
+  c.fillStyle="rgb(0,255,0)";c.fillRect(dx*px,dy*px,px,px);   /* 届いた印 */
+  const layer=layers&&layers.get("waterarea");
+  if(layer&&layer.features&&layer.features.length){
+    const extent=layer.extent||4096,scale=px/extent;
+    c.setTransform(scale,0,0,scale,dx*px,dy*px);
+    c.fillStyle="rgb(255,255,0)";c.beginPath();let any=false;
+    for(const feature of layer.features){
+      if(feature.type!==3)continue;
+      for(const ring of decodeStaticVectorGeometry(feature)){
+        if(ring.length<3)continue;
+        c.moveTo(ring[0][0],ring[0][1]);
+        for(let i=1;i<ring.length;i++)c.lineTo(ring[i][0],ring[i][1]);
+        c.closePath();any=true;
+      }
+    }
+    if(any)c.fill("nonzero");
+  }
+  c.restore();
+}
+function waterAtlasEnsure(lat,lon){
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const [X,Y]=photoMercatorTile(lat,lon,WATER_ATLAS_Z);
+  const tx=Math.floor(X),ty=Math.floor(Y),tileKey=`${tx},${ty}`;
+  waterAtlas.origin16=[tx,ty];   /* 頂点の原点（メッシュと同じ式） */
+  if(waterAtlas.tileKey===tileKey||waterAtlas.building===tileKey)return;
+  waterAtlas.building=tileKey;
+  const ox=tx-WATER_ATLAS_RADIUS,oy=ty-WATER_ATLAS_RADIUS;
+  const canvas=document.createElement("canvas");canvas.width=canvas.height=WATER_ATLAS_N*WATER_ATLAS_TILE_PX;
+  const c=canvas.getContext("2d");
+  let got=0,failed=0;const jobs=[];
+  for(let dy=0;dy<WATER_ATLAS_N;dy++)for(let dx=0;dx<WATER_ATLAS_N;dx++){
+    jobs.push(worldMapFetchVectorTile(WATER_ATLAS_Z,ox+dx,oy+dy).then(layers=>{
+      if(layers){got++;waterAtlasPaintTile(c,layers,dx,dy);}else failed++;
+    },()=>{failed++;}));
+  }
+  Promise.all(jobs).then(()=>{
+    if(waterAtlas.building!==tileKey)return;   /* もっと新しい作り直しが始まっている */
+    waterAtlas.building="";waterAtlas.tileKey=tileKey;waterAtlas.ox=ox;waterAtlas.oy=oy;
+    waterAtlas.canvas=canvas;waterAtlas.ready=true;waterAtlas.dirty=true;waterAtlas.version++;
+    waterAtlas.fetched=got;waterAtlas.failed=failed;
+    drawPhoto._terrainRenderKey=null;
+    if(typeof scheduleUpdate==="function")scheduleUpdate();
+  });
+}
+function waterAtlasForgetTexture(){waterAtlas.texture=null;waterAtlas.dirty=true;}
+function waterAtlasBindTexture(gl,L){
+  if(!waterAtlas.ready||!waterAtlas.canvas||!waterAtlas.origin16)return false;
+  gl.activeTexture(gl.TEXTURE3);
+  if(!waterAtlas.texture){waterAtlas.texture=gl.createTexture();waterAtlas.dirty=true;}
+  gl.bindTexture(gl.TEXTURE_2D,waterAtlas.texture);
+  if(waterAtlas.dirty){
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,waterAtlas.canvas);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    waterAtlas.dirty=false;
+  }
+  gl.uniform4f(L.uWaterAtlas,waterAtlas.ox-waterAtlas.origin16[0],waterAtlas.oy-waterAtlas.origin16[1],WATER_ATLAS_N,1);
+  gl.uniform1i(L.uWaterTex,3);
+  return true;
 }
 /* 観測地点が変わっていたら、3段のアトラスを作り直す。段がそろうたびに描き直す。 */
 function photoAtlasEnsure(lat,lon){
@@ -26004,7 +26088,16 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
     for(let c=0;c<P;c++){
       const i=base+c;
       if(!ok[i]||pairCloud[i])continue;
-      const w=pairWater[i],a=pairAlt[i];
+      let w=pairWater[i];const a=pairAlt[i];
+      /* 【v1044】遠い稜線と近い稜線の地面の高さ差（m）。WATER_ATLAS_STEEP_M を超える升目は「急」（aWater に +2）。
+         水面は平らなので、急な升目に水域アトラスを貼ると斜面を這い上がる。 */
+      if(nbase>=0){
+        const farM=distanceKm*1000,nearM=nearKm*1000;
+        const rise=Math.max(
+          farM*Math.tan(altGrid[c*layerCount+k]*D2R)-nearM*Math.tan(altGrid[c*layerCount+near]*D2R),
+          farM*Math.tan(altGrid[(c+1)*layerCount+k]*D2R)-nearM*Math.tan(altGrid[(c+1)*layerCount+near]*D2R));
+        if(rise>WATER_ATLAS_STEEP_M)w+=2;
+      }
       const x1=pxA[i],y1=pyA[i],x2=pxB[i],y2=pyB[i];
       let x3=x2,y3=bottomY,x4=x1,y4=bottomY;
       if(nbase>=0&&ok[nbase+c]){x3=pxB[nbase+c];y3=pyB[nbase+c];x4=pxA[nbase+c];y4=pyA[nbase+c];}
@@ -26045,15 +26138,15 @@ function glTerrainUploadFine(geom){
   gl.bufferData(gl.ARRAY_BUFFER,geom.data.subarray(0,geom.count*GL_STRIDE),gl.DYNAMIC_DRAW);
   x.fineCount=geom.count;x.fineLineCount=0;
 }
-function glTerrainDraw(mode,W,H,dayFactor,waterAsLand,nearGrassKm){
-  return glTerrainDrawBuffer(glTerrain.buf,glTerrain.geomCount,mode,W,H,dayFactor,waterAsLand,nearGrassKm);
+function glTerrainDraw(mode,W,H,dayFactor,waterAsLand,nearGrassKm,waterTex){
+  return glTerrainDrawBuffer(glTerrain.buf,glTerrain.geomCount,mode,W,H,dayFactor,waterAsLand,nearGrassKm,false,false,waterTex);
 }
 function glTerrainDrawFine(mode,W,H,dayFactor,nearGrassKm){
   glTerrainDrawBuffer(glTerrain.bufFine,glTerrain.fineCount||0,mode,W,H,dayFactor,false,nearGrassKm);
   /* 縁の1px（Canvasの stroke 相当）。消さずに重ねる。 */
   glTerrainDrawBuffer(glTerrain.bufFineLines,glTerrain.fineLineCount||0,mode,W,H,dayFactor,false,nearGrassKm,true);
 }
-function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGrassKm,lines,keep){
+function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGrassKm,lines,keep,waterTex){
   const x=glTerrain,gl=x.gl,L=x.loc;
   gl.viewport(0,0,W,H);
   if(!lines){gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);}
@@ -26072,6 +26165,9 @@ function glTerrainDrawBuffer(buffer,count,mode,W,H,dayFactor,waterAsLand,nearGra
   /* 【v997】写真テクスチャ。用意できているアトラスだけ渡す。 */
   const texOn=photoTextureOn&&mode===0&&!lines&&photoAtlasBindTextures(gl,L);
   gl.uniform1f(L.uTexOn,texOn?1:0);
+  /* 【v1044】水域アトラス。主メッシュ（頂点にメルカトル座標がある）だけ。 */
+  const waterOn=!!waterTex&&!lines&&waterAtlasBindTexture(gl,L);
+  gl.uniform1f(L.uWaterOn,waterOn?1:0);
   gl.drawArrays(lines?gl.LINES:gl.TRIANGLES,0,count);
 }
 /* 【v978】細密水面の四角形を溜める入れもの（地形用とは別）。 */
@@ -32572,9 +32668,13 @@ function drawPhoto(ctx,s){
         const __p0=performance.now();
         /* 【v976】WebGLの道。雲海・メッシュ表示・写真からの選択（pick）のコマは従来どおり。 */
         let glDrawn=false;
+        if(sharedTerrainProjectionPass!=="replay")drawPhoto._waterAtlasMasksReady=false;   /* 【v1044】GL の道を通らないコマで古いマスクを使わない */
         if(glTerrainOn&&!cloudCtx&&!terrainPickCtx&&!meshPath&&glTerrainInit(W,H)){
           const glKey=terrainGeometryKey+"|gl"+(glMeshOn?"m":"");   /* 【v996】 */
           if(photoTextureOn)photoAtlasEnsure(s.lat,s.lon);   /* 【v997】 */
+          const waterAtlasWanted=glMeshOn&&!photoWaterOff();   /* 【v1044】メッシュ（頂点にメルカトル座標）のときだけ */
+          if(waterAtlasWanted)waterAtlasEnsure(s.lat,s.lon);
+          const waterAtlasActive=waterAtlasWanted&&waterAtlas.ready;
           let geom=(sharedTerrainProjectionCache&&sharedTerrainProjectionCache.glGeometry&&sharedTerrainProjectionCache.glGeometry.key===glKey)
             ?sharedTerrainProjectionCache.glGeometry.geom:null;
           if(!geom){
@@ -32586,11 +32686,25 @@ function drawPhoto(ctx,s){
           const gd0=performance.now();
           glTerrainUpload(geom,glKey);
           const nearGrassRangeKm=Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000);
-          glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm);   /* 【v1000】水域OFFなら水も陸の色（写真） */
+          glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm,waterAtlasActive);   /* 【v1000】水域OFFなら水も陸の色（写真） */
           tctx.drawImage(glTerrain.canvas,0,0);
+          const atlasCanvasOf=(name)=>{const cv=drawPhoto[name]||(drawPhoto[name]=document.createElement("canvas"));if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H;}const cx=cv.getContext("2d");cx.setTransform(1,0,0,1,0,0);cx.globalCompositeOperation="source-over";cx.clearRect(0,0,W,H);return cx;};
           if(sharedTerrainProjectionPass!=="replay"&&!photoWaterOff()){
-            glTerrainDraw(1,W,H,terrainDayFactor,false,nearGrassRangeKm);
+            glTerrainDraw(1,W,H,terrainDayFactor,false,nearGrassRangeKm,waterAtlasActive);
             wmctx.drawImage(glTerrain.canvas,0,0);
+            /* 【v1044】細密水面マスクへ渡す：覆い（mode 2）と、覆いの中の水（mode 1 ∩ 覆い）。 */
+            if(waterAtlasActive){
+              const waterCtx=atlasCanvasOf("_waterAtlasWaterCanvas");waterCtx.drawImage(glTerrain.canvas,0,0);
+              glTerrainDraw(2,W,H,terrainDayFactor,false,nearGrassRangeKm,true);
+              const coverCtx=atlasCanvasOf("_waterAtlasCoverCanvas");coverCtx.drawImage(glTerrain.canvas,0,0);
+              waterCtx.globalCompositeOperation="destination-in";waterCtx.drawImage(drawPhoto._waterAtlasCoverCanvas,0,0);waterCtx.globalCompositeOperation="source-over";
+              drawPhoto._waterAtlasMasksReady=true;
+            }else drawPhoto._waterAtlasMasksReady=false;
+          }
+          /* 【v1044】覆いの中の水の色（mode 3）。夜・昼それぞれ。 */
+          if(waterAtlasActive&&!photoWaterOff()){
+            glTerrainDraw(3,W,H,terrainDayFactor,false,nearGrassRangeKm,true);
+            atlasCanvasOf("_waterAtlasColorCanvas").drawImage(glTerrain.canvas,0,0);
           }
           glTerrain.lastDrawMs=performance.now()-gd0;glTerrain.frames++;
           painted=geom.runs;glDrawn=true;
@@ -33235,6 +33349,15 @@ function drawPhoto(ctx,s){
                 const colorContext=colorLayer.getContext("2d");colorContext.clearRect(0,0,W,H);
                 /* 海が画角にない内陸地点でも、直接投影する川・池・湖を必ず実行する。 */
                 {const __f0=performance.now();drawNormalFineWaterMaskOnly(fineContext,colorContext);terrainStageProf.fineWater+=performance.now()-__f0;}
+                /* 【v1044】アトラスが覆う範囲は、光線で拾った帯を消してアトラスの水（画素ごと）に置き換える。色も同様。 */
+                if(drawPhoto._waterAtlasMasksReady&&drawPhoto._waterAtlasCoverCanvas&&drawPhoto._waterAtlasWaterCanvas&&drawPhoto._waterAtlasColorCanvas){
+                  for(const [context,fill] of [[fineContext,drawPhoto._waterAtlasWaterCanvas],[colorContext,drawPhoto._waterAtlasColorCanvas]]){
+                    context.save();context.setTransform(1,0,0,1,0,0);
+                    context.globalCompositeOperation="destination-out";context.drawImage(drawPhoto._waterAtlasCoverCanvas,0,0);
+                    context.globalCompositeOperation="source-over";context.drawImage(fill,0,0);
+                    context.restore();
+                  }
+                }
                 {
                   /* 【v831】水面は「形」と「前後関係」を別々の担当から取り、ここで重ねる。
                        形     … 輪郭ポリゴンの直接投影（滑らか・前後関係を持たない）
@@ -33300,6 +33423,13 @@ function drawPhoto(ctx,s){
                       fineContext.globalCompositeOperation="destination-out";
                       fineContext.drawImage(smearedDownMask(nearInland,growPx),0,0,W,H);
                       fineContext.restore();
+                      /* 【v1044】引き算（輪郭より手前の帯を消す）は、光線方式の階段のはみ出しを消すためのもの。
+                         アトラスが覆う範囲の水は画素ごとに正しいので、消した分を戻す。
+                         （輪郭に無い池が、後ろの池の列だけ消えて切れ切れになるのもこれで直る。） */
+                      if(drawPhoto._waterAtlasMasksReady&&drawPhoto._waterAtlasWaterCanvas){
+                        fineContext.save();fineContext.setTransform(1,0,0,1,0,0);fineContext.globalCompositeOperation="source-over";
+                        fineContext.drawImage(drawPhoto._waterAtlasWaterCanvas,0,0);fineContext.restore();
+                      }
                     }
                     fineContext.drawImage(inlandMask,0,0);
                     /* 色は帯（距離ごとの霞つき）を上に、ポリゴンの平らな色を下に敷く。
@@ -33329,6 +33459,13 @@ function drawPhoto(ctx,s){
                   colorContext.globalCompositeOperation="source-over";
                   colorContext.clearRect(0,0,W,H);
                   {const __fc0=performance.now();drawNormalFineWaterMaskOnly(null,colorContext);terrainStageProf.fineColor+=performance.now()-__fc0;}
+                  /* 【v1044】昼の色も、覆いの範囲はアトラスの水の色（この段で描いた mode 3）に置き換える。 */
+                  if(drawPhoto._waterAtlasMasksReady&&drawPhoto._waterAtlasCoverCanvas&&drawPhoto._waterAtlasColorCanvas){
+                    colorContext.save();colorContext.setTransform(1,0,0,1,0,0);
+                    colorContext.globalCompositeOperation="destination-out";colorContext.drawImage(drawPhoto._waterAtlasCoverCanvas,0,0);
+                    colorContext.globalCompositeOperation="source-over";colorContext.drawImage(drawPhoto._waterAtlasColorCanvas,0,0);
+                    colorContext.restore();
+                  }
                   if(inlandColor&&inlandColor.width===W&&inlandColor.height===H){
                     colorContext.save();
                     colorContext.globalCompositeOperation="destination-over";
