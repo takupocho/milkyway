@@ -6203,7 +6203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1037-daylight-stars";
+const APP_VERSION="1038-keep-water-rings";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -21076,6 +21076,7 @@ try{
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       step:(f,s)=>{stepObserver(f,s||0);return [el.lat.value,el.lon.value];},
       rayRow:(az,n)=>{const g=realTerrainState.rayGrid;if(!g)return null;const a=((Math.round(az)%360)+360)%360,row=g[a]||[];const rc=realTerrainState.rowCentre&&realTerrainState.rowCentre[a];return {observer:realTerrainState.observerElevation,key:realTerrainState.key,rowCentre:rc,pts:row.slice(0,n||30).map(p=>p?({d:p.distanceKm,e:Number.isFinite(p.baseElevation)?+p.baseElevation.toFixed(1):null,alt:+p.alt.toFixed(2),w:p.water?1:0,f:p._fresh===false?0:1}):null)};},
+      waterRings:()=>({n:(realTerrainState._osmWaterRings||[]).length,stale:!!realTerrainState._osmWaterRingsStale,radius:realTerrainState._osmWaterRingsRadiusKm,pending:!!realTerrainState._osmRefinePending,key:realTerrainState._osmWaterKey}),   /* 【v1038】 */
       meteorWindow:()=>({ok:meteorNightWindow(state),sunAlt:state&&state.sunAltAz&&state.sunAltAz.alt,set:state&&state.sunRiseSet&&state.sunRiseSet.set,rise:state&&state.sunRiseSet&&state.sunRiseSet.rise}),   /* 【v1015】 */
       injectKmz:(lat,lon,w,hgt)=>{
         const a=w/2,tri=[],box=[[-a,-a,0],[a,-a,0],[a,a,0],[-a,a,0],[-a,-a,hgt],[a,-a,hgt],[a,a,hgt],[-a,a,hgt]];
@@ -23901,8 +23902,20 @@ function dropStaleWaterState(lat,lon){
   const waterKey=`${lat.toFixed(2)},${lon.toFixed(2)},${waterDrawRadiusKm()}`;
   if(realTerrainState._osmWaterKey===waterKey)return;
   realTerrainState._osmWaterKey=waterKey;
-  realTerrainState._osmWaterRings=null;
-  realTerrainState._osmWaterRingsRadiusKm=null;   // 【v850】届く範囲も一緒に忘れる
+  /* 【v1038】升目をまたいでも、前の水域形状は**新しいものが届くまで持ち続ける**。
+     新しい升目の取得は 47〜100 秒かかる（§3-12）ので、捨てると その間ずっと岸が階段状（DEM の帯マスク）になり、
+     「同じ場所なのに急にガタガタ」に見えていた。前の形状は半径 10km を覆っているので、1km 歩いても
+     ほぼ全部そのまま使える。届く範囲だけ、動いた距離のぶん縮める。 */
+  const centre=realTerrainState._osmWaterRingsCentre;
+  if(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length&&centre&&Number.isFinite(realTerrainState._osmWaterRingsRadiusKm)){
+    const moved=terrainDistanceAndBearing(centre[0],centre[1],lat,lon).distanceKm;
+    realTerrainState._osmWaterRingsRadiusKm=Math.max(0,realTerrainState._osmWaterRingsRadiusKm-moved);
+    realTerrainState._osmWaterRingsStale=true;
+  }else{
+    realTerrainState._osmWaterRings=null;
+    realTerrainState._osmWaterRingsRadiusKm=null;   // 【v850】届く範囲も一緒に忘れる
+    realTerrainState._osmWaterRingsStale=false;
+  }
   realTerrainState._osmCoastlineWays=null;
   realTerrainState._osmRefinePending=false;
   realTerrainState._osmRefineStatus="";
@@ -24035,6 +24048,8 @@ function refineTerrainWaterWithOsm(lat,lon,key,resultObj){
     /* 【v850】このリングが届く範囲。これより遠くはリングで陸と決めてはいけない。 */
     resultObj._osmWaterRingsRadiusKm=useKm;
     realTerrainState._osmWaterRingsRadiusKm=useKm;
+    resultObj._osmWaterRingsCentre=[lat,lon];realTerrainState._osmWaterRingsCentre=[lat,lon];   /* 【v1038】 */
+    resultObj._osmWaterRingsStale=false;realTerrainState._osmWaterRingsStale=false;
     // レイマーチ用グリッドも同じ規則で確定させる。水/陸の判定元を1箇所に保つ。
     [resultObj.nearSurfaceGrid,resultObj.rayGrid].forEach(grid=>{
       if(!grid) return;
@@ -35585,7 +35600,7 @@ async function refreshTerrainWhileWalking(){
         Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...result});
         /* 【v1019】升目をまたいでリングを捨てた直後（または未取得）は、新しい升目の水域を取りに行く。
            取得中は _osmRefinePending が二重起動を止める。届いたら realTerrainState の格子へ当てて描き直す。 */
-        if(!(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length)&&!realTerrainState._osmRefinePending){
+        if((!(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length)||realTerrainState._osmWaterRingsStale)&&!realTerrainState._osmRefinePending){   /* 【v1038】古い形状を持ったままでも取りに行く */
           try{refineTerrainWaterWithOsm(lat,lon,key,realTerrainState);}catch(e){}
         }
         applyDroneAltitudeHold(); // 新しい地面標高に合わせて飛行高度を保つ
