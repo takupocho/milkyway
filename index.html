@@ -6203,7 +6203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1042-radial-near-rings";
+const APP_VERSION="1043-road-over-water";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -20049,10 +20049,6 @@ function worldMapDecodeTile(pixels){
 let worldMapSource=(()=>{try{return new URLSearchParams(location.search).get("watersrc")==="pale"?"pale":"vector";}catch(e){return "vector";}})();   /* "vector"（既定）／"pale"（v1002 までの淡色地図。?watersrc=pale で比較用） */
 const WORLD_MAP_VECTOR_MAX_Z=16;
 const worldMapVectorTileCache=new Map();   /* "z/x/y" -> Promise<layers|null> */
-/* 【v1041】届いたタイルの中身。輪郭に無い池を waterarea の面から作るのに使う。 */
-const worldMapVectorLayers=new Map();      /* "z/x/y" -> layers */
-let worldMapVectorLayersVersion=0;
-const gsiWaterPolygonCache=new Map();      /* "z/x/y" -> polygons[] */
 let worldMapRasterCanvas=null;
 function worldMapVectorTileUrl(z,x,y){return `https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/${z}/${x}/${y}.pbf`;}
 function worldMapFetchVectorTile(z,x,y){
@@ -20061,11 +20057,9 @@ function worldMapFetchVectorTile(z,x,y){
   const promise=fetch(worldMapVectorTileUrl(z,x,y),{mode:"cors",cache:"force-cache"})
     .then(r=>{ if(r.status===404||r.status===204) return null; if(!r.ok) throw new Error(`bvmap ${r.status}`); return r.arrayBuffer(); })
     .then(buffer=>buffer?(buffer.byteLength?parseStaticVectorTile(buffer):new Map()):null)
-    .then(layers=>{if(layers){worldMapVectorLayers.set(key,layers);worldMapVectorLayersVersion++;}return layers;})   /* 【v1041】 */
     .catch(error=>{worldMapVectorTileCache.delete(key);throw error;});
   worldMapVectorTileCache.set(key,promise);
   while(worldMapVectorTileCache.size>160)worldMapVectorTileCache.delete(worldMapVectorTileCache.keys().next().value);
-  while(worldMapVectorLayers.size>160){const old=worldMapVectorLayers.keys().next().value;worldMapVectorLayers.delete(old);gsiWaterPolygonCache.delete(old);}
   return promise;
 }
 /* waterarea の面を 256×256 に塗って、今までと同じ Uint8Array（水=1）にする。
@@ -20125,58 +20119,6 @@ function worldMapRequestTile(z,x,y){
         if(typeof update==="function") update();
       }
     });
-}
-/* 【v1041】bvmap z16 の waterarea の面を、Shortbread の輪郭と同じ形（outer/holes/waterClass）にする。タイルごとに覚える。 */
-function gsiWaterPolygonsForTile(key,layers){
-  const cached=gsiWaterPolygonCache.get(key);
-  if(cached)return cached;
-  const polygons=[];
-  const layer=layers&&layers.get("waterarea");
-  if(layer&&layer.features&&layer.features.length){
-    const [z,x,y]=key.split("/").map(Number),tile={z,x,y};
-    for(const feature of layer.features){
-      if(feature.type!==3)continue;
-      staticFeatureWaterPolygons(tile,layer,feature).forEach(polygon=>{
-        polygon.waterClass="inland";polygon.waterKind="gsi";polygon.gsi=true;polygons.push(polygon);
-      });
-    }
-  }
-  gsiWaterPolygonCache.set(key,polygons);
-  return polygons;
-}
-/* 【v1041】この面が Shortbread の輪郭で既に覆われているか。
-   頂点は岸の上なので、頂点と重心の中点（内側の点）を標本にし、半分以上が輪郭の水なら「覆われている」。 */
-function gsiWaterPolygonCoveredByRings(polygon,rings){
-  if(polygon._coveredRings===rings)return polygon._covered;
-  const points=polygon.outer.points,n=points.length;
-  let covered=true;
-  if(n>=3&&Array.isArray(rings)&&rings.length){
-    let cLat=0,cLon=0;for(const p of points){cLat+=p[0];cLon+=p[1];}cLat/=n;cLon/=n;
-    const step=Math.max(1,Math.floor(n/12));
-    let valid=0,inside=0;
-    for(let i=0;i<n;i+=step){
-      const q=[(points[i][0]+cLat)/2,(points[i][1]+cLon)/2];
-      if(!staticRawPointInRing(q,points))continue;
-      valid++;if(pointInWaterRings(q[0],q[1],rings))inside++;
-    }
-    covered=valid?inside*2>=valid:pointInWaterRings(cLat,cLon,rings);
-  }else if(!(Array.isArray(rings)&&rings.length))covered=false;
-  polygon._coveredRings=rings;polygon._covered=covered;
-  return covered;
-}
-/* 【v1041】観測地点のまわり（z16 で ±2 枚 ≒ ±1.5km）の bvmap の面のうち、輪郭に無いもの。 */
-function gsiSupplementWaterPolygons(lat,lon,rings){
-  const out=[];
-  if(worldMapSource!=="vector"||!Number.isFinite(lat)||!Number.isFinite(lon))return out;
-  const z=WORLD_MAP_VECTOR_MAX_Z,t=terrainTilePoint(lat,lon,z),r=WORLD_MAP_RADIUS[WORLD_MAP_ZOOMS.indexOf(z)]||2;
-  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
-    const key=`${z}/${t.x+dx}/${t.y+dy}`,layers=worldMapVectorLayers.get(key);
-    if(!layers)continue;
-    for(const polygon of gsiWaterPolygonsForTile(key,layers)){
-      if(!gsiWaterPolygonCoveredByRings(polygon,rings))out.push(polygon);
-    }
-  }
-  return out;
 }
 function worldMapEnsureTiles(lat,lon){
   if(!Number.isFinite(lat)||!Number.isFinite(lon)) return;
@@ -22983,8 +22925,6 @@ function classifyObserverWaterFromNearGrid(grid){
 // v789: 通常表示の水域境界を10kmまで細分化できるよう、静的水域形状も半径10kmを取得する。
 // 結果は位置を丸めたキーでキャッシュするため、同じ地域での再照会は発生しない。
 const OSM_WATER_RADIUS_KM=10;
-/* 【v1040】内水面で、水位（その水域の DEM 標高の下位 10%）よりこれ以上高い点は陸に戻す。 */
-const INLAND_WATER_MAX_ABOVE_M=2.5;
 // 距離帯ごとの「水面らしさ」プロファイルを方位方向に平滑化する。
 // 標高ベースの判定(特に平坦検出)は1度刻みでノイズが乗りやすく、そのままだと
 // 陸/水の判定が数度おきに細かく反転して縦筋のように見えてしまうため、
@@ -24398,10 +24338,6 @@ function requestRealTerrainProfile(lat,lon){
     if(typeof update==="function") update();
     if(fromPersistent&&result._osmRefineStatus==="ready"&&result._waterDataSource==="shortbread-v1"){
       result._osmRefinePending=false;
-      /* 【v1041】保存済みキャッシュから読んだときは、この道では地図の水域面（bvmap）を一度も要求していなかった。
-         作りたてのときは refineTerrainWaterWithOsm の中で要求する。無いと「地図×」のまま、
-         細密水面の列は DEM の水陸だけになり、輪郭に無い池も補えない（作りたてと保存済みで絵が違う）。 */
-      worldMapEnsureTiles(lat,lon);
       const cachedWaterDetail=result._osmRefineDetail||"取得済み";
       setExternalDataStatus("water","ready",cachedWaterDetail.includes("保存済みキャッシュ")?cachedWaterDetail:`${cachedWaterDetail}・保存済みキャッシュ`);
     }else{
@@ -30416,15 +30352,6 @@ function drawPhoto(ctx,s){
             const level=levels[Math.floor((levels.length-1)*.10)];
             const above=Math.max(.05,eyeElevationForWater-level);
             for(let k=i;k<j;k++)waterEyeAbove[k]=above;
-            /* 【v1040】水位より INLAND_WATER_MAX_ABOVE_M 以上高い DEM の点は水ではない（ポリゴンが斜面へはみ出した分）。
-               そのまま水面の平面に置くと、斜面の上に水面が壁のように立ち上がり、手前の道路を隠していた。
-               海（欠損）はここへ来ない。 */
-            for(let k=i;k<j;k++){
-              const pt=walk[k];
-              if(pt&&!pt.baseNoData&&Number.isFinite(pt.baseElevation)&&pt.baseElevation>level+INLAND_WATER_MAX_ABOVE_M){
-                waterFlags[k]=false;waterEyeAbove[k]=null;
-              }
-            }
             if(waterElevation===null)waterElevation=level;   // 診断の表示用（最初の水域）
             waterBodyCount++;
           }
@@ -30982,7 +30909,7 @@ function drawPhoto(ctx,s){
          --------------------------------------------------------- */
       function drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount){
         if(!(bridgeLinesVisible&&osmBridgeState.ways)) drawPhoto._bridgeForegroundOverlay=null;
-        if(!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) drawPhoto._roadForegroundOverlay=null;   /* 【v1040】 */
+        if(!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) drawPhoto._roadForegroundOverlay=null;   /* 【v1043】 */
         if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)&&!(bridgeLinesVisible&&osmBridgeState.ways)) return;
         const rangeM=groundOverlayRangeM();
         /* 間隔も範囲に合わせて粗くする。上空で10m格子・1m等高線のままだと
@@ -31775,7 +31702,7 @@ function drawPhoto(ctx,s){
         const roadSurfaceRGB=overlayPartRGB("road","main",terrainDayFactor);
         const roadMarkRGB=overlayPartRGB("road","mark",terrainDayFactor);
         const roadSurfaceBaseAlpha=lerp(.62,.86,terrainDayFactor)*roadAlphaScale;
-        /* 【v1040】水面の合成のあとで、水面の範囲だけ道路・線路を描き直すために形を預ける。 */
+        /* 【v1043】水面の合成のあとで、水面の範囲だけ道路・線路を描き直すために形を預ける。 */
         drawPhoto._roadForegroundOverlay=(roadPaths||railPaths)?{
           key:terrainGeometryKey,buckets:FADE_BUCKETS,
           road:roadPaths,roadCentre:roadCentrePaths,rail:railPaths,railTie:railTiePaths,
@@ -31929,7 +31856,7 @@ function drawPhoto(ctx,s){
       }
       /* 細密水面色は通常地形の後から重なるため、投影済みの橋を同じCanvasへ戻す。
          形状はすでに地形遮蔽判定済みなので、山の裏の橋を新たに表示することはない。 */
-      /* 【v1040】水面の合成で隠れた道路・線路を、水面マスクの範囲だけ描き直す。
+      /* 【v1043】水面の合成で隠れた道路・線路を、水面マスクの範囲だけ描き直す。
          同時に水面マスクから道路を抜いて、反射が道路の上に乗らないようにする。
          （道路の描画は地形の段で行うが、そのあと水面の色と反射が上から重なっていた。橋は v777 で同じ扱い。） */
       function redrawStoredRoadOverlay(targetContext,factor,maskCanvas){
@@ -32029,14 +31956,6 @@ function drawPhoto(ctx,s){
       }
       /* 【v833】観測者（局所座標の原点）がこの輪郭の内側にいるか。原点から+x方向へ交差数え上げ。
          輪郭は clipInlandVectorRing が返す {x,y}（メートル）の並び。 */
-      /* 【v1042】この余裕まで近い形状は「光線ごとの交差」で作る。 */
-      const RADIAL_RING_MARGIN_M=50;
-      function ringBboxContainsObserver(outer,originLat,originLon,metrePerDegLon,marginM){
-        if(!Number.isFinite(outer.minLat))return false;
-        const latMargin=marginM/111320,lonMargin=marginM/metrePerDegLon;
-        return originLat>=outer.minLat-latMargin&&originLat<=outer.maxLat+latMargin
-             &&originLon>=outer.minLon-lonMargin&&originLon<=outer.maxLon+lonMargin;
-      }
       function observerInsideLocalRing(ring){
         let inside=false;
         for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -32065,20 +31984,14 @@ function drawPhoto(ctx,s){
            （加古川河口を真上から見ると、細い糸になった川が海と一点で触れている。
              1画素11mの拡大図で確認） */
         const waterRingWanted=polygon=>polygon&&(polygon.waterClass==="inland"||polygon.waterClass==="ocean");
-        if(!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
-        /* 【v1041】輪郭（Shortbread z12）に無い池は、地理院ベクトルタイルの面で補う。
-           地図の水（bvmap）では水なのに輪郭が無い池は、帯マスクの粗い形のままで、
-           後ろの池の引き算（v835）に列ごと消されて切れ切れになっていた（加古川市平荘町の池）。 */
-        const ringList=Array.isArray(rings)?rings:[];
-        const extras=gsiSupplementWaterPolygons(originLat,originLon,ringList.length?rings:null);
-        if(!ringList.some(waterRingWanted)&&!extras.length)return [];
+        if(!Array.isArray(rings)||!rings.some(waterRingWanted)||!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
         /* 【v848】海を含めるようになったので鍵を変える。
            前の版の覚え書き（海抜きの形）をそのまま拾わないようにする。 */
-        const cacheKey=`${terrainGeometryKey}|water3|${originLat.toFixed(6)},${originLon.toFixed(6)}|${ringList.length}|${worldMapVectorLayersVersion}`;
+        const cacheKey=`${terrainGeometryKey}|water2|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
         const cached=drawPhoto._directInlandWaterGeometry;
         if(cached&&cached.key===cacheKey&&cached.rings===rings)return cached.items;
         const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R)),limitM=waterDrawRadiusKm()*1000,items=[];
-        for(const polygon of ringList.concat(extras)){
+        for(const polygon of rings){
           if(!waterRingWanted(polygon))continue;
           const outer=polygon.outer||polygon,outerPoints=outer.points;
           if(!Array.isArray(outerPoints)||outerPoints.length<3)continue;
@@ -32092,9 +32005,7 @@ function drawPhoto(ctx,s){
              その形を太らせて帯マスクから引くと、**足元の正しい水が横一直線に消える**
              （精進湖の湖上 35.489995,138.605700 で確認。最終マスクに黒い帯が出る）。
              この場合は帯マスクだけに任せる。帯は湖上でも足元まで正しく水にしている。 */
-          /* 【v1042】観測者を囲む輪郭も捨てない。外接矩形（＋50m）が観測者を含む形状は下の「光線ごとの交差」で作る。
-             v833 が捨てていた理由（頂点の投影では閉じた形にならない）は、光線ごとに作れば起きない。 */
-          const radialRing=ringBboxContainsObserver(outer,originLat,originLon,metrePerDegLon,RADIAL_RING_MARGIN_M);
+          if(observerInsideLocalRing(clippedOuter)){observerInsideRing=true;continue;}
           /* 【v831】水位は輪郭上のDEMから推す。輪郭は岸そのものなので標本に岸の高さが混ざり、
              22%点では高く出すぎていた（精進湖で907.2m。DEMの湖面は900.0m）。
              7m浮くと水面が本来より上へ寄り、手前の岸に階段状の帯が残る。
@@ -32188,80 +32099,10 @@ function drawPhoto(ctx,s){
             }
             if(started)path.closePath();
           };
-          const clippedHoles=[];
+          appendRing(clippedOuter);
           for(const hole of (polygon.holes||[])){
             const clippedHole=clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon);
-            if(clippedHole.length>=3)clippedHoles.push(clippedHole);
-          }
-          if(radialRing){
-            /* 【v1042】光線ごとの交差。画面の列（約2px）ごとに、観測者からの光線が輪郭（外周＋穴）の辺を横切る距離を集め、
-               中／外の切り替わりで水の区間 [近, 遠] を作って四角形に塗る。観測者が中なら 0m から水。
-               辺は方位の弧で列に振り分けるので、遠い辺は 1 列しか見ない。 */
-            const rings=[clippedOuter].concat(clippedHoles);
-            let insideAtOrigin=observerInsideLocalRing(clippedOuter);
-            for(const hole of clippedHoles)if(observerInsideLocalRing(hole))insideAtOrigin=!insideAtOrigin;
-            const stepDeg=clamp(2*s.fovH/W,.05,.5);
-            const halfSpan=rayHalfSpanDeg()+2;
-            const azFrom=s.facingAz-halfSpan,columnCount=Math.max(1,Math.ceil(2*halfSpan/stepDeg));
-            const buckets=new Array(columnCount);
-            const pushColumns=(lo,hi,edge)=>{
-              const c0=Math.max(0,Math.floor(lo/stepDeg)),c1=Math.min(columnCount-1,Math.floor(hi/stepDeg));
-              for(let c=c0;c<=c1;c++)(buckets[c]||(buckets[c]=[])).push(edge);
-            };
-            for(const ring of rings){
-              for(let i=0,j=ring.length-1;i<ring.length;j=i++){
-                const a=ring[j],b=ring[i];
-                const azA=norm360(atan2d(a.x,a.y)-azFrom),azB=norm360(atan2d(b.x,b.y)-azFrom);
-                const edge=[a.x,a.y,b.x,b.y];
-                if(Math.abs(azA-azB)<=180)pushColumns(Math.min(azA,azB),Math.max(azA,azB),edge);
-                else{pushColumns(Math.max(azA,azB),360,edge);pushColumns(0,Math.min(azA,azB),edge);}
-              }
-            }
-            const altOf=metres=>{
-              const m=Math.max(.3,metres),drop=m*m/(2*6371000*(7/6));
-              const levelHere=waterLevelAt?waterLevelAt(m):waterElevation;
-              return Math.atan2(levelHere-observerEyeElevation-drop,m)*R2D;
-            };
-            const p0=[0,0],p1=[0,0],p2=[0,0],p3=[0,0];
-            for(let c=0;c<columnCount;c++){
-              const azL=azFrom+c*stepDeg,azR=azL+stepDeg,azC=azL+stepDeg*.5;
-              const dx=Math.sin(azC*D2R),dy=Math.cos(azC*D2R);
-              const crossings=[];
-              const list=buckets[c];
-              if(list)for(const e of list){
-                const ex=e[2]-e[0],ey=e[3]-e[1];
-                const denom=dx*ey-dy*ex;
-                if(Math.abs(denom)<1e-12)continue;
-                const tt=(e[0]*ey-e[1]*ex)/denom,u=(e[0]*dy-e[1]*dx)/denom;
-                if(tt>0&&u>=0&&u<1)crossings.push(tt);
-              }
-              if(!crossings.length&&!insideAtOrigin)continue;
-              crossings.sort((x,y)=>x-y);
-              let inside=insideAtOrigin,start=0;
-              const spans=[];
-              for(const tt of crossings){
-                if(inside)spans.push([start,tt]);else start=tt;
-                inside=!inside;
-              }
-              if(inside)spans.push([start,limitM]);
-              for(const span of spans){
-                const near=Math.max(.3,span[0]),far=Math.min(limitM,span[1]);
-                if(!(far>near))continue;
-                /* 足元（1m 未満）は真下。 */
-                const altNear=near<1?-89.9:altOf(near),altFar=altOf(far);
-                if(altNear<diagMinAlt)diagMinAlt=altNear;
-                if(altFar>diagMaxAlt)diagMaxAlt=altFar;
-                if(near<diagNearM)diagNearM=near;
-                if(far>diagFarM)diagFarM=far;
-                if(!toXY(azL,altNear,p0)||!toXY(azL,altFar,p1)||!toXY(azR,altFar,p2)||!toXY(azR,altNear,p3))continue;
-                if(!Number.isFinite(p0[0])||!Number.isFinite(p0[1])||!Number.isFinite(p1[0])||!Number.isFinite(p1[1])||!Number.isFinite(p2[0])||!Number.isFinite(p2[1])||!Number.isFinite(p3[0])||!Number.isFinite(p3[1]))continue;
-                path.moveTo(p0[0],p0[1]);path.lineTo(p1[0],p1[1]);path.lineTo(p2[0],p2[1]);path.lineTo(p3[0],p3[1]);path.closePath();
-                projected+=4;distanceTotal+=(near+far)*2;
-              }
-            }
-          }else{
-            appendRing(clippedOuter);
-            for(const clippedHole of clippedHoles)appendRing(clippedHole);
+            if(clippedHole.length>=3)appendRing(clippedHole);
           }
           /* 【v849】引き算の元から海を外すための印。 */
           if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean",
@@ -33475,7 +33316,7 @@ function drawPhoto(ctx,s){
                   tctx.drawImage(colorLayer,0,0);
                   renderWaterMaskContext.clearRect(0,0,W,H);
                   renderWaterMaskContext.drawImage(fineMask,0,0);
-                  {const __br0=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,fineMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br0;}   /* 【v1040】道路→橋 */
+                  {const __br0=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,fineMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br0;}   /* 【v1043】道路→橋 */
                 }
               }else{
                 /* 【v831】昼用は夜側で完成した最終マスクをそのまま使い、色だけ塗り直す。 */
@@ -33502,7 +33343,7 @@ function drawPhoto(ctx,s){
                   }
                   tctx.drawImage(colorLayer,0,0);
                 }
-                {const __br1=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,finalMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br1;}   /* 【v1040】道路→橋 */
+                {const __br1=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,finalMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br1;}   /* 【v1043】道路→橋 */
               }
             }
             terrainStageProf.water+=performance.now()-__w0;
