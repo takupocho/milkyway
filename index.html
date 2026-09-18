@@ -6203,7 +6203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1041-gsi-water-polygons";
+const APP_VERSION="1042-radial-near-rings";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -32029,6 +32029,14 @@ function drawPhoto(ctx,s){
       }
       /* 【v833】観測者（局所座標の原点）がこの輪郭の内側にいるか。原点から+x方向へ交差数え上げ。
          輪郭は clipInlandVectorRing が返す {x,y}（メートル）の並び。 */
+      /* 【v1042】この余裕まで近い形状は「光線ごとの交差」で作る。 */
+      const RADIAL_RING_MARGIN_M=50;
+      function ringBboxContainsObserver(outer,originLat,originLon,metrePerDegLon,marginM){
+        if(!Number.isFinite(outer.minLat))return false;
+        const latMargin=marginM/111320,lonMargin=marginM/metrePerDegLon;
+        return originLat>=outer.minLat-latMargin&&originLat<=outer.maxLat+latMargin
+             &&originLon>=outer.minLon-lonMargin&&originLon<=outer.maxLon+lonMargin;
+      }
       function observerInsideLocalRing(ring){
         let inside=false;
         for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -32084,7 +32092,9 @@ function drawPhoto(ctx,s){
              その形を太らせて帯マスクから引くと、**足元の正しい水が横一直線に消える**
              （精進湖の湖上 35.489995,138.605700 で確認。最終マスクに黒い帯が出る）。
              この場合は帯マスクだけに任せる。帯は湖上でも足元まで正しく水にしている。 */
-          if(observerInsideLocalRing(clippedOuter)){observerInsideRing=true;continue;}
+          /* 【v1042】観測者を囲む輪郭も捨てない。外接矩形（＋50m）が観測者を含む形状は下の「光線ごとの交差」で作る。
+             v833 が捨てていた理由（頂点の投影では閉じた形にならない）は、光線ごとに作れば起きない。 */
+          const radialRing=ringBboxContainsObserver(outer,originLat,originLon,metrePerDegLon,RADIAL_RING_MARGIN_M);
           /* 【v831】水位は輪郭上のDEMから推す。輪郭は岸そのものなので標本に岸の高さが混ざり、
              22%点では高く出すぎていた（精進湖で907.2m。DEMの湖面は900.0m）。
              7m浮くと水面が本来より上へ寄り、手前の岸に階段状の帯が残る。
@@ -32178,10 +32188,80 @@ function drawPhoto(ctx,s){
             }
             if(started)path.closePath();
           };
-          appendRing(clippedOuter);
+          const clippedHoles=[];
           for(const hole of (polygon.holes||[])){
             const clippedHole=clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon);
-            if(clippedHole.length>=3)appendRing(clippedHole);
+            if(clippedHole.length>=3)clippedHoles.push(clippedHole);
+          }
+          if(radialRing){
+            /* 【v1042】光線ごとの交差。画面の列（約2px）ごとに、観測者からの光線が輪郭（外周＋穴）の辺を横切る距離を集め、
+               中／外の切り替わりで水の区間 [近, 遠] を作って四角形に塗る。観測者が中なら 0m から水。
+               辺は方位の弧で列に振り分けるので、遠い辺は 1 列しか見ない。 */
+            const rings=[clippedOuter].concat(clippedHoles);
+            let insideAtOrigin=observerInsideLocalRing(clippedOuter);
+            for(const hole of clippedHoles)if(observerInsideLocalRing(hole))insideAtOrigin=!insideAtOrigin;
+            const stepDeg=clamp(2*s.fovH/W,.05,.5);
+            const halfSpan=rayHalfSpanDeg()+2;
+            const azFrom=s.facingAz-halfSpan,columnCount=Math.max(1,Math.ceil(2*halfSpan/stepDeg));
+            const buckets=new Array(columnCount);
+            const pushColumns=(lo,hi,edge)=>{
+              const c0=Math.max(0,Math.floor(lo/stepDeg)),c1=Math.min(columnCount-1,Math.floor(hi/stepDeg));
+              for(let c=c0;c<=c1;c++)(buckets[c]||(buckets[c]=[])).push(edge);
+            };
+            for(const ring of rings){
+              for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+                const a=ring[j],b=ring[i];
+                const azA=norm360(atan2d(a.x,a.y)-azFrom),azB=norm360(atan2d(b.x,b.y)-azFrom);
+                const edge=[a.x,a.y,b.x,b.y];
+                if(Math.abs(azA-azB)<=180)pushColumns(Math.min(azA,azB),Math.max(azA,azB),edge);
+                else{pushColumns(Math.max(azA,azB),360,edge);pushColumns(0,Math.min(azA,azB),edge);}
+              }
+            }
+            const altOf=metres=>{
+              const m=Math.max(.3,metres),drop=m*m/(2*6371000*(7/6));
+              const levelHere=waterLevelAt?waterLevelAt(m):waterElevation;
+              return Math.atan2(levelHere-observerEyeElevation-drop,m)*R2D;
+            };
+            const p0=[0,0],p1=[0,0],p2=[0,0],p3=[0,0];
+            for(let c=0;c<columnCount;c++){
+              const azL=azFrom+c*stepDeg,azR=azL+stepDeg,azC=azL+stepDeg*.5;
+              const dx=Math.sin(azC*D2R),dy=Math.cos(azC*D2R);
+              const crossings=[];
+              const list=buckets[c];
+              if(list)for(const e of list){
+                const ex=e[2]-e[0],ey=e[3]-e[1];
+                const denom=dx*ey-dy*ex;
+                if(Math.abs(denom)<1e-12)continue;
+                const tt=(e[0]*ey-e[1]*ex)/denom,u=(e[0]*dy-e[1]*dx)/denom;
+                if(tt>0&&u>=0&&u<1)crossings.push(tt);
+              }
+              if(!crossings.length&&!insideAtOrigin)continue;
+              crossings.sort((x,y)=>x-y);
+              let inside=insideAtOrigin,start=0;
+              const spans=[];
+              for(const tt of crossings){
+                if(inside)spans.push([start,tt]);else start=tt;
+                inside=!inside;
+              }
+              if(inside)spans.push([start,limitM]);
+              for(const span of spans){
+                const near=Math.max(.3,span[0]),far=Math.min(limitM,span[1]);
+                if(!(far>near))continue;
+                /* 足元（1m 未満）は真下。 */
+                const altNear=near<1?-89.9:altOf(near),altFar=altOf(far);
+                if(altNear<diagMinAlt)diagMinAlt=altNear;
+                if(altFar>diagMaxAlt)diagMaxAlt=altFar;
+                if(near<diagNearM)diagNearM=near;
+                if(far>diagFarM)diagFarM=far;
+                if(!toXY(azL,altNear,p0)||!toXY(azL,altFar,p1)||!toXY(azR,altFar,p2)||!toXY(azR,altNear,p3))continue;
+                if(!Number.isFinite(p0[0])||!Number.isFinite(p0[1])||!Number.isFinite(p1[0])||!Number.isFinite(p1[1])||!Number.isFinite(p2[0])||!Number.isFinite(p2[1])||!Number.isFinite(p3[0])||!Number.isFinite(p3[1]))continue;
+                path.moveTo(p0[0],p0[1]);path.lineTo(p1[0],p1[1]);path.lineTo(p2[0],p2[1]);path.lineTo(p3[0],p3[1]);path.closePath();
+                projected+=4;distanceTotal+=(near+far)*2;
+              }
+            }
+          }else{
+            appendRing(clippedOuter);
+            for(const clippedHole of clippedHoles)appendRing(clippedHole);
           }
           /* 【v849】引き算の元から海を外すための印。 */
           if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean",
