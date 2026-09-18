@@ -5139,7 +5139,8 @@
           <div class="field"><label class="top">昼の明るさ <span class="val mono" id="photoTuneDayVal">92%</span></label><input type="range" id="photoTuneDay" min="30" max="150" step="1" value="92"></div>
           <div class="field"><label class="top">夜の明るさ <span class="val mono" id="photoTuneNightVal">22%</span></label><input type="range" id="photoTuneNight" min="0" max="80" step="1" value="22"></div>
           <div class="field"><label class="top">遠くのかすみ <span class="val mono" id="photoTuneHazeVal">60%</span></label><input type="range" id="photoTuneHaze" min="0" max="150" step="5" value="60"></div>
-          <div class="field"><label class="top">水面の不透明度 <span class="val mono" id="photoTuneWaterVal">100%</span></label><input type="range" id="photoTuneWater" min="20" max="100" step="5" value="100"></div>
+          <div class="field"><label class="top">水面の不透明度（昼） <span class="val mono" id="photoTuneWaterDayVal">100%</span></label><input type="range" id="photoTuneWaterDay" min="20" max="100" step="5" value="100"></div>
+          <div class="field"><label class="top">水面の不透明度（夜） <span class="val mono" id="photoTuneWaterNightVal">100%</span></label><input type="range" id="photoTuneWaterNight" min="20" max="100" step="5" value="100"></div>
           <p class="map-hint" style="margin-top:2px;">夜も写真のまま暗くします（今までの夜の色には切り替えません）。「遠くのかすみ」を下げると遠くの山が暗く沈み、上げると空に溶けます。</p>
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🛣 道路・線路・橋の色</p>
           <p class="map-hint" style="margin-top:4px;">代表の色だけを選びます。付属の部分（センターライン・枕木・橋脚など）は、<b>既定色との比</b>を保ったまま一緒に動くので、立体感は崩れません。既定の色のままなら見え方は変わりません。</p>
@@ -6204,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1045-water-opacity";
+const APP_VERSION="1046-water-opacity-daynight";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7506,7 +7507,8 @@ const el={
   sunsetSelfTestBtn:$("sunsetSelfTestBtn"), sunsetSelfTestReadout:$("sunsetSelfTestReadout"),
   glTerrainBtn:$("glTerrainBtn"), glTerrainState:$("glTerrainState"), glTerrainReadout:$("glTerrainReadout"),
   photoTuneDay:$("photoTuneDay"), photoTuneDayVal:$("photoTuneDayVal"), photoTuneNight:$("photoTuneNight"), photoTuneNightVal:$("photoTuneNightVal"), photoTuneHaze:$("photoTuneHaze"), photoTuneHazeVal:$("photoTuneHazeVal"),   /* 【v998】 */
-  photoTuneWater:$("photoTuneWater"), photoTuneWaterVal:$("photoTuneWaterVal"),   /* 【v1045】 */
+  photoTuneWaterDay:$("photoTuneWaterDay"), photoTuneWaterDayVal:$("photoTuneWaterDayVal"),   /* 【v1045】【v1046】 */
+  photoTuneWaterNight:$("photoTuneWaterNight"), photoTuneWaterNightVal:$("photoTuneWaterNightVal"),
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
   actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
@@ -12466,9 +12468,13 @@ let photoTextureOn=false;
 let photoWaterVisible=true;   /* 【v1000】衛星写真のときの水域。false で水面を描かない */
 function photoWaterOff(){return photoTextureOn&&glTerrainOn&&!photoWaterVisible;}
 /* 【v1045】水面の色の層を重ねる不透明度。写真のときだけ設定が効く。 */
-function photoWaterColorAlpha(){return photoTextureOn&&glTerrainOn?clamp((Number(photoTune.water)||100)/100,.2,1):1;}
+function photoWaterColorAlpha(dayFactor){
+  if(!(photoTextureOn&&glTerrainOn))return 1;
+  const day=clamp((Number(photoTune.waterDay)||100)/100,.2,1),night=clamp((Number(photoTune.waterNight)||100)/100,.2,1);
+  return lerp(night,day,clamp(Number.isFinite(dayFactor)?dayFactor:1,0,1));   /* 【v1046】薄明は twilight で混ぜる */
+}
 /* 【v998】写真の見え方（％）。宣言はここ（起動時の同期が先に読む）。かすみの色は昼のかすみより暗め。 */
-const PHOTO_TUNE_DEFAULT={day:92,night:22,haze:60,water:100};   /* 【v1045】water＝水面の不透明度（%） */
+const PHOTO_TUNE_DEFAULT={day:92,night:22,haze:60,waterDay:100,waterNight:100};   /* 【v1045】【v1046】水面の不透明度（%）昼・夜 */
 const photoTune={...PHOTO_TUNE_DEFAULT,hazeRgb:[150,164,184]};
 /* 【v976】WebGL地形のスイッチと状態。定義時に設定画面の同期が読むので、ここで宣言する（TDZ回避）。 */
 let glTerrainOn=false;
@@ -13762,13 +13768,13 @@ if(el.popupPowerSaveBtn)el.popupPowerSaveBtn.addEventListener("click",()=>setPow
 syncPowerSaveControls();
 /* 【v998】衛星写真の見え方のつまみ。 */
 function syncPhotoTuneControls(){
-  for(const key of ["day","night","haze","water"]){
+  for(const key of ["day","night","haze","waterDay","waterNight"]){
     const input=el["photoTune"+key[0].toUpperCase()+key.slice(1)],out=el["photoTune"+key[0].toUpperCase()+key.slice(1)+"Val"];
     if(input&&String(input.value)!==String(photoTune[key]))input.value=String(photoTune[key]);
     if(out)out.textContent=`${photoTune[key]}%`;
   }
 }
-for(const key of ["day","night","haze","water"]){
+for(const key of ["day","night","haze","waterDay","waterNight"]){
   const input=el["photoTune"+key[0].toUpperCase()+key.slice(1)];
   if(!input)continue;
   input.addEventListener("input",()=>{
@@ -16910,7 +16916,7 @@ function collectPersistedSettings(){
     minorRoadsVisible:minorRoadsVisible,   /* 【v995】 */
     photoTextureOn:photoTextureOn,   /* 【v997】 */
     photoWaterVisible:photoWaterVisible,   /* 【v1000】 */
-    photoTune:{day:photoTune.day,night:photoTune.night,haze:photoTune.haze,water:photoTune.water},   /* 【v998】【v1045】 */
+    photoTune:{day:photoTune.day,night:photoTune.night,haze:photoTune.haze,waterDay:photoTune.waterDay,waterNight:photoTune.waterNight},   /* 【v998】【v1045】【v1046】 */
     bridgeLinesVisible:bridgeLinesVisible,
     akashiBridgeHidden:akashiBridgeHidden,
     himejiCastleOn:himejiCastleOn,   /* 【v1030】 */
@@ -17099,7 +17105,12 @@ async function loadPersistedSettings(){
     minorRoadsVisible=!!s.minorRoadsVisible;   /* 【v995】 */
     photoTextureOn=!!s.photoTextureOn;   /* 【v997】 */
     photoWaterVisible=s.photoWaterVisible!==false;   /* 【v1000】 */
-    if(s.photoTune&&typeof s.photoTune==="object"){for(const key of ["day","night","haze","water"]){const v=+s.photoTune[key];if(Number.isFinite(v))photoTune[key]=Math.round(v);}syncPhotoTuneControls();}   /* 【v998】 */
+    if(s.photoTune&&typeof s.photoTune==="object"){
+      for(const key of ["day","night","haze","waterDay","waterNight"]){const v=+s.photoTune[key];if(Number.isFinite(v))photoTune[key]=Math.round(v);}
+      /* 【v1046】v1045 の water（昼夜共通）は両方へ */
+      if(Number.isFinite(+s.photoTune.water)&&!Number.isFinite(+s.photoTune.waterDay)){photoTune.waterDay=photoTune.waterNight=Math.round(+s.photoTune.water);}
+      syncPhotoTuneControls();
+    }   /* 【v998】 */
     cloudSeaVisible=s.cloudSeaVisible===true;
     pixelWalkerVisible=s.pixelWalkerVisible!==false;
     compassBarVisible=s.compassBarVisible!==false;
@@ -27440,7 +27451,7 @@ function drawPhoto(ctx,s){
         cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
         (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length+(minorRoadsVisible?"m":""):"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off",
-        photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}/${photoTune.water}${photoWaterOff()?"/nowater":""}`:"tex-off"   /* 【v997】【v998】【v1000】【v1045】 */
+        photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}/${photoTune.waterDay}-${photoTune.waterNight}${photoWaterOff()?"/nowater":""}`:"tex-off"   /* 【v997】【v998】【v1000】【v1045】 */
       ].join("|");
       /* 【v911】夜は昼用レイヤーを作らない。
          作ったかどうかを鍵へ入れておかないと、
@@ -28468,7 +28479,7 @@ function drawPhoto(ctx,s){
         // 水面そのものや通常の空・山の色は変えない。
         ctx.save();ctx.globalCompositeOperation="source-atop";ctx.fillStyle="rgba(35,78,155,.12)";ctx.fillRect(0,0,W,H);ctx.restore();
         /* 【v1045】映り込みも水面の不透明度で重ねる（写真のときだけ効く）。 */
-        mainCtx.save();mainCtx.globalAlpha=photoWaterColorAlpha();mainCtx.drawImage(reflectionCanvas,0,0);mainCtx.restore();
+        mainCtx.save();mainCtx.globalAlpha=photoWaterColorAlpha(dayFactor);mainCtx.drawImage(reflectionCanvas,0,0);mainCtx.restore();
         return true;
         })(reflectionContext);
       }
@@ -33449,7 +33460,7 @@ function drawPhoto(ctx,s){
                   colorContext.drawImage(fineMask,0,0);
                   colorContext.restore();
                   /* 【v1045】写真のときは水面の不透明度で重ねる（下げると写真の水面が透ける） */
-                  tctx.save();tctx.globalAlpha=photoWaterColorAlpha();tctx.drawImage(colorLayer,0,0);tctx.restore();
+                  tctx.save();tctx.globalAlpha=photoWaterColorAlpha(terrainDayFactor);tctx.drawImage(colorLayer,0,0);tctx.restore();
                   renderWaterMaskContext.clearRect(0,0,W,H);
                   renderWaterMaskContext.drawImage(fineMask,0,0);
                   {const __br0=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,fineMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br0;}   /* 【v1043】道路→橋 */
@@ -33484,7 +33495,7 @@ function drawPhoto(ctx,s){
                     colorContext.drawImage(finalMask,0,0);
                     colorContext.restore();
                   }
-                  tctx.save();tctx.globalAlpha=photoWaterColorAlpha();tctx.drawImage(colorLayer,0,0);tctx.restore();   /* 【v1045】 */
+                  tctx.save();tctx.globalAlpha=photoWaterColorAlpha(terrainDayFactor);tctx.drawImage(colorLayer,0,0);tctx.restore();   /* 【v1045】 */
                 }
                 {const __br1=performance.now();redrawStoredRoadOverlay(tctx,terrainDayFactor,finalMask);redrawStoredBridgeOverlay(tctx,terrainDayFactor);terrainStageProf.bridgeRedraw+=performance.now()-__br1;}   /* 【v1043】道路→橋 */
               }
