@@ -4505,7 +4505,11 @@
     <aside class="control-panel">
       <button id="closeSettingsBtn" type="button" class="close-settings-btn">✕ 閉じる(シミュレーション画面へ戻る)</button>
       <!-- 【v984】いま動いている版。 -->
-      <p id="settingsVersionLine" class="map-hint mono" style="margin:8px 0 2px;color:var(--dim-2);font-size:11px;letter-spacing:.03em;"></p>
+      <!-- 【v1063】ホーム画面に追加した Safari（全画面）には更新ボタンが無いので、ここから読み直せるようにする。 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 2px;">
+        <p id="settingsVersionLine" class="map-hint mono" style="margin:0;color:var(--dim-2);font-size:11px;letter-spacing:.03em;"></p>
+        <button id="appReloadBtn" type="button" class="ghost" style="flex:0 0 auto;padding:5px 10px;font-size:12px;" title="設定を保存してから、最新版を読み直します">🔄 ページを更新</button>
+      </div>
 
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">観測地点<span class="ctrl-arrow">▼</span></h2>
@@ -6250,7 +6254,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1062-map-compass-sweep";
+const APP_VERSION="1063-reload-button";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -6302,7 +6306,21 @@ function terrainRendererLabel(){
   if(TERRAIN_RENDERER==="quads") return "quads";
   return "通常";
 }
+/* 【v1063】ページの更新。設定をすぐ保存してから、URL に時刻を付けて読み直す（保存済みの古い HTML を使わせない）。
+   ホーム画面に追加した Safari には更新ボタンが無く、アプリを終了しても古い版が残ることがある。 */
+async function reloadAppPage(){
+  const btn=document.getElementById("appReloadBtn");
+  if(btn){btn.disabled=true;btn.textContent="更新中…";}
+  try{await persistentSet(SETTINGS_KEY,JSON.stringify(collectPersistedSettings()));}catch(e){}
+  try{
+    const url=new URL(location.href);
+    url.searchParams.set("r",String(Date.now()));
+    location.replace(url.href);
+  }catch(e){location.reload();}
+}
 function syncAppVersionBadge(){
+  const reloadBtn=document.getElementById("appReloadBtn");
+  if(reloadBtn&&!reloadBtn.dataset.bound){reloadBtn.dataset.bound="1";reloadBtn.addEventListener("click",()=>{reloadAppPage();});}
   const badge=document.getElementById("appVersionBadge");
   if(badge) badge.textContent=`v${APP_VERSION} [${terrainRendererLabel()}]`;
   const line=document.getElementById("settingsVersionLine");   /* 【v984】 */
