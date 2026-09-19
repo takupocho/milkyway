@@ -1510,6 +1510,10 @@
     -webkit-mask-image:linear-gradient(to top,#000,#000 var(--stick-overlap-y,100%),rgba(0,0,0,.5) var(--stick-overlap-y,100%),rgba(0,0,0,.5));
             mask-image:linear-gradient(to top,#000,#000 var(--stick-overlap-y,100%),rgba(0,0,0,.5) var(--stick-overlap-y,100%),rgba(0,0,0,.5));
   }
+  /* 【v1057】v692 の「画像に重なる側を半分の濃さにする」をやめる。スマホの全画面では左だけ薄く見えて、左右で見た目が違った。 */
+  .drone-stick,body.sim-portrait .drone-stick.left,body.sim-portrait .drone-stick.right,body:not(.sim-portrait) .drone-stick{
+    -webkit-mask-image:none;mask-image:none;
+  }
   /* ドローンモードではスティックが器の下端(下から6〜102px)を占める。
      バージョン表記・水際診断・ステータスは、その真上へ揃えて逃がす。
      構図によらず器の下端が基準になるよう --sim-inset-y は 0 にしておく。 */
@@ -6223,7 +6227,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1056-right-tools-gap";
+const APP_VERSION="1057-stick-look-and-moving-scale";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -35135,6 +35139,18 @@ let suppressPhotoDrawForUpdate=false;
    地形・道路・等高線・星まで全部が細かくなる。
    中間のレイヤーはすべてW/Hから寸法を取っているので、ここだけで付いてくる。 */
 let renderSupersample=1;
+/* 【v1057】省電力 ON のとき、スティックで動いている間だけ描画バッファを縮める（800×1200 → 600×900）。
+   スマホで 1 コマが長く、スティックの反応が遅く見えるため。指を離したら 100% に戻して描き直す。 */
+const MOVING_RENDER_SCALE=.75;
+let movingRenderScaleOn=false;
+function setMovingRenderScale(on){
+  on=!!on&&powerSaveOn&&!highDetailOn&&!arActive;
+  if(on===movingRenderScaleOn)return;
+  movingRenderScaleOn=on;
+  renderSupersample=on?MOVING_RENDER_SCALE:1;
+  applyCanvasSize();   /* バッファの大きさが変わると中身が消えるので、呼ぶ側が描き直す */
+  drawPhoto._terrainRenderKey=null;
+}
 function applyCanvasSize(){
   let targetW,targetH,targetAspect,isPortrait;
   if(arActive){
@@ -36261,6 +36277,7 @@ function stepObserver(forwardM,strafeM){
 
 function startWalkLoop(){
   if(walkRaf) return;
+  setMovingRenderScale(true);   /* 【v1057】 */
   walkLastTime=performance.now();
   const walkTick=now=>{
     walkRaf=0;
@@ -36283,6 +36300,8 @@ function startWalkLoop(){
 /* 移動を終えたら、通常の取得経路を一度通して水域・海岸線・山名を本来の精度へ戻す。 */
 function endWalk(){
   if(walkRaf){cancelAnimationFrame(walkRaf);walkRaf=0;}
+  /* 【v1057】移動中に縮めていた描画バッファを戻す。戻すと中身が消えるので、ここで一度描き直す。 */
+  if(movingRenderScaleOn){setMovingRenderScale(false);update();}
   /* 旋回だけで終わったときは、このあと誰も描き直さない。
      回り込んだ姿のまま固まってしまうので、1回だけ描き直す。
      移動していたときは下の地形取得で描き直されるので、二重には走らせない。 */
