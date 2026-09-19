@@ -6250,7 +6250,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1061-map-left-column-and-labels";
+const APP_VERSION="1062-map-compass-sweep";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -34770,6 +34770,7 @@ function drawCompassStrip(ctx,s){
 
 /* 方位バーを直接左右へスライドして撮影方位を変更する。
    バーそのものをつかむ感覚に合わせ、左へ動かすと表示方位が増える向きにする。 */
+const COMPASS_MAP_MIN_SWEEP_DEG=90;   /* 【v1062】地図モードでのバー 1 本ぶんの最小回転量 */
 let compassDragActive=false;
 let compassDragPointerId=null;
 let compassDragStartX=0;
@@ -34806,6 +34807,10 @@ el.compassStrip.addEventListener("pointerdown",e=>{
   compassDragStartX=e.clientX;
   compassDragStartAz=state?state.facingAz:(+el.facingAz.value||0);
   compassDragFov=Math.max(1,state&&Number.isFinite(state.fovH)?state.fovH:60);
+  /* 【v1062】地図モードでは、バーの端から端までのスライドで少なくとも 90° 動くようにする。
+     写真を見ながらのときはバーが写真と 1:1（画角ぶん）で動くのが自然だが、地図モードで超望遠（100mm＝画角 20°）だと
+     90° 回すのに 5〜7 回スライドが要る。広角（14mm など画角 90° 以上）はそのまま。 */
+  if(osmMapScreenOpen)compassDragFov=Math.max(compassDragFov,COMPASS_MAP_MIN_SWEEP_DEG);
   el.compassStrip.classList.add("dragging");
   el.compassStrip.setPointerCapture?.(e.pointerId);
   e.preventDefault();
