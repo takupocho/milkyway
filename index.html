@@ -6227,7 +6227,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1057-stick-look-and-moving-scale";
+const APP_VERSION="1058-drive-compass-mirror";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16419,6 +16419,7 @@ let driveLastLat=null,driveLastLon=null,driveLastApplyAt=0;
 let driveCompassAz=null,driveGpsAz=null,driveSmoothedAz=null;
 let driveSpeedMps=0,driveAccuracyM=null,driveLastFixAt=0,drivePendingMoveM=0;
 let drivePrevViewpointOffset=null,driveRafPending=false,driveLastFrameAt=0;
+let driveNorthOffset=null;   /* 【v1058】alpha 基準の方位を真北へ合わせるオフセット（AR の arNorthOffset と同じ役目） */
 const DRIVE_MIN_APPLY_MS=1200;      /* 反映は最短でも1.2秒に1回 */
 const DRIVE_MAX_ACCURACY_M=40;      /* これより粗い測位は使わない */
 function driveEyeMetres(){return clamp(+el.driveEye.value||0,0,5);}
@@ -16524,10 +16525,26 @@ async function startDriveMode(){
   if(el.viewpointOffset){el.viewpointOffset.value=driveEyeMetres().toFixed(1);syncViewpointOffsetControl();}
   driveSyncControls();
   driveRenderStatus();
+  driveNorthOffset=null;
+  /* 【v1058】最初の測位より前でも偏角を今の地点で用意しておく（コンパスを真北へ直すのに使う）。 */
+  arMagneticDeclination=estimateJapanMagneticDeclination(+el.lat.value,+el.lon.value,new Date());
   driveOrientationHandler=(e)=>{
     if(!driveActive||e.alpha==null)return;
     const dir=computeArDirection(e.alpha,e.beta||0,e.gamma||0,getScreenAngle());
-    if(dir&&Number.isFinite(dir.azimuth))driveCompassAz=normalizeAngle(dir.azimuth);
+    if(!dir||!Number.isFinite(dir.azimuth))return;
+    /* 【v1058】AR モードと同じ扱い。iPhone では alpha 基準の方位が東西で逆に回るので北軸で鏡像反転し、
+       北はコンパス（webkitCompassHeading＋偏角）で校正する。校正は低仰角・精度 45° 以内のときだけ、ゆっくり追従。
+       以前は dir.azimuth をそのまま使っていたので、右を向くと左へ回った（利用者の報告）。 */
+    const localAz=dir.azimuth;
+    const compassAz=computeCompassReferenceDirection(e);
+    const accuracy=typeof e.webkitCompassAccuracy==="number"?e.webkitCompassAccuracy:null;
+    const accuracyOK=accuracy===null||(accuracy>=0&&accuracy<=45);
+    if(compassAz!==null&&accuracyOK&&Math.abs(dir.altitude)<55){
+      const desired=normalizeAngle(-compassAz-localAz);
+      driveNorthOffset=driveNorthOffset===null?desired
+        :normalizeAngle(driveNorthOffset+shortestAngleDelta(driveNorthOffset,desired)*.1);
+    }
+    driveCompassAz=normalizeAngle(-(localAz+(driveNorthOffset??0)));
     driveScheduleRender();
   };
   window.addEventListener("deviceorientation",driveOrientationHandler);
