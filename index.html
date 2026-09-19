@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1048-akashi-band-length";
+const APP_VERSION="1049-bridge-hidden-ends";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -31583,11 +31583,17 @@ function drawPhoto(ctx,s){
           /* 【v1047】描いた地形の面の高さ（道路の貼り付け v1032 と同じ式）。無ければ DEM。橋の両端はこれで道路の端と揃う。 */
           const drawnElevationAtXY=(eastM,northM)=>{
             const distanceM=Math.hypot(eastM,northM);
-            if(distanceM>=1){
-              const drawn=drawnAltAt(norm360(atan2d(eastM,northM)),distanceM/1000);
+            const ground=elevationAtXY(eastM,northM);
+            if(distanceM>=1&&Number.isFinite(ground)){
+              const az=norm360(atan2d(eastM,northM)),distanceKm=distanceM/1000;
+              /* 【v1049】描いた面はスカイライン（そこまでの見かけ高度の最大）なので、山の裏に隠れた点では稜線の高さになる。
+                 隠れている点は DEM のまま返す（あとで断面ごとの隠れ判定で消える）。見えている点だけ面に貼る。 */
+              const surface=visibleAltAt(az,distanceKm);
+              if(Number.isFinite(surface)&&altFromElevation(ground,distanceM)<surface-.12) return ground;
+              const drawn=drawnAltAt(az,distanceKm);
               if(Number.isFinite(drawn)) return eyeElevationNow+distanceM*distanceM/EARTH_DROP+Math.tan(drawn*D2R)*distanceM;
             }
-            return elevationAtXY(eastM,northM);
+            return ground;
           };
           /* v783: 水域上の橋脚だけに仮想川底を与えるための判定。
              保存済み水域ポリゴンを優先し、地図水面が読める地点ではそれも補助に使う。 */
