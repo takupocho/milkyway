@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1050-kmz-near-clip";
+const APP_VERSION="1051-steep-only-land";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -26171,7 +26171,9 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
         const rise=Math.max(
           farM*Math.tan(altGrid[c*layerCount+k]*D2R)-nearM*Math.tan(altGrid[c*layerCount+near]*D2R),
           farM*Math.tan(altGrid[(c+1)*layerCount+k]*D2R)-nearM*Math.tan(altGrid[(c+1)*layerCount+near]*D2R));
-        if(rise>WATER_ATLAS_STEEP_M)w+=2;
+        /* 【v1051】「急」は遠い側が陸の升目（岸の斜面）だけ。海の上の離岸堤・防波堤は DEM で盛り上がるが水の升目なので外さない
+           （外すと升目の形のバケツが海に並ぶ。垂水区西舞子で実測）。 */
+        if(!w&&rise>WATER_ATLAS_STEEP_M)w+=2;
       }
       const x1=pxA[i],y1=pyA[i],x2=pxB[i],y2=pyB[i];
       let x3=x2,y3=bottomY,x4=x1,y4=bottomY;
