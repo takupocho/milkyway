@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1049-bridge-hidden-ends";
+const APP_VERSION="1050-kmz-near-clip";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -24976,24 +24976,75 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   const needShading=!slot.silhouette&&!slot.glow;
   const triangleColors=slot.model.triangleColors;
   const triangleAlphas=slot.model.triangleAlphas;   // 【v876】マテリアルごとの不透明度
+  /* 【v1050】カメラの手前面と画面の四辺で切り取る面（道路の v877 と同じ）。目を原点にした東・北・上の実寸座標で切る。
+     以前は頂点が 1 つでもカメラの後ろなら三角形ごと捨てていたので、模型に近づくと手前の面が丸ごと消えた
+     （明石海峡大橋の上空 150m で足元の桁・手前のハンガーが消える）。 */
+  const camRight=[cos(s.facingAz),-sin(s.facingAz),0],camUp=cross(camRight,cameraForward);
+  const kmzFisheye=mobileLensMode==="fisheye"&&!arActive;
+  const KMZ_NEAR_Z_M=.25,KMZ_CLIP_MARGIN=1.3;
+  const kmzScale=(W/2)/Math.tan(clamp(s.fovH,1,179)/2*D2R);
+  const kmzHalfX=(W/2)/kmzScale*KMZ_CLIP_MARGIN,kmzHalfY=(H/2)/kmzScale*KMZ_CLIP_MARGIN;
+  const kmzClipPlanes=kmzFisheye
+    ? [v=>dot(v,cameraForward)-KMZ_NEAR_Z_M]
+    : [v=>dot(v,cameraForward)-KMZ_NEAR_Z_M,
+       v=>dot(v,camRight)+kmzHalfX*dot(v,cameraForward),
+       v=>kmzHalfX*dot(v,cameraForward)-dot(v,camRight),
+       v=>dot(v,camUp)+kmzHalfY*dot(v,cameraForward),
+       v=>kmzHalfY*dot(v,cameraForward)-dot(v,camUp)];
+  const kmzClipByPlane=(poly,f)=>{
+    const out=[];
+    for(let i=0;i<poly.length;i++){
+      const a=poly[i],b=poly[(i+1)%poly.length],da=f(a),db=f(b);
+      if(da>=0)out.push(a);
+      if((da>=0)!==(db>=0)){const k=da/(da-db);out.push([a[0]+(b[0]-a[0])*k,a[1]+(b[1]-a[1])*k,a[2]+(b[2]-a[2])*k]);}
+    }
+    return out;
+  };
+  const kmzProject=(v)=>{
+    const flat=Math.hypot(v[0],v[1]);
+    return toXY(norm360(atan2d(v[0],v[1])),Math.atan2(v[2],Math.max(.05,flat))*R2D);
+  };
   for(let triIndex=0;triIndex<slot.model.triangles.length;triIndex++){
     const triangle=slot.model.triangles[triIndex];
     /* 【v903】zs = 頂点ごとの「カメラの正面方向の奥行き」。
        1/z は画面上で直線的に変わるので、この値だと三角形の中を正しく補間できる。
        水平距離（depth）だけだと、見下ろすときに屋根と床下の前後が付かない。 */
-    const points=[],zs=[];let depth=0,valid=true;const local=needShading?[]:null;
+    const points=[],zs=[],vecs=[];let depth=0,valid=true,inside=true;const local=needShading?[]:null;
     for(const vertex of triangle){
       const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
       const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
       const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
       const rise=cfg.altitude+vertex[2]*cfg.scale-eye-curvature;
-      const altitude=Math.atan2(rise,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
-      if(!point||!point.every(Number.isFinite)){valid=false;break;}points.push(point);depth+=distanceM;
-      zs.push(Math.hypot(distanceM,rise)*dot(toVec(ray.bearing,altitude),cameraForward));   // 【v903】
+      const bearingRad=ray.bearing*D2R,vec=[Math.sin(bearingRad)*distanceM,Math.cos(bearingRad)*distanceM,rise];
+      vecs.push(vec);depth+=distanceM;
       if(local)local.push([east,north,vertex[2]*cfg.scale]);
+      if(inside){for(const f of kmzClipPlanes){if(f(vec)<0){inside=false;break;}}}
+      if(inside){
+        const altitude=Math.atan2(rise,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
+        if(!point||!point.every(Number.isFinite)){inside=false;}
+        else{points.push(point);zs.push(Math.hypot(distanceM,rise)*dot(toVec(ray.bearing,altitude),cameraForward));}   // 【v903】
+      }
     }
-    if(valid)projected.push({points,zs,depth:depth/3,local,color:triangleColors?triangleColors[triIndex]:null,
-      alpha:(triangleAlphas&&Number.isFinite(triangleAlphas[triIndex]))?triangleAlphas[triIndex]:1});
+    const color=triangleColors?triangleColors[triIndex]:null;
+    const alpha=(triangleAlphas&&Number.isFinite(triangleAlphas[triIndex]))?triangleAlphas[triIndex]:1;
+    if(inside&&points.length===3){
+      projected.push({points,zs,depth:depth/3,local,color,alpha});
+      continue;
+    }
+    /* 【v1050】一部が手前面・画面の外にはみ出す三角形：切り取ってから扇形に分ける。 */
+    let poly=vecs;
+    for(const f of kmzClipPlanes){poly=kmzClipByPlane(poly,f);if(poly.length<3){poly=null;break;}}
+    if(!poly)continue;
+    const clippedPoints=[],clippedZs=[];let ok=true;
+    for(const v of poly){
+      const p=kmzProject(v);
+      if(!p||!p.every(Number.isFinite)){ok=false;break;}
+      clippedPoints.push(p);clippedZs.push(dot(v,cameraForward));
+    }
+    if(!ok)continue;
+    for(let i=1;i+1<poly.length;i++){
+      projected.push({points:[clippedPoints[0],clippedPoints[i],clippedPoints[i+1]],zs:[clippedZs[0],clippedZs[i],clippedZs[i+1]],depth:depth/3,local,color,alpha});
+    }
   }
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52];
   /* 【v931】シルエットの濃さ。0で今までどおり、100で真っ黒。 */
