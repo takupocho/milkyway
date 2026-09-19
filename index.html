@@ -4976,8 +4976,13 @@
 
       <!-- 【v1054】設定の書き出し -->
       <section class="ctrl-group collapsible collapsed">
-        <h2 class="ctrl-group-toggle">設定の書き出し<span class="ctrl-arrow">▼</span></h2>
+        <h2 class="ctrl-group-toggle">設定の書き出し・初期化<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
+          <p class="map-hint" style="color:var(--ink);font-weight:700;">↩ デフォルトに戻す</p>
+          <p class="map-hint" style="margin-top:4px;">「設定」のすべてと「表示」の ON/OFF を、アプリの既定値（v1055 で決めた値）に戻します。観測地点・日時・撮影計画・登録観測地はそのままです。押すと確認が出ます。</p>
+          <button id="settingsResetDefaultsBtn" type="button" style="width:100%;margin-top:6px;">設定をデフォルトに戻す…</button>
+          <p id="settingsResetStatus" class="map-hint" style="margin-top:4px;"></p>
+          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">📤 書き出し</p>
           <p class="map-hint">いまの「設定」のすべてと「表示」の ON/OFF を、保存に使っているのと同じ形（JSON）で書き出します。観測地点・日時・焦点距離も含みます。撮影計画・登録観測地は含みません。</p>
           <div class="row2" style="margin-top:6px;"><button id="settingsExportBtn" type="button">いまの設定と表示を書き出す</button><button id="settingsExportSaveBtn" type="button" class="ghost">💾 ファイルに保存</button></div>
           <div class="row2" style="margin-top:6px;"><button id="settingsExportClipBtn" type="button" class="ghost">📋 コピー</button><button id="settingsExportShareBtn" type="button" class="ghost">📤 共有…</button></div>
@@ -6216,7 +6221,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1054-settings-export";
+const APP_VERSION="1055-user-defaults";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7525,6 +7530,7 @@ const el={
   actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
   settingsExportBtn:$("settingsExportBtn"), settingsExportSaveBtn:$("settingsExportSaveBtn"), settingsExportClipBtn:$("settingsExportClipBtn"),
   settingsExportShareBtn:$("settingsExportShareBtn"), settingsExportStatus:$("settingsExportStatus"), settingsExportReadout:$("settingsExportReadout"),   /* 【v1054】 */
+  settingsResetDefaultsBtn:$("settingsResetDefaultsBtn"), settingsResetStatus:$("settingsResetStatus"),   /* 【v1055】 */
   actMonRoadTestBtn:$("actMonRoadTestBtn"),   /* 【v989】 */
   worldGridBrightness:$("worldGridBrightness"), worldGridBrightnessVal:$("worldGridBrightnessVal"),   /* 【v984】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
@@ -13761,6 +13767,21 @@ async function settingsExportCopy(){
     return !!ok;
   }catch(e){settingsExportSetStatus("コピーできませんでした。枠の中を長押し→全選択→コピーしてください");return false;}
 }
+/* 【v1055】デフォルトに戻す。必ず確認する。 */
+if(el.settingsResetDefaultsBtn)el.settingsResetDefaultsBtn.addEventListener("click",async()=>{
+  const ok=window.confirm("「設定」のすべてと「表示」の ON/OFF をデフォルトに戻します。\n観測地点・日時・撮影計画・登録観測地はそのままです。\n\nよろしいですか？");
+  if(!ok){if(el.settingsResetStatus)el.settingsResetStatus.textContent="戻していません";return;}
+  try{
+    await applyPersistedSettingsText(JSON.stringify(userDefaultSettingsKeepingPlace()));
+    scheduleSaveSettings();
+    drawPhoto._terrainRenderKey=null;
+    requestOsmRoads(+el.lat.value,+el.lon.value);
+    requestOsmRails(+el.lat.value,+el.lon.value);
+    requestOsmBridges(+el.lat.value,+el.lon.value);
+    update();
+    if(el.settingsResetStatus)el.settingsResetStatus.textContent="デフォルトに戻しました";
+  }catch(e){if(el.settingsResetStatus)el.settingsResetStatus.textContent="戻せませんでした："+String(e&&e.message||e);}
+});
 if(el.settingsExportBtn)el.settingsExportBtn.addEventListener("click",()=>{settingsExportFill();settingsExportCopy();});
 if(el.settingsExportClipBtn)el.settingsExportClipBtn.addEventListener("click",()=>{settingsExportCopy();});
 if(el.settingsExportSaveBtn)el.settingsExportSaveBtn.addEventListener("click",()=>{
@@ -17072,10 +17093,219 @@ function scheduleSaveSettings(){
   };
   saveSettingsTimer=setTimeout(flushSettings,400);
 }
+/* 【v1055】アプリの既定値。利用者の書き出し（2026-09-19 15:51、v1054）から、観測地点（lat/lon/citySelect/地名）・
+   カメラワークのカット・局所高精細の座標を除いたもの。保存が無いとき（初回・消去後）と「設定をデフォルトに戻す」で当てる。
+   更新するときは「設定の書き出し」の JSON の settings をここへ貼り、同じ項目を除く。 */
+const USER_DEFAULT_SETTINGS={
+ "tz": "9",
+ "focalLength": "50",
+ "aperture": "2.8",
+ "isoSlider": "5",
+ "shutter": "15",
+ "sensor": "0",
+ "lp": "1",
+ "orientation": "portrait",
+ "walkSpeed": "16",
+ "droneVerticalSpeed": 60,
+ "constStarSizePct": 100,
+ "namedStarSizePct": 60,
+ "planetSizePct": 50,
+ "seaWaveSlopeDeg": 8,
+ "roadBaseWidthPct": 100,
+ "mobileLensMode": "normal",
+ "normalLensFocalLength": 50,
+ "fisheyeLensFocalLength": 14,
+ "realMilkyWayEnabled": true,
+ "realMilkyWayBrightnessLevel": 3,
+ "realSunMoonEnabled": true,
+ "vignetteEnabled": false,
+ "milkyWayPositionTrailVisible": false,
+ "constellationLinesVisible": false,
+ "sunPathVisible": false,
+ "moonPathVisible": false,
+ "mountainNamesVisible": false,
+ "fujiDetailEnabled": false,
+ "autoShowShowerConst": true,
+ "constellationsVisible": true,
+ "planetsVisible": true,
+ "namedStarsVisible": true,
+ "starGroupsVisible": false,
+ "showSkyLabels": false,
+ "showHorizonLine": false,
+ "seaHorizonRealistic": true,
+ "showSkylineBoundary": false,
+ "waterLandBoundaryVisible": false,
+ "waterReflectionEnabled": true,
+ "terrainMeshLinesVisible": false,
+ "worldGridVisible": false,
+ "contourLinesVisible": false,
+ "roadLinesVisible": true,
+ "minorRoadsVisible": false,
+ "photoTextureOn": true,
+ "photoWaterVisible": true,
+ "photoTune": {
+  "day": 92,
+  "night": 30,
+  "haze": 150,
+  "waterDay": 50,
+  "waterNight": 60
+ },
+ "bridgeLinesVisible": true,
+ "akashiBridgeHidden": false,
+ "himejiCastleOn": false,
+ "shiratoriCastleOn": false,
+ "cloudSeaVisible": false,
+ "pixelWalkerVisible": false,
+ "compassBarVisible": true,
+ "cometsVisible": false,
+ "cometMagLimit": 11,
+ "cometTailScale": 1,
+ "cloudSeaElevationM": 1570,
+ "cloudSeaOpacity": 1,
+ "cloudSeaWindDeg": 140,
+ "cloudSeaGapPct": 8,
+ "railLinesVisible": true,
+ "placeNameVisible": true,
+ "daylightStarsOn": false,
+ "animationSpeed": "575",
+ "seaDiagVisible": false,
+ "waterRayDiagVisible": false,
+ "terrainRendererWorld": false,
+ "controllerVisible": true,
+ "droneModeOn": true,
+ "droneMapOpen": false,
+ "geoTrackOn": true,
+ "skylineOpacity": "100",
+ "showBelowHorizon": false,
+ "belowHorizonOpacity": "50",
+ "photoToneOn": true,
+ "kmzSilhouetteDarkness": 0,
+ "overlayStyleRevision": 961,
+ "overlayStyle": {
+  "road": {
+   "dayColor": "#848482",
+   "nightColor": "#7f8490",
+   "dayBright": 100,
+   "nightBright": 30,
+   "dayOpacity": 100,
+   "nightOpacity": 200
+  },
+  "rail": {
+   "dayColor": "#686058",
+   "nightColor": "#4c453d",
+   "dayBright": 100,
+   "nightBright": 100,
+   "dayOpacity": 100,
+   "nightOpacity": 100
+  },
+  "bridge": {
+   "dayColor": "#7c838d",
+   "nightColor": "#363a3a",
+   "dayBright": 100,
+   "nightBright": 100,
+   "dayOpacity": 100,
+   "nightOpacity": 100
+  }
+ },
+ "glTerrainOn": true,
+ "powerSaveOn": true,
+ "worldGridBrightness": 145,
+ "sunsetModeOn": true,
+ "sunsetRevision": 947,
+ "sunsetMode": {
+  "strength": 94,
+  "saturate": 400,
+  "red": 88,
+  "yellow": 15,
+  "vivid": 132,
+  "contrast": 126,
+  "protect": 19,
+  "softPeak": 92,
+  "skyLift": 100,
+  "skyNear": 48,
+  "skyFar": 51,
+  "skyGlow": 144,
+  "glowHue": 69,
+  "glowFade": 71,
+  "skyLinger": 50,
+  "horizonRed": 11,
+  "skySpread": 60,
+  "waterLift": 63,
+  "waterBack": 37,
+  "waterGlow": 0,
+  "waterFar": 100,
+  "waterSpread": 118,
+  "rayGlow": 300,
+  "rayWidth": 10,
+  "rayLength": 166,
+  "groundNear": 53,
+  "groundFar": 21,
+  "groundSpread": 139,
+  "frontLit": 40,
+  "sunWhite": 100,
+  "sunSize": 100,
+  "zoomRef": 50
+ },
+ "photoTone": {
+  "day": {
+   "brightness": 100,
+   "contrast": 188,
+   "saturate": 100,
+   "black": 17,
+   "white": -49
+  },
+  "night": {
+   "brightness": 136,
+   "contrast": 107,
+   "saturate": 92,
+   "black": -12,
+   "white": 11
+  }
+ },
+ "groundTone": {
+  "brightness": 166,
+  "contrast": 144,
+  "saturate": 100,
+  "lift": 14,
+  "blue": 26
+ },
+ "photoToneRevision": 935,
+ "mwTextureLOffsetDeg": 0,
+ "mwTextureBOffsetDeg": 0,
+ "autoJumpToBestTimeOnDateNav": false,
+ "dateNavRevision": 944,
+ "lockAzToGc": false,
+ "lockAzToSun": false,
+ "lockAzToMoon": false,
+ "starTrailMode": false,
+ "starTrailTaper": false,
+ "simulationClockVisible": false,
+ "simInfoPanelVisible": false,
+ "normalTerrainAzimuthStep": 5,
+ "normalWaterFineLevel": 4,
+ "waterDrawRadiusKm": 10,
+ "localDetailMeshStepM": 3,
+ "highDetailQuality": 3,
+ "darumaTelephotoConfig": {
+  "event": "sunset",
+  "nearKm": 5,
+  "farKm": 120
+ }
+};
+/* 【v1055】「デフォルトに戻す」用：観測地点・日時まわりは今の値を保つ。 */
+function userDefaultSettingsKeepingPlace(){
+  return {...JSON.parse(JSON.stringify(USER_DEFAULT_SETTINGS)),
+    lat:el.lat.value,lon:el.lon.value,tz:el.tz.value,citySelect:el.citySelect.value,
+    observedPlaceName:currentObservedPlaceName,observedPlaceLat:currentObservedPlaceLat,observedPlaceLon:currentObservedPlaceLon};
+}
 async function loadPersistedSettings(){
+  let stored=null;
+  try{stored=await persistentGet(SETTINGS_KEY);}catch(e){stored=null;}
+  /* 【v1055】保存が無ければ既定値を同じ道で当てる（以前は何も当てず、コードの初期値のままだった）。 */
+  return applyPersistedSettingsText(stored||JSON.stringify(USER_DEFAULT_SETTINGS));
+}
+async function applyPersistedSettingsText(stored){
   try{
-    const stored=await persistentGet(SETTINGS_KEY);
-    if(!stored){ placeFollowReady=true; reverseGeocodeAndShow(+el.lat.value, +el.lon.value); return; }
     const s=JSON.parse(stored);
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
