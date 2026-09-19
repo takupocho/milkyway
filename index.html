@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1051-steep-only-land";
+const APP_VERSION="1052-shore-nodata-points";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19738,7 +19738,7 @@ const TERRAIN_DISTANCE_BANDS=[
    完全に無くなったので、地形の作り方は v893〜v900 と**同一**になった。
    よって8が正しく、**すでに保存されている綺麗な地形がそのまま再利用される。**
    （v901で9へ上げたのは、KMZの高密度点を rayGrid から出した＝作り方が変わったため） */
-const TERRAIN_CACHE_FORMAT=10;   /* 【v1024】稜線の点が実際の距離を持つようになった */   /* 【v1021】タイルの境の補間を直したので、保存済み地形を作り直す */
+const TERRAIN_CACHE_FORMAT=11;   /* 【v1052】岸の nodata 点を作るようになったので、保存済み地形（null 入り）を作り直す */   /* 【v1024】稜線の点が実際の距離を持つようになった */   /* 【v1021】タイルの境の補間を直したので、保存済み地形を作り直す */
 /* 読み込んでいるKMZ建物の位置。地形データの中身が変わるので、
    保存の鍵と、取り直しの判断に使う。読み込んでいなければ空。 */
 function kmzTerrainSignature(){
@@ -23758,7 +23758,10 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
          表示が大きく崩れたため元の範囲へ戻している(詳細は下の drawNearSurfaceMesh 呼び出し側)。 */
       {
         const water=isSeaNoData||isKnown;
-        const meshAlt=Number.isFinite(apparentAlt)?apparentAlt:(isSeaNoData?-Math.atan2(1.6,metres)*R2D:null);
+        /* 【v1052】岸のすぐ横の列（隣の方位に陸がある）でも、距離方向に連続した nodata なら点を作る。
+           作らないと行に null が並び、層×列のメッシュがその層を飛ばして岸の升目が画面の下へ細長く伸びる（塩屋で実測）。
+           海の統計（isSeaNoData）は左右も見る今までのままなので、タイル欠損が海に化ける安全装置は残る。 */
+        const meshAlt=Number.isFinite(apparentAlt)?apparentAlt:(isNoData?-Math.atan2(1.6,metres)*R2D:null);
         const point=Number.isFinite(meshAlt)?{
           distanceKm,lat:pointLat,lon:pointLon,alt:meshAlt,water,baseNoData:isSeaNoData,baseKnown:isKnown,
           baseElevation:Number.isFinite(ridgeElevation)?ridgeElevation:null,
