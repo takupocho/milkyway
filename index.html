@@ -4974,6 +4974,17 @@
         </div>
       </section>
 
+      <!-- 【v1054】設定の書き出し -->
+      <section class="ctrl-group collapsible collapsed">
+        <h2 class="ctrl-group-toggle">設定の書き出し<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint">いまの「設定」のすべてと「表示」の ON/OFF を、保存に使っているのと同じ形（JSON）で書き出します。観測地点・日時・焦点距離も含みます。撮影計画・登録観測地は含みません。</p>
+          <div class="row2" style="margin-top:6px;"><button id="settingsExportBtn" type="button">いまの設定と表示を書き出す</button><button id="settingsExportSaveBtn" type="button" class="ghost">💾 ファイルに保存</button></div>
+          <div class="row2" style="margin-top:6px;"><button id="settingsExportClipBtn" type="button" class="ghost">📋 コピー</button><button id="settingsExportShareBtn" type="button" class="ghost">📤 共有…</button></div>
+          <p id="settingsExportStatus" class="map-hint" style="margin-top:4px;"></p>
+          <textarea id="settingsExportReadout" readonly spellcheck="false" style="width:100%;min-height:160px;margin-top:6px;padding:8px;border:1px solid var(--line,#2a3345);border-radius:8px;background:rgba(0,0,0,.25);color:var(--ink);font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre;overflow:auto;"></textarea>
+        </div>
+      </section>
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">キャッシュ管理<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
@@ -6205,7 +6216,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1053-shore-nodata-as-sea";
+const APP_VERSION="1054-settings-export";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7512,6 +7523,8 @@ const el={
   powerSaveBtn:$("powerSaveBtn"), powerSaveState:$("powerSaveState"), powerSaveReadout:$("powerSaveReadout"), popupPowerSaveBtn:$("popupPowerSaveBtn"),   /* 【v982】 */
   actMonShowBtn:$("actMonShowBtn"), actMonCopyBtn:$("actMonCopyBtn"), actMonReadout:$("actMonReadout"),   /* 【v983】 */
   actMonClipBtn:$("actMonClipBtn"), actMonShareBtn:$("actMonShareBtn"), actMonCopyStatus:$("actMonCopyStatus"),   /* 【v987】 */
+  settingsExportBtn:$("settingsExportBtn"), settingsExportSaveBtn:$("settingsExportSaveBtn"), settingsExportClipBtn:$("settingsExportClipBtn"),
+  settingsExportShareBtn:$("settingsExportShareBtn"), settingsExportStatus:$("settingsExportStatus"), settingsExportReadout:$("settingsExportReadout"),   /* 【v1054】 */
   actMonRoadTestBtn:$("actMonRoadTestBtn"),   /* 【v989】 */
   worldGridBrightness:$("worldGridBrightness"), worldGridBrightnessVal:$("worldGridBrightnessVal"),   /* 【v984】 */ photoToneState:$("photoToneState"), photoTonePanel:$("photoTonePanel"),
   photoToneResetBtn:$("photoToneResetBtn"), photoToneCopyBtn:$("photoToneCopyBtn"), photoToneReadout:$("photoToneReadout"),
@@ -13723,6 +13736,52 @@ async function actMonCopyText(){
     return !!ok;
   }catch(e){actMonSetStatus("コピーできませんでした。枠の中を長押し→全選択→コピーしてください");return false;}
 }
+/* 【v1054】設定の書き出し。保存に使う collectPersistedSettings と同じ内容を JSON にする。 */
+function settingsExportSetStatus(text){if(el.settingsExportStatus)el.settingsExportStatus.textContent=text;}
+function settingsExportText(){
+  const now=new Date();
+  const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  return JSON.stringify({app:"StarChase",version:APP_VERSION,exportedAt:stamp,settings:collectPersistedSettings()},null,2);
+}
+function settingsExportFill(){
+  let text;
+  try{text=settingsExportText();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
+  if(el.settingsExportReadout)el.settingsExportReadout.value=text;
+  return text;
+}
+async function settingsExportCopy(){
+  const text=el.settingsExportReadout&&el.settingsExportReadout.value?el.settingsExportReadout.value:settingsExportFill();
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);settingsExportSetStatus("コピーしました（貼り付けできます）");return true;}
+  }catch(e){}
+  try{
+    el.settingsExportReadout.focus();el.settingsExportReadout.setSelectionRange(0,text.length);
+    const ok=document.execCommand&&document.execCommand("copy");
+    settingsExportSetStatus(ok?"コピーしました（貼り付けできます）":"コピーできませんでした。枠の中を長押し→全選択→コピーしてください");
+    return !!ok;
+  }catch(e){settingsExportSetStatus("コピーできませんでした。枠の中を長押し→全選択→コピーしてください");return false;}
+}
+if(el.settingsExportBtn)el.settingsExportBtn.addEventListener("click",()=>{settingsExportFill();settingsExportCopy();});
+if(el.settingsExportClipBtn)el.settingsExportClipBtn.addEventListener("click",()=>{settingsExportCopy();});
+if(el.settingsExportSaveBtn)el.settingsExportSaveBtn.addEventListener("click",()=>{
+  const text=el.settingsExportReadout&&el.settingsExportReadout.value?el.settingsExportReadout.value:settingsExportFill();
+  try{
+    const now=new Date();
+    const name=`starchase_settings_${now.getFullYear()}${String(now.getMonth()+1).padStart(2,"0")}${String(now.getDate()).padStart(2,"0")}_v${APP_VERSION}.json`;
+    const blob=new Blob([text],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    settingsExportSetStatus(`保存しました：${name}`);
+  }catch(e){settingsExportSetStatus("保存できませんでした。「コピー」を試してください");}
+});
+if(el.settingsExportShareBtn)el.settingsExportShareBtn.addEventListener("click",async()=>{
+  const text=el.settingsExportReadout&&el.settingsExportReadout.value?el.settingsExportReadout.value:settingsExportFill();
+  if(navigator.share){
+    try{await navigator.share({title:`StarChase 設定 v${APP_VERSION}`,text});settingsExportSetStatus("共有しました");}
+    catch(e){if(!(e&&e.name==="AbortError"))settingsExportSetStatus("共有できませんでした。「コピー」を試してください");}
+  }else settingsExportSetStatus("この端末では共有が使えません。「コピー」か「ファイルに保存」を試してください");
+});
 if(el.actMonCopyBtn)el.actMonCopyBtn.addEventListener("click",()=>{
   let text;
   try{text=actMonReport();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
