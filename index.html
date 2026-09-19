@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1046-water-opacity-daynight";
+const APP_VERSION="1047-bridge-ends-on-drawn-terrain";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -31571,6 +31571,15 @@ function drawPhoto(ctx,s){
             if(distanceM<.4) return Number.isFinite(footElev)?footElev:NaN;
             return rayBaseElevationAt(norm360(atan2d(eastM,northM)),distanceM/1000);
           };
+          /* 【v1047】描いた地形の面の高さ（道路の貼り付け v1032 と同じ式）。無ければ DEM。橋の両端はこれで道路の端と揃う。 */
+          const drawnElevationAtXY=(eastM,northM)=>{
+            const distanceM=Math.hypot(eastM,northM);
+            if(distanceM>=1){
+              const drawn=drawnAltAt(norm360(atan2d(eastM,northM)),distanceM/1000);
+              if(Number.isFinite(drawn)) return eyeElevationNow+distanceM*distanceM/EARTH_DROP+Math.tan(drawn*D2R)*distanceM;
+            }
+            return elevationAtXY(eastM,northM);
+          };
           /* v783: 水域上の橋脚だけに仮想川底を与えるための判定。
              保存済み水域ポリゴンを優先し、地図水面が読める地点ではそれも補助に使う。 */
           const bridgeWaterAtXY=(eastM,northM)=>{
@@ -31662,10 +31671,19 @@ function drawPhoto(ctx,s){
               const firstDir={east:(xy[1].east-xy[0].east)/firstLength,north:(xy[1].north-xy[0].north)/firstLength};
               const lastDir={east:(xy[xy.length-1].east-xy[xy.length-2].east)/lastLength,north:(xy[xy.length-1].north-xy[xy.length-2].north)/lastLength};
               const probeM=clamp((way.widthM||5)*1.5,8,20);
+              /* 【v1047】端の高さは描いた地形の面から。外側（取り付け道路側）を採るのは、端が水面の上か、
+                 端の地面が外側より 1.5m 以上低く、かつ橋の内側へ向かってそれ以上下がらない（谷の上）ときだけ。坂（内側へ下がり続ける）なら端のまま。
+                 以前は無条件に高いほうを採っていたので、坂の途中の橋が山側の端で持ち上がって浮いていた。 */
               const endpointElevation=(point,dir,side)=>{
-                const direct=elevationAtXY(point.east,point.north);
-                const outside=elevationAtXY(point.east+dir.east*probeM*side,point.north+dir.north*probeM*side);
-                if(Number.isFinite(direct)&&Number.isFinite(outside)) return Math.max(direct,outside);
+                const direct=drawnElevationAtXY(point.east,point.north);
+                const outside=drawnElevationAtXY(point.east+dir.east*probeM*side,point.north+dir.north*probeM*side);
+                if(Number.isFinite(direct)&&Number.isFinite(outside)){
+                  const inside=drawnElevationAtXY(point.east-dir.east*probeM*side,point.north-dir.north*probeM*side);
+                  const overWater=bridgeWaterAtXY(point.east,point.north);
+                  /* 谷の上＝端が外側より低く、橋の内側へ向かってもそれ以上下がらない。坂＝内側へ向かって下がり続ける。 */
+                  const valley=outside-direct>=1.5&&(!Number.isFinite(inside)||direct-inside<.5);
+                  return (overWater||valley)?Math.max(direct,outside):direct;
+                }
                 return Number.isFinite(direct)?direct:(Number.isFinite(outside)?outside:footElev);
               };
               let startElevation=endpointElevation(xy[0],firstDir,-1);
