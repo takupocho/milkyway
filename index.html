@@ -1935,6 +1935,15 @@
   /* 【v1059】定規の下に月・日の方位線ボタン。 */
   .photo-canvas-wrap.osm-map-open #mapMoonLinesBtn{top:141px;}
   .photo-canvas-wrap.osm-map-open #mapSunLinesBtn{top:185px;}
+  /* 【v1061】スマホは撮影計画が 75px（v1026）、全画面は 104px なので、定規・月・日もそれに合わせて 44px 刻みで下げる。 */
+  @media(max-width:760px){
+    .photo-canvas-wrap.osm-map-open .mobile-measure-btn{top:119px;}
+    .photo-canvas-wrap.osm-map-open #mapMoonLinesBtn{top:163px;}
+    .photo-canvas-wrap.osm-map-open #mapSunLinesBtn{top:207px;}
+  }
+  body.fs-sim .photo-canvas-wrap.osm-map-open .mobile-measure-btn{top:148px;}
+  body.fs-sim .photo-canvas-wrap.osm-map-open #mapMoonLinesBtn{top:192px;}
+  body.fs-sim .photo-canvas-wrap.osm-map-open #mapSunLinesBtn{top:236px;}
   /* 【v1060】divIcon の器は 0×0 なので、中の札は絶対配置＋幅を中身に合わせる（そうしないと幅 0 に潰れて文字が地図に直に乗る）。 */
   .map-sky-label{position:absolute;left:0;top:0;width:max-content;max-width:none;
     background:rgba(12,16,34,.92);color:#fff;border:1.5px solid rgba(255,255,255,.55);border-radius:12px;padding:4px 10px;
@@ -6241,7 +6250,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1060-map-label-readable";
+const APP_VERSION="1061-map-left-column-and-labels";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9719,7 +9728,12 @@ function updateOsmSkyLines(currentState=state){
   let reachM=0;
   for(const corner of [bounds.getNorthWest(),bounds.getNorthEast(),bounds.getSouthWest(),bounds.getSouthEast()])reachM=Math.max(reachM,osmMapInstance.distance(origin,corner));
   reachM=Math.max(300,reachM*1.05);
-  const labelM=Math.min(reachM*.42,Math.max(120,osmMapInstance.distance(origin,osmMapInstance.containerPointToLatLng(L.point(size.x/2,size.y/2-Math.min(size.x,size.y)*.28)))));
+  /* 【v1061】ラベルはピンから「地図の短辺の 28%」の距離。縮尺は地図中央の 1px あたりの m で測る（ピンの位置に依らない）。 */
+  const centrePt=L.point(size.x/2,size.y/2);
+  const mPerPx=osmMapInstance.distance(osmMapInstance.containerPointToLatLng(centrePt),osmMapInstance.containerPointToLatLng(L.point(size.x/2,size.y/2+100)))/100;
+  const labelPx=Math.min(size.x,size.y)*.28;
+  const labelM=Math.max(60,labelPx*mPerPx);
+  const pinPt=osmMapInstance.latLngToContainerPoint(origin);
   const rs=mapSkyRiseSetFor(lat,lon);
   const tz=rs.tz||(+el.tz.value||9);
   const addLine=(bearing,color,dash,weight)=>{
@@ -9730,7 +9744,17 @@ function updateOsmSkyLines(currentState=state){
     mapSkyLayers.push(under,line);
   };
   const addLabel=(bearing,text,cls)=>{
-    const at=destinationLatLng(lat,lon,bearing,labelM);
+    /* 【v1061】地図の内側（余白 40px）に収まるよう、はみ出す分だけピンへ寄せる。ピン自体が外なら出さない。 */
+    const inset=40;
+    if(pinPt.x<-20||pinPt.y<-20||pinPt.x>size.x+20||pinPt.y>size.y+20)return;
+    let at=destinationLatLng(lat,lon,bearing,labelM);
+    const p=osmMapInstance.latLngToContainerPoint(L.latLng(at[0],at[1]));
+    const vx=p.x-pinPt.x,vy=p.y-pinPt.y;
+    let tt=1;
+    if(vx>0)tt=Math.min(tt,(size.x-inset-pinPt.x)/vx);else if(vx<0)tt=Math.min(tt,(inset-pinPt.x)/vx);
+    if(vy>0)tt=Math.min(tt,(size.y-inset-pinPt.y)/vy);else if(vy<0)tt=Math.min(tt,(inset-pinPt.y)/vy);
+    tt=clamp(tt,.15,1);
+    if(tt<1)at=destinationLatLng(lat,lon,bearing,labelM*tt);
     const marker=L.marker(at,{pane:"markerPane",interactive:false,icon:L.divIcon({className:"",html:`<div class="map-sky-label ${cls}">${text}</div>`,iconSize:[0,0],iconAnchor:[0,0]})}).addTo(osmMapInstance);
     mapSkyLayers.push(marker);
   };
