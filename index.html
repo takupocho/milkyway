@@ -6205,7 +6205,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1047-bridge-ends-on-drawn-terrain";
+const APP_VERSION="1048-akashi-band-length";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10920,21 +10920,30 @@ const AKASHI_ACROSS_M=220;
 
    ちなみに軸方向を±2,400mまで広げると該当が50本に跳ね上がる。
    それは取り付け高架・インターチェンジなので、±2,050mより広げてはいけない。 */
-const AKASHI_MIN_POINTS_IN_BAND=2;
+/* 【v1048】頂点の数ではなく、帯の中を通る長さで判定する。
+   Shortbread の橋の断片は主径間に頂点が 2 つしか無く（中央付近と舞子側アンカレイジのすぐ外）、
+   帯の中の頂点が 1 つだけになって v870 の「2 点以上」を通り抜けていた（舞子で実測）。
+   アンカレイジで 1 点触れるだけの取り付け道路は帯の中の長さが数十 m なので残る。 */
+const AKASHI_MIN_LENGTH_IN_BAND_M=200;
 function akashiBridgeWay(way){
   const points=way&&way.points;
-  if(!Array.isArray(points)||points.length<AKASHI_MIN_POINTS_IN_BAND) return false;
+  if(!Array.isArray(points)||points.length<2) return false;
   const cosLat=Math.cos(AKASHI_CENTER_LAT*D2R);
   const axis=AKASHI_AXIS_DEG*D2R,sinA=Math.sin(axis),cosA=Math.cos(axis);
-  let inside=0;
-  for(const point of points){
+  const local=points.map(point=>{
     const north=(point[0]-AKASHI_CENTER_LAT)*111320;
     const east=(point[1]-AKASHI_CENTER_LON)*111320*cosLat;
-    const along=east*sinA+north*cosA;      // 軸方向
-    const across=east*cosA-north*sinA;     // 直交方向
-    if(Math.abs(along)<=AKASHI_ALONG_M&&Math.abs(across)<=AKASHI_ACROSS_M){
-      if(++inside>=AKASHI_MIN_POINTS_IN_BAND) return true;
-    }
+    return [east*sinA+north*cosA,east*cosA-north*sinA];   // [軸方向, 直交方向]
+  });
+  let inside=0;
+  for(let i=1;i<local.length;i++){
+    const a=local[i-1],b=local[i];
+    /* 線分を帯の矩形で切る（Liang–Barsky）。 */
+    let t0=0,t1=1;const dx=b[0]-a[0],dy=b[1]-a[1];
+    const clip=(p,q)=>{if(p===0)return q>=0;const r=q/p;if(p<0){if(r>t1)return false;if(r>t0)t0=r;}else{if(r<t0)return false;if(r<t1)t1=r;}return true;};
+    if(!clip(-dx,a[0]+AKASHI_ALONG_M)||!clip(dx,AKASHI_ALONG_M-a[0])||!clip(-dy,a[1]+AKASHI_ACROSS_M)||!clip(dy,AKASHI_ACROSS_M-a[1]))continue;
+    inside+=Math.hypot(dx,dy)*Math.max(0,t1-t0);
+    if(inside>=AKASHI_MIN_LENGTH_IN_BAND_M)return true;
   }
   return false;
 }
