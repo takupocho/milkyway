@@ -6270,7 +6270,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1068-fs-map-size";
+const APP_VERSION="1069-map-pinch-and-keep-target";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9815,6 +9815,7 @@ if(el.mapSunLinesBtn)el.mapSunLinesBtn.addEventListener("click",()=>{mapSunLines
 /* 現在の焦点距離・センサー・縦横構図から得た水平画角を、選択地点から見た撮影方位として描く。 */
 /* 【v1066】地図に KMZ（👁 ON）の位置を赤丸（白縁）で出す。赤丸を押すと撮影位置からの直線＋距離、扇はその距離まで。
    もう一度押すと解除。👁 OFF・削除で自動解除。扇と同じタイミング（updateOsmFovOverlay）で描き直す。 */
+let osmMapZooming=false;   /* 【v1069】ピンチ中 */
 const mapKmzMarkers=new Map();   /* slot.id → circleMarker */
 let mapKmzTargetId=null,mapKmzLine=null,mapKmzLabel=null,mapKmzLabelText="";
 function mapKmzTargetLatLng(){
@@ -9841,8 +9842,11 @@ function mapKmzAimAtTarget(){
 }
 function updateOsmKmzMarkers(){
   if(!osmMapInstance||typeof kmzSlots==="undefined")return;
+  /* 【v1069】地図を閉じているときは何もしない。以前はここで赤丸を全部消し、選んだ被写体（mapKmzTargetId）も解除していたので、
+     シミュレーション画面に戻るだけで距離測定が消えていた。閉じている間は隠れた地図の中に残し、開いたときに描き直す。 */
+  if(!osmMapScreenOpen)return;
   const seen=new Set();
-  if(osmMapScreenOpen){
+  {
     kmzCommitEditor();   /* 入力欄で動かした直後でも今の位置に */
     for(const slot of kmzSlots){
       if(!slot||slot.visible===false||!slot.model)continue;
@@ -9878,6 +9882,7 @@ function updateOsmKmzMarkers(){
   }
 }
 function updateOsmFovOverlay(currentState=state){
+  if(osmMapZooming)return;           /* 【v1069】ピンチ中は触らない（zoomend で描き直す） */
   updateOsmSkyLines(currentState);   /* 【v1059】扇と同じタイミングで方位線も描き直す */
   updateOsmKmzMarkers();             /* 【v1066】KMZ の赤丸と、選んだ赤丸までの線 */
   if(!osmMapInstance||!osmMapScreenOpen||!currentState||!Number.isFinite(currentState.fovH)||!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
@@ -10031,6 +10036,10 @@ function initOsmMap(){
   const lat=Number.isFinite(+el.lat.value)?+el.lat.value:34.69;
   const lon=Number.isFinite(+el.lon.value)?+el.lon.value:135.19;
   osmMapInstance=L.map(el.osmMap,{zoomControl:true,attributionControl:true,zoomAnimation:false}).setView([lat,lon],13);
+  /* 【v1069】ピンチ（zoomstart〜zoomend）の間は Leaflet が SVG を CSS で拡大して見せる。その間に線の latlng を入れ直すと
+     二重に拡大されてズレるので、印を立てて updateOsmFovOverlay を止める。zoomend は下の updateOsmFovOverlay より先に登録。 */
+  osmMapInstance.on("zoomstart",()=>{osmMapZooming=true;});
+  osmMapInstance.on("zoomend moveend",()=>{osmMapZooming=false;});
   osmMapInstance.on("moveend zoomend",()=>{if(mapMoonLinesOn||mapSunLinesOn)updateOsmSkyLines();});   /* 【v1059】 */
   /* iOS Safariでの規則的な欠落を避けるため、初回取得は公式の単一ホストに固定する。 */
   osmStreetLayer=L.tileLayer(streetTileUrl(),{
