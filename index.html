@@ -2210,6 +2210,24 @@
   .kmz-building-status.error{color:#ffb2ac;border:1px solid rgba(255,100,90,.28);}
   /* 【v880】読み込み済みの模型の一覧。1行が1つ。 */
   .kmz-list{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;}
+  /* 【v1072】メモ */
+  .memo-btn-row{display:flex;gap:6px;flex-wrap:wrap;}
+  .memo-btn-row button{flex:1 1 auto;width:auto;min-width:0;margin:0;}
+  .memo-editor{margin-top:8px;padding:8px;border-radius:9px;border:1px solid rgba(243,176,79,.5);background:rgba(16,20,42,.55);display:flex;flex-direction:column;gap:6px;}
+  .memo-editor[hidden]{display:none;}
+  .memo-editor input[type="text"],.memo-editor textarea,#memoSearch{width:100%;box-sizing:border-box;padding:7px 9px;border-radius:7px;border:1px solid rgba(126,154,208,.4);background:rgba(8,12,26,.6);color:#fff;font:13px/1.45 system-ui,sans-serif;}
+  .memo-editor textarea{min-height:120px;resize:vertical;}
+  .memo-list{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+  .memo-list:empty::after{content:"メモはまだありません。「＋ 新しいメモ」で作れます。";display:block;font-size:11px;color:var(--dim-2);padding:6px 2px;}
+  .memo-row{padding:8px 9px;border-radius:8px;border:1px solid rgba(126,154,208,.26);background:rgba(16,20,42,.45);cursor:pointer;}
+  .memo-row:hover{border-color:#f3b04f;}
+  .memo-row-title{font-weight:700;font-size:13px;color:#fff;word-break:break-word;}
+  .memo-row-meta{font-size:10.5px;color:var(--dim-2);margin-top:2px;display:flex;gap:8px;flex-wrap:wrap;}
+  .memo-row-body{font-size:11.5px;color:rgba(226,232,246,.85);margin-top:4px;white-space:pre-wrap;word-break:break-word;max-height:4.6em;overflow:hidden;}
+  .memo-links{display:flex;flex-wrap:wrap;gap:6px 10px;margin-top:5px;}
+  .memo-links a{font-size:11px;color:#9fd1ff;text-decoration:underline;word-break:break-all;}
+  .memo-sync-code{font:700 15px/1.4 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#ffe08a;word-break:break-all;-webkit-user-select:all;user-select:all;}
+  .memo-sync-status.error{color:#ff9a9a;}
   /* 【v1070】「KMZを追加」の選択（花火／ファイル）と号数の一覧。 */
   .kmz-add-chooser{display:flex;flex-direction:column;gap:6px;margin:6px 0 8px;padding:8px;border-radius:9px;border:1px solid rgba(243,176,79,.45);background:rgba(16,20,42,.5);}
   .kmz-add-chooser[hidden]{display:none;}
@@ -5048,6 +5066,44 @@
         </div>
       </section>
 
+      <!-- 【v1072】メモ（端末間で同期） -->
+      <section class="ctrl-group collapsible collapsed" id="memoSection">
+        <h2 class="ctrl-group-toggle">📝 メモ<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <div class="memo-btn-row">
+            <button id="memoNewBtn" type="button" class="primary">＋ 新しいメモ</button>
+            <button id="memoSyncNowBtn" type="button" class="ghost">🔄 同期</button>
+          </div>
+          <p id="memoSyncStatus" class="map-hint memo-sync-status" style="margin-top:4px;" aria-live="polite"></p>
+          <div id="memoEditor" class="memo-editor" hidden>
+            <input id="memoTitle" type="text" placeholder="タイトル" maxlength="120">
+            <textarea id="memoBody" placeholder="本文。URL を書くと一覧でリンクになります。"></textarea>
+            <label class="map-hint" style="display:flex;align-items:center;gap:6px;margin:0;"><input id="memoAttachPlace" type="checkbox" checked style="width:auto;margin:0;"> 今の観測地点を添付する（<span id="memoAttachPlaceName">—</span>）</label>
+            <div class="memo-btn-row">
+              <button id="memoInsertConditionBtn" type="button" class="ghost">📷 今の撮影条件を貼る</button>
+              <button id="memoGoPlaceBtn" type="button" class="ghost" hidden>📍 このメモの場所へ移動</button>
+            </div>
+            <div class="memo-btn-row">
+              <button id="memoSaveBtn" type="button" class="primary">保存</button>
+              <button id="memoCancelBtn" type="button" class="ghost">閉じる</button>
+              <button id="memoDeleteBtn" type="button" class="ghost" style="color:#ff9a9a;" hidden>削除…</button>
+            </div>
+          </div>
+          <input id="memoSearch" type="search" placeholder="🔍 メモを検索（タイトル・本文・場所）" style="margin-top:8px;">
+          <div id="memoList" class="memo-list"></div>
+          <details style="margin-top:10px;">
+            <summary class="map-hint" style="cursor:pointer;color:var(--ink);font-weight:700;">☁ 端末間の同期（同期コード）</summary>
+            <p class="map-hint" style="margin-top:6px;">このコードが「あなたのメモ帳の鍵」です。別の端末で同じメモを見るには、そちらの StarChase の「別の端末のコードを入力」にこのコードを入れます。コードを知っている人はメモを読めるので、パスワードなどは書かないでください。メモは Google のクラウド（Firebase）に置かれます。</p>
+            <div id="memoSyncCode" class="memo-sync-code" style="margin-top:6px;"></div>
+            <div class="memo-btn-row" style="margin-top:6px;">
+              <button id="memoCodeCopyBtn" type="button" class="ghost">コードをコピー</button>
+              <button id="memoCodeEnterBtn" type="button" class="ghost">別の端末のコードを入力…</button>
+              <button id="memoCodeNewBtn" type="button" class="ghost">新しいコードにする…</button>
+            </div>
+          </details>
+        </div>
+      </section>
+
       <!-- 【v1054】設定の書き出し -->
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">設定の書き出し・初期化<span class="ctrl-arrow">▼</span></h2>
@@ -6304,7 +6360,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1071-map-hide-sticks";
+const APP_VERSION="1072-memo-sync";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14155,6 +14211,203 @@ function settingsExportText(){
   const stamp=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
   return JSON.stringify({app:"StarChase",version:APP_VERSION,exportedAt:stamp,settings:collectPersistedSettings()},null,2);
 }
+/* ═════ 【v1072】メモ（端末間の同期つき） ═════
+   保存先：端末（persistentSet）＋ Firestore の sync/{同期コード}（REST。SDK は読まない）。
+   書類：{data: メモ配列の JSON 文字列, updatedAt: ms, app:"starchase"}。
+   合流：1 件ごとに updatedAt が新しい方を採用。削除は deleted:true の墓標（90 日で掃除）。
+   apiKey は「どのプロジェクトか」の札で秘密ではない（守りは Firestore のルール）。 */
+const MEMO_KEY="starchase-memos-v1",MEMO_CODE_KEY="starchase-sync-code-v1";
+const MEMO_FIREBASE={apiKey:"AIzaSyAuznBA0nXa6cMewXB0o46BlGJbstgDDm4",projectId:"starchase"};
+let memos=[],memoSyncCode="",memoEditingId=null,memoSyncTimer=0,memoSyncBusy=false,memoSyncQueued=false;
+const memoEl=id=>document.getElementById(id);
+function memoNewCode(){const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";const a=new Uint8Array(16);crypto.getRandomValues(a);return [...a].map(v=>A[v%32]).join("");}
+function memoCodePretty(c){return (c||"").replace(/(.{4})(?=.)/g,"$1-");}
+function memoNormalizeCode(s){return String(s||"").toUpperCase().replace(/[^A-Z2-9]/g,"");}
+function memoDocUrl(code){return `https://firestore.googleapis.com/v1/projects/${MEMO_FIREBASE.projectId}/databases/(default)/documents/sync/${code}?key=${MEMO_FIREBASE.apiKey}`;}
+function memoClean(n){return {id:String(n.id),title:String(n.title||""),body:String(n.body||""),
+  lat:Number.isFinite(+n.lat)&&n.lat!==null&&n.lat!==""?+n.lat:null,lon:Number.isFinite(+n.lon)&&n.lon!==null&&n.lon!==""?+n.lon:null,
+  place:String(n.place||""),createdAt:+n.createdAt||0,updatedAt:+n.updatedAt||0,deleted:n.deleted===true};}
+function memoSerial(list){return JSON.stringify(list.map(memoClean));}
+function memoMerge(a,b){
+  const m=new Map();
+  for(const n of a||[]){if(n&&n.id)m.set(String(n.id),memoClean(n));}
+  for(const n of b||[]){if(!n||!n.id)continue;const c=memoClean(n),o=m.get(c.id);if(!o||c.updatedAt>o.updatedAt)m.set(c.id,c);}
+  return [...m.values()].sort((x,y)=>y.updatedAt-x.updatedAt||(x.id<y.id?-1:1));
+}
+function memoPrune(list){const old=Date.now()-90*86400e3;return list.filter(n=>!(n.deleted&&n.updatedAt<old));}
+function memoSetSyncStatus(text,isError){const p=memoEl("memoSyncStatus");if(!p)return;p.textContent=text;p.classList.toggle("error",!!isError);}
+function memoErrorText(e){
+  const m=String(e&&e.message||e);
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m))return "通信できません（オフライン）";
+  if(/not been used|SERVICE_DISABLED|is disabled/i.test(m))return "Firestore がまだ作られていません（Firebase の管理画面 →「Firestore Database」→「データベースを作成」）";
+  if(/HTTP 403/.test(m))return "クラウド側の許可がありません（Firestore のルールが未設定か、コードの形が違う）";
+  if(/does not exist/i.test(m))return "Firestore データベースがまだ作られていません（Firebase の管理画面で「データベースを作成」）";
+  if(/HTTP 429/.test(m))return "今日の無料枠を使い切りました（明日また同期します）";
+  return m;
+}
+async function memoLoadLocal(){
+  try{const s=await persistentGet(MEMO_KEY);const v=s?JSON.parse(s):[];memos=Array.isArray(v)?v.map(memoClean):[];}catch(e){memos=[];}
+  let code=memoNormalizeCode(await persistentGet(MEMO_CODE_KEY));
+  if(code.length!==16){code=memoNewCode();await persistentSet(MEMO_CODE_KEY,code);}
+  memoSyncCode=code;
+  const box=memoEl("memoSyncCode");if(box)box.textContent=memoCodePretty(code);
+}
+async function memoSaveLocal(){await persistentSet(MEMO_KEY,JSON.stringify(memos));memoRenderList();memoScheduleSync();}
+function memoScheduleSync(){if(memoSyncTimer)clearTimeout(memoSyncTimer);memoSyncTimer=setTimeout(()=>{memoSyncTimer=0;memoSync();},800);}
+async function memoCloudGet(code){
+  const r=await fetch(memoDocUrl(code),{cache:"no-store"});
+  if(r.status===404){
+    let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}
+    if(/database/i.test(msg)&&/not exist/i.test(msg))throw new Error(msg);
+    return {notes:[],updatedAt:0,missing:true};
+  }
+  if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
+  const j=await r.json(),f=j.fields||{};
+  let notes=[];try{notes=JSON.parse((f.data&&f.data.stringValue)||"[]");}catch(e){notes=[];}
+  return {notes:Array.isArray(notes)?notes:[],updatedAt:+((f.updatedAt&&f.updatedAt.integerValue)||0),missing:false};
+}
+async function memoCloudPut(code,list){
+  const body={fields:{data:{stringValue:memoSerial(list)},updatedAt:{integerValue:String(Date.now())},app:{stringValue:"starchase"}}};
+  const r=await fetch(memoDocUrl(code),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
+}
+/* 端末とクラウドを合流させ、違いがあれば両方へ書く。同時に呼ばれたら 1 回待ってから続けて 1 回だけ。 */
+async function memoSync(){
+  if(memoSyncBusy){memoSyncQueued=true;return;}
+  memoSyncBusy=true;memoSetSyncStatus("同期中…");
+  try{
+    const code=memoSyncCode;
+    const cloud=await memoCloudGet(code);
+    const merged=memoPrune(memoMerge(memos,cloud.notes));
+    const localChanged=memoSerial(merged)!==memoSerial(memos);
+    memos=merged;
+    if(localChanged){await persistentSet(MEMO_KEY,JSON.stringify(memos));memoRenderList();}
+    if(cloud.missing||memoSerial(merged)!==memoSerial(memoMerge(cloud.notes,[])))await memoCloudPut(code,merged);
+    const when=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+    memoSetSyncStatus(`☁ 同期しました ${when}（${memos.filter(n=>!n.deleted).length}件）`);
+  }catch(e){memoSetSyncStatus(`同期できませんでした：${memoErrorText(e)}。メモは端末内に保存されています。`,true);}
+  finally{memoSyncBusy=false;if(memoSyncQueued){memoSyncQueued=false;memoSync();}}
+}
+/* ── 一覧 ── */
+function memoLinkify(text){
+  const parts=[];let last=0;const re=/https?:\/\/[^\s<>"'）」]+/g;let m;
+  while((m=re.exec(text))){parts.push(escapeHtml(text.slice(last,m.index)));parts.push(`<a href="${escapeHtml(m[0])}" target="_blank" rel="noopener noreferrer">${escapeHtml(m[0])}</a>`);last=m.index+m[0].length;}
+  parts.push(escapeHtml(text.slice(last)));return parts.join("");
+}
+function memoUrls(text){return (String(text||"").match(/https?:\/\/[^\s<>"'）」]+/g)||[]);}
+function memoDateText(ms){const d=new Date(ms||0);return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;}
+function memoRenderList(){
+  const list=memoEl("memoList");if(!list)return;
+  const q=(memoEl("memoSearch")&&memoEl("memoSearch").value||"").trim().toLowerCase();
+  list.textContent="";
+  for(const n of memos){
+    if(n.deleted)continue;
+    if(q&&!(`${n.title}\n${n.body}\n${n.place}`.toLowerCase().includes(q)))continue;
+    const row=document.createElement("div");row.className="memo-row";row.dataset.id=n.id;
+    const urls=memoUrls(n.body);
+    row.innerHTML=`<div class="memo-row-title">${escapeHtml(n.title||(n.body||"").split("\n")[0].slice(0,40)||"（無題）")}</div>
+      <div class="memo-row-meta"><span>${memoDateText(n.updatedAt)}</span>${n.place||Number.isFinite(n.lat)?`<span>📍 ${escapeHtml(n.place||`${(+n.lat).toFixed(4)}, ${(+n.lon).toFixed(4)}`)}</span>`:""}</div>
+      ${n.body?`<div class="memo-row-body">${escapeHtml(n.body)}</div>`:""}
+      ${urls.length?`<div class="memo-links">${urls.map(u=>`<a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer">${escapeHtml(u.replace(/^https?:\/\//,"").slice(0,48))}${u.length>56?"…":""}</a>`).join("")}</div>`:""}`;
+    row.addEventListener("click",e=>{if(e.target.closest("a"))return;memoOpenEditor(n.id);});
+    list.appendChild(row);
+  }
+}
+/* ── 編集 ── */
+function memoCurrentPlace(){
+  const lat=+el.lat.value,lon=+el.lon.value;
+  const name=(typeof currentObservedPlaceName==="string"&&currentObservedPlaceName)||"";
+  return {lat:Number.isFinite(lat)?lat:null,lon:Number.isFinite(lon)?lon:null,place:name};
+}
+function memoOpenEditor(id){
+  const ed=memoEl("memoEditor");
+  memoEditingId=id||null;
+  const n=id?memos.find(x=>x.id===id):null;
+  memoEl("memoTitle").value=n?n.title:"";
+  memoEl("memoBody").value=n?n.body:"";
+  const here=memoCurrentPlace();
+  memoEl("memoAttachPlace").checked=n?Number.isFinite(n.lat):true;
+  memoEl("memoAttachPlaceName").textContent=here.place||(Number.isFinite(here.lat)?`${here.lat.toFixed(4)}, ${here.lon.toFixed(4)}`:"—");
+  memoEl("memoDeleteBtn").hidden=!n;
+  memoEl("memoGoPlaceBtn").hidden=!(n&&Number.isFinite(n.lat)&&Number.isFinite(n.lon));
+  ed.hidden=false;
+  ed.scrollIntoView({block:"nearest"});
+  if(!n)memoEl("memoTitle").focus();
+}
+function memoCloseEditor(){memoEl("memoEditor").hidden=true;memoEditingId=null;}
+async function memoSaveFromEditor(){
+  const title=memoEl("memoTitle").value.trim(),body=memoEl("memoBody").value.replace(/\s+$/,"");
+  if(!title&&!body){memoSetSyncStatus("タイトルか本文を入れてください",true);return;}
+  const now=Date.now();
+  let n=memoEditingId?memos.find(x=>x.id===memoEditingId):null;
+  if(!n){n={id:`${now.toString(36)}${Math.random().toString(36).slice(2,8)}`,createdAt:now,lat:null,lon:null,place:""};memos.unshift(n);}
+  n.title=title;n.body=body;n.updatedAt=now;n.deleted=false;
+  if(memoEl("memoAttachPlace").checked){
+    /* 既に場所が付いているメモは、その場所を保つ（開いた地点で上書きしない）。新規は今の地点。 */
+    if(!Number.isFinite(n.lat)||!Number.isFinite(n.lon)){const p=memoCurrentPlace();n.lat=p.lat;n.lon=p.lon;n.place=p.place;}
+  }else{n.lat=null;n.lon=null;n.place="";}
+  memos=memoMerge(memos,[]);
+  memoCloseEditor();
+  await memoSaveLocal();
+}
+async function memoDeleteFromEditor(){
+  const n=memoEditingId?memos.find(x=>x.id===memoEditingId):null;if(!n)return;
+  if(!window.confirm(`「${n.title||"（無題）"}」を削除します。よろしいですか？`))return;
+  n.deleted=true;n.updatedAt=Date.now();
+  memoCloseEditor();await memoSaveLocal();
+}
+function memoConditionLine(){
+  const s=state;if(!s)return "";
+  const when=(document.querySelector(".dt-time-label .val")||{}).textContent||"";
+  const p=memoCurrentPlace();
+  const alt=Number.isInteger(+s.facingAlt)?String(+s.facingAlt):(+s.facingAlt).toFixed(1);
+  return `📷 ${when} ${p.place||""}${Number.isFinite(p.lat)?`（${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}）`:""}\n方位 ${Math.round(s.facingAz)}° 仰角 ${alt}° 焦点距離 ${formatFocalMm(s.focalLength)}mm F${(+s.aperture).toFixed(1)} ISO${s.iso} SS${s.shutter}秒 ${s.sensor&&s.sensor.name||""}`;
+}
+/* ── 同期コード ── */
+async function memoCopyCode(){
+  const text=memoCodePretty(memoSyncCode);
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);memoSetSyncStatus("同期コードをコピーしました");return;}}catch(e){}
+  memoSetSyncStatus(`コピーできませんでした。手で控えてください：${text}`,true);
+}
+async function memoEnterCode(){
+  const raw=window.prompt("別の端末に表示されている同期コードを入力してください（ハイフンは無くても構いません）。\n今の端末のメモは、そのコードのメモと合流します。");
+  if(raw===null)return;
+  const code=memoNormalizeCode(raw);
+  if(code.length!==16){memoSetSyncStatus("コードは英数字 16 文字です（0・O・1・I は使いません）",true);return;}
+  if(code===memoSyncCode){memoSetSyncStatus("今と同じコードです");return;}
+  memoSyncCode=code;await persistentSet(MEMO_CODE_KEY,code);
+  memoEl("memoSyncCode").textContent=memoCodePretty(code);
+  memoSync();
+}
+async function memoRenewCode(){
+  if(!window.confirm("新しい同期コードを作ります。今のメモは新しいコードの側へ引き継ぎますが、他の端末で同じメモを見るには新しいコードを入れ直す必要があります。\nよろしいですか？"))return;
+  memoSyncCode=memoNewCode();await persistentSet(MEMO_CODE_KEY,memoSyncCode);
+  memoEl("memoSyncCode").textContent=memoCodePretty(memoSyncCode);
+  memoSync();
+}
+(function memoInit(){
+  if(!memoEl("memoList"))return;
+  memoEl("memoNewBtn").addEventListener("click",()=>memoOpenEditor(null));
+  memoEl("memoSyncNowBtn").addEventListener("click",()=>memoSync());
+  memoEl("memoSaveBtn").addEventListener("click",memoSaveFromEditor);
+  memoEl("memoCancelBtn").addEventListener("click",memoCloseEditor);
+  memoEl("memoDeleteBtn").addEventListener("click",memoDeleteFromEditor);
+  memoEl("memoInsertConditionBtn").addEventListener("click",()=>{const ta=memoEl("memoBody");const line=memoConditionLine();ta.value=(ta.value.replace(/\s+$/,"")+(ta.value.trim()?"\n\n":"")+line);ta.focus();});
+  memoEl("memoGoPlaceBtn").addEventListener("click",()=>{
+    const n=memoEditingId?memos.find(x=>x.id===memoEditingId):null;if(!n||!Number.isFinite(n.lat))return;
+    el.lat.value=(+n.lat).toFixed(5);el.lon.value=(+n.lon).toFixed(5);el.tz.value=Math.max(-12,Math.min(14,Math.round(n.lon/7.5)/2));el.citySelect.value=0;
+    update();reverseGeocodeAndShow(+n.lat,+n.lon);scheduleSaveSettings();
+    memoSetSyncStatus(`観測地点を「${n.place||"メモの場所"}」へ移しました`);
+  });
+  memoEl("memoSearch").addEventListener("input",memoRenderList);
+  memoEl("memoCodeCopyBtn").addEventListener("click",memoCopyCode);
+  memoEl("memoCodeEnterBtn").addEventListener("click",memoEnterCode);
+  memoEl("memoCodeNewBtn").addEventListener("click",memoRenewCode);
+  /* 節を開いたときにも同期（開きっぱなしの端末で他方の変更を拾う）。 */
+  const sec=memoEl("memoSection");
+  if(sec)sec.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{setTimeout(()=>{if(!sec.classList.contains("collapsed"))memoSync();},0);});
+  memoLoadLocal().then(()=>{memoRenderList();memoSync();});
+})();
 function settingsExportFill(){
   let text;
   try{text=settingsExportText();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
