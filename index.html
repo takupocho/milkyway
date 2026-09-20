@@ -6270,7 +6270,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1067-map-kmz-aim";
+const APP_VERSION="1068-fs-map-size";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9882,7 +9882,14 @@ function updateOsmFovOverlay(currentState=state){
   updateOsmKmzMarkers();             /* 【v1066】KMZ の赤丸と、選んだ赤丸までの線 */
   if(!osmMapInstance||!osmMapScreenOpen||!currentState||!Number.isFinite(currentState.fovH)||!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   const origin=L.latLng(osmCandidateLat,osmCandidateLon);
-  const size=osmMapInstance.getSize();
+  let size=osmMapInstance.getSize();
+  /* 【v1068】器の大きさと Leaflet が覚えている大きさが違えば測り直す。全画面の出入りで器が変わったのに古いままだと、
+     扇・線・赤丸の SVG が古い大きさで作られ、地図を動かしたあとに端で切れる（利用者の報告）。 */
+  const box=osmMapInstance.getContainer();
+  if(box&&box.clientWidth&&box.clientHeight&&(Math.abs(size.x-box.clientWidth)>1||Math.abs(size.y-box.clientHeight)>1)){
+    osmMapInstance.invalidateSize({pan:false});
+    size=osmMapInstance.getSize();
+  }
   if(!size.x||!size.y) return;
   const centerPoint=osmMapInstance.latLngToContainerPoint(origin);
   const radiusPx=Math.max(54,Math.min(size.x,size.y)*0.34);
@@ -16135,6 +16142,8 @@ function enterFullscreenSim(){
       droneMapInstance.invalidateSize({pan:false});
       if(wasProgrammatic!==null)setTimeout(()=>{droneMapProgrammatic=wasProgrammatic;},0);
     }
+    /* 【v1068】観測地点マップ（地図モード）も器が変わるので測り直す。 */
+    if(osmMapScreenOpen&&osmMapInstance){osmMapInstance.invalidateSize({pan:false});updateOsmFovOverlay();}
     const second=fsRestorePlace(keepPlace,"入った直後");
     if(second)notes.push(second);
     update();
@@ -16158,6 +16167,7 @@ function exitFullscreenSim(){
       droneMapInstance.invalidateSize({pan:false});
       if(wasProgrammatic!==null)setTimeout(()=>{droneMapProgrammatic=wasProgrammatic;},0);
     }
+    if(osmMapScreenOpen&&osmMapInstance){osmMapInstance.invalidateSize({pan:false});updateOsmFovOverlay();}   /* 【v1068】 */
     /* 【v962】戻すときも、全画面のせいで観測地点が動くことは無いようにする。 */
     fsRestorePlace(keepPlace,"戻すとき");
     update();
