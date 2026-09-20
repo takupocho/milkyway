@@ -6270,7 +6270,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1066-map-kmz-target";
+const APP_VERSION="1067-map-kmz-aim";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9715,6 +9715,7 @@ function setOsmCandidate(lat,lon,moveMap=false){
   updateOsmSelectionMarker();
   if(moveMap&&osmMapInstance) osmMapInstance.setView([lat,lon],Math.max(15,osmMapInstance.getZoom()));
   updateOsmCoordinateLabel();
+  if(typeof mapKmzAimAtTarget==="function")mapKmzAimAtTarget();   /* 【v1067】被写体を選んでいればピンを動かしても向け直す */
   updateOsmFovOverlay();
   syncOsmApplyHighlight();
   if(typeof geoTrackRender==="function"&&geoTrackOn)geoTrackRender();   /* 【v1008】ピンまでの距離 */
@@ -9824,6 +9825,20 @@ function mapKmzTargetLatLng(){
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return null;
   return L.latLng(cfg.lat,cfg.lon);
 }
+/* 【v1067】選んだ赤丸（被写体）へ撮影方向を向ける。ピン（選択地点）→被写体の方位角を facingAz に。
+   赤丸を選んだとき、ピンを動かしたときに呼ぶ。1° 未満の違いなら描き直さない。 */
+function mapKmzAimAtTarget(){
+  const target=mapKmzTargetLatLng();
+  if(!target||!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon))return false;
+  const az=terrainDistanceAndBearing(osmCandidateLat,osmCandidateLon,target.lat,target.lng).bearing;
+  const next=roundToAimStep(norm360(az));
+  if(Math.abs(shortestAngleDelta(+el.facingAz.value||0,next))<.05)return false;
+  el.facingAz.value=next;
+  el.azVal.textContent=`${Math.round(next)}°`;
+  scheduleCameraViewUpdate();
+  scheduleSaveSettings();
+  return true;
+}
 function updateOsmKmzMarkers(){
   if(!osmMapInstance||typeof kmzSlots==="undefined")return;
   const seen=new Set();
@@ -9837,7 +9852,7 @@ function updateOsmKmzMarkers(){
       let m=mapKmzMarkers.get(slot.id);
       if(!m){
         m=L.circleMarker([cfg.lat,cfg.lon],{pane:"markerPane",radius:9,color:"#fff",weight:2.5,opacity:1,fillColor:"#ff2a2a",fillOpacity:1,bubblingMouseEvents:false,className:"map-kmz-dot"}).addTo(osmMapInstance);
-        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;updateOsmFovOverlay();});
+        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();updateOsmFovOverlay();});   /* 【v1067】選んだら向ける */
         mapKmzMarkers.set(slot.id,m);
       }else m.setLatLng([cfg.lat,cfg.lon]);
       const isTarget=slot.id===mapKmzTargetId;
