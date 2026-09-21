@@ -6362,7 +6362,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1073-noindex";
+const APP_VERSION="1074-bridge-over-reflection";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -29524,6 +29524,17 @@ function drawPhoto(ctx,s){
         // 水面反射だけへ薄い寒色補正を重ねる。source-atopにより既存リフレのある画素だけが対象となり、
         // 水面そのものや通常の空・山の色は変えない。
         ctx.save();ctx.globalCompositeOperation="source-atop";ctx.fillStyle="rgba(35,78,155,.12)";ctx.fillRect(0,0,W,H);ctx.restore();
+        /* 【v1074】橋の下の映り込みを抜いてから重ねる。橋は半透明なので、映り込みの上から描き直しても（v777 の戻し）
+           下の暗い映り込みが透けて「川が橋の上に乗っている」ように見えていた（利用者の報告、上空 91m の見下ろし）。
+           抜いておけば地形の段で描いた橋がそのまま残るので、戻しは要らない（貼り直しの再生中だけ従来の戻し）。 */
+        drawPhoto._bridgeReflectionPunched=false;
+        {const ov=drawPhoto._bridgeForegroundOverlay;
+          if(bridgeLinesVisible&&ov&&ov.key===terrainGeometryKey&&!cameraPano.playing){
+            ctx.save();ctx.globalCompositeOperation="destination-out";ctx.fillStyle="#000";ctx.strokeStyle="#000";ctx.lineJoin="round";ctx.lineCap="round";
+            for(let i=0;i<ov.buckets;i++){ctx.fill(ov.pierShade[i]);ctx.fill(ov.pier[i]);ctx.fill(ov.side[i]);ctx.fill(ov.deck[i]);ctx.lineWidth=2;ctx.stroke(ov.edge[i]);}
+            ctx.restore();
+            drawPhoto._bridgeReflectionPunched=true;
+          }}
         /* 【v1045】映り込みも水面の不透明度で重ねる（写真のときだけ効く）。 */
         mainCtx.save();mainCtx.globalAlpha=photoWaterColorAlpha(dayFactor);mainCtx.drawImage(reflectionCanvas,0,0);mainCtx.restore();
         return true;
@@ -34785,7 +34796,7 @@ function drawPhoto(ctx,s){
       const __r0=performance.now();
       try{waterReflectionDrawn=drawWaterReflections();terrainStageProf.reflect+=performance.now()-__r0;}
       catch(reflectionError){console.warn("Water reflection drawing was skipped for this frame.",reflectionError);}
-      if(waterReflectionDrawn) restoreBridgeForegroundAboveWater();
+      if(waterReflectionDrawn&&!drawPhoto._bridgeReflectionPunched) restoreBridgeForegroundAboveWater();   /* 【v1074】抜いたときは戻さない */
       // 富士山の実稜線が確認できた場合だけ、撮影月に応じた専用の雪化粧を地形の上へ重ねる。
       drawSeasonalFujiSnow();
       /* KMZ建物は、地形だけでなく水面レイヤーよりも後に描く。
