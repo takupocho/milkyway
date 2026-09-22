@@ -5774,11 +5774,9 @@
                 <button id="osmLayerToggleBtn" type="button" class="layer-active map-help" data-help="地図／衛星画像切替" aria-label="衛星画像に切り替える" data-tooltip="衛星画像に切り替え" title="衛星画像に切り替え">
                   <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 19.5C10.4 23 15.2 23.3 19 20L12 13C8.8 16.3 8.5 18 7 19.5Z" fill="currentColor"/><path d="M9 22L5.5 25.5M16 13L20 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="18.2" y="5.8" width="5.2" height="8.2" rx=".8" transform="rotate(45 18.2 5.8)" stroke="currentColor" stroke-width="1.7"/><rect x="20.1" y="15.2" width="5.2" height="8.2" rx=".8" transform="rotate(-45 20.1 15.2)" stroke="currentColor" stroke-width="1.7"/><circle cx="11" cy="8" r="1.5" fill="currentColor"/></svg>
                 </button>
-                <button id="osmLocateBtn" type="button" class="map-help" data-help="現在地を自動取得" aria-label="現在地へ移動" data-tooltip="現在地" title="現在地">
-                  <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="9" fill="rgba(255,255,255,.72)"/><circle cx="16" cy="16" r="5.2" fill="#3432a6" stroke="#fff" stroke-width="2"/></svg>
-                </button>
+                <!-- 【v1081】「現在地を自動取得（📍）」は下の「現在地を追う（◎）」の長押しにまとめた。 -->
                 <!-- 【v1008】現在地を追う（ON/OFF）。 -->
-                <button id="osmTrackBtn" type="button" class="map-help" data-help="現在地を追う（青い点と、撮影位置までの距離）" aria-label="現在地を追う" aria-pressed="false" data-tooltip="現在地を追う" title="現在地を追う（青い点と、撮影位置までの距離）">
+                <button id="osmTrackBtn" type="button" class="map-help" data-help="押す＝現在地を追う（青い点と距離）／長押し＝ピンを現在地へ" aria-label="現在地を追う（長押しでピンを現在地へ）" aria-pressed="false" data-tooltip="現在地を追う（長押しで移動）" title="押す＝現在地を追う（青い点と、撮影位置までの距離）／長押し＝ピンを現在地へ移動">
                   <svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="8.5" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="16" r="3.2" fill="currentColor"/><path d="M16 3.5v5M16 23.5v5M3.5 16h5M23.5 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
                 <button id="osmApplyBtn" type="button" class="primary map-help has-dash-ring" data-help="観測地点への設定" aria-label="選択した位置を観測地点に設定" data-tooltip="この場所に設定" title="この場所に設定">
@@ -6408,7 +6406,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1080-drive-log";
+const APP_VERSION="1081-locate-longpress";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7645,7 +7643,7 @@ const el={
   skySearchSelect:$("skySearchSelect"), mobileSkySearchSelect:$("mobileSkySearchSelect"), mobileMapToggleBtn:$("mobileMapToggleBtn"), skySearchPopup:$("skySearchPopup"),
   simulationClockOverlay:$("simulationClockOverlay"), simulationClockDate:$("simulationClockDate"), simulationClockTime:$("simulationClockTime"),
   simInfoPanel:$("simInfoPanel"), popupInfoBtn:$("popupInfoBtn"),
-  osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmLocateBtn:$("osmLocateBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
+  osmMapPanel:$("osmMapPanel"), osmMap:$("osmMap"), osmLayerToggleBtn:$("osmLayerToggleBtn"), osmGoogleOpenBtn:$("osmGoogleOpenBtn"), osmApplyBtn:$("osmApplyBtn"), osmMapCoordinate:$("osmMapCoordinate"),
   osmGoogleImportBtn:$("osmGoogleImportBtn"), osmGoogleImportOverlay:$("osmGoogleImportOverlay"), osmGoogleImportPanel:$("osmGoogleImportPanel"), osmGoogleImportInput:$("osmGoogleImportInput"), osmGooglePasteBtn:$("osmGooglePasteBtn"), osmGoogleImportCloseBtn:$("osmGoogleImportCloseBtn"), osmGoogleImportRunBtn:$("osmGoogleImportRunBtn"), osmGoogleImportStatus:$("osmGoogleImportStatus"), osmPlaceSuggest:$("osmPlaceSuggest"),
   droneMapTrackBtn:$("droneMapTrackBtn"), droneMapTrackReadout:$("droneMapTrackReadout"), osmTrackBtn:$("osmTrackBtn"), osmTrackReadout:$("osmTrackReadout"),   /* 【v1008】 */
   favPlacesBtn:$("favPlacesBtn"), favPlacesOverlay:$("favPlacesOverlay"), favPlacesCloseBtn:$("favPlacesCloseBtn"), favEditBox:$("favEditBox"), favEditCoord:$("favEditCoord"), favEditName:$("favEditName"), favEditKindRow:$("favEditKindRow"), favEditDeleteBtn:$("favEditDeleteBtn"), favEditSaveBtn:$("favEditSaveBtn"), favEditStatus:$("favEditStatus"), favCount:$("favCount"), favFilterRow:$("favFilterRow"), favSearch:$("favSearch"), favList:$("favList"), favFitAllBtn:$("favFitAllBtn"),   /* 【v1007】 */
@@ -10925,19 +10923,43 @@ el.osmLayerToggleBtn.addEventListener("click",()=>{
     if(osmTileLayer) osmTileLayer.redraw();
   });
 });
-el.osmLocateBtn.addEventListener("click",()=>{
+/* 【v1081】「現在地を追う（◎）」の長押しで、ピンを現在地へ移動する（旧「現在地を自動取得（📍）」）。
+   追っている最中なら持っている位置をすぐ使い、そうでなければ 1 回だけ測位する。 */
+function osmMoveCandidateToCurrentPosition(){
+  const btn=el.osmTrackBtn;
+  if(geoTrackPos&&Number.isFinite(geoTrackPos.lat)&&Number.isFinite(geoTrackPos.lon)){
+    setOsmCandidate(geoTrackPos.lat,geoTrackPos.lon,true);
+    return;
+  }
   if(!navigator.geolocation){alert("この環境では位置情報を取得できません。");return;}
-  el.osmLocateBtn.classList.add("loading");
-  el.osmLocateBtn.setAttribute("aria-label","現在地を取得中");
-  el.osmLocateBtn.disabled=true;
+  if(btn){btn.classList.add("loading");btn.setAttribute("aria-label","現在地を取得中");btn.disabled=true;}
+  const done=()=>{if(btn){btn.classList.remove("loading");btn.setAttribute("aria-label","現在地を追う（長押しでピンを現在地へ）");btn.disabled=false;}};
   navigator.geolocation.getCurrentPosition(pos=>{
-    el.osmLocateBtn.classList.remove("loading");el.osmLocateBtn.setAttribute("aria-label","現在地へ移動");el.osmLocateBtn.disabled=false;
+    done();
     setOsmCandidate(pos.coords.latitude,pos.coords.longitude,true);
   },()=>{
-    el.osmLocateBtn.classList.remove("loading");el.osmLocateBtn.setAttribute("aria-label","現在地へ移動");el.osmLocateBtn.disabled=false;
+    done();
     alert("現在地を取得できませんでした。地図をタップして観測地点を選んでください。");
   },{enableHighAccuracy:true,timeout:10000,maximumAge:60000});
-});
+}
+if(el.osmTrackBtn){
+  const LOCATE_LONG_PRESS_MS=550;
+  let locateTimer=0,locateFired=false;
+  const cancel=()=>{if(locateTimer){clearTimeout(locateTimer);locateTimer=0;}};
+  el.osmTrackBtn.addEventListener("pointerdown",()=>{
+    locateFired=false;cancel();
+    locateTimer=setTimeout(()=>{
+      locateTimer=0;locateFired=true;
+      if(navigator.vibrate)try{navigator.vibrate(12);}catch(e){}   /* 長押しが効いた合図 */
+      osmMoveCandidateToCurrentPosition();
+    },LOCATE_LONG_PRESS_MS);
+  });
+  ["pointerup","pointerleave","pointercancel"].forEach(type=>el.osmTrackBtn.addEventListener(type,cancel));
+  /* 長押しが成立したときは、そのあとのクリック（追う ON/OFF）を捨てる。 */
+  el.osmTrackBtn.addEventListener("click",e=>{
+    if(locateFired){e.preventDefault();e.stopImmediatePropagation();locateFired=false;}
+  },true);
+}
 el.osmApplyBtn.addEventListener("click",()=>{
   if(!Number.isFinite(osmCandidateLat)||!Number.isFinite(osmCandidateLon)) return;
   el.lat.value=osmCandidateLat.toFixed(5);
