@@ -6362,7 +6362,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1074-bridge-over-reflection";
+const APP_VERSION="1075-no-moving-scale";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -35841,7 +35841,9 @@ let suppressPhotoDrawForUpdate=false;
    中間のレイヤーはすべてW/Hから寸法を取っているので、ここだけで付いてくる。 */
 let renderSupersample=1;
 /* 【v1057】省電力 ON のとき、スティックで動いている間だけ描画バッファを縮める（800×1200 → 600×900）。
-   スマホで 1 コマが長く、スティックの反応が遅く見えるため。指を離したら 100% に戻して描き直す。 */
+   スマホで 1 コマが長く、スティックの反応が遅く見えるため。指を離したら 100% に戻して描き直す。
+   【v1075】やめた。バッファの大きさを変えると中身が消えるので、スティックを入れた瞬間に一度真っ黒になり、
+   さらに入れたとき・離したときの 2 回、地形を全部描き直すので、かえって重かった（利用者の報告）。関数は残すが呼ばない。 */
 const MOVING_RENDER_SCALE=.75;
 let movingRenderScaleOn=false;
 function setMovingRenderScale(on){
@@ -36978,8 +36980,7 @@ function stepObserver(forwardM,strafeM){
 
 function startWalkLoop(){
   if(walkRaf) return;
-  setMovingRenderScale(true);   /* 【v1057】 */
-  walkLastTime=performance.now();
+  walkLastTime=performance.now();   /* 【v1075】v1057 の縮小をやめた（黒い一瞬と描き直し 2 回の原因） */
   const walkTick=now=>{
     walkRaf=0;
     if(!walkActive()){ endWalk(); return; }
@@ -37001,8 +37002,6 @@ function startWalkLoop(){
 /* 移動を終えたら、通常の取得経路を一度通して水域・海岸線・山名を本来の精度へ戻す。 */
 function endWalk(){
   if(walkRaf){cancelAnimationFrame(walkRaf);walkRaf=0;}
-  /* 【v1057】移動中に縮めていた描画バッファを戻す。戻すと中身が消えるので、ここで一度描き直す。 */
-  if(movingRenderScaleOn){setMovingRenderScale(false);update();}
   /* 旋回だけで終わったときは、このあと誰も描き直さない。
      回り込んだ姿のまま固まってしまうので、1回だけ描き直す。
      移動していたときは下の地形取得で描き直されるので、二重には走らせない。 */
