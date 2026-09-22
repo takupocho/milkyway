@@ -2628,6 +2628,30 @@
     box-shadow:0 3px 12px rgba(0,0,0,.36);
   }
   body.drive-active .drive-panel{display:block;}
+  /* 【v1080】走行ログの操作（帯の中、状態表示の下） */
+  .drive-log-row{display:flex;gap:5px;justify-content:center;margin-top:3px;}
+  .drive-log-row button{width:auto;min-width:0;margin:0;padding:2px 9px;border-radius:999px;font:700 10.5px/1.5 system-ui,sans-serif;
+    border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;white-space:nowrap;}
+  .drive-log-row button.rec{border-color:rgba(255,120,120,.8);color:#ffc9c9;}
+  .drive-log-row button[hidden]{display:none;}
+  /* 走行ログの一覧 */
+  .drive-log-day{border:1px solid rgba(126,154,208,.3);border-radius:9px;padding:8px 9px;margin-top:8px;background:rgba(16,20,42,.45);}
+  .drive-log-day-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+  .drive-log-day-title{font-weight:700;font-size:13px;color:#fff;}
+  .drive-log-day-sum{font-size:11px;color:var(--dim-2);}
+  .drive-log-day-btns{display:flex;gap:6px;margin-left:auto;}
+  .drive-log-day-btns button{width:auto;min-width:0;margin:0;padding:3px 9px;font-size:11px;border-radius:7px;}
+  .drive-log-track{display:flex;align-items:center;gap:8px;margin-top:5px;padding:5px 6px;border-radius:7px;background:rgba(8,12,26,.45);font-size:11.5px;color:rgba(226,232,246,.9);}
+  .drive-log-track .t-main{flex:1 1 auto;min-width:0;}
+  .drive-log-track .t-place{display:block;font-size:10.5px;color:var(--dim-2);}
+  .drive-log-track button{width:auto;min-width:0;margin:0;padding:2px 8px;font-size:10.5px;border-radius:6px;flex:0 0 auto;}
+  .drive-log-empty{font-size:11px;color:var(--dim-2);padding:6px 2px;}
+  /* 地図に出しているときの帯 */
+  .drive-log-map-bar{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:8px;
+    width:max-content;max-width:calc(100% - 12px);padding:6px 10px;border-radius:10px;background:rgba(16,20,42,.92);border:1px solid rgba(120,200,255,.6);
+    color:#fff;font:700 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(4,8,20,.4);}
+  .drive-log-map-bar[hidden]{display:none;}
+  .drive-log-map-bar button{width:auto;min-width:0;margin:0;padding:4px 10px;font-size:11.5px;border-radius:7px;}
   .drive-status{
     display:block;font-size:10.5px;line-height:1.5;color:#dbe3f5;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
@@ -5030,6 +5054,17 @@
         </div>
       </section>
 
+      <!-- 【v1080】走行ログ -->
+      <section class="ctrl-group collapsible collapsed" id="driveLogSection">
+        <h2 class="ctrl-group-toggle">🚗 走行ログ<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint" style="margin:0 0 6px;">ドライブモードの帯にある「● 記録開始」で記録します。iPhone は画面を消したり他のアプリに移ると記録が止まるので、車載ホルダーに立てて充電しながらお使いください。止まった分は「切れ目」として残り、細かく分かれても日付ごとにまとめて見られます。</p>
+          <label class="map-hint" style="display:flex;align-items:center;gap:6px;margin:6px 0;"><input id="driveLogAutoPause" type="checkbox" checked style="width:auto;margin:0;"> 停車が 5 分続いたら自動で一時停止（動き出したら再開）</label>
+          <p id="driveLogStatus" class="map-hint" style="margin:4px 0;" aria-live="polite"></p>
+          <div id="driveLogList"></div>
+        </div>
+      </section>
+
       <section class="ctrl-group collapsible collapsed">
         <h2 class="ctrl-group-toggle">軽量化<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
@@ -5599,6 +5634,12 @@
                      終了は「ドライブモード」アイコンをもう一度押す（ボタンを置かない）。 -->
                 <div id="drivePanel" class="drive-panel" aria-hidden="true">
                   <span id="driveStatus" class="drive-status mono" aria-live="polite">位置情報を待っています…</span>
+                  <!-- 【v1080】走行ログ -->
+                  <div class="drive-log-row" id="driveLogRow">
+                    <button id="driveLogStartBtn" type="button" class="rec">● 記録開始</button>
+                    <button id="driveLogPauseBtn" type="button" hidden>⏸ 一時停止</button>
+                    <button id="driveLogStopBtn" type="button" hidden>■ 停止</button>
+                  </div>
                 </div>
                 <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降の速さの設定、長押しで最速下降"></div>
                 <!-- 【v1022】自動で上昇・下降する画面をやめ、F/V・左スティックで上昇・下降する速さの設定にした。 -->
@@ -5696,6 +5737,11 @@
               <div id="osmMapPanel" class="osm-map-panel" aria-hidden="true">
                 <div id="osmMap" class="osm-map" aria-label="地図をタップして観測地点を選択するOpenStreetMap"></div>
                 <button id="mapMeasureEndBtn" type="button" class="map-measure-end-btn">距離測定を終了する</button>
+                <!-- 【v1080】走行ログを地図に出しているときの帯 -->
+                <div id="driveLogMapBar" class="drive-log-map-bar" hidden>
+                  <span id="driveLogMapText"></span>
+                  <button id="driveLogMapCloseBtn" type="button" class="ghost">消す</button>
+                </div>
                 <!-- 【v1070】花火の配置モード -->
                 <div id="mapPlaceBar" class="map-place-bar" hidden>
                   <span id="mapPlaceText">どこに配置しますか？ 地図をタップ</span>
@@ -6362,7 +6408,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1078-moving-water-level";
+const APP_VERSION="1080-drive-log";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10810,6 +10856,7 @@ function setOsmMapScreenOpen(open){
   el.mobileMapToggleBtn.title=label;
   if(!osmMapScreenOpen) setGoogleMapsImportOpen(false);
   if(!osmMapScreenOpen&&typeof fireworkPlacing!=="undefined"&&fireworkPlacing)fireworkEndPlacement(null);   /* 【v1070】 */
+  if(!osmMapScreenOpen&&typeof driveLogClearMap==="function")driveLogClearMap();   /* 【v1080】 */
   if(osmMapScreenOpen){
     if(playbackTimer) stopPlayback();
     /* display:noneの状態では地図サイズを測れないため、表示後のフレームで初期化する。 */
@@ -14410,6 +14457,283 @@ async function memoRenewCode(){
   if(sec)sec.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{setTimeout(()=>{if(!sec.classList.contains("collapsed"))memoSync();},0);});
   memoLoadLocal().then(()=>{memoRenderList();memoSync();});
 })();
+/* ═════ 【v1080】走行ログ ═════
+   記録は「1 回の記録（開始〜停止）＝1 本」。iPhone は画面を離れると位置情報が止まるので、細かく分かれる前提で日付ごとにまとめて見せる。
+   保存は IndexedDB（planKvSet、撮影計画と同じ入れもの）。点は [時刻ms, 緯度, 経度, 速さm/s] の配列で持つ（小数は 5 桁＝約1m）。 */
+const DRIVE_LOG_KEY="starchase-drive-logs-v1";
+const DRIVE_LOG_MIN_MOVE_M=10;        /* この距離動いたら点を打つ */
+const DRIVE_LOG_MIN_INTERVAL_MS=5000; /* または、この時間が経ったら */
+const DRIVE_LOG_MAX_ACCURACY_M=50;    /* これより粗い測位は捨てる */
+const DRIVE_LOG_AUTO_PAUSE_MS=5*60e3; /* 停車がこれだけ続いたら自動で一時停止 */
+const DRIVE_LOG_RESUME_M=30;          /* 自動一時停止からは、これだけ動いたら再開 */
+const DRIVE_LOG_CONTINUE_MS=5*60e3;   /* 中断からこれ以内に戻れば同じ本の続き */
+const DRIVE_LOG_MAX_TRACKS=300;
+let driveLogData={version:1,autoPause:true,tracks:[]};
+let driveLogRecording=false,driveLogPaused=false,driveLogAutoPaused=false;
+let driveLogTrack=null,driveLogLastAt=0,driveLogLastMoveAt=0,driveLogSaveTimer=0,driveLogLoaded=false;
+const driveLogEl=id=>document.getElementById(id);
+function driveLogDistanceM(a,b){
+  const r=terrainDistanceAndBearing(a[1],a[2],b[1],b[2]);
+  return Number.isFinite(r&&r.distanceKm)?r.distanceKm*1000:0;
+}
+/* 1 本の合計。切れ目（60 秒以上あいた所）はつながず、距離にも入れない。 */
+function driveLogStats(track){
+  const pts=track&&track.points||[];
+  let dist=0,moving=0,gaps=0;
+  for(let i=1;i<pts.length;i++){
+    const dt=pts[i][0]-pts[i-1][0];
+    if(dt>60e3){gaps++;continue;}
+    if(dt<=0)continue;   /* 時刻が前後している点（時計合わせ等）は距離にも時間にも入れない */
+    dist+=driveLogDistanceM(pts[i-1],pts[i]);
+    moving+=dt;
+  }
+  let start=track&&track.startAt||0,end=track&&track.endAt||0;
+  if(pts.length){start=pts[0][0];end=pts[0][0];for(const p of pts){if(p[0]<start)start=p[0];if(p[0]>end)end=p[0];}}
+  return {km:dist/1000,movingMs:moving,totalMs:Math.max(0,end-start),gaps,start,end,n:pts.length};
+}
+function driveLogDurationText(ms){
+  const m=Math.round(ms/60000);
+  if(m<60)return `${m}分`;
+  return `${Math.floor(m/60)}時間${String(m%60).padStart(2,"0")}分`;
+}
+function driveLogTimeText(ms){const d=new Date(ms);return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;}
+function driveLogDayKey(ms){const d=new Date(ms);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function driveLogDayTitle(key){
+  const [y,m,d]=key.split("-").map(Number);
+  const date=new Date(y,m-1,d);
+  return `${m}月${d}日（${"日月火水木金土"[date.getDay()]}）`;
+}
+async function driveLogLoad(){
+  if(driveLogLoaded)return;
+  driveLogLoaded=true;
+  try{
+    const raw=await planKvGet(DRIVE_LOG_KEY);
+    const v=raw?JSON.parse(raw):null;
+    /* 記録中に読み込みが遅れて返ってきても、いま記録している本を捨てない。 */
+    if(v&&Array.isArray(v.tracks)){
+      if(driveLogRecording&&driveLogTrack)driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks.concat([driveLogTrack])};
+      else driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks};
+    }
+  }catch(e){}
+  const box=driveLogEl("driveLogAutoPause");if(box)box.checked=driveLogData.autoPause!==false;
+  driveLogRenderList();
+}
+async function driveLogSave(){
+  try{
+    if(driveLogData.tracks.length>DRIVE_LOG_MAX_TRACKS)driveLogData.tracks=driveLogData.tracks.slice(-DRIVE_LOG_MAX_TRACKS);
+    await planKvSet(DRIVE_LOG_KEY,JSON.stringify(driveLogData));
+  }catch(e){
+    if(driveLogEl("driveLogStatus"))driveLogEl("driveLogStatus").textContent="保存できませんでした："+String(e&&e.message||e);
+  }
+}
+function driveLogScheduleSave(){
+  if(driveLogSaveTimer)return;
+  driveLogSaveTimer=setTimeout(()=>{driveLogSaveTimer=0;driveLogSave();driveLogRenderList();},60e3);
+}
+function driveLogFlush(){
+  if(driveLogSaveTimer){clearTimeout(driveLogSaveTimer);driveLogSaveTimer=0;}
+  driveLogSave();
+}
+/* 測位が届くたびに呼ぶ（driveHandlePosition から）。 */
+function driveLogHandlePosition(lat,lon,speed,accuracy,timeMs){
+  if(!driveLogRecording||!driveLogTrack)return;
+  if(Number.isFinite(accuracy)&&accuracy>DRIVE_LOG_MAX_ACCURACY_M)return;
+  const now=timeMs||Date.now();
+  const pts=driveLogTrack.points;
+  const last=pts.length?pts[pts.length-1]:null;
+  const moved=last?driveLogDistanceM(last,[now,lat,lon]):Infinity;
+  /* 自動一時停止からの復帰。止めている間も、動いたかどうかだけは見る。 */
+  if(driveLogPaused){
+    if(driveLogAutoPaused&&driveLogData.autoPause!==false&&last&&moved>=DRIVE_LOG_RESUME_M){
+      driveLogPaused=false;driveLogAutoPaused=false;driveLogLastMoveAt=now;driveLogSyncButtons();
+    }else return;
+  }
+  if(moved>=DRIVE_LOG_MIN_MOVE_M)driveLogLastMoveAt=now;
+  /* 停車が続いたら自動で一時停止（設定で切れる）。 */
+  if(driveLogData.autoPause!==false&&driveLogLastMoveAt&&now-driveLogLastMoveAt>DRIVE_LOG_AUTO_PAUSE_MS){
+    driveLogPaused=true;driveLogAutoPaused=true;driveLogFlush();driveLogSyncButtons();return;
+  }
+  if(last&&moved<DRIVE_LOG_MIN_MOVE_M&&now-last[0]<DRIVE_LOG_MIN_INTERVAL_MS)return;
+  pts.push([now,+lat.toFixed(5),+lon.toFixed(5),Number.isFinite(speed)&&speed>=0?Math.round(speed*10)/10:0]);
+  driveLogTrack.endAt=now;driveLogLastAt=now;
+  driveLogScheduleSave();
+  driveLogSyncButtons();
+}
+function driveLogStart(){
+  driveLogLoad();
+  const now=Date.now();
+  /* 中断から 5 分以内なら、いちばん新しい本の続きにする。 */
+  const last=driveLogData.tracks[driveLogData.tracks.length-1];
+  if(last&&last.points.length&&now-last.endAt<=DRIVE_LOG_CONTINUE_MS){
+    driveLogTrack=last;
+  }else{
+    driveLogTrack={id:`${now.toString(36)}${Math.random().toString(36).slice(2,6)}`,startAt:now,endAt:now,points:[],place:""};
+    driveLogData.tracks.push(driveLogTrack);
+  }
+  driveLogRecording=true;driveLogPaused=false;driveLogAutoPaused=false;driveLogLastMoveAt=now;
+  /* いまの位置をすぐ 1 点入れておく（走り出す前から線が始まる）。 */
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(Number.isFinite(lat)&&Number.isFinite(lon))driveLogTrack.points.push([now,+lat.toFixed(5),+lon.toFixed(5),0]);
+  driveLogSyncButtons();driveLogFlush();
+}
+function driveLogSetPaused(on,auto){
+  if(!driveLogRecording)return;
+  driveLogPaused=!!on;driveLogAutoPaused=!!on&&!!auto;
+  if(driveLogPaused)driveLogFlush();
+  else driveLogLastMoveAt=Date.now();
+  driveLogSyncButtons();
+}
+function driveLogStop(){
+  if(!driveLogRecording)return;
+  driveLogRecording=false;driveLogPaused=false;driveLogAutoPaused=false;
+  const track=driveLogTrack;driveLogTrack=null;
+  if(track){
+    track.endAt=track.points.length?track.points[track.points.length-1][0]:track.endAt;
+    /* 点が 2 つ未満（ほとんど動いていない）なら残さない。 */
+    if(track.points.length<2)driveLogData.tracks=driveLogData.tracks.filter(x=>x!==track);
+    else driveLogFillPlaces(track);
+  }
+  driveLogSyncButtons();driveLogFlush();driveLogRenderList();
+}
+/* 出発地・到着地の市区町村名。取れなければ座標のまま。 */
+async function driveLogFillPlaces(track){
+  if(!track||track.place||!track.points.length)return;
+  const name=async(lat,lon)=>{
+    try{
+      const res=await fetch(`https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`);
+      const data=await res.json();
+      const code=data&&data.results&&data.results.muniCd;
+      if(!code)return "";
+      const key=String(parseInt(code,10));
+      if(MUNI_LOOKUP[key]){const [pref,muni]=MUNI_LOOKUP[key].split(",");return `${pref}${muni}`;}
+      return PREF_LOOKUP[String(parseInt(String(code).slice(0,2),10))]||"";
+    }catch(e){return "";}
+  };
+  const a=track.points[0],b=track.points[track.points.length-1];
+  const [from,to]=await Promise.all([name(a[1],a[2]),name(b[1],b[2])]);
+  track.place=from&&to?(from===to?from:`${from}→${to}`):"";
+  driveLogFlush();driveLogRenderList();
+}
+function driveLogSyncButtons(){
+  const start=driveLogEl("driveLogStartBtn"),pause=driveLogEl("driveLogPauseBtn"),stop=driveLogEl("driveLogStopBtn");
+  if(!start)return;
+  start.hidden=driveLogRecording;
+  pause.hidden=stop.hidden=!driveLogRecording;
+  pause.textContent=driveLogPaused?(driveLogAutoPaused?"▶ 再開（自動休止中）":"▶ 再開"):"⏸ 一時停止";
+  if(driveLogRecording&&driveLogTrack){
+    const s=driveLogStats(driveLogTrack);
+    start.dataset.info="";
+    stop.textContent=`■ 停止 ${s.km.toFixed(1)}km`;
+  }
+}
+/* ── 一覧 ── */
+function driveLogRenderList(){
+  const list=driveLogEl("driveLogList");if(!list)return;
+  list.textContent="";
+  const days=new Map();
+  for(const track of driveLogData.tracks){
+    if(!track||!track.points||track.points.length<2)continue;
+    const key=driveLogDayKey(track.points[0][0]);
+    if(!days.has(key))days.set(key,[]);
+    days.get(key).push(track);
+  }
+  if(!days.size){
+    const p=document.createElement("p");p.className="drive-log-empty";p.textContent="記録はまだありません。";
+    list.appendChild(p);return;
+  }
+  [...days.keys()].sort().reverse().forEach(key=>{
+    const tracks=days.get(key).slice().sort((a,b)=>a.points[0][0]-b.points[0][0]);
+    const sum=tracks.reduce((acc,tr)=>{const s=driveLogStats(tr);acc.km+=s.km;acc.ms+=s.movingMs;return acc;},{km:0,ms:0});
+    const box=document.createElement("div");box.className="drive-log-day";
+    const head=document.createElement("div");head.className="drive-log-day-head";
+    head.innerHTML=`<span class="drive-log-day-title">${driveLogDayTitle(key)}</span>
+      <span class="drive-log-day-sum">合計 ${sum.km.toFixed(1)}km ／ ${driveLogDurationText(sum.ms)} ／ ${tracks.length}本</span>`;
+    const btns=document.createElement("div");btns.className="drive-log-day-btns";
+    const mapBtn=document.createElement("button");mapBtn.type="button";mapBtn.textContent="地図で見る";
+    mapBtn.addEventListener("click",()=>driveLogShowOnMap(tracks,`${driveLogDayTitle(key)} ${sum.km.toFixed(1)}km`));
+    const delBtn=document.createElement("button");delBtn.type="button";delBtn.className="ghost";delBtn.style.color="#ff9a9a";delBtn.textContent="削除";
+    delBtn.addEventListener("click",()=>{
+      if(!window.confirm(`${driveLogDayTitle(key)} の記録 ${tracks.length}本（${sum.km.toFixed(1)}km）を削除します。よろしいですか？`))return;
+      driveLogData.tracks=driveLogData.tracks.filter(tr=>!tracks.includes(tr));
+      driveLogFlush();driveLogRenderList();
+    });
+    btns.appendChild(mapBtn);btns.appendChild(delBtn);head.appendChild(btns);box.appendChild(head);
+    for(const track of tracks){
+      const s=driveLogStats(track);
+      const row=document.createElement("div");row.className="drive-log-track";
+      const main=document.createElement("div");main.className="t-main";
+      main.innerHTML=`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km ${driveLogDurationText(s.movingMs)}${s.gaps?` ／ 切れ目${s.gaps}`:""}
+        <span class="t-place">${escapeHtml(track.place||`${track.points[0][1].toFixed(4)}, ${track.points[0][2].toFixed(4)}`)}</span>`;
+      const one=document.createElement("button");one.type="button";one.textContent="地図";
+      one.addEventListener("click",()=>driveLogShowOnMap([track],`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km`));
+      const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="×";
+      del.addEventListener("click",()=>{
+        if(!window.confirm(`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)}（${s.km.toFixed(1)}km）を削除します。よろしいですか？`))return;
+        driveLogData.tracks=driveLogData.tracks.filter(x=>x!==track);
+        driveLogFlush();driveLogRenderList();
+      });
+      row.appendChild(main);row.appendChild(one);row.appendChild(del);
+      box.appendChild(row);
+    }
+    list.appendChild(box);
+  });
+}
+/* ── 地図に出す ── */
+let driveLogMapLayers=[];
+function driveLogClearMap(){
+  if(osmMapInstance)for(const layer of driveLogMapLayers){try{osmMapInstance.removeLayer(layer);}catch(e){}}
+  driveLogMapLayers=[];
+  const bar=driveLogEl("driveLogMapBar");if(bar)bar.hidden=true;
+}
+function driveLogShowOnMap(tracks,label){
+  if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
+  if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
+  const draw=()=>{
+    if(!osmMapInstance){setTimeout(draw,300);return;}
+    driveLogClearMap();
+    const bounds=[];
+    for(const track of tracks){
+      /* 切れ目（60 秒以上あいた所）では線をつながない。 */
+      let seg=[];
+      const flush=()=>{
+        if(seg.length>1){
+          driveLogMapLayers.push(L.polyline(seg,{pane:"overlayPane",interactive:false,color:"#0b1020",weight:7,opacity:.5}).addTo(osmMapInstance));
+          driveLogMapLayers.push(L.polyline(seg,{pane:"overlayPane",interactive:false,color:"#48d1ff",weight:3.5,opacity:.95}).addTo(osmMapInstance));
+        }
+        seg=[];
+      };
+      const pts=track.points;
+      for(let i=0;i<pts.length;i++){
+        if(i&&pts[i][0]-pts[i-1][0]>60e3)flush();
+        seg.push([pts[i][1],pts[i][2]]);bounds.push([pts[i][1],pts[i][2]]);
+      }
+      flush();
+      const a=pts[0],b=pts[pts.length-1];
+      driveLogMapLayers.push(L.circleMarker([a[1],a[2]],{pane:"markerPane",radius:6,color:"#fff",weight:2,fillColor:"#3ddc84",fillOpacity:1,interactive:false}).addTo(osmMapInstance));
+      driveLogMapLayers.push(L.circleMarker([b[1],b[2]],{pane:"markerPane",radius:6,color:"#fff",weight:2,fillColor:"#ff5a5a",fillOpacity:1,interactive:false}).addTo(osmMapInstance));
+    }
+    if(bounds.length)osmMapInstance.fitBounds(L.latLngBounds(bounds),{padding:[30,30],animate:false});
+    const bar=driveLogEl("driveLogMapBar");
+    if(bar){driveLogEl("driveLogMapText").textContent=`🚗 ${label}`;bar.hidden=false;}
+  };
+  requestAnimationFrame(draw);
+}
+(function driveLogInit(){
+  if(!driveLogEl("driveLogList"))return;
+  driveLogEl("driveLogStartBtn").addEventListener("click",()=>driveLogStart());
+  driveLogEl("driveLogPauseBtn").addEventListener("click",()=>driveLogSetPaused(!driveLogPaused,false));
+  driveLogEl("driveLogStopBtn").addEventListener("click",()=>driveLogStop());
+  driveLogEl("driveLogAutoPause").addEventListener("change",e=>{driveLogData.autoPause=e.target.checked;driveLogFlush();});
+  driveLogEl("driveLogMapCloseBtn").addEventListener("click",driveLogClearMap);
+  const sec=driveLogEl("driveLogSection");
+  if(sec)sec.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{setTimeout(()=>{if(!sec.classList.contains("collapsed")){driveLogLoad();driveLogRenderList();}},0);});
+  /* 画面を離れるときは取りこぼさないよう書き出す。 */
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden"&&driveLogRecording)driveLogFlush();});
+  window.addEventListener("pagehide",()=>{if(driveLogRecording)driveLogFlush();});
+  /* 読み込みは 1 拍待つ。IndexedDB の入れもの（planPhotoDbPromise）は、この節より下の行で作られるので、
+     すぐ呼ぶと「初期化前の変数」で失敗し、記録が空のまま見える（手元で実測して見つけた）。 */
+  setTimeout(driveLogLoad,0);
+})();
 function settingsExportFill(){
   let text;
   try{text=settingsExportText();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
@@ -17144,8 +17468,14 @@ function driveRenderStatus(){
     `${driveSmoothedAz===null?"—":Math.round(driveSmoothedAz)+"°"} ${source}`,
     `${speedKmh<1?"停車中":speedKmh.toFixed(0)+"km/h"} ±${driveAccuracyM===null?"—":Math.round(driveAccuracyM)+"m"}`,
     `次 ${Math.max(0,need-drivePendingMoveM).toFixed(0)}m`
-  ].join(" ｜ ");
-  if(el.driveStatus.textContent!==text)el.driveStatus.textContent=text;
+  ];
+  /* 【v1080】記録中はいちばん左に出す。 */
+  if(typeof driveLogRecording!=="undefined"&&driveLogRecording&&driveLogTrack){
+    const s=driveLogStats(driveLogTrack);
+    text.unshift(`${driveLogPaused?"⏸休止":"●記録"} ${s.km.toFixed(1)}km`);
+  }
+  const textJoined=text.join(" ｜ ");
+  if(el.driveStatus.textContent!==textJoined)el.driveStatus.textContent=textJoined;
 }
 function driveHandlePosition(pos){
   const c=pos&&pos.coords;
@@ -17155,6 +17485,8 @@ function driveHandlePosition(pos){
   if(Number.isFinite(c.speed)&&c.speed>=0)driveSpeedMps=c.speed;
   /* GPSの進行方向は、ある程度動いていないと当てにならない。 */
   if(Number.isFinite(c.heading)&&c.heading>=0&&driveSpeedMps>=1.5)driveGpsAz=normalizeAngle(c.heading);
+  /* 【v1080】走行ログ。景色を作り直すかどうかとは別に、測位はすべてログへ渡す。 */
+  if(typeof driveLogHandlePosition==="function")driveLogHandlePosition(c.latitude,c.longitude,c.speed,c.accuracy,Date.now());
   /* 精度の悪い測位で観測地点を飛ばさない。 */
   if(driveAccuracyM!==null&&driveAccuracyM>DRIVE_MAX_ACCURACY_M){driveScheduleRender();return;}
   if(driveLastLat===null){driveApplyPosition(c.latitude,c.longitude);driveScheduleRender();return;}
@@ -17226,6 +17558,7 @@ async function startDriveMode(){
 }
 function stopDriveMode(){
   if(!driveActive)return;
+  if(typeof driveLogRecording!=="undefined"&&driveLogRecording)driveLogStop();   /* 【v1080】記録も閉じる */
   driveActive=false;
   document.body.classList.remove("drive-active");
   el.driveModeBtn.classList.remove("active");
@@ -19427,6 +19760,10 @@ const PLAN_GENRES=[
   {key:"meteor",label:"流星群"},
   {key:"startrail",label:"星ぐる"},
   {key:"cloudsea",label:"雲海"},
+  /* 【v1079】星座・お城・花火を追加。key は保存した記録にそのまま残るので、あとから変えないこと。 */
+  {key:"constellation",label:"星座"},
+  {key:"castle",label:"お城"},
+  {key:"firework",label:"花火"},
   {key:"other",label:"その他"}
 ];
 /* 記録から読み出す。並びは必ずPLAN_GENRESの順に揃える。 */
@@ -22096,6 +22433,10 @@ try{
       darumaShape:(shape)=>{drawPhoto._darumaShapeForce=shape||null;update();return {sun:drawPhoto._sunsetSunPx,shape:drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce};},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
+      /* 【v1080】走行ログを手元で確かめるための入口（位置情報が無い環境でも点を流し込める）。 */
+      driveLog:()=>({data:driveLogData,rec:()=>driveLogRecording,paused:()=>driveLogPaused,auto:()=>driveLogAutoPaused,
+        start:driveLogStart,stop:driveLogStop,pause:driveLogSetPaused,feed:driveLogHandlePosition,stats:driveLogStats,render:driveLogRenderList,map:driveLogShowOnMap,
+        reload:()=>{driveLogLoaded=false;return driveLogLoad();}}),
       step:(f,s)=>{stepObserver(f,s||0);return [el.lat.value,el.lon.value];},
       rayRow:(az,n)=>{const g=realTerrainState.rayGrid;if(!g)return null;const a=((Math.round(az)%360)+360)%360,row=g[a]||[];const rc=realTerrainState.rowCentre&&realTerrainState.rowCentre[a];return {observer:realTerrainState.observerElevation,key:realTerrainState.key,rowCentre:rc,pts:row.slice(0,n||30).map(p=>p?({d:p.distanceKm,e:Number.isFinite(p.baseElevation)?+p.baseElevation.toFixed(1):null,alt:+p.alt.toFixed(2),w:p.water?1:0,f:p._fresh===false?0:1}):null)};},
       waterRings:()=>({n:(realTerrainState._osmWaterRings||[]).length,stale:!!realTerrainState._osmWaterRingsStale,radius:realTerrainState._osmWaterRingsRadiusKm,pending:!!realTerrainState._osmRefinePending,key:realTerrainState._osmWaterKey}),   /* 【v1038】 */
