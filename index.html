@@ -6362,7 +6362,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1077-photo-atlas-defer";
+const APP_VERSION="1078-moving-water-level";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -21958,10 +21958,13 @@ function normalWaterFineLevelValue(){
   const slider=el&&el.normalWaterFineLevelSlider;
   const level=clamp(Math.round(+(slider&&slider.value)||4),1,4);
   /* 【v988】省電力ON で移動している間だけ 2 まで（PC実測 1歩 207ms→80ms）。
-     止まると endWalk が元の値で全方位を作り直すので、止まった絵は今までと同じ。 */
+     止まると endWalk が元の値で全方位を作り直すので、止まった絵は今までと同じ。
+     【v1078】`walkMoved`（前後左右に動いた）だけを見ていたので、ドローンで上がる・旋回するときは 4 のままだった。
+     上昇は stepObserver を通らないので walkMoved が立たない。スティックが倒れている間（walkActive）はいつでも下げる。
+     実測（上空100m・仰角−35°）1 コマ：4=195ms／2=117ms。 */
   let saving=false;
-  try{saving=powerSaveOn&&walkMoved&&walkActive();}catch(e){saving=false;}   /* 起動直後は宣言前（TDZ）に呼ばれるので守る */
-  if(saving)return Math.min(level,2);
+  try{saving=powerSaveOn&&walkActive();}catch(e){saving=false;}   /* 起動直後は宣言前（TDZ）に呼ばれるので守る */
+  if(saving){normalWaterFineLevelReduced=true;return Math.min(level,2);}
   return level;
 }
 function waterLayerDistancesForCurrentMode(){
@@ -21969,6 +21972,7 @@ function waterLayerDistancesForCurrentMode(){
      normalFineWaterMaskPass中の水面マスクだけで利用する。 */
   return highDetailOn?highDetailLayerDistancesWithCachedWater():TERRAIN_DISTANCES_KM;
 }
+let normalWaterFineLevelReduced=false;   /* 【v1078】動いている間に細分化を下げたか（離したら戻して描き直すため） */
 let normalFineWaterMaskPass=false;
 let normalSeparateWaterColorPass=false;
 let normalFineWaterMemo={signature:"",rings:null,values:new Map()};
@@ -37026,6 +37030,13 @@ function endWalk(){
     if(Number.isFinite(plat)&&Number.isFinite(plon))photoAtlasEnsure(plat,plon);
   }
   if(walkRaf){cancelAnimationFrame(walkRaf);walkRaf=0;}
+  /* 【v1078】動いている間に下げていた水際の細分化を戻して、1 回だけ描き直す。
+     上昇・旋回だけのときは、この下の `if(!walkMoved) return;` で抜けてしまい、誰も描き直さないため。 */
+  if(normalWaterFineLevelReduced){
+    normalWaterFineLevelReduced=false;
+    drawPhoto._terrainRenderKey=null;
+    update();
+  }
   /* 旋回だけで終わったときは、このあと誰も描き直さない。
      回り込んだ姿のまま固まってしまうので、1回だけ描き直す。
      移動していたときは下の地形取得で描き直されるので、二重には走らせない。 */
