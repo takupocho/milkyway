@@ -6362,7 +6362,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1076-fs-place-guard";
+const APP_VERSION="1077-photo-atlas-defer";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -26890,6 +26890,7 @@ function glTerrainBuild(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,p
    【v997】衛星写真のアトラス。
    ========================================================= */
 const PHOTO_TILE_ZOOMS=[16,14,12];   /* 近→遠。5×5枚ずつ */
+const PHOTO_ATLAS_REBUILD_SLACK=1.5;   /* 【v1077】中心からこれだけ離れてから貼り直す（タイル単位。±2 枚あるので 0.5 枚は残る） */
 const PHOTO_TILE_RADIUS=2;
 const PHOTO_ATLAS_N=PHOTO_TILE_RADIUS*2+1;
 const PHOTO_TILE_SRC=(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`;
@@ -27030,10 +27031,20 @@ function photoAtlasEnsure(lat,lon){
   if(photoAtlas.levels.length!==PHOTO_TILE_ZOOMS.length){
     photoAtlas.levels=PHOTO_TILE_ZOOMS.map(z=>({z,tileKey:"",ox:0,oy:0,canvas:null,texture:null,ready:false,dirty:false,building:""}));
   }
+  /* 【v1077】動いている間は貼り直しを始めない（止まったら endWalk が呼び直す）。まだ 1 枚も無い段だけは作る。 */
+  const moving=(typeof walkActive==="function"&&walkActive())||(typeof cameraPano!=="undefined"&&cameraPano.playing);
   photoAtlas.levels.forEach(level=>{
     const [X,Y]=photoMercatorTile(lat,lon,level.z);
     const tx=Math.floor(X),ty=Math.floor(Y),tileKey=`${tx},${ty}`;
     if(level.tileKey===tileKey||level.building===tileKey)return;
+    /* 【v1077】区画をまたいだ瞬間ではなく、今の絵の中心から PHOTO_ATLAS_REBUILD_SLACK タイル離れてから作り直す。
+       絵は中心から ±2 タイルぶんあるので、1.5 タイル離れてもまだ 0.5 タイル（z16 で約 300m）先まで写真がある。
+       街（タイルが田舎の 2 倍以上重い）で、少し動くたびに 25 枚を取り直して引っかかっていたのを減らす。 */
+    if(level.ready&&level.canvas){
+      const cx=level.ox+PHOTO_TILE_RADIUS+.5,cy=level.oy+PHOTO_TILE_RADIUS+.5;
+      if(Math.abs(X-cx)<PHOTO_ATLAS_REBUILD_SLACK&&Math.abs(Y-cy)<PHOTO_ATLAS_REBUILD_SLACK)return;
+      if(moving)return;   /* 動いている間は貼り直さない */
+    }
     level.building=tileKey;
     const ox=tx-PHOTO_TILE_RADIUS,oy=ty-PHOTO_TILE_RADIUS;
     const canvas=document.createElement("canvas");canvas.width=canvas.height=PHOTO_ATLAS_N*256;
@@ -37009,6 +37020,11 @@ function startWalkLoop(){
 
 /* 移動を終えたら、通常の取得経路を一度通して水域・海岸線・山名を本来の精度へ戻す。 */
 function endWalk(){
+  /* 【v1077】動いている間は止めていた衛星写真の貼り直しを、ここで始める。 */
+  if(typeof photoAtlasEnsure==="function"&&typeof photoTextureOn!=="undefined"&&photoTextureOn){
+    const plat=+el.lat.value,plon=+el.lon.value;
+    if(Number.isFinite(plat)&&Number.isFinite(plon))photoAtlasEnsure(plat,plon);
+  }
   if(walkRaf){cancelAnimationFrame(walkRaf);walkRaf=0;}
   /* 旋回だけで終わったときは、このあと誰も描き直さない。
      回り込んだ姿のまま固まってしまうので、1回だけ描き直す。
