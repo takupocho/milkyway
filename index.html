@@ -2629,10 +2629,14 @@
   }
   body.drive-active .drive-panel{display:block;}
   /* 【v1080】走行ログの操作（帯の中、状態表示の下） */
-  .drive-log-row{display:flex;gap:5px;justify-content:center;margin-top:3px;}
+  /* 【v1084】親の .sim-top-stack は pointer-events:none（写真のドラッグを邪魔しないため）。
+     その中にあるこのボタンだけは押せるように戻す。v1080 では入れ忘れていて、記録開始が反応しなかった。 */
+  .drive-log-row{display:flex;gap:5px;justify-content:center;margin-top:3px;pointer-events:auto;}
   .drive-log-row button{width:auto;min-width:0;margin:0;padding:2px 9px;border-radius:999px;font:700 10.5px/1.5 system-ui,sans-serif;
     border:1px solid rgba(255,255,255,.45);background:rgba(255,255,255,.12);color:#fff;white-space:nowrap;}
+  .drive-log-row button{pointer-events:auto;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
   .drive-log-row button.rec{border-color:rgba(255,120,120,.8);color:#ffc9c9;}
+  .drive-log-row button:active{background:rgba(255,255,255,.28);}
   .drive-log-row button[hidden]{display:none;}
   /* 走行ログの一覧 */
   .drive-log-day{border:1px solid rgba(126,154,208,.3);border-radius:9px;padding:8px 9px;margin-top:8px;background:rgba(16,20,42,.45);}
@@ -6408,7 +6412,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1083-minimap-jump";
+const APP_VERSION="1084-drive-log-tap";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9418,7 +9422,6 @@ let droneMapInstance=null,droneMapMarker=null,droneMapFovFill=null,droneMapFovOu
 let droneMapSatellite=false,droneMapSatLayer=null,droneMapBaseLayer=null;
 /* こちらから中心を合わせている間は、地図の移動を人の操作と取らない。 */
 let droneMapProgrammatic=false;
-let droneMapUserMoved=false;   /* 【v1083】指で引いた直後だけ true */
 /* 指で引いている最中は、こちらから中心を戻さない。
    戻すと地図が指についてこなくなる。 */
 let droneMapDragging=false;
@@ -9471,10 +9474,11 @@ function ensureDroneMap(){
      dragstart / dragend / moveend が期待どおり飛ばないことがあるため。 */
   /* 引いている最中は印と扇形だけを中心へ寄せる。
      地形の作り直しは重いので、ここではやらない。 */
-  droneMapInstance.on("dragstart",()=>{ droneMapDragging=true; droneMapUserMoved=true; });   /* 【v1083】人が引いた印 */
+  droneMapInstance.on("dragstart",()=>{ droneMapDragging=true; });
   droneMapInstance.on("dragend",()=>{ droneMapDragging=false; });
   droneMapInstance.on("move",()=>{
     if(droneMapProgrammatic) return;
+    if(!droneMapOpen) return;   /* 【v1083】 */
     /* 測定中は撮影位置を動かさないので、印はそのまま。
        代わりに開始点からの線と距離を更新する。 */
     const c=droneMapInstance.getCenter();
@@ -9483,10 +9487,7 @@ function ensureDroneMap(){
   /* 指を離したら、その中心を新しい撮影位置にする。 */
   droneMapInstance.on("moveend",()=>{
     if(droneMapProgrammatic) return;
-    /* 【v1083】指で引いたとき以外は撮影位置を動かさない。大きさの測り直しや画面の作り替えでも
-       moveend は飛ぶので、これが無いと知らないうちに観測地点が動く。 */
-    if(!droneMapUserMoved) return;
-    droneMapUserMoved=false;
+    if(!droneMapOpen) return;   /* 【v1083】しまっている間の動きは撮影位置に反映しない */
     const c=droneMapInstance.getCenter();
     const lat0=+el.lat.value, lon0=+el.lon.value;
     if(Number.isFinite(lat0)&&Number.isFinite(lon0)&&
@@ -9577,17 +9578,18 @@ function refreshDroneMapSize(delayMs=60){
   const map=ensureDroneMap();
   if(!map) return;
   setTimeout(()=>{
-    if(!droneMapOpen) return;
-    /* 【v1083】invalidateSize は moveend を出す。印を立てずに呼ぶと、下の moveend が
-       「人が地図を引いた」と取り違えて、**前に開いていたときの中心**を新しい撮影位置にしてしまう
-       （利用者の「小地図を出すと前回の場所に変わる」）。印を立て、先に今の撮影位置へ中心を戻す。 */
-    const lat=+el.lat.value,lon=+el.lon.value;
+    /* 【v1083】測り直し（invalidateSize）は Leaflet が moveend を出す。印を付けずに呼んでいたので、
+       下の moveend が「人が地図を引いた」と受け取り、**小地図に残っていた前回の中心**を撮影位置へ書き戻していた。
+       （しまっている間は syncDroneMap が何もしないので、中心は古いまま残る＝開いた瞬間に前の場所へ飛ぶ。利用者の報告）
+       測り直しと中心合わせをまとめて「こちらからの操作」にし、片付いてから手を離す。 */
     droneMapProgrammatic=true;
     try{
-      if(Number.isFinite(lat)&&Number.isFinite(lon))map.setView([lat,lon],map.getZoom(),{animate:false});
       map.invalidateSize(false);
-    }finally{ setTimeout(()=>{droneMapProgrammatic=false;},0); }
-    droneMapKey=""; syncDroneMap();
+      const lat=+el.lat.value,lon=+el.lon.value;
+      if(Number.isFinite(lat)&&Number.isFinite(lon))map.setView([lat,lon],map.getZoom(),{animate:false});
+    }catch(e){}
+    droneMapKey="";
+    setTimeout(()=>{ droneMapProgrammatic=false; syncDroneMap(); },0);
   },delayMs);
 }
 /* 小地図の出し入れ（v657）。ドローンモードとは切り離し、いつでも使える。 */
@@ -9677,6 +9679,9 @@ function syncDroneMapPanel(){
 }
 if(el.droneMapTabBtn) el.droneMapTabBtn.addEventListener("click",()=>{
   droneMapOpen=!droneMapOpen;
+  /* 【v1083】dragend を取りこぼすと droneMapDragging が立ったままになり、以後 syncDroneMap が中心を合わせなくなる。
+     そのまま触ると古い中心が撮影位置へ書き戻るので、出し入れのたびに落とす。 */
+  droneMapDragging=false;
   syncDroneMapPanel();
   if(droneMapOpen) refreshDroneMapSize(380);   // せり出しきってから測り直す
   scheduleSaveSettings();
