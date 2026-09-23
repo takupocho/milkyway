@@ -5452,6 +5452,17 @@
             <div class="field"><label class="top">昼の濃さ <span class="val mono" id="overlayRailDayOpacityVal">100%</span></label><input type="range" id="overlayRailDayOpacity" min="0" max="200" step="1" value="100"></div>
             <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayRailNightBrightVal">100%</span></label><input type="range" id="overlayRailNightBright" min="0" max="200" step="1" value="100"></div>
             <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayRailNightOpacityVal">100%</span></label><input type="range" id="overlayRailNightOpacity" min="0" max="200" step="1" value="100"></div>
+            <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">登山道</p>
+            <p class="map-hint" style="margin:0 0 6px;">「表示 → 登山道」で出る道の色。縁はこの色との既定の比で明るくなります。</p>
+            <label class="map-hint" style="display:flex;align-items:center;gap:6px;margin:0 0 6px;"><input id="trailIncludeTrackBox" type="checkbox" style="width:auto;margin:0;"> 林道・作業道（track）も登山道に含める</label>
+            <div class="overlay-color-row">
+              <label>昼の色<input type="color" id="overlayTrailDayColor" value="#e48426"></label>
+              <label>夜の色<input type="color" id="overlayTrailNightColor" value="#d67e2e"></label>
+            </div>
+            <div class="field"><label class="top">昼の明るさ <span class="val mono" id="overlayTrailDayBrightVal">100%</span></label><input type="range" id="overlayTrailDayBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">昼の濃さ <span class="val mono" id="overlayTrailDayOpacityVal">100%</span></label><input type="range" id="overlayTrailDayOpacity" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayTrailNightBrightVal">100%</span></label><input type="range" id="overlayTrailNightBright" min="0" max="200" step="1" value="100"></div>
+            <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayTrailNightOpacityVal">100%</span></label><input type="range" id="overlayTrailNightOpacity" min="0" max="200" step="1" value="100"></div>
             <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">橋</p>
             <p class="map-hint" style="margin:0 0 6px;">橋面の色。側面・橋脚・縁・中央線は、この色との既定の比で暗く／明るくなります。</p>
             <div class="overlay-color-row">
@@ -5587,7 +5598,10 @@
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
                 <!-- 【v1088】「地面グリッド」「等高線」は廃止した。 -->
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
-                <button id="popupMinorRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="私道・農道・林道・小道・歩道・登山道も細い線で描きます（道路がONのとき）">細い道も</button>
+                <button id="popupMinorRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="私道・自転車道・歩行者専用道を細い線で描きます（道路がONのとき）。登山道・林道は「登山道」へ移しました">細い道も</button>
+                <!-- 【v1101】登山道（半径5km・橙）。名前は別のボタンで。 -->
+                <button id="popupTrailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="登山道（歩道・階段・馬道）を橙で描きます。設定→開発者で林道・作業道も含められます">登山道</button>
+                <button id="popupTrailNameBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="登山道の名前（OSM に登録があるもの）を出します">登山道名</button>
                 <!-- 【v997】衛星写真テクスチャ。 -->
                 <button id="popupPhotoTexBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="地面に貼るものを選びます。押すたびに 衛星写真 → 標準地図 → 淡色地図 → なし（いずれも国土地理院）。WebGL地形が必要です">衛星写真</button>
                 <!-- 【v1000】衛星写真のときの水域。OFF で写真の水面をそのまま見せる。 -->
@@ -6525,7 +6539,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1100-fav-plan-prune";
+const APP_VERSION="1101-trails";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7905,6 +7919,12 @@ const el={
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
   popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMoonLinesBtn:$("mapMoonLinesBtn"), mapSunLinesBtn:$("mapSunLinesBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupMinorRoadBtn:$("popupMinorRoadBtn"), popupPhotoTexBtn:$("popupPhotoTexBtn"), popupPhotoWaterBtn:$("popupPhotoWaterBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupHimejiBtn:$("popupHimejiBtn"), popupShiratoriBtn:$("popupShiratoriBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupFavPlacesBtn:$("popupFavPlacesBtn"),   /* 【v1082】 */
+  popupTrailBtn:$("popupTrailBtn"), popupTrailNameBtn:$("popupTrailNameBtn"), trailIncludeTrackBox:$("trailIncludeTrackBox"),   /* 【v1101】 */
+  overlayTrailDayColor:$("overlayTrailDayColor"), overlayTrailNightColor:$("overlayTrailNightColor"),
+  overlayTrailDayBright:$("overlayTrailDayBright"), overlayTrailDayBrightVal:$("overlayTrailDayBrightVal"),
+  overlayTrailDayOpacity:$("overlayTrailDayOpacity"), overlayTrailDayOpacityVal:$("overlayTrailDayOpacityVal"),
+  overlayTrailNightBright:$("overlayTrailNightBright"), overlayTrailNightBrightVal:$("overlayTrailNightBrightVal"),
+  overlayTrailNightOpacity:$("overlayTrailNightOpacity"), overlayTrailNightOpacityVal:$("overlayTrailNightOpacityVal"),
   sunPathDayAlpha:$("sunPathDayAlpha"), sunPathNightAlpha:$("sunPathNightAlpha"), moonPathDayAlpha:$("moonPathDayAlpha"), moonPathNightAlpha:$("moonPathNightAlpha"),
   sunPathDayAlphaVal:$("sunPathDayAlphaVal"), sunPathNightAlphaVal:$("sunPathNightAlphaVal"), moonPathDayAlphaVal:$("moonPathDayAlphaVal"), moonPathNightAlphaVal:$("moonPathNightAlphaVal"),
   pathAlphaResetBtn:$("pathAlphaResetBtn"),   /* 【v1086】 */ popupDaylightStarsBtn:$("popupDaylightStarsBtn"), popupSeaDiagBtn:$("popupSeaDiagBtn"), popupWorldTerrainBtn:$("popupWorldTerrainBtn"), seaDiagPanel:$("seaDiagPanel"), highDetailBtn:$("highDetailBtn"), highDetailScan:$("highDetailScan"), highDetailSettingsOverlay:$("highDetailSettingsOverlay"), highDetailSettingsCloseBtn:$("highDetailSettingsCloseBtn"), highDetailSettingsCancelBtn:$("highDetailSettingsCancelBtn"), highDetailSettingsStartBtn:$("highDetailSettingsStartBtn"), highDetailPickFromPhotoBtn:$("highDetailPickFromPhotoBtn"), highDetailPhotoPickOverlay:$("highDetailPhotoPickOverlay"), highDetailPhotoPickCancelBtn:$("highDetailPhotoPickCancelBtn"), highDetailPhotoPickHintText:$("highDetailPhotoPickHintText"), highDetailPhotoPickMarker:$("highDetailPhotoPickMarker"), highDetailCoordinatePaste:$("highDetailCoordinatePaste"), highDetailFrontKm:$("highDetailFrontKm"), highDetailBackKm:$("highDetailBackKm"), highDetailSettingsSummary:$("highDetailSettingsSummary"), highDetailDiagnostic:$("highDetailDiagnostic"), darumaTelephotoBtn:$("darumaTelephotoBtn"), darumaTelephotoOverlay:$("darumaTelephotoOverlay"), darumaTelephotoCloseBtn:$("darumaTelephotoCloseBtn"), darumaTelephotoRunBtn:$("darumaTelephotoRunBtn"), darumaTelephotoClearBtn:$("darumaTelephotoClearBtn"), darumaTelephotoEvent:$("darumaTelephotoEvent"), darumaTelephotoDateDisplay:$("darumaTelephotoDateDisplay"), darumaTelephotoNearKm:$("darumaTelephotoNearKm"), darumaTelephotoFarKm:$("darumaTelephotoFarKm"), darumaTelephotoSummary:$("darumaTelephotoSummary"), darumaTelephotoResult:$("darumaTelephotoResult"), darumaSilhouettePickBtn:$("darumaSilhouettePickBtn"), darumaSilhouetteStartAz:$("darumaSilhouetteStartAz"), darumaSilhouetteEndAz:$("darumaSilhouetteEndAz"), darumaSilhouetteRangeSummary:$("darumaSilhouetteRangeSummary"), darumaSilhouetteStatus:$("darumaSilhouetteStatus"), darumaSilhouetteRunBtn:$("darumaSilhouetteRunBtn"), darumaSilhouetteClearBtn:$("darumaSilhouetteClearBtn"), darumaSilhouettePickOverlay:$("darumaSilhouettePickOverlay"), darumaSilhouettePickHintText:$("darumaSilhouettePickHintText"), darumaSilhouettePickCancelBtn:$("darumaSilhouettePickCancelBtn"), darumaSilhouettePickDoneBtn:$("darumaSilhouettePickDoneBtn"),   /* 【v1097】 */ darumaSilhouettePickBand:$("darumaSilhouettePickBand"), darumaSilhouettePickStartMarker:$("darumaSilhouettePickStartMarker"), darumaSilhouettePickEndMarker:$("darumaSilhouettePickEndMarker"), popupMwFramingBtn:$("popupMwFramingBtn"), popupWaterBoundaryBtn:$("popupWaterBoundaryBtn"), popupWaterRayDiagBtn:$("popupWaterRayDiagBtn"), waterRayDiagPanel:$("waterRayDiagPanel"), popupReflectionBtn:$("popupReflectionBtn"), popupCloudSeaBtn:$("popupCloudSeaBtn"), popupPixelWalkerBtn:$("popupPixelWalkerBtn"), popupCompassBarBtn:$("popupCompassBarBtn"), popupCometBtn:$("popupCometBtn"), popupControllerBtn:$("popupControllerBtn"), popupClockBtn:$("popupClockBtn"),
@@ -11541,6 +11561,9 @@ let roadLinesVisible=false; // 通信を伴うので既定はOFF
 let daylightStarsOn=false;
 function skyMarkFadeFor(s){ if(daylightStarsOn) return 1; return clamp((.72-clamp(s.twilight,0,1))/.2,0,1); }
 let minorRoadsVisible=false;   /* 【v995】細い道も。宣言はここ（起動時の同期が先に読む） */
+let trailLinesVisible=false;    /* 【v1101】登山道 */
+let trailNamesVisible=false;    /* 【v1101】登山道名 */
+let trailIncludeTrack=false;    /* 【v1101】林道・作業道も含める（設定→開発者） */
 let bridgeLinesVisible=false; // 橋専用データも利用者がONにした時だけ取得する
 /* 【v870】ONのとき、OSMが描く明石海峡大橋だけを隠す。
 
@@ -15161,6 +15184,11 @@ const OVERLAY_STYLE_PARTS={
     main:{night:[ 84, 80, 76],day:[104, 96, 88]},   /* バラスト */
     tie: {night:[150,145,136],day:[ 58, 50, 42]}    /* 枕木 */
   },
+  /* 【v1101】登山道。橙。 */
+  trail:{
+    main:{night:[214,126, 46],day:[228,132, 38]},   /* 道そのもの */
+    edge:{night:[255,196,132],day:[255,214,150]}    /* 縁（少し明るい） */
+  },
   bridge:{
     main:     {night:[120,128,140],day:[ 38, 42, 48]},   /* 橋面 */
     side:     {night:[ 86, 94,106],day:[ 27, 30, 35]},   /* 側面 */
@@ -15171,7 +15199,7 @@ const OVERLAY_STYLE_PARTS={
     mark:     {night:[198,194,180],day:[178,166,132]}    /* 中央線・枕木の印 */
   }
 };
-const OVERLAY_STYLE_GROUPS=[["road","Road"],["rail","Rail"],["bridge","Bridge"]];
+const OVERLAY_STYLE_GROUPS=[["road","Road"],["rail","Rail"],["trail","Trail"],["bridge","Bridge"]];   /* 【v1101】登山道を追加 */
 function overlayRgbToHex(rgb){
   return "#"+rgb.map(v=>clamp(Math.round(v),0,255).toString(16).padStart(2,"0")).join("");
 }
@@ -16058,6 +16086,15 @@ function syncDisplayPopupControls(){
     el.popupShiratoriBtn.setAttribute("aria-pressed",String(shiratoriCastleOn));
   }
   syncBridgeButtonStatus();
+  if(el.popupTrailBtn){   /* 【v1101】 */
+    el.popupTrailBtn.classList.toggle("active",trailLinesVisible);
+    el.popupTrailBtn.setAttribute("aria-pressed",String(trailLinesVisible));
+  }
+  if(el.popupTrailNameBtn){
+    el.popupTrailNameBtn.classList.toggle("active",trailNamesVisible);
+    el.popupTrailNameBtn.setAttribute("aria-pressed",String(trailNamesVisible));
+  }
+  if(el.trailIncludeTrackBox&&el.trailIncludeTrackBox.checked!==trailIncludeTrack)el.trailIncludeTrackBox.checked=trailIncludeTrack;
   el.popupPlaceNameBtn.classList.toggle("active",placeNameVisible);
   el.popupPlaceNameBtn.setAttribute("aria-pressed",String(placeNameVisible));
   if(el.popupFavPlacesBtn){   /* 【v1082】 */
@@ -16318,6 +16355,24 @@ if(el.popupPhotoTexBtn)el.popupPhotoTexBtn.addEventListener("click",()=>{   /* �
   if(photoTextureOn&&!glTerrainOn){glTerrainOn=true;if(typeof syncGlTerrainControls==="function")syncGlTerrainControls();}
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+/* 【v1101】登山道。ON にした時点で取りに行く。 */
+if(el.popupTrailBtn)el.popupTrailBtn.addEventListener("click",()=>{
+  trailLinesVisible=!trailLinesVisible;
+  if(trailLinesVisible)requestOsmTrails(+el.lat.value,+el.lon.value);
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+if(el.popupTrailNameBtn)el.popupTrailNameBtn.addEventListener("click",()=>{
+  trailNamesVisible=!trailNamesVisible;
+  if(trailNamesVisible&&!trailLinesVisible){trailLinesVisible=true;requestOsmTrails(+el.lat.value,+el.lon.value);}
+  drawPhoto._terrainRenderKey=null;
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+if(el.trailIncludeTrackBox)el.trailIncludeTrackBox.addEventListener("change",()=>{
+  trailIncludeTrack=!!el.trailIncludeTrackBox.checked;
+  drawPhoto._terrainRenderKey=null;
+  update();scheduleSaveSettings();
 });
 if(el.popupMinorRoadBtn)el.popupMinorRoadBtn.addEventListener("click",()=>{   /* 【v995】 */
   minorRoadsVisible=!minorRoadsVisible;
@@ -18333,6 +18388,7 @@ function collectPersistedSettings(){
     terrainMeshLinesVisible:terrainMeshLinesVisible,
     roadLinesVisible:roadLinesVisible,
     minorRoadsVisible:minorRoadsVisible,   /* 【v995】 */
+    trailLinesVisible:trailLinesVisible, trailNamesVisible:trailNamesVisible, trailIncludeTrack:trailIncludeTrack,   /* 【v1101】 */
     photoTextureOn:photoTextureOn,   /* 【v997】 */
     photoTexSource:photoTexSource,   /* 【v1087】 */
     photoWaterVisible:photoWaterVisible,   /* 【v1000】 */
@@ -18734,6 +18790,7 @@ async function applyPersistedSettingsText(stored){
     terrainMeshLinesVisible=!!s.terrainMeshLinesVisible;
     roadLinesVisible=!!s.roadLinesVisible;
     minorRoadsVisible=!!s.minorRoadsVisible;   /* 【v995】 */
+    trailLinesVisible=!!s.trailLinesVisible;trailNamesVisible=!!s.trailNamesVisible;trailIncludeTrack=!!s.trailIncludeTrack;   /* 【v1101】 */
     photoTextureOn=!!s.photoTextureOn;   /* 【v997】 */
     if(typeof s.photoTexSource==="string"&&PHOTO_TEX_SOURCES.some(x=>x.key===s.photoTexSource))photoTexSource=s.photoTexSource;   /* 【v1087】 */
     photoWaterVisible=s.photoWaterVisible!==false;   /* 【v1000】 */
@@ -24969,10 +25026,81 @@ const ROAD_CLASS_WIDTH_M={
   secondary:8,secondary_link:6,tertiary:6.5,tertiary_link:5,
   unclassified:5,residential:5,living_street:4.5
 };
-/* 【v995】細い道。「表示 → 細い道も」が ON のときだけ描く。 */
+/* 【v995】細い道。「表示 → 細い道も」が ON のときだけ描く。
+   【v1101】登山道（path/footway/steps/bridleway）と林道（track）はここから外し、「登山道」として別に扱う。 */
 const MINOR_ROAD_CLASS_WIDTH_M={
-  service:3,track:2.5,path:1.5,footway:1.5,cycleway:2,pedestrian:3,bridleway:1.5,steps:1.5
+  service:3,cycleway:2,pedestrian:3
 };
+/* 【v1101】登山道。歩く道そのもの。 */
+const TRAIL_CLASS_WIDTH_M={path:1.6,footway:1.6,steps:1.6,bridleway:1.8};
+/* 【v1101】林道・作業道。設定「林道・作業道も含める」が ON のときだけ足す。 */
+const TRACK_CLASS_WIDTH_M={track:2.8};
+const OSM_TRAIL_RADIUS_KM=5;   /* 登山道は遠くまで出す（車道は 1.2km のまま） */
+let osmTrailState={key:"",ways:null,labels:null,loading:false};
+/* 静的ベクトルタイルから登山道・林道を拾う。
+   【v1101】道そのものは "streets" 層、**名前は "street_labels" 層**（streets 層に name は入っていない。実タイルで確認）。 */
+async function fetchStaticTrailWays(lat,lon,radiusKm){
+  const tiles=await loadStaticVectorArea(lat,lon,radiusKm),ways=[],labels=[];
+  tiles.forEach(tile=>{
+    const layer=tile.layers.get("streets");
+    if(layer)layer.features.forEach(feature=>{
+      const props=feature.properties||{};
+      if(feature.type!==2||staticTruthy(props.rail)||staticTruthy(props.tunnel))return;
+      const kind=String(props.kind||"");
+      const trailWidth=TRAIL_CLASS_WIDTH_M[kind],trackWidth=TRACK_CLASS_WIDTH_M[kind];
+      if(!trailWidth&&!trackWidth)return;
+      staticFeatureLatLonParts(tile,layer,feature).forEach(points=>{
+        if(staticLineIntersectsRadius(points,lat,lon,radiusKm))
+          ways.push({widthM:trailWidth||trackWidth,points,kind,track:!trailWidth});
+      });
+    });
+    const labelLayer=tile.layers.get("street_labels");
+    if(labelLayer)labelLayer.features.forEach(feature=>{
+      const props=feature.properties||{};
+      if(feature.type!==2)return;
+      const kind=String(props.kind||"");
+      if(!TRAIL_CLASS_WIDTH_M[kind]&&!TRACK_CLASS_WIDTH_M[kind])return;
+      const name=String(props.name||props["name:ja"]||"").trim().slice(0,24);
+      if(!name)return;
+      staticFeatureLatLonParts(tile,labelLayer,feature).forEach(points=>{
+        if(points.length&&staticLineIntersectsRadius(points,lat,lon,radiusKm))
+          labels.push({name,points,kind,track:!TRAIL_CLASS_WIDTH_M[kind]});
+      });
+    });
+  });
+  return {ways,labels};
+}
+const osmTrailCache=new Map();
+function fetchOsmTrailWays(lat,lon,radiusKm=OSM_TRAIL_RADIUS_KM){
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
+  if(osmTrailCache.has(key))return osmTrailCache.get(key);
+  const promise=(async()=>{
+    const saved=await externalGeoCacheGet(`trails-static-v2:${key}`);   /* 【v1101】名前を別層から取るようにしたので v2 */
+    if(saved&&Array.isArray(saved.ways))return saved;
+    try{
+      const result=await fetchStaticTrailWays(lat,lon,radiusKm);
+      externalGeoCacheSet(`trails-static-v2:${key}`,result);
+      return result;
+    }catch(error){osmTrailCache.delete(key);return null;}
+  })();
+  osmTrailCache.set(key,promise);
+  return promise;
+}
+function requestOsmTrails(lat,lon){
+  if(!trailLinesVisible||!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
+  if(osmTrailState.key===key&&(osmTrailState.ways||osmTrailState.loading))return;
+  osmTrailState={key,ways:null,labels:null,loading:true};
+  fetchOsmTrailWays(lat,lon).then(result=>{
+    if(osmTrailState.key!==key)return;
+    osmTrailState.ways=(result&&Array.isArray(result.ways))?result.ways:null;
+    osmTrailState.labels=(result&&Array.isArray(result.labels))?result.labels:[];
+    osmTrailState.loading=false;
+    if(!osmTrailState.ways)return;
+    drawPhoto._terrainRenderKey=null;
+    update();
+  }).catch(()=>{if(osmTrailState.key===key)osmTrailState.loading=false;});
+}
 async function fetchOsmRoadWaysNetwork(lat,lon,radiusKm){
   return fetchStaticRoadWays(lat,lon,radiusKm);
 }
@@ -24980,11 +25108,11 @@ function fetchOsmRoadWays(lat,lon,radiusKm=OSM_ROAD_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmRoadCache.has(key)) return osmRoadCache.get(key);
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`roads-static-v2:${key}`);   /* 【v995】細い道込みの保存 */
+    const saved=await externalGeoCacheGet(`roads-static-v3:${key}`);   /* 【v995】細い道込みの保存 【v1101】登山道を分けたので鍵を上げる */
     if(Array.isArray(saved)) return saved;
     try{
       const ways=await fetchOsmRoadWaysNetwork(lat,lon,radiusKm);
-      externalGeoCacheSet(`roads-static-v2:${key}`,ways);
+      externalGeoCacheSet(`roads-static-v3:${key}`,ways);
       return ways;
     }catch(error){
       osmRoadCache.delete(key); // 失敗した約束を残すと、以後ずっと空のまま返ってしまう
@@ -26114,7 +26242,7 @@ function requestRealTerrainProfile(lat,lon){
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
-    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
+    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmTrails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
     prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready","キャッシュ");
@@ -26193,7 +26321,7 @@ function requestRealTerrainProfile(lat,lon){
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,failedKey:"",...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
-    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
+    requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmTrails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
     prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
     document.body.classList.add("real-terrain-visible");
     setExternalDataStatus("elevation","ready",fromPersistent?"保存済みキャッシュ":"");
@@ -27110,6 +27238,54 @@ function favSceneVisible(bearing,distanceKm,apparentAlt,eyeElevation){
     if(alt>apparentAlt+.08)return false;
   }
   return true;
+}
+/* 【v1101】登山道の名前。OSM に name があるものだけ、道の中ほどへ小さく出す。
+   高さは登録地点と同じ仕組み（rayGrid の実標高）で求め、手前の地形に隠れるものは出さない。 */
+function drawTrailNameLabels(ctx,s,toXY,W,H){
+  if(!trailNamesVisible||!trailLinesVisible||arActive)return;
+  if(!osmTrailState.labels||!osmTrailState.labels.length)return;
+  if(!realTerrainState.rayGrid||!Number.isFinite(realTerrainState.observerElevation))return;
+  const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
+  const seen=new Set(),items=[];
+  for(const way of osmTrailState.labels){
+    if(!way||!way.name)continue;
+    if(!trailIncludeTrack&&way.track)continue;
+    if(seen.has(way.name))continue;
+    const points=way.points;if(!points||points.length<2)continue;
+    const mid=points[Math.floor(points.length/2)];
+    const ray=terrainDistanceAndBearing(s.lat,s.lon,mid[0],mid[1]);
+    const km=ray.distanceKm;
+    if(!Number.isFinite(km)||km<.02||km>OSM_TRAIL_RADIUS_KM)continue;
+    const elevation=favSceneElevationAt(ray.bearing,km);
+    if(!Number.isFinite(elevation))continue;
+    const metres=km*1000;
+    const alt=Math.atan2(elevation-eyeElevation-metres*metres/(2*6371000*(7/6)),metres)*R2D;
+    if(!favSceneVisible(ray.bearing,km,alt,eyeElevation))continue;
+    const pt=toXY(ray.bearing,alt);
+    if(!pt||!pt.every(Number.isFinite))continue;
+    if(pt[0]<0||pt[0]>W||pt[1]<0||pt[1]>H)continue;
+    seen.add(way.name);
+    items.push({name:way.name,km,pt});
+  }
+  if(!items.length)return;
+  items.sort((a,b)=>a.km-b.km);
+  const fontSize=Math.max(10,Math.round(W/118));
+  const placed=[];
+  /* 【v1101】この関数は地形の中ではないので terrainDayFactor は使えない。空の明るさから昼夜を決める。 */
+  const dayFactor=clamp(Number.isFinite(s&&s.skyBrightness)?s.skyBrightness:1,0,1);
+  const rgb=overlayPartRGB("trail","edge",dayFactor);
+  ctx.save();ctx.font=`700 ${fontSize}px system-ui,sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const item of items){
+    if(placed.length>=8)break;
+    const width=ctx.measureText(item.name).width+10,height=fontSize+7;
+    const cx=clamp(item.pt[0],width/2+3,W-width/2-3),cy=clamp(item.pt[1]-10,height/2+3,H-height/2-3);
+    const box={x1:cx-width/2,y1:cy-height/2,x2:cx+width/2,y2:cy+height/2};
+    if(placed.some(p=>!(box.x2+3<p.x1||box.x1-3>p.x2||box.y2+2<p.y1||box.y1-2>p.y2)))continue;
+    ctx.fillStyle="rgba(8,10,20,.62)";ctx.fillRect(box.x1,box.y1,width,height);
+    ctx.fillStyle=`rgb(${rgb.join(",")})`;ctx.fillText(item.name,cx,cy+.5);
+    placed.push(box);
+  }
+  ctx.restore();
 }
 function drawFavPlaceLabels(ctx,s,toXY,W,H){
   if(!favPlacesSceneVisible||arActive||!favPlaces||!favPlaces.length)return;
@@ -29550,7 +29726,7 @@ function drawPhoto(ctx,s){
         eyeHeightAboveGroundM(), // 視点の高さで地形の見かけ高度が変わるため、キャッシュの一部にする
         terrainMeshLinesVisible?"mesh-on":"mesh-off",
         cloudSeaVisible?`cloud${cloudSeaElevationM}/${cloudSeaOpacity.toFixed(2)}/${cloudSeaWindDeg}/${cloudSeaGapPct}/${cloudSeaDriftStep}`:"cloud-off",
-        (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length+(minorRoadsVisible?"m":""):"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
+        (worldGridVisible?"g"+worldGridBrightness:"")+(contourLinesVisible?"c":"")+(roadLinesVisible&&osmRoadState.ways?"r"+osmRoadState.ways.length+(minorRoadsVisible?"m":""):"")+(trailLinesVisible&&osmTrailState.ways?"p"+osmTrailState.ways.length+(trailIncludeTrack?"k":""):"")+(railLinesVisible&&osmRailState.ways?"t"+osmRailState.ways.length:"")+(bridgeLinesVisible&&osmBridgeState.ways?"b"+osmBridgeState.ways.length:""),
         localDetailTerrainEnabled?JSON.stringify(localDetailTerrainConfig()):"local-detail-off",
         photoTextureOn?`tex${photoAtlas.version}/${photoTune.day}/${photoTune.night}/${photoTune.haze}/${photoTune.waterDay}-${photoTune.waterNight}${photoWaterOff()?"/nowater":""}`:"tex-off"   /* 【v997】【v998】【v1000】【v1045】 */
       ].join("|");
@@ -33212,7 +33388,9 @@ function drawPhoto(ctx,s){
            それ以上は地面にめり込むので、取得半径と同じ1.2kmで打ち切る。 */
         const roadRangeM=OSM_ROAD_RADIUS_KM*1000;
         const bridgeRangeM=OSM_BRIDGE_RADIUS_KM*1000;
+        const trailRangeM=OSM_TRAIL_RADIUS_KM*1000;   /* 【v1101】登山道は 5km まで */
         const roadBucketOf=distanceM=>clamp(Math.floor(distanceM/roadRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
+        const trailBucketOf=distanceM=>clamp(Math.floor(distanceM/trailRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
         const bridgeBucketOf=distanceM=>clamp(Math.floor(distanceM/bridgeRangeM*FADE_BUCKETS),0,FADE_BUCKETS-1);
 
         /* 【v844】この関数は1コマに2回走る。夜用（"commands"）と昼用（"replay"）で
@@ -33237,6 +33415,7 @@ function drawPhoto(ctx,s){
            左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
            路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
            破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
+        let trailPaths,trailEdgePaths;   /* 【v1101】登山道 */
         let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
@@ -33245,6 +33424,7 @@ function drawPhoto(ctx,s){
           gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
           roadPaths=overlayCache.roadPaths;roadCentrePaths=overlayCache.roadCentrePaths;
           railPaths=overlayCache.railPaths;railTiePaths=overlayCache.railTiePaths;
+          trailPaths=overlayCache.trailPaths;trailEdgePaths=overlayCache.trailEdgePaths;   /* 【v1101】 */
           bridgePaths=overlayCache.bridgePaths;bridgeSidePaths=overlayCache.bridgeSidePaths;
           bridgeEdgePaths=overlayCache.bridgeEdgePaths;bridgePierPaths=overlayCache.bridgePierPaths;
           bridgePierShadePaths=overlayCache.bridgePierShadePaths;
@@ -33257,6 +33437,8 @@ function drawPhoto(ctx,s){
           roadCentrePaths=roadPaths?newPaths():null;
           railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
           railTiePaths=railPaths?newPaths():null;
+          trailPaths=(trailLinesVisible&&osmTrailState.ways)?newPaths():null;   /* 【v1101】 */
+          trailEdgePaths=trailPaths?newPaths():null;
           bridgeWaysForDisplay=(bridgeLinesVisible&&osmBridgeState.ways)?visibleBridgeWays(osmBridgeState.ways):[];
           bridgePaths=bridgeWaysForDisplay.length?newPaths():null;
           bridgeSidePaths=bridgePaths?newPaths():null;
@@ -33617,7 +33799,9 @@ function drawPhoto(ctx,s){
           /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
              違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
              模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
-          const buildRibbon=(ways,fillPaths,markPaths,markKind)=>{
+          const buildRibbon=(ways,fillPaths,markPaths,markKind,opts)=>{
+          const bucketFor=(opts&&opts.bucketOf)||roadBucketOf;
+          const rangeLimitM=(opts&&opts.rangeM)||roadRangeM;
           for(const way of ways){
             const halfWidth=way.widthM/2;
             const points=way.points;
@@ -33629,7 +33813,7 @@ function drawPhoto(ctx,s){
               const segmentM=Math.hypot(bx-ax,by-ay);
               if(segmentM<.01) continue;
               // 両端とも範囲外の区間は刻む前に捨てる(市街地で節点が数千になるため)。
-              if(Math.hypot(ax,ay)>roadRangeM+50&&Math.hypot(bx,by)>roadRangeM+50){previous=null;travelM+=segmentM;continue;}
+              if(Math.hypot(ax,ay)>rangeLimitM+50&&Math.hypot(bx,by)>rangeLimitM+50){previous=null;travelM+=segmentM;continue;}
               // 進行方向を90度回した向きが道幅の方向。
               const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
               const perpEast=dirNorth, perpNorth=-dirEast;
@@ -33650,7 +33834,7 @@ function drawPhoto(ctx,s){
                 if(!current){previous=null;continue;}
                 if(previous){
                   // 前の断面との間を1枚の四角形として塗る。距離でバケツ分けして濃さを変える。
-                  const bucket=roadBucketOf(current.distanceM);
+                  const bucket=bucketFor(current.distanceM);
                   fillGroundPolygon(fillPaths[bucket],ribbonQuad(previous,current,1));
                   if(markKind==="centre"){
                     // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
@@ -33910,13 +34094,17 @@ function drawPhoto(ctx,s){
             const ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
             buildRibbon(ways,railPaths,railTiePaths,"ties");
           }
+          if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
+            const ways=osmTrailState.ways.filter(way=>trailIncludeTrack||!way.track);
+            buildRibbon(ways,trailPaths,trailEdgePaths,null,{bucketOf:trailBucketOf,rangeM:trailRangeM});
+          }
           if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
         }
         /* 【v844】昼用のために形を預ける。色は預けない（昼夜で変わるのは色だけ）。 */
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
           sharedTerrainProjectionCache.groundOverlayPaths={
             key:terrainGeometryKey,
-            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
+            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,trailEdgePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths
           };
@@ -33943,6 +34131,24 @@ function drawPhoto(ctx,s){
         if(contourPaths){
           // 等高線は格子と区別できるよう、少し暖色寄り・やや濃くする。
           strokeFaded(contourPaths,mixRGB([138,122,100],[74,58,30],terrainDayFactor),lerp(.18,.50,terrainDayFactor));
+        }
+        /* 【v1101】登山道。橙。距離で薄くするのは道路と同じ仕組み。 */
+        if(trailPaths){
+          const trailAlphaScale=overlayAlphaScale("trail",terrainDayFactor);
+          const trailRGB=overlayPartRGB("trail","main",terrainDayFactor);
+          const trailEdgeRGB=overlayPartRGB("trail","edge",terrainDayFactor);
+          const trailBaseAlpha=lerp(.74,.92,terrainDayFactor)*trailAlphaScale;
+          for(let i=0;i<FADE_BUCKETS;i++){
+            const fade=fadeOfBucket(i),alpha=trailBaseAlpha*fade;
+            if(alpha<.012)continue;
+            tctx.fillStyle=`rgba(${trailRGB.join(",")},${alpha.toFixed(3)})`;
+            tctx.fill(trailPaths[i]);
+            if(trailEdgePaths){
+              tctx.strokeStyle=`rgba(${trailEdgeRGB.join(",")},${(alpha*.5).toFixed(3)})`;
+              tctx.lineWidth=Math.max(.6,1.1*fade);
+              tctx.stroke(trailPaths[i]);
+            }
+          }
         }
         /* 道路用パレット。橋は水面との見分けを優先するため、下で専用色を使う。 */
         /* 【v961】色と濃さは設定から。既定のままなら今までと同じ数字になる。 */
@@ -36088,6 +36294,7 @@ function drawPhoto(ctx,s){
   // 実地形と照合して見えている主要な山を、重ならない範囲で最大6山表示する。
   drawMountainNameLabels(ctx,s,toXY,W,H);
   drawFavPlaceLabels(ctx,s,toXY,W,H);   /* 【v1082】地図に登録した場所 */
+  drawTrailNameLabels(ctx,s,toXY,W,H);   /* 【v1101】登山道の名前 */
 
   // ISOグレイン
   if(s.grainAmount>0.02){
@@ -38935,6 +39142,7 @@ setTimeout(()=>{ pruneExternalGeoCache(); },12000); // 起動直後の読み込�
 loadPersistedSettings().then(()=>{
   requestOsmRoads(+el.lat.value,+el.lon.value);
   requestOsmRails(+el.lat.value,+el.lon.value);
+  requestOsmTrails(+el.lat.value,+el.lon.value);   /* 【v1101】 */
   requestOsmBridges(+el.lat.value,+el.lon.value);
   updateSimAddress(+el.lat.value,+el.lon.value);
 }).catch(()=>{});
