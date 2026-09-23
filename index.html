@@ -1869,7 +1869,10 @@
     background:rgba(25,20,24,.42);
   }
   .daruma-island-silhouette-title{margin:0 0 5px;color:#ffe1b0;font:800 14px/1.35 'Inter',sans-serif;}
-  .daruma-island-silhouette-actions{display:grid;grid-template-columns:1fr 1.45fr;gap:8px;margin-top:10px;}
+  /* 【v1095】選んだ左右の方位の表示。 */
+  .daruma-silhouette-az-readout{margin:9px 0 0;color:rgba(255,255,255,.72);font:600 11.5px/1.5 'Inter',sans-serif;}
+  .daruma-silhouette-az-readout span{color:#ffe1b0;font:800 13.5px/1.4 'IBM Plex Mono',monospace;letter-spacing:.02em;}
+  .daruma-island-silhouette-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
   .daruma-island-silhouette-actions button{min-height:42px;}
   .daruma-island-silhouette-actions .wide{grid-column:1/-1;}
   .daruma-island-silhouette-status{
@@ -1901,7 +1904,8 @@
     content:"";position:absolute;top:50%;left:50%;width:16px;height:16px;transform:translate(-50%,-50%) rotate(45deg);
     border:2px solid #ffd38b;background:rgba(7,13,30,.82);border-radius:3px;
   }
-  @media (max-width:760px){.daruma-island-silhouette-actions{grid-template-columns:1fr;}.daruma-island-silhouette-actions .wide{grid-column:auto;}}
+  /* 【v1095】文字を短くしたので、スマホでも 2 列のまま（1 列に落とさない）。 */
+  @media (max-width:760px){.daruma-island-silhouette-actions .wide{grid-column:auto;}}
   /* 高精細中心をシミュレーション画面から選ぶ間だけ表示する案内と照準。
      overlay自身は操作を奪わず、写真canvasの既存イベントでタップ位置を受け取る。 */
   .high-detail-photo-pick-overlay{
@@ -6012,15 +6016,13 @@
                     <h4 class="daruma-island-silhouette-title">撮影計画へ保存する島のシルエット</h4>
                     <p class="plan-modal-help">シミュレーション画面で左右2点を選び、その方位範囲だけを太陽1個分ずつ走査します。完成した島影は日付を変えても残り、撮影計画と一緒に保存されます。</p>
                     <button id="darumaSilhouettePickBtn" type="button" style="width:100%;margin-top:9px;">シミュレーション画面で左右範囲を選ぶ</button>
-                    <div class="grid2" style="margin-top:9px;">
-                      <div class="field"><label class="top" for="darumaSilhouetteStartAz">左端の方位</label><input id="darumaSilhouetteStartAz" type="text" readonly placeholder="未選択"></div>
-                      <div class="field"><label class="top" for="darumaSilhouetteEndAz">右端の方位</label><input id="darumaSilhouetteEndAz" type="text" readonly placeholder="未選択"></div>
-                    </div>
+                    <!-- 【v1095】左端・右端は読み取り専用の表示だけ（範囲は必ずシミュレーション画面で選ぶ）。入力欄をやめて 1 行の結果に。 -->
+                    <p id="darumaSilhouetteAzReadout" class="daruma-silhouette-az-readout">左右の方位：<span id="darumaSilhouetteAzValue">未選択</span></p>
                     <p id="darumaSilhouetteRangeSummary" class="plan-modal-help" style="margin-top:8px;">左右範囲を選択してください。</p>
                     <div id="darumaSilhouetteStatus" class="daruma-island-silhouette-status" hidden aria-live="polite"></div>
                     <div class="daruma-island-silhouette-actions">
-                      <button id="darumaSilhouetteClearBtn" type="button">保存島影を消す</button>
-                      <button id="darumaSilhouetteRunBtn" type="button" class="primary" disabled>選択範囲の島影を作成</button>
+                      <button id="darumaSilhouetteClearBtn" type="button">島影を消す</button>
+                      <button id="darumaSilhouetteRunBtn" type="button" class="primary" disabled>島影を作成</button>
                     </div>
                   </div>
                 </section>
@@ -6517,7 +6519,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1094-daruma-no-judge-buttons";
+const APP_VERSION="1095-daruma-range-readout";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -23096,8 +23098,9 @@ function setDarumaSilhouetteStatus(message,type="info"){
 function updateDarumaSilhouetteRangeUi(){
   const selection=darumaSilhouetteSelection;
   const valid=Number.isFinite(selection.startAz)&&Number.isFinite(selection.endAz)&&Number.isFinite(selection.halfAngle)&&selection.halfAngle>0;
-  if(el.darumaSilhouetteStartAz)el.darumaSilhouetteStartAz.value=valid?`${selection.startAz.toFixed(2)}°`:"";
-  if(el.darumaSilhouetteEndAz)el.darumaSilhouetteEndAz.value=valid?`${selection.endAz.toFixed(2)}°`:"";
+  /* 【v1095】入力欄をやめ、1 行の表示に出す。 */
+  const azValue=document.getElementById("darumaSilhouetteAzValue");
+  if(azValue)azValue.textContent=valid?`${selection.startAz.toFixed(2)}° 〜 ${selection.endAz.toFixed(2)}°`:"未選択";
   const existing=darumaIslandSilhouetteMatches(state)?darumaIslandSilhouette:null;
   const existingText=existing?` 現在、${existing.segments.length}範囲・${darumaIslandProfilePointCount(existing)}点の島影を保持しています。`:"";
   if(el.darumaSilhouetteRangeSummary){
