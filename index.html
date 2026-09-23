@@ -6539,7 +6539,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1102-trail-night-color";
+const APP_VERSION="1103-fisheye-circle";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7140,7 +7140,31 @@ function project(az,alt,az0,alt0){
 /* 【v1002】SONY FE 8-14mm G（SEL814G）に合わせる：14mm で対角 180°、8mm で円周。
    等立体角 r = K·2f·sin(θ/2)。K は「14mm で像円の半径 = 35mm判の対角の半分」になる係数。 */
 const FISHEYE_DIAGONAL_MM=14;
-const FISHEYE_K=(43.2666/2)/(Math.SQRT2*FISHEYE_DIAGONAL_MM);
+/* 【v1103】像円（θ=180°が写る円）の半径を、35mm判フレーム上の mm で返す。
+   実機 SEL814G の二つの姿をそのまま目盛りにしている。
+     ・ 8mm：円周魚眼。像円がフレームの短辺 24mm にちょうど収まる → 半径 12.0mm
+     ・14mm：対角魚眼。像円がフレームの対角 43.2666mm に届く      → 半径 21.6333mm
+   その間と外側は直線で延ばす。crop が掛かると実効焦点距離が伸び、像円がフレームを
+   はみ出す（＝対角魚眼寄りになる）ので、実機どおりの振る舞いになる。
+
+   【v1002 の何が違ったか】v1002 は「14mm で対角」だけを合わせた係数 1.09264 を
+   全域に同じように掛けていた。r は f に比例するので 8mm では像円の直径が
+   24.72mm になり、短辺 24mm を 3% はみ出す。これが「8mm の円が左右で切れる」原因。 */
+const FISHEYE_CIRCLE_RADIUS_MM=24/2;          /*  8mm：短辺に収まる */
+const FISHEYE_CORNER_RADIUS_MM=43.2666/2;     /* 14mm：対角に届く */
+function fisheyeImageCircleMm(focalLength,sensorCrop=1){
+  const focal=(+focalLength||FISHEYE_DIAGONAL_MM)*(+sensorCrop||1);
+  const t=(focal-8)/6;   /* 8mm で 0、14mm で 1 */
+  return Math.max(.001,FISHEYE_CIRCLE_RADIUS_MM+(FISHEYE_CORNER_RADIUS_MM-FISHEYE_CIRCLE_RADIUS_MM)*t);
+}
+/* 画面の画素で測った像円の半径（θ=90°の位置）。画面の対角を 43.2666mm に対応させる。 */
+function fisheyeEdgeRadiusPx(W,H,focalLength,sensorCrop=1){
+  return fisheyeImageCircleMm(focalLength,sensorCrop)*(Math.hypot(W,H)/43.2666);
+}
+/* r = scale * sin(θ/2) の scale。θ=90° で像円の縁に一致するよう √2 倍。 */
+function fisheyeRadiusScalePx(W,H,focalLength,sensorCrop=1){
+  return fisheyeEdgeRadiusPx(W,H,focalLength,sensorCrop)*Math.SQRT2;
+}
 function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=FISHEYE_DIAGONAL_MM,sensorCrop=1,output=null){
   const F=toVec(az0,alt0);
   const R=[cos(az0),-sin(az0),0];
@@ -7156,9 +7180,7 @@ function projectDiagonalFisheyeXY(az,alt,az0,alt0,W,H,focalLength=FISHEYE_DIAGON
   }
   // 35mmフルサイズの対角長43.2666mmをキャンバス対角へ対応させ、実焦点距離で像高を計算する。
   // APS-Cなどはcrop倍した35mm換算焦点距離として扱うため、同じレンズでもセンサーに応じて画角が変わる。
-  const pixelsPerMm=Math.hypot(W,H)/43.2666;
-  const effectiveFocal=focalLength*sensorCrop;
-  const radius=FISHEYE_K*2*effectiveFocal*pixelsPerMm*Math.sin(theta/2);   /* 【v1002】 */
+  const radius=fisheyeRadiusScalePx(W,H,focalLength,sensorCrop)*Math.sin(theta/2);   /* 【v1103】 */
   const x=W/2+(Xc/sinTheta)*radius,y=H/2-(Yc/sinTheta)*radius;
   if(output){output[0]=x;output[1]=y;return output;}
   return [x,y];
@@ -12723,9 +12745,7 @@ function highDetailPhotoRayAt(canvasX,canvasY,pick){
   if(pick.useFisheye){
     const screenX=canvasX-pick.width/2,screenY=pick.height/2-canvasY;
     const radius=Math.hypot(screenX,screenY);
-    const pixelsPerMm=Math.hypot(pick.width,pick.height)/43.2666;
-    const effectiveFocal=Math.max(.01,pick.focalLength*pick.sensorCrop);
-    const ratio=clamp(radius/(FISHEYE_K*2*effectiveFocal*pixelsPerMm),0,1);   /* 【v1002】 */
+    const ratio=clamp(radius/fisheyeRadiusScalePx(pick.width,pick.height,pick.focalLength,pick.sensorCrop),0,1);   /* 【v1103】 */
     const theta=2*Math.asin(ratio),sinTheta=Math.sin(theta),cosTheta=Math.cos(theta);
     const ux=radius>1e-6?screenX/radius:0,uy=radius>1e-6?screenY/radius:0;
     ray=[forward[0]*cosTheta+(right[0]*ux+up[0]*uy)*sinTheta,
@@ -21157,8 +21177,8 @@ function computeState(){
   let fovH, fovV;
   if(fisheyeProjectionActive){
     // 等立体角魚眼 r=2f sin(theta/2)。センサー端が180°像円の外側なら、見える範囲は180°で頭打ちにする。
-    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(FISHEYE_K*2*sensor.crop*focalLength)))*R2D);   /* 【v1002】 */
-    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(FISHEYE_K*2*sensor.crop*focalLength)))*R2D);
+    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(fisheyeImageCircleMm(focalLength,sensor.crop)*Math.SQRT2)))*R2D);   /* 【v1002】 */
+    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(fisheyeImageCircleMm(focalLength,sensor.crop)*Math.SQRT2)))*R2D);
   } else {
     fovH=2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
     fovV=2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
@@ -28591,7 +28611,7 @@ function drawPhoto(ctx,s){
   const fastProjector=(()=>{
     const F=toVec(s.facingAz,s.facingAlt),R=[cos(s.facingAz),-sin(s.facingAz),0],U=cross(R,F);
     const F0=F[0],F1=F[1],F2=F[2],R0=R[0],R1=R[1],R2=R[2],U0=U[0],U1=U[1],U2=U[2];
-    const cx=W/2,cy=H/2,pixelsPerMm=Math.hypot(W,H)/43.2666,effF=s.focalLength*s.sensor.crop;
+    const cx=W/2,cy=H/2,fisheyeRadiusScale=fisheyeRadiusScalePx(W,H,s.focalLength,s.sensor.crop);   /* 【v1103】 */
     const fisheye=useDiagonalFisheye;
     return {
       azSin:(az)=>Math.sin(az*D2R),azCos:(az)=>Math.cos(az*D2R),
@@ -28606,7 +28626,7 @@ function drawPhoto(ctx,s){
           if(theta>Math.PI/2+1e-6)return false;
           const st=Math.sin(theta);
           if(st<1e-8){out[0]=cx;out[1]=cy;return true;}
-          const r=FISHEYE_K*2*effF*pixelsPerMm*Math.sin(theta/2);   /* 【v1002】 */
+          const r=fisheyeRadiusScale*Math.sin(theta/2);   /* 【v1103】 */
           out[0]=cx+(xc/st)*r;out[1]=cy-(yc/st)*r;return true;
         }
         if(zc<=.02)return false;
@@ -28623,8 +28643,7 @@ function drawPhoto(ctx,s){
   const reflectionRightX=reflectionProjectionRight[0],reflectionRightY=reflectionProjectionRight[1],reflectionRightZ=reflectionProjectionRight[2];
   const reflectionUpX=reflectionProjectionUp[0],reflectionUpY=reflectionProjectionUp[1],reflectionUpZ=reflectionProjectionUp[2];
   const reflectionCenterX=W/2,reflectionCenterY=H/2;
-  const reflectionFisheyePixelsPerMm=Math.hypot(W,H)/43.2666;
-  const reflectionFisheyeEffectiveFocal=s.focalLength*s.sensor.crop;
+  const reflectionFisheyeRadiusScale=fisheyeRadiusScalePx(W,H,s.focalLength,s.sensor.crop);   /* 【v1103】 */
   function projectReflectedMilkyWayPoint(az,alt,output){
     const altRad=alt*D2R,azRad=az*D2R;
     const cosAlt=Math.cos(altRad),sinAlt=Math.sin(altRad);
@@ -28640,7 +28659,7 @@ function drawPhoto(ctx,s){
       const sinTheta=Math.sin(theta);
       if(sinTheta<1e-8){x=reflectionCenterX;y=reflectionCenterY;}
       else{
-        const radius=FISHEYE_K*2*reflectionFisheyeEffectiveFocal*reflectionFisheyePixelsPerMm*Math.sin(theta/2);   /* 【v1002】 */
+        const radius=reflectionFisheyeRadiusScale*Math.sin(theta/2);   /* 【v1103】 */
         x=reflectionCenterX+(xc/sinTheta)*radius;y=reflectionCenterY-(yc/sinTheta)*radius;
       }
     }else{
@@ -36455,7 +36474,7 @@ function drawPhoto(ctx,s){
 
   // 短い焦点距離では180°の像円がセンサー内に収まるため、像円の外側を黒くして円周魚眼らしく見せる。
   if(useDiagonalFisheye){
-    const imageCircleRadius=FISHEYE_K*2*s.focalLength*s.sensor.crop*(Math.hypot(W,H)/43.2666)*Math.SQRT1_2;   /* 【v1002】 */
+    const imageCircleRadius=fisheyeEdgeRadiusPx(W,H,s.focalLength,s.sensor.crop);   /* 【v1103】 */
     if(imageCircleRadius<Math.hypot(W,H)/2){
       ctx.save();
       ctx.beginPath();
@@ -37530,8 +37549,8 @@ function updateCameraViewOnly(){
   const fisheyeProjectionActive=mobileLensMode==="fisheye"&&!arActive;
   let fovH,fovV;
   if(fisheyeProjectionActive){
-    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(FISHEYE_K*2*sensor.crop*focalLength)))*R2D);   /* 【v1002】 */
-    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(FISHEYE_K*2*sensor.crop*focalLength)))*R2D);
+    fovH=Math.min(180,4*Math.asin(Math.min(1,halfW/(fisheyeImageCircleMm(focalLength,sensor.crop)*Math.SQRT2)))*R2D);   /* 【v1002】 */
+    fovV=Math.min(180,4*Math.asin(Math.min(1,halfH/(fisheyeImageCircleMm(focalLength,sensor.crop)*Math.SQRT2)))*R2D);
   }else{
     fovH=2*Math.atan(halfW/(sensor.crop*focalLength))*R2D;
     fovV=2*Math.atan(halfH/(sensor.crop*focalLength))*R2D;
