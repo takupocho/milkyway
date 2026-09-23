@@ -5453,7 +5453,7 @@
             <div class="field"><label class="top">夜の明るさ <span class="val mono" id="overlayRailNightBrightVal">100%</span></label><input type="range" id="overlayRailNightBright" min="0" max="200" step="1" value="100"></div>
             <div class="field"><label class="top">夜の濃さ <span class="val mono" id="overlayRailNightOpacityVal">100%</span></label><input type="range" id="overlayRailNightOpacity" min="0" max="200" step="1" value="100"></div>
             <p class="map-hint" style="margin:12px 0 4px;color:var(--ink);font-weight:700;">登山道</p>
-            <p class="map-hint" style="margin:0 0 6px;">「表示 → 登山道」で出る道の色。縁はこの色との既定の比で明るくなります。</p>
+            <p class="map-hint" style="margin:0 0 6px;">「表示 → 登山道」で出る道の色。線も名前の札もこの色になります。</p>
             <label class="map-hint" style="display:flex;align-items:center;gap:6px;margin:0 0 6px;"><input id="trailIncludeTrackBox" type="checkbox" style="width:auto;margin:0;"> 林道・作業道（track）も登山道に含める</label>
             <div class="overlay-color-row">
               <label>昼の色<input type="color" id="overlayTrailDayColor" value="#e48426"></label>
@@ -6539,7 +6539,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1101-trails";
+const APP_VERSION="1102-trail-night-color";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -15186,8 +15186,7 @@ const OVERLAY_STYLE_PARTS={
   },
   /* 【v1101】登山道。橙。 */
   trail:{
-    main:{night:[214,126, 46],day:[228,132, 38]},   /* 道そのもの */
-    edge:{night:[255,196,132],day:[255,214,150]}    /* 縁（少し明るい） */
+    main:{night:[214,126, 46],day:[228,132, 38]}    /* 道そのもの（縁は使わない：v1102 で1色に統一） */
   },
   bridge:{
     main:     {night:[120,128,140],day:[ 38, 42, 48]},   /* 橋面 */
@@ -15414,6 +15413,45 @@ function groundToneFilter(dayFactor){
   const contrastCss=1-2*offset;
   if(!photoToneCanvasFilterSupported||!(contrastCss>.02&&contrastCss<20)||!(gain>0))return "none";
   return `${bluePrefix}saturate(${saturate.toFixed(4)}) brightness(${(gain/contrastCss).toFixed(5)}) contrast(${contrastCss.toFixed(5)})`;
+}
+/* 【v1102】上の groundToneFilter を**逆に**たどる。
+   地形レイヤーは画面へ出る瞬間に夜の持ち上げ（既定 brightness166%・contrast144%・黒上げ14・青26%）を
+   受けるので、地形の上に明るい色で線を引くと、その線だけが白へ飛ぶ。
+   （登山道の橙 214,126,46 は画面では 255,255,253 ＝ ほぼ白になっていた。
+     道路が平気だったのは元の色が 38,40,43 と十分に暗かったからで、仕組みは同じ。）
+   ここでは「画面でこの色に見せたい」を渡すと、そう見えるように**先に落とした色**を返す。
+   掛かる順は 青→彩度→明るさ→コントラスト なので、戻す順はその逆。
+   青は行列で R・G の輝度が混ざってくるため戻し切れないことがある。そのときは 0 で止める
+   （＝これ以上は青を引けない。少し青が残るが、白へ飛ぶよりずっとよい）。 */
+function groundToneCompensateRGB(rgb,dayFactor){
+  if(!photoToneOn||arActive)return rgb;
+  const weight=clamp(1-clamp(dayFactor,0,1),0,1);
+  if(weight<=.001)return rgb;   /* 昼は何も掛からない＝そのまま */
+  const brightness=1+(groundTone.brightness/100-1)*weight;
+  const contrast=1+(groundTone.contrast/100-1)*weight;
+  const saturate=1+(groundTone.saturate/100-1)*weight;
+  const lift=groundTone.lift/100*weight;
+  const blue=1+(groundTone.blue/100-1)*weight;
+  const gain=brightness*contrast,offset=.5*(1-contrast)+lift,contrastCss=1-2*offset;
+  if(!photoToneCanvasFilterSupported||!(contrastCss>.02&&contrastCss<20)||!(gain>0))return rgb;
+  const bright=gain/contrastCss;
+  if(!(bright>.001))return rgb;
+  /* ① コントラストを戻す ② 明るさを戻す */
+  let r=((rgb[0]-127.5)/contrastCss+127.5)/bright;
+  let g=((rgb[1]-127.5)/contrastCss+127.5)/bright;
+  let b=((rgb[2]-127.5)/contrastCss+127.5)/bright;
+  /* ③ 彩度を戻す。この行列は輝度を変えないので 1/s で厳密に戻る。 */
+  if(saturate>.02&&Math.abs(saturate-1)>1e-4){
+    const lum=.2126*r+.7152*g+.0722*b,inv=1/saturate;
+    r=lum+(r-lum)*inv;g=lum+(g-lum)*inv;b=lum+(b-lum)*inv;
+  }
+  /* ④ 青を落とす段を戻す。B' = k*.2126R + k*.7152G + (s+k*.0722)B を B について解く。 */
+  const blueS=clamp(blue,0,1);
+  if(photoToneSvgFilterSupported&&el.groundBlueDesatMatrix&&blueS<.999){
+    const blueK=1-blueS,denominator=blueS+blueK*.0722;
+    if(denominator>1e-4)b=(b-blueK*(.2126*r+.7152*g))/denominator;
+  }
+  return [r,g,b].map(v=>clamp(Math.round(v),0,255));
 }
 for(const name of GROUND_TONE_KEYS){
   const input=el["toneGround"+name];
@@ -22782,6 +22820,8 @@ try{
       /* 【v961】既定のままなら元の数字と一致するか、外から確かめるための入口。 */
       overlayRGB:(group,part,t)=>overlayPartRGB(group,part,t),
       overlayAlpha:(group,t)=>overlayAlphaScale(group,t),
+      /* 【v1102】夜の持ち上げの逆算。__hd.groundCompensate(214,126,46,0) で塗る色を確かめられる。 */
+      groundCompensate:(r,g,b,day)=>groundToneCompensateRGB([r,g,b],Number.isFinite(day)?day:0),
       overlayParts:()=>OVERLAY_STYLE_PARTS,
       /* 【v962】観測地点を誰が書き換えたかの記録。 */
       placeLog:()=>placeWriteLog.slice(),
@@ -27273,7 +27313,9 @@ function drawTrailNameLabels(ctx,s,toXY,W,H){
   const placed=[];
   /* 【v1101】この関数は地形の中ではないので terrainDayFactor は使えない。空の明るさから昼夜を決める。 */
   const dayFactor=clamp(Number.isFinite(s&&s.skyBrightness)?s.skyBrightness:1,0,1);
-  const rgb=overlayPartRGB("trail","edge",dayFactor);
+  /* 【v1102】札は地形の外に描くので夜の持ち上げが掛からない。設定の色がそのまま出る。
+     道の線と同じ色にして、見た目の食い違いを無くす。 */
+  const rgb=overlayPartRGB("trail","main",dayFactor);
   ctx.save();ctx.font=`700 ${fontSize}px system-ui,sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
   for(const item of items){
     if(placed.length>=8)break;
@@ -33415,7 +33457,7 @@ function drawPhoto(ctx,s){
            左右の縁を世界座標で作ってから投影するので、手前は太く奥は細くなり、
            路面がそのまま遠近法に従う。センターラインも世界座標で刻むため、
            破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
-        let trailPaths,trailEdgePaths;   /* 【v1101】登山道 */
+        let trailPaths;   /* 【v1101】登山道 */
         let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
@@ -33424,7 +33466,7 @@ function drawPhoto(ctx,s){
           gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
           roadPaths=overlayCache.roadPaths;roadCentrePaths=overlayCache.roadCentrePaths;
           railPaths=overlayCache.railPaths;railTiePaths=overlayCache.railTiePaths;
-          trailPaths=overlayCache.trailPaths;trailEdgePaths=overlayCache.trailEdgePaths;   /* 【v1101】 */
+          trailPaths=overlayCache.trailPaths;   /* 【v1101】 */
           bridgePaths=overlayCache.bridgePaths;bridgeSidePaths=overlayCache.bridgeSidePaths;
           bridgeEdgePaths=overlayCache.bridgeEdgePaths;bridgePierPaths=overlayCache.bridgePierPaths;
           bridgePierShadePaths=overlayCache.bridgePierShadePaths;
@@ -33438,7 +33480,6 @@ function drawPhoto(ctx,s){
           railPaths=(railLinesVisible&&osmRailState.ways)?newPaths():null;
           railTiePaths=railPaths?newPaths():null;
           trailPaths=(trailLinesVisible&&osmTrailState.ways)?newPaths():null;   /* 【v1101】 */
-          trailEdgePaths=trailPaths?newPaths():null;
           bridgeWaysForDisplay=(bridgeLinesVisible&&osmBridgeState.ways)?visibleBridgeWays(osmBridgeState.ways):[];
           bridgePaths=bridgeWaysForDisplay.length?newPaths():null;
           bridgeSidePaths=bridgePaths?newPaths():null;
@@ -34096,7 +34137,7 @@ function drawPhoto(ctx,s){
           }
           if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
             const ways=osmTrailState.ways.filter(way=>trailIncludeTrack||!way.track);
-            buildRibbon(ways,trailPaths,trailEdgePaths,null,{bucketOf:trailBucketOf,rangeM:trailRangeM});
+            buildRibbon(ways,trailPaths,null,null,{bucketOf:trailBucketOf,rangeM:trailRangeM});
           }
           if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
         }
@@ -34104,7 +34145,7 @@ function drawPhoto(ctx,s){
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
           sharedTerrainProjectionCache.groundOverlayPaths={
             key:terrainGeometryKey,
-            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,trailEdgePaths,
+            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths
           };
@@ -34135,19 +34176,21 @@ function drawPhoto(ctx,s){
         /* 【v1101】登山道。橙。距離で薄くするのは道路と同じ仕組み。 */
         if(trailPaths){
           const trailAlphaScale=overlayAlphaScale("trail",terrainDayFactor);
-          const trailRGB=overlayPartRGB("trail","main",terrainDayFactor);
-          const trailEdgeRGB=overlayPartRGB("trail","edge",terrainDayFactor);
+          /* 【v1102】夜の持ち上げで白へ飛ばないよう、設定の色から**塗る色**を逆算する。
+             ここで渡す色が「画面で見える色」になる（昼は素通り）。 */
+          const trailRGB=groundToneCompensateRGB(overlayPartRGB("trail","main",terrainDayFactor),terrainDayFactor);
           const trailBaseAlpha=lerp(.74,.92,terrainDayFactor)*trailAlphaScale;
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=fadeOfBucket(i),alpha=trailBaseAlpha*fade;
             if(alpha<.012)continue;
+            /* 【v1102】細い道は塗りが 1 画素未満になるので、同じ色で縁取りして最低限の太さを保つ。
+               v1101 は「明るい橙（縁の色）」で縁取っていたため、線が細いほどその色だけが残り、
+               夜の暗い地面の上では白く見えていた（利用者の報告）。縁取りは**道と同じ色**にする。 */
             tctx.fillStyle=`rgba(${trailRGB.join(",")},${alpha.toFixed(3)})`;
             tctx.fill(trailPaths[i]);
-            if(trailEdgePaths){
-              tctx.strokeStyle=`rgba(${trailEdgeRGB.join(",")},${(alpha*.5).toFixed(3)})`;
-              tctx.lineWidth=Math.max(.6,1.1*fade);
-              tctx.stroke(trailPaths[i]);
-            }
+            tctx.strokeStyle=`rgba(${trailRGB.join(",")},${alpha.toFixed(3)})`;
+            tctx.lineWidth=Math.max(.9,1.3*fade);
+            tctx.stroke(trailPaths[i]);
           }
         }
         /* 道路用パレット。橋は水面との見分けを優先するため、下で専用色を使う。 */
