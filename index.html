@@ -6525,7 +6525,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1098-daruma-range-drag";
+const APP_VERSION="1100-fav-plan-prune";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7980,6 +7980,20 @@ const FIREWORK_SIZES=[
   {go:2.5,h:100,d:50},{go:3,h:120,d:60},{go:4,h:160,d:130},{go:5,h:190,d:170},{go:6,h:220,d:220},{go:7,h:250,d:240},
   {go:8,h:280,d:280},{go:10,h:330,d:320},{go:12,h:364,d:352},{go:15,h:415,d:400},{go:20,h:500,d:480},{go:30,h:600,d:550}];
 function fireworkSpec(go){return FIREWORK_SIZES.find(s=>s.go===+go)||FIREWORK_SIZES.find(s=>s.go===10);}
+/* 【v1099】花火かどうかの判定はここだけ。`+null===0` や `+""===0` を花火と誤らないよう、
+   「数（または数の文字列）で、0 より大きい」ときだけ真にする。null・undefined・""・NaN は花火ではない。 */
+/* 【v1099】記録から数を読むときの共通の入口。null・undefined・""・真偽値は「数ではない」と見なす。
+   `+null===0` `+""===0` `+true===1` を数として受け取ってしまう事故を防ぐ。 */
+function savedNumber(value){
+  if(value===null||value===undefined||value===""||typeof value==="boolean")return null;
+  const n=typeof value==="number"?value:(typeof value==="string"?Number(value):NaN);
+  return Number.isFinite(n)?n:null;
+}
+function fireworkGoOf(value){
+  if(value===null||value===undefined||value==="")return null;
+  const go=typeof value==="number"?value:(typeof value==="string"?Number(value):NaN);
+  return Number.isFinite(go)&&go>0?go:null;
+}
 /* 号数に合わせた模型を組む。球：中心を h、直径を d に相似縮小。筋（軸上の線）：地面から中心まで届くよう高さだけ伸縮。
    線は 3 角柱（半径は号数に依らず同じ）。色は白 1 色。parseColladaBuilding と同じ形の物体を返す。 */
 function buildFireworkModel(go){
@@ -8011,6 +8025,8 @@ function buildFireworkModel(go){
 }
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
 function fireworkCreateSlot(go,lat,lon,altitude){
+  /* 【v1099】号数が正しくないときは作らない（10号に化けさせない）。 */
+  if(fireworkGoOf(go)===null)return null;
   const spec=fireworkSpec(go);
   const slot={id:++kmzSlotSeq,lat:+lat,lon:+lon,altitude:Number.isFinite(+altitude)?+altitude:0,heading:0,scale:1,opacity:1,
     visible:true,silhouette:false,glow:true,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
@@ -10544,7 +10560,7 @@ async function favPlacesLoad(){
     if(parsed&&parsed.visible&&typeof parsed.visible==="object")favKindVisible={...favKindVisible,...parsed.visible};
     if(parsed&&Array.isArray(parsed.removedPlanIds))favPlacesRemovedPlanIds=parsed.removedPlanIds;
   }catch(e){favPlaces=[];}
-  favPlaces=favPlaces.filter(p=>p&&Number.isFinite(+p.lat)&&Number.isFinite(+p.lon)).map(p=>({...p,lat:+p.lat,lon:+p.lon,kind:favKindOf(p.kind),name:String(p.name||"").slice(0,40)}));
+  favPlaces=favPlaces.filter(p=>p&&savedNumber(p.lat)!==null&&savedNumber(p.lon)!==null).map(p=>({...p,lat:savedNumber(p.lat),lon:savedNumber(p.lon),kind:favKindOf(p.kind),name:String(p.name||"").slice(0,40)}));
   favPlacesLoaded=true;
   favImportFromPlans();
   favRefreshMarkers();
@@ -10552,9 +10568,20 @@ async function favPlacesLoad(){
 async function favPlacesSave(){
   try{await planKvSet(FAV_PLACES_KEY,JSON.stringify({version:1,places:favPlaces,visible:favKindVisible,removedPlanIds:favPlacesRemovedPlanIds.slice(-3000)}));}catch(e){}
 }
-/* 撮影計画は「撮影場所」として入れる。planId で 1 回だけ（消しても復活しないよう、消した planId も控える）。 */
+/* 撮影計画は「撮影場所」として入れる。planId で 1 回だけ（消しても復活しないよう、消した planId も控える）。
+   【v1100】計画を消したら、その計画から来た登録地点も一緒に消す（以前は残り続けて、地図と 3D 画面に出たままだった）。 */
 function favImportFromPlans(){
   if(!favPlacesLoaded||!Array.isArray(savedObservingLocations))return;
+  const planIds=new Set(savedObservingLocations.map(plan=>plan&&plan.id).filter(Boolean));
+  let removedCount=0;
+  /* 【v1100】計画が 1 件以上あるときだけ、消えた計画の登録地点を掃除する。
+     一覧が空のときは「全部消した」のか「読み込みに失敗した」のか区別できないので触らない。
+     全部消した場合は、下の favForgetPlan（削除したその場で消す）で片付く。 */
+  if(planIds.size){
+    const before=favPlaces.length;
+    favPlaces=favPlaces.filter(place=>!(place&&place.planId&&!planIds.has(place.planId)));
+    removedCount=before-favPlaces.length;
+  }
   const known=new Set(favPlaces.map(p=>p.planId).filter(Boolean));
   const removed=new Set((favPlacesRemovedPlanIds||[]));
   let added=0;
@@ -10565,7 +10592,29 @@ function favImportFromPlans(){
     favPlaces.push({id:favNewId(),lat:+plan.lat,lon:+plan.lon,name:String(plan.title||plan.placeName||"撮影計画").slice(0,40),kind:"shoot",planId:plan.id,createdAt:Date.now()});
     added++;
   }
-  if(added){favPlacesSave();favRefreshMarkers();}
+  if(added||removedCount){
+    favPlacesSave();favRefreshMarkers();
+    if(removedCount&&typeof favPlacesSceneVisible!=="undefined"&&favPlacesSceneVisible){
+      drawPhoto._terrainRenderKey=null;   /* 3D 画面の札も消す */
+      if(typeof update==="function")update();
+    }
+  }
+}
+/* 【v1100】計画を消したときに、その計画から来た登録地点も消す。消した planId は控えて復活させない。 */
+function favForgetPlan(planId){
+  if(!planId||!favPlacesLoaded)return 0;
+  const before=favPlaces.length;
+  favPlaces=favPlaces.filter(place=>!(place&&place.planId===planId));
+  const removed=before-favPlaces.length;
+  if(!favPlacesRemovedPlanIds.includes(planId))favPlacesRemovedPlanIds.push(planId);
+  if(removed){
+    favPlacesSave();favRefreshMarkers();
+    if(typeof favPlacesSceneVisible!=="undefined"&&favPlacesSceneVisible){
+      drawPhoto._terrainRenderKey=null;
+      if(typeof update==="function")update();
+    }
+  }
+  return removed;
 }
 function favMarkerIcon(kind){
   const k=FAV_KINDS[favKindOf(kind)];
@@ -11345,7 +11394,7 @@ async function loadLocalDetailPresets(){
 }
 async function applyLocalDetailDescriptor(saved,autoFetch=true){
   if(!saved){invalidateLocalDetailTerrain(true);el.localDetailName.value="";return false;}
-  if(!Number.isFinite(+saved.lat)||!Number.isFinite(+saved.lon))return false;
+  if(savedNumber(saved.lat)===null||savedNumber(saved.lon)===null)return false;   /* 【v1099】null や "" を 0 と読まない */
   invalidateLocalDetailTerrain(true);
   el.localDetailName.value=String(saved.name||"");el.localDetailLat.value=(+saved.lat).toFixed(6);el.localDetailLon.value=(+saved.lon).toFixed(6);el.localDetailRadius.value=clamp(+saved.radiusM||25,5,50);
   syncLocalDetailTerrainControl();scheduleSaveSettings();
@@ -18839,8 +18888,8 @@ async function applyPersistedSettingsText(stored){
     syncGroundToneControls();
     syncPhotoToneControls();
     if(s.cameraMove&&typeof s.cameraMove==="object"){
-      const pick=v=>(v&&Number.isFinite(+v.az)&&Number.isFinite(+v.alt)&&Number.isFinite(+v.focal))
-        ?{az:+v.az,alt:+v.alt,focal:+v.focal}:null;
+      const pick=v=>(v&&savedNumber(v.az)!==null&&savedNumber(v.alt)!==null&&savedNumber(v.focal)!==null)   /* 【v1099】 */
+        ?{az:savedNumber(v.az),alt:savedNumber(v.alt),focal:savedNumber(v.focal)}:null;
       cameraMove.from=pick(s.cameraMove.from);
       cameraMove.to=pick(s.cameraMove.to);
       if(Number.isFinite(+s.cameraMove.seconds))el.cameraMoveSeconds.value=String(Math.round(clamp(+s.cameraMove.seconds,1,30)*10));
@@ -18848,8 +18897,8 @@ async function applyPersistedSettingsText(stored){
     }
     /* 【v925】カットの一覧。古い保存（1カットぶん）しか無ければ、それが1カット目になる。 */
     if(Array.isArray(s.cameraCuts)&&s.cameraCuts.length){
-      const pickView=v=>(v&&Number.isFinite(+v.az)&&Number.isFinite(+v.alt)&&Number.isFinite(+v.focal))
-        ?{az:+v.az,alt:+v.alt,focal:+v.focal}:null;
+      const pickView=v=>(v&&savedNumber(v.az)!==null&&savedNumber(v.alt)!==null&&savedNumber(v.focal)!==null)   /* 【v1099】 */
+        ?{az:savedNumber(v.az),alt:savedNumber(v.alt),focal:savedNumber(v.focal)}:null;
       cameraCuts=s.cameraCuts.map(cut=>({from:pickView(cut&&cut.from),to:pickView(cut&&cut.to),
         seconds:clamp(+(cut&&cut.seconds)||6,1,30),easing:!(cut&&cut.easing===false)}));
       cameraCutIndex=clamp(Math.round(+s.cameraCutIndex||0),0,cameraCuts.length-1);
@@ -19507,10 +19556,11 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||Number.isFinite(+slot.firework)))   /* 【v1070】花火はファイル無しで号数だけ */
+    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
-      firework:Number.isFinite(+slot.firework)?+slot.firework:null,   /* 【v1070】 */
+      /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。 */
+      ...(fireworkGoOf(slot.firework)!==null?{firework:fireworkGoOf(slot.firework)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -19526,7 +19576,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||Number.isFinite(+item.firework)));   /* 【v1070】花火も */
+    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -19537,8 +19587,11 @@ async function restoreKmzBuildingFromPlan(saved){
   let restored=0;
   try{
     for(const item of list){
-      if(Number.isFinite(+item.firework)){   /* 【v1070】花火は模型を作り直す（ファイル不要） */
-        fireworkCreateSlot(+item.firework,+item.lat,+item.lon,+item.altitude||0);
+      /* 【v1099】ファイル（sourceDataUrl）があるものは必ずファイルから戻す。花火は「ファイルが無く、号数が 0 より大きい」ときだけ。
+         こうしておけば、記録が壊れていても元の模型を花火に置き換えてしまうことはない。 */
+      const fireworkGo=String(item.sourceDataUrl||"").startsWith("data:")?null:fireworkGoOf(item.firework);
+      if(fireworkGo!==null){
+        fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0);
       }else{
       const response=await fetch(item.sourceDataUrl),buffer=await response.arrayBuffer();
       if(token!==kmzBuildingRestoreToken)return false;
@@ -19939,6 +19992,8 @@ async function removeSavedObservingPlan(location){
   if(location.photoId)await planPhotoDelete(location.photoId).catch(()=>{});
   savedObservingLocations=savedObservingLocations.filter(item=>item.id!==location.id);
   if(activeLoadedPlanId===location.id){activeLoadedPlanId="";syncQuickPhotoButton(null);}
+  /* 【v1100】この計画から来た登録地点も、その場で消す（地図・3D 画面に残らないように）。 */
+  if(typeof favForgetPlan==="function")favForgetPlan(location.id);
   await saveObservingLocations();renderSavedLocationSelect();renderSavedPlansList(el.planLoadSearch.value);el.savedLocationName.value="";
   return true;
 }
@@ -22693,6 +22748,15 @@ try{
       darumaShape:(shape)=>{drawPhoto._darumaShapeForce=shape||null;update();return {sun:drawPhoto._sunsetSunPx,shape:drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce};},
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
+      /* 【v1099】撮影計画の KMZ の保存・復元を手元で確かめるための入口。 */
+      kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
+      /* 【v1100】登録地点と撮影計画の対応を手元で確かめる入口。 */
+      favPlaces:()=>({list:()=>favPlaces.map(p=>({name:p.name,kind:p.kind,planId:p.planId||null})),
+        plans:()=>savedObservingLocations.map(p=>({id:p.id,title:p.title})),
+        sync:favImportFromPlans,
+        setPlans:(arr)=>{savedObservingLocations=arr;savedLocationsStoreState.source="IndexedDB";return savedObservingLocations.length;},
+        setPlaces:(arr)=>{favPlaces=arr;favPlacesLoaded=true;return favPlaces.length;},
+        forget:favForgetPlan}),
       /* 【v1080】走行ログを手元で確かめるための入口（位置情報が無い環境でも点を流し込める）。 */
       driveLog:()=>({data:driveLogData,rec:()=>driveLogRecording,paused:()=>driveLogPaused,auto:()=>driveLogAutoPaused,
         start:driveLogStart,stop:driveLogStop,pause:driveLogSetPaused,feed:driveLogHandlePosition,stats:driveLogStats,render:driveLogRenderList,map:driveLogShowOnMap,
