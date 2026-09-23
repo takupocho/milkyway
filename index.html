@@ -5309,10 +5309,7 @@
           </div>
 
           <!-- 【v961】道路・線路・橋の色と明るさ。昼と夜それぞれ。 -->
-          <!-- 【v984】地面グリッドの明るさ。 -->
-          <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">🟩 地面グリッドの明るさ</p>
-          <div class="field"><label class="top">明るさ <span class="val mono" id="worldGridBrightnessVal">100%</span></label><input type="range" id="worldGridBrightness" min="0" max="300" step="5" value="100"></div>
-          <p class="map-hint" style="margin-top:2px;">100% が今までと同じ。下げると薄く、上げると濃く・白っぽくなります。昼夜の差はそのままです。</p>
+          <!-- 【v1088】地面グリッドの廃止にともない、その明るさの設定も外した。 -->
           <!-- 【v983】活動モニター。何が動き続けているかを実機で数える。 -->
           <p class="map-hint" style="margin-top:14px;color:var(--ink);font-weight:700;">📈 活動モニター（熱くなる原因さがし）</p>
           <p class="map-hint" style="margin-top:4px;">画面の左下に1秒ごとの数字を出します。何もしていないのに「描」「rAF」「忙」が増え続けていれば、それが原因です。しばらく使ってから「記録を書き出す」を押すと、直近40秒ぶんが下に出て、クリップボードにも入ります。</p>
@@ -5495,8 +5492,7 @@
                      OFFにする道はサイドバーの設定画面に残してある。 -->
                 <button id="popupSouth50Btn" type="button" class="constellation-toggle-btn display-control-btn">南半球透明度50%</button>
                 <button id="popupSkylineBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">稜線表示</button>
-                <button id="popupWorldGridBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地面グリッド</button>
-                <button id="popupContourBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">等高線</button>
+                <!-- 【v1088】「地面グリッド」「等高線」は廃止した。 -->
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupMinorRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="私道・農道・林道・小道・歩道・登山道も細い線で描きます（道路がONのとき）">細い道も</button>
                 <!-- 【v997】衛星写真テクスチャ。 -->
@@ -6423,7 +6419,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1087-ground-map-tiles";
+const APP_VERSION="1088-retire-grid-contour";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11380,11 +11376,11 @@ function niceStepM(target,steps){
 /* 世界に固定した地面の補助表示。カメラと一緒に動かないので、歩くと地面が流れて見える。 */
 const WORLD_GRID_SPACING_M=10;  // 地面グリッドの間隔
 const CONTOUR_INTERVAL_M=1;     // 等高線の標高間隔
-let worldGridVisible=true;
+let worldGridVisible=false;   /* 【v1088】廃止。true にはしない（描く側は旗で止まる） */
 /* 【v984】地面グリッドの明るさ（%）。100 で今までと同じ。線の濃さ（alpha）に掛け、100を超えたぶんは色も白へ寄せる。 */
 let worldGridBrightness=100;
 
-let contourLinesVisible=true;
+let contourLinesVisible=false;   /* 【v1088】廃止 */
 let roadLinesVisible=false; // 通信を伴うので既定はOFF
 /* 【v1037】昼も星座・恒星・惑星の印を出すか。OFF のときは暗くなってから（太陽高度 −5° で消え、−8.6° で全部出る）。 */
 let daylightStarsOn=false;
@@ -14305,18 +14301,8 @@ function sunsetSelfTestReport(){
   }
   return lines.join("\n");
 }
-/* 【v984】地面グリッドの明るさ。 */
-function syncWorldGridBrightnessControls(){
-  if(el.worldGridBrightness&&String(el.worldGridBrightness.value)!==String(worldGridBrightness))el.worldGridBrightness.value=String(worldGridBrightness);
-  if(el.worldGridBrightnessVal)el.worldGridBrightnessVal.textContent=`${worldGridBrightness}%`;
-}
-if(el.worldGridBrightness)el.worldGridBrightness.addEventListener("input",()=>{
-  worldGridBrightness=Math.max(0,Math.min(300,Math.round(+el.worldGridBrightness.value)||0));
-  syncWorldGridBrightnessControls();
-  drawPhoto._terrainRenderKey=null;   /* 線は地形レイヤーの中 */
-  update();scheduleSaveSettings();
-});
-syncWorldGridBrightnessControls();
+/* 【v1088】地面グリッドの廃止にともない、明るさの操作も外した（変数は描く側の残りが読むので残す）。 */
+function syncWorldGridBrightnessControls(){}
 /* 【v983】活動モニターのボタン。 */
 if(el.actMonShowBtn)el.actMonShowBtn.addEventListener("click",()=>{
   actMonSetShown(!actMon.shown);
@@ -15827,10 +15813,6 @@ function syncDisplayPopupControls(){
     el.popupTerrainMeshBtn.classList.toggle("active",terrainMeshLinesVisible);
     el.popupTerrainMeshBtn.setAttribute("aria-pressed",String(terrainMeshLinesVisible));
   }
-  el.popupWorldGridBtn.classList.toggle("active",worldGridVisible);
-  el.popupWorldGridBtn.setAttribute("aria-pressed",String(worldGridVisible));
-  el.popupContourBtn.classList.toggle("active",contourLinesVisible);
-  el.popupContourBtn.setAttribute("aria-pressed",String(contourLinesVisible));
   el.popupPixelWalkerBtn.classList.toggle("active",pixelWalkerVisible);
   el.popupPixelWalkerBtn.setAttribute("aria-pressed",String(pixelWalkerVisible));
   el.popupCompassBarBtn.classList.toggle("active",compassBarVisible);
@@ -15949,11 +15931,6 @@ el.popupSunPathBtn.addEventListener("click",()=>{
 });
 el.popupMoonPathBtn.addEventListener("click",()=>{
   moonPathVisible=!moonPathVisible;
-  syncDisplayPopupControls();update();scheduleSaveSettings();
-});
-el.popupWorldGridBtn.addEventListener("click",()=>{
-  worldGridVisible=!worldGridVisible;
-  drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
 if(el.popupDaylightStarsBtn)el.popupDaylightStarsBtn.addEventListener("click",()=>{   /* 【v1037】 */
@@ -16164,11 +16141,6 @@ if(el.popupPhotoTexBtn)el.popupPhotoTexBtn.addEventListener("click",()=>{   /* �
 });
 if(el.popupMinorRoadBtn)el.popupMinorRoadBtn.addEventListener("click",()=>{   /* 【v995】 */
   minorRoadsVisible=!minorRoadsVisible;
-  drawPhoto._terrainRenderKey=null;
-  syncDisplayPopupControls();update();scheduleSaveSettings();
-});
-el.popupContourBtn.addEventListener("click",()=>{
-  contourLinesVisible=!contourLinesVisible;
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
@@ -18146,8 +18118,6 @@ function collectPersistedSettings(){
     waterLandBoundaryVisible:waterLandBoundaryVisible,
     waterReflectionEnabled:waterReflectionEnabled,
     terrainMeshLinesVisible:terrainMeshLinesVisible,
-    worldGridVisible:worldGridVisible,
-    contourLinesVisible:contourLinesVisible,
     roadLinesVisible:roadLinesVisible,
     minorRoadsVisible:minorRoadsVisible,   /* 【v995】 */
     photoTextureOn:photoTextureOn,   /* 【v997】 */
@@ -18189,7 +18159,6 @@ function collectPersistedSettings(){
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
     powerSaveOn:powerSaveOn,   // 【v982】
-    worldGridBrightness:worldGridBrightness,   // 【v984】
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -18287,8 +18256,6 @@ const USER_DEFAULT_SETTINGS={
  "waterLandBoundaryVisible": false,
  "waterReflectionEnabled": true,
  "terrainMeshLinesVisible": false,
- "worldGridVisible": false,
- "contourLinesVisible": false,
  "roadLinesVisible": true,
  "minorRoadsVisible": false,
  "photoTextureOn": true,
@@ -18359,7 +18326,6 @@ const USER_DEFAULT_SETTINGS={
  },
  "glTerrainOn": true,
  "powerSaveOn": true,
- "worldGridBrightness": 145,
  "sunsetModeOn": true,
  "sunsetRevision": 947,
  "sunsetMode": {
@@ -18551,12 +18517,8 @@ async function applyPersistedSettingsText(stored){
     showSkylineBoundary=s.showSkylineBoundary!==false;
     waterLandBoundaryVisible=s.waterLandBoundaryVisible!==false;
     waterReflectionEnabled=true;
-    // v522以前の保存には地面グリッド・等高線の項目が無い。その場合は四角メッシュを
-    // 引き継がず、新しい2種類の表示に切り替える。
-    const hasGroundOverlaySettings=("worldGridVisible" in s)||("contourLinesVisible" in s);
-    terrainMeshLinesVisible=hasGroundOverlaySettings?!!s.terrainMeshLinesVisible:false;
-    worldGridVisible=s.worldGridVisible!==false;
-    contourLinesVisible=s.contourLinesVisible!==false;
+    /* 【v1088】地面グリッド・等高線は廃止。古い保存に入っていても読まない。 */
+    terrainMeshLinesVisible=!!s.terrainMeshLinesVisible;
     roadLinesVisible=!!s.roadLinesVisible;
     minorRoadsVisible=!!s.minorRoadsVisible;   /* 【v995】 */
     photoTextureOn=!!s.photoTextureOn;   /* 【v997】 */
@@ -18671,7 +18633,7 @@ async function applyPersistedSettingsText(stored){
     syncOverlayStyleControls();
     if(s.glTerrainOn!==undefined){glTerrainOn=s.glTerrainOn===true;syncGlTerrainControls();}   /* 【v976】 */
     if(s.powerSaveOn!==undefined){powerSaveOn=s.powerSaveOn===true;syncPowerSaveControls();}   /* 【v982】 */
-    if(Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
+    if(false&&Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
