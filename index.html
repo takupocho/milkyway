@@ -1843,6 +1843,27 @@
   .daruma-telephoto-result.clear{border-color:rgba(67,216,138,.6);}
   .daruma-telephoto-result.blocked{border-color:rgba(255,101,118,.68);}
   .daruma-telephoto-result.unknown{border-color:rgba(232,166,89,.62);}
+  /* 【v1093】`.grid2` に中身が無く、項目が全部 1 列に積まれていた（だるま判定・高精細の画面が縦に長い原因）。
+     狭いときは 1 列、入るなら 2 列以上に並べる。3 列にしたい行は .grid3。 */
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;}
+  .grid3{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:8px;}
+  @media (max-width:340px){ .grid3{grid-template-columns:1fr 1fr;} }
+  /* 日付は桁が多いので、この行だけ字を小さくして収める。 */
+  #darumaTelephotoDateDisplay{font-size:12.5px;padding-left:6px;padding-right:6px;text-align:center;}
+  /* 【v1093】判定する太陽は 2 つ並びの札。中身は今までどおり <select> が持つ（見た目だけ差し替え）。 */
+  .daruma-event-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .daruma-event-seg button{
+    width:auto;min-width:0;margin:0;min-height:42px;padding:8px 6px;
+    border:1px solid rgba(154,164,210,.5);border-radius:10px;
+    background:rgba(13,18,43,.85);color:#cfd8ef;font:700 13px/1.3 'Inter',sans-serif;
+    touch-action:manipulation;
+  }
+  .daruma-event-seg button.active{
+    border-color:var(--core-amber);color:#1a1206;background:var(--core-amber);
+  }
+  /* 【v1093】よく使うボタンは最初から橙で分かるように。 */
+  #darumaTelephotoOverlay .primary{border-color:var(--core-amber);color:var(--core-amber);}
+  #darumaTelephotoOverlay .primary:disabled{opacity:.5;}
   .daruma-island-silhouette-box{
     margin-top:14px;padding:12px;border:1px solid rgba(232,166,89,.42);border-radius:13px;
     background:rgba(25,20,24,.42);
@@ -5970,11 +5991,17 @@
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="darumaTelephotoTitle">
                   <div class="plan-modal-header"><h3 id="darumaTelephotoTitle" class="plan-modal-title">超望遠・だるま判定</h3><button id="darumaTelephotoCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
                   <p class="plan-modal-help">選択日の朝陽または夕陽が、実際の海面へ接する時刻と方位を計算し、太陽の円盤付近だけを5m優先の標高データで遠距離走査します。通常の水域データや水域サーバーは使用しません。</p>
-                  <div class="grid2" style="margin-top:12px;">
-                    <div class="field"><label class="top" for="darumaTelephotoEvent">判定する太陽</label><select id="darumaTelephotoEvent"><option value="sunset" selected>夕陽（日の入り側）</option><option value="sunrise">朝陽（日の出側）</option></select></div>
-                    <div class="field"><label class="top">選択日</label><input id="darumaTelephotoDateDisplay" type="text" readonly></div>
+                  <!-- 【v1093】判定する太陽は 2 つ並びの札。値は今までどおり下の <select> が持つ。 -->
+                  <div class="field" style="margin-top:12px;">
+                    <label class="top">判定する太陽</label>
+                    <div class="daruma-event-seg" role="group" aria-label="判定する太陽">
+                      <button type="button" id="darumaEventSunsetBtn" class="active" aria-pressed="true">夕陽（日の入り側）</button>
+                      <button type="button" id="darumaEventSunriseBtn" aria-pressed="false">朝陽（日の出側）</button>
+                    </div>
+                    <select id="darumaTelephotoEvent" hidden aria-hidden="true" tabindex="-1"><option value="sunset" selected>夕陽（日の入り側）</option><option value="sunrise">朝陽（日の出側）</option></select>
                   </div>
-                  <div class="grid2" style="margin-top:10px;">
+                  <div class="grid3" style="margin-top:10px;">
+                    <div class="field"><label class="top">選択日</label><input id="darumaTelephotoDateDisplay" type="text" readonly></div>
                     <div class="field"><label class="top" for="darumaTelephotoNearKm">走査開始（km先）</label><input id="darumaTelephotoNearKm" type="number" min="1" max="119" step="1" value="5"></div>
                     <div class="field"><label class="top" for="darumaTelephotoFarKm">走査終了（km先）</label><input id="darumaTelephotoFarKm" type="number" min="2" max="120" step="1" value="120"></div>
                   </div>
@@ -6490,7 +6517,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1092-fs-settings-btn";
+const APP_VERSION="1093-daruma-compact";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14875,6 +14902,31 @@ function driveLogShowOnMap(tracks,label){
      すぐ呼ぶと「初期化前の変数」で失敗し、記録が空のまま見える（手元で実測して見つけた）。 */
   setTimeout(driveLogLoad,0);
 })();
+/* 【v1093】判定する太陽の 2 つ並びの札。値は <select> が持ち、札は見た目と入口だけ。 */
+function syncDarumaEventSeg(){
+  const select=document.getElementById("darumaTelephotoEvent");
+  const sunset=document.getElementById("darumaEventSunsetBtn"),sunrise=document.getElementById("darumaEventSunriseBtn");
+  if(!select||!sunset||!sunrise)return;
+  const isSunset=select.value!=="sunrise";
+  sunset.classList.toggle("active",isSunset);sunset.setAttribute("aria-pressed",String(isSunset));
+  sunrise.classList.toggle("active",!isSunset);sunrise.setAttribute("aria-pressed",String(!isSunset));
+}
+(function bindDarumaEventSeg(){
+  const select=document.getElementById("darumaTelephotoEvent");
+  const pick=value=>{
+    if(!select||select.value===value)return;
+    select.value=value;
+    /* 既存の処理は "input" を見ているので、そちらも出す（change だけだと要約が更新されない）。 */
+    select.dispatchEvent(new Event("input",{bubbles:true}));
+    select.dispatchEvent(new Event("change",{bubbles:true}));
+    syncDarumaEventSeg();
+  };
+  const sunset=document.getElementById("darumaEventSunsetBtn"),sunrise=document.getElementById("darumaEventSunriseBtn");
+  if(sunset)sunset.addEventListener("click",()=>pick("sunset"));
+  if(sunrise)sunrise.addEventListener("click",()=>pick("sunrise"));
+  if(select)select.addEventListener("change",syncDarumaEventSeg);
+  syncDarumaEventSeg();
+})();
 function settingsExportFill(){
   let text;
   try{text=settingsExportText();}catch(error){text=`書き出しで例外 ${error&&error.message}`;}
@@ -22953,6 +23005,7 @@ function setDarumaTelephotoOpen(open){
   el.darumaTelephotoOverlay.setAttribute("aria-hidden",open?"false":"true");
   if(open){
     el.darumaTelephotoEvent.value=darumaTelephotoConfig.event;
+    syncDarumaEventSeg();   /* 【v1093】札を今の値に合わせる */
     el.darumaTelephotoNearKm.value=darumaTelephotoConfig.nearKm;
     el.darumaTelephotoFarKm.value=darumaTelephotoConfig.farKm;
     el.darumaTelephotoDateDisplay.value=el.dateInput.value||"—";
