@@ -2768,18 +2768,32 @@
     box-shadow:0 8px 26px rgba(0,0,0,.5);
     color:#fff;
   }
-  .osm-import-title{font:700 14px/1.3 'Inter',sans-serif;color:#d9efff;margin-bottom:5px;}
-  .osm-import-help{font:500 10.5px/1.55 'Inter',sans-serif;color:rgba(255,255,255,.72);margin-bottom:8px;}
+  .osm-import-title{font:700 14px/1.3 'Inter',sans-serif;color:#d9efff;margin-bottom:5px;padding-right:34px;}
+  .osm-import-help{font:500 10.5px/1.55 'Inter',sans-serif;color:rgba(255,255,255,.72);margin-bottom:8px;padding-right:34px;}
+  /* 【v1090】右上の閉じる（×）。 */
+  .osm-import-close{
+    position:absolute;top:8px;right:8px;z-index:2;
+    width:32px;height:32px;min-width:32px;padding:0;margin:0;
+    display:flex;align-items:center;justify-content:center;
+    border:1px solid rgba(255,255,255,.55);border-radius:50%;
+    background:rgba(255,255,255,.12);color:#fff;font:700 15px/1 'Inter',sans-serif;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;
+  }
+  .osm-import-close:hover{border-color:#7fc8ff;color:#d9efff;background:rgba(127,200,255,.2);}
+  .osm-import-close:active{background:rgba(127,200,255,.32);}
   .osm-import-input{
     display:block;width:100%;min-height:72px;box-sizing:border-box;resize:vertical;
     padding:9px;border:1px solid rgba(255,255,255,.35);border-radius:8px;
     background:rgba(255,255,255,.08);color:#fff;font:500 12px/1.45 'Inter',sans-serif;
   }
   .osm-import-input:focus{outline:2px solid rgba(127,200,255,.5);border-color:#7fc8ff;}
-  .osm-import-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:8px;}
+  /* 【v1090】「貼り付け」「場所を読み込む」は同じ幅で横並び。 */
+  .osm-import-buttons{display:flex;flex-wrap:nowrap;gap:8px;margin-top:8px;}
   .osm-import-buttons button{
-    min-height:31px;padding:6px 10px;border:1px solid rgba(255,255,255,.45);border-radius:16px;
-    background:#191f3f;color:#fff;font:700 11px/1 'Inter',sans-serif;
+    flex:1 1 0;min-width:0;width:auto;margin:0;
+    min-height:38px;padding:8px 10px;border:1px solid rgba(255,255,255,.45);border-radius:16px;
+    background:#191f3f;color:#fff;font:700 12px/1 'Inter',sans-serif;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;
   }
   .osm-import-buttons button.primary{border-color:#7fc8ff;color:#d9efff;}
   .osm-import-status{min-height:17px;margin-top:7px;font:600 10.5px/1.5 'Inter',sans-serif;color:#f3c47d;}
@@ -5765,6 +5779,8 @@
                 <div id="mapMeasureReadout" class="map-measure-readout" aria-live="polite"></div>
                 <div id="osmGoogleImportOverlay" class="osm-import-overlay" aria-hidden="true">
                 <div id="osmGoogleImportPanel" class="osm-import-panel" role="dialog" aria-modal="true" aria-labelledby="osmImportTitle">
+                  <!-- 【v1090】閉じるは右上の × に。 -->
+                  <button id="osmGoogleImportCloseBtn" type="button" class="osm-import-close" aria-label="閉じる" title="閉じる">✕</button>
                   <div id="osmImportTitle" class="osm-import-title">場所を検索・読み込む</div>
                   <div class="osm-import-help">地名・施設名（例：姫路城、掬星台）を入力すると候補が出ます。Googleマップの共有リンク・共有文、または緯度と経度の貼り付けもできます。</div>
                   <textarea id="osmGoogleImportInput" class="osm-import-input" placeholder="例：姫路城&#10;https://www.google.com/maps/@35.12345,134.56789,15z&#10;35.12345, 134.56789"></textarea>
@@ -5772,7 +5788,6 @@
                   <ul id="osmPlaceSuggest" class="osm-place-suggest" role="listbox" hidden></ul>
                   <div class="osm-import-buttons">
                     <button id="osmGooglePasteBtn" type="button">貼り付け</button>
-                    <button id="osmGoogleImportCloseBtn" type="button">閉じる</button>
                     <button id="osmGoogleImportRunBtn" type="button" class="primary">場所を読み込む</button>
                   </div>
                   <div id="osmGoogleImportStatus" class="osm-import-status" aria-live="polite"></div>
@@ -6421,7 +6436,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1089-no-doubletap-zoom";
+const APP_VERSION="1090-import-dialog-ui";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10830,7 +10845,7 @@ function placeSuggestRender(items,query){
 function placeSuggestPick(index){
   const item=placeSuggestItems[index];if(!item)return;
   setOsmCandidate(item.lat,item.lon,true);
-  el.osmGoogleImportStatus.textContent=`${item.name} — 緯度 ${item.lat.toFixed(5)} / 経度 ${item.lon.toFixed(5)}へ移動しました。「閉じる」で地図を確認してください。`;
+  el.osmGoogleImportStatus.textContent=`${item.name} — 緯度 ${item.lat.toFixed(5)} / 経度 ${item.lon.toFixed(5)}へ移動しました。右上の ✕ で閉じて地図を確認してください。`;
   placeSuggestHide();
 }
 function placeSuggestSchedule(){
@@ -10876,7 +10891,7 @@ async function importGoogleMapsLocation(){
       return;
     }
     setOsmCandidate(coordinate.lat,coordinate.lon,true);
-    el.osmGoogleImportStatus.textContent=`${coordinate.label?coordinate.label+" — ":""}緯度 ${coordinate.lat.toFixed(5)} / 経度 ${coordinate.lon.toFixed(5)}へ移動しました。「閉じる」で地図を確認してください。`;
+    el.osmGoogleImportStatus.textContent=`${coordinate.label?coordinate.label+" — ":""}緯度 ${coordinate.lat.toFixed(5)} / 経度 ${coordinate.lon.toFixed(5)}へ移動しました。右上の ✕ で閉じて地図を確認してください。`;
   }finally{
     el.osmGoogleImportRunBtn.disabled=false;
   }
