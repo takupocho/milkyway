@@ -1048,6 +1048,7 @@
   /* 【v694】つまみの両端の微調整ボタン。10mずつ動かす。
      つまみの目盛りは高いところで50m刻みなので、その間を埋めるため。 */
   .slider-step-btn{
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;   /* 【v1089】 */
     flex:none;width:22px;height:22px;min-height:0;padding:0;margin:0;
     border-radius:50%;border:1px solid rgba(255,255,255,.34);
     background:rgba(255,255,255,.12);color:var(--star-white);
@@ -3492,6 +3493,7 @@
       position:relative;
     }
     .date-nav-btn{
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent;   /* 【v1089】素早い連打で拡大しない */
       flex:none;
       width:auto;
       padding:3px 9px;
@@ -6419,7 +6421,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1088-retire-grid-contour";
+const APP_VERSION="1089-no-doubletap-zoom";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16570,6 +16572,28 @@ function photoDragMove(pos){
   scheduleCameraViewUpdate();
 }
 /* 星座・惑星・恒星・太陽・月の名称タップ/クリックで説明ポップアップを表示 */
+/* 【v1089】スマホで「前日」「翌日」などを速く押すと、2 回目が「ダブルタップ＝拡大」と受け取られて画面が拡大する。
+   iOS は touch-action:manipulation だけでは防ぎ切れないことがある（全画面表示・ホーム画面アプリ）。
+   同じ並びの中で 500ms 以内に続いたタップは touchend を打ち消し（＝拡大させない）、代わりに自分で click を出す。
+   打ち消すと click が出なくなるので、必ず自前で呼ぶこと。 */
+function guardDoubleTapZoom(root){
+  if(!root||root.dataset.dtGuard)return;
+  root.dataset.dtGuard="1";
+  let lastAt=0;
+  root.addEventListener("touchend",event=>{
+    const btn=event.target.closest("button,.date-nav-btn");
+    if(!btn||btn.disabled)return;
+    const now=event.timeStamp||performance.now();
+    if(now-lastAt<500){
+      event.preventDefault();
+      btn.click();
+    }
+    lastAt=now;
+  },{passive:false});
+}
+for(const sel of ["#bestTimeDateNav",".dt-nav-row",".dt-date-row","#sliderTimelineRow","#tickTimelineRow",".timeline-row"]){
+  document.querySelectorAll(sel).forEach(guardDoubleTapZoom);
+}
 function handlePhotoTap(pos){
   // 後から描いたラベルを優先し、山名と星空名称が重なっても見た目どおりに反応させる。
   const hit=[...photoClickRegions].reverse().find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
