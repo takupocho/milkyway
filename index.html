@@ -6412,7 +6412,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1084-drive-log-tap";
+const APP_VERSION="1085-fav-pin-style";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9688,6 +9688,7 @@ if(el.droneMapTabBtn) el.droneMapTabBtn.addEventListener("click",()=>{
 });
 let placeNameVisible=true; // 画面内の地名表示
 let favPlacesSceneVisible=false;   /* 【v1082】登録地点をシミュレーション画面にも出す */
+let favPlaceLabelShownId=null;     /* 【v1085】名前の札を出している登録地点（ピンをタップしたもの） */
 /* 水際の判定がどの層で決まっているかを画面に出す。原因の切り分け用。
    既定は非表示で、描画にも触らない（数え上げだけ）。 */
 let seaDiagVisible=false;
@@ -16546,6 +16547,16 @@ function photoDragMove(pos){
 function handlePhotoTap(pos){
   // 後から描いたラベルを優先し、山名と星空名称が重なっても見た目どおりに反応させる。
   const hit=[...photoClickRegions].reverse().find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
+  /* 【v1085】登録地点のピン。押すたびに名前の札を出す・消す。別のピンなら乗り換え。 */
+  if(hit&&hit.favPlaceId!==undefined){
+    favPlaceLabelShownId=(favPlaceLabelShownId===hit.favPlaceId)?null:hit.favPlaceId;
+    drawPhoto._terrainRenderKey=null;update();
+    return;
+  }
+  if(favPlaceLabelShownId!==null){   /* 【v1085】ピン以外を押したら札を消す */
+    favPlaceLabelShownId=null;
+    drawPhoto._terrainRenderKey=null;update();
+  }
   if(!hit) return;
   if(hit.mountain){
     if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
@@ -26689,31 +26700,94 @@ function drawFavPlaceLabels(ctx,s,toXY,W,H){
   }
   if(!items.length)return;
   items.sort((a,b)=>a.km-b.km);   /* 近い順。重なったら近い方を優先して出す。 */
-  const fontSize=Math.max(11,Math.round(W/100));
+  /* 【v1085】見た目：地面から白い細い線 → しずく形のピン（種類の色・白縁・中にアイコン）→ その上に距離だけ大きく。
+     名前はピンをタップしたときだけ、白ベースの半透明の札で出す。 */
+  const scale=clamp(W/1200,.72,1.35);
+  const pinW=Math.round(26*scale),pinH=Math.round(34*scale);
+  const distSize=Math.round(17*scale),unitSize=Math.round(11*scale);
   const placed=[];
-  ctx.save();ctx.font=`700 ${fontSize}px 'Inter',sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.save();ctx.textAlign="center";ctx.textBaseline="middle";ctx.lineJoin="round";
   for(const item of items){
     if(placed.length>=12)break;
     const kind=FAV_KINDS[item.kind];
-    const label=`${kind.emoji} ${item.place.name||kind.label}${item.km>=1?`  ${item.km.toFixed(1)}km`:`  ${Math.round(item.km*1000)}m`}`;
-    const width=ctx.measureText(label).width+14,height=fontSize+9;
-    let box=null;
-    for(const oy of [-22,-40,-58,-76]){
-      const cx=clamp(item.pt[0],width/2+4,W-width/2-4),cy=item.pt[1]+oy;
-      const test={x1:cx-width/2,y1:cy-height/2,x2:cx+width/2,y2:cy+height/2,cx,cy};
-      if(test.y1<4||test.y2>H-4)continue;
-      if(placed.some(p=>!(test.x2+4<p.x1||test.x1-4>p.x2||test.y2+3<p.y1||test.y1-3>p.y2)))continue;
-      box=test;break;
+    /* 棒の長さ。近いものほど長くして、地面の位置が分かるようにする。 */
+    const stem=Math.round(clamp(46-item.km*1.2,22,52)*scale);
+    let cx=clamp(item.pt[0],pinW/2+3,W-pinW/2-3);
+    let tipY=item.pt[1];
+    let pinCy=tipY-stem-pinH*.62;
+    /* 重なったら少しずつ持ち上げる。 */
+    for(let step=0;step<5;step++){
+      const test={x1:cx-pinW/2-2,y1:pinCy-pinH*.62-distSize-4,x2:cx+pinW/2+2,y2:tipY};
+      if(!placed.some(p=>!(test.x2+3<p.x1||test.x1-3>p.x2||test.y2+3<p.y1||test.y1-3>p.y2)))break;
+      pinCy-=pinH*.9;
     }
-    if(!box)continue;
-    ctx.beginPath();ctx.moveTo(item.pt[0],item.pt[1]);ctx.lineTo(box.cx,box.y2);
-    ctx.strokeStyle=kind.color;ctx.globalAlpha=.85;ctx.lineWidth=1.2;ctx.stroke();ctx.globalAlpha=1;
-    ctx.beginPath();ctx.arc(item.pt[0],item.pt[1],3,0,Math.PI*2);ctx.fillStyle=kind.color;ctx.fill();
-    ctx.strokeStyle="rgba(255,255,255,.85)";ctx.lineWidth=1;ctx.stroke();
-    ctx.fillStyle="rgba(7,9,20,.78)";ctx.fillRect(box.x1,box.y1,width,height);
-    ctx.strokeStyle=kind.color;ctx.lineWidth=1;ctx.strokeRect(box.x1+.5,box.y1+.5,width-1,height-1);
-    ctx.fillStyle="rgba(248,246,238,.96)";ctx.fillText(label,box.cx,box.cy+.5);
+    if(pinCy-pinH<2||tipY>H+30)continue;
+    const pinTop=pinCy-pinH*.62;
+    /* 棒（ピンの下端から地面まで） */
+    ctx.beginPath();ctx.moveTo(cx,pinCy+pinH*.38);ctx.lineTo(cx,tipY);
+    ctx.strokeStyle="rgba(10,14,28,.55)";ctx.lineWidth=3*scale;ctx.stroke();
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1.6*scale;ctx.stroke();
+    /* 地面の点 */
+    ctx.beginPath();ctx.arc(cx,tipY,2.2*scale,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.95)";ctx.fill();
+    /* しずく形のピン */
+    const r=pinW/2,cyTop=pinCy;
+    ctx.beginPath();
+    ctx.moveTo(cx,pinCy+pinH*.38);
+    ctx.quadraticCurveTo(cx-r*.72,cyTop+r*.55,cx-r,cyTop-r*.12);
+    ctx.arc(cx,cyTop-r*.12,r,Math.PI,0,false);
+    ctx.quadraticCurveTo(cx+r*.72,cyTop+r*.55,cx,pinCy+pinH*.38);
+    ctx.closePath();
+    ctx.fillStyle=kind.color;ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=2*scale;ctx.stroke();
+    /* 中のしるし */
+    ctx.font=`${Math.round(13*scale)}px 'Inter',sans-serif`;
+    ctx.fillStyle="rgba(12,16,30,.9)";
+    ctx.fillText(kind.emoji,cx,cyTop-r*.12+.5);
+    /* 距離（数字は大きく、単位は小さく）。黒い縁取りの白文字。 */
+    const num=item.km>=1?item.km.toFixed(1):String(Math.round(item.km*1000));
+    const unit=item.km>=1?"km":"m";
+    ctx.font=`800 ${distSize}px 'Inter',sans-serif`;
+    const numW=ctx.measureText(num).width;
+    ctx.font=`700 ${unitSize}px 'Inter',sans-serif`;
+    const unitW=ctx.measureText(unit).width;
+    const totalW=numW+unitW+2*scale;
+    const textY=pinTop-distSize*.72;
+    ctx.textAlign="left";
+    ctx.lineWidth=3.4*scale;ctx.strokeStyle="rgba(8,12,24,.85)";
+    ctx.font=`800 ${distSize}px 'Inter',sans-serif`;
+    ctx.strokeText(num,cx-totalW/2,textY);ctx.fillStyle="#fff";ctx.fillText(num,cx-totalW/2,textY);
+    ctx.font=`700 ${unitSize}px 'Inter',sans-serif`;
+    ctx.strokeText(unit,cx-totalW/2+numW+2*scale,textY+distSize*.18);
+    ctx.fillText(unit,cx-totalW/2+numW+2*scale,textY+distSize*.18);
+    ctx.textAlign="center";
+    const box={x1:cx-pinW/2-2,y1:textY-distSize*.7,x2:cx+pinW/2+2,y2:tipY};
     placed.push(box);
+    /* タップの当たり（ピンのまわりを少し広めに） */
+    const pad=W<700?10:6;
+    photoClickRegions.push({x1:cx-pinW/2-pad,y1:pinTop-pad,x2:cx+pinW/2+pad,y2:pinCy+pinH*.42+pad,favPlaceId:item.place.id});
+    item._cx=cx;item._pinTop=pinTop;item._textY=textY;
+  }
+  /* 名前の札（タップされている登録地点だけ）。白ベースの半透明・濃い文字。 */
+  const shown=items.find(it=>it.place.id===favPlaceLabelShownId&&Number.isFinite(it._cx));
+  if(shown){
+    const name=shown.place.name||FAV_KINDS[shown.kind].label;
+    const fs=Math.round(14*scale);
+    ctx.font=`700 ${fs}px system-ui,sans-serif`;
+    const w=ctx.measureText(name).width+18*scale,h=fs+12*scale;
+    /* 距離の文字に被らないよう、その上へ置く。上端からはみ出すときは下へ回す。 */
+    const bx=clamp(shown._cx,w/2+4,W-w/2-4);
+    let by=shown._textY-distSize*.75-h/2-6;
+    if(by-h/2<4)by=shown._pinTop+h/2+10;
+    const x1=bx-w/2,y1=by-h/2,rr=Math.min(9*scale,h/2);
+    ctx.beginPath();
+    ctx.moveTo(x1+rr,y1);ctx.lineTo(x1+w-rr,y1);ctx.quadraticCurveTo(x1+w,y1,x1+w,y1+rr);
+    ctx.lineTo(x1+w,y1+h-rr);ctx.quadraticCurveTo(x1+w,y1+h,x1+w-rr,y1+h);
+    ctx.lineTo(x1+rr,y1+h);ctx.quadraticCurveTo(x1,y1+h,x1,y1+h-rr);
+    ctx.lineTo(x1,y1+rr);ctx.quadraticCurveTo(x1,y1,x1+rr,y1);
+    ctx.closePath();
+    ctx.fillStyle="rgba(255,255,255,.82)";ctx.fill();
+    ctx.strokeStyle="rgba(255,255,255,.95)";ctx.lineWidth=1*scale;ctx.stroke();
+    ctx.fillStyle="rgba(18,22,38,.95)";ctx.fillText(name,bx,by+.5);
   }
   ctx.restore();
 }
