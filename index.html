@@ -5500,7 +5500,7 @@
                 <button id="popupRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">道路</button>
                 <button id="popupMinorRoadBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="私道・農道・林道・小道・歩道・登山道も細い線で描きます（道路がONのとき）">細い道も</button>
                 <!-- 【v997】衛星写真テクスチャ。 -->
-                <button id="popupPhotoTexBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="地面に航空写真（国土地理院）を貼ります。昼に近いほど写真、夜は今までの色。WebGL地形が必要です">衛星写真</button>
+                <button id="popupPhotoTexBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="地面に貼るものを選びます。押すたびに 衛星写真 → 標準地図 → 淡色地図 → なし（いずれも国土地理院）。WebGL地形が必要です">衛星写真</button>
                 <!-- 【v1000】衛星写真のときの水域。OFF で写真の水面をそのまま見せる。 -->
                 <button id="popupPhotoWaterBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="衛星写真のとき、水面（映り込み・海の色）を描くか。OFF にすると写真の水面がそのまま見えます">水域</button>
                 <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
@@ -6084,6 +6084,7 @@
             <ul>
               <li>天の川の実写: <a href="https://www.eso.org/public/images/eso0932a/" target="_blank" rel="noopener noreferrer">ESO/S. Brunier</a> ・ <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>（投影して使用）</li>
               <li>衛星写真テクスチャ: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院（全国最新写真〈シームレス〉）</a>・予備 Esri World Imagery</li>
+              <li>地面の地図テクスチャ: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院（標準地図・淡色地図）</a></li>
               <li>地形・標高: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院</a>（標高タイルを加工して作成）</li>
               <li>水域の面: 出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener noreferrer">国土地理院ベクトルタイル</a>（水域面を加工して作成）</li>
               <li>水域・道路・線路・橋・地図: &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>（ODbL・Shortbread静的ベクトルタイル）</li>
@@ -6422,7 +6423,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1086-path-alpha";
+const APP_VERSION="1087-ground-map-tiles";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -13085,6 +13086,8 @@ function powerCountFrame(){
 }
 /* 【v997】衛星写真テクスチャ。宣言はここ（起動時の同期が先に読む）。 */
 let photoTextureOn=false;
+/* 【v1087】地面に貼るものの種類："photo"（衛星写真）／"std"（標準地図）／"pale"（淡色地図）。 */
+let photoTexSource="photo";
 let photoWaterVisible=true;   /* 【v1000】衛星写真のときの水域。false で水面を描かない */
 function photoWaterOff(){return photoTextureOn&&glTerrainOn&&!photoWaterVisible;}
 /* 【v1045】水面の色の層を重ねる不透明度。写真のときだけ設定が効く。 */
@@ -15861,6 +15864,8 @@ function syncDisplayPopupControls(){
   if(el.popupPhotoTexBtn){   /* 【v997】 */
     el.popupPhotoTexBtn.classList.toggle("active",photoTextureOn);
     el.popupPhotoTexBtn.setAttribute("aria-pressed",String(photoTextureOn));
+    /* 【v1087】今どれを貼っているかを文字で出す。 */
+    el.popupPhotoTexBtn.textContent=photoTextureOn?photoTexSourceDef().label:"地面 なし";
   }
   if(el.popupPhotoWaterBtn){   /* 【v1000】写真が OFF のときは押せない */
     el.popupPhotoWaterBtn.classList.toggle("active",photoWaterVisible);
@@ -16143,8 +16148,16 @@ if(el.popupPhotoWaterBtn)el.popupPhotoWaterBtn.addEventListener("click",()=>{   
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
-if(el.popupPhotoTexBtn)el.popupPhotoTexBtn.addEventListener("click",()=>{   /* 【v997】 */
-  photoTextureOn=!photoTextureOn;
+if(el.popupPhotoTexBtn)el.popupPhotoTexBtn.addEventListener("click",()=>{   /* 【v997】【v1087】 */
+  /* 【v1087】押すたびに 衛星写真 → 標準地図 → 淡色地図 → なし と回る。 */
+  if(!photoTextureOn){
+    photoTextureOn=true;setPhotoTexSource("photo");
+  }else{
+    const order=PHOTO_TEX_SOURCES.map(s=>s.key);
+    const next=order[order.indexOf(photoTexSource)+1];
+    if(next)setPhotoTexSource(next);
+    else photoTextureOn=false;
+  }
   if(photoTextureOn&&!glTerrainOn){glTerrainOn=true;if(typeof syncGlTerrainControls==="function")syncGlTerrainControls();}
   drawPhoto._terrainRenderKey=null;
   syncDisplayPopupControls();update();scheduleSaveSettings();
@@ -18138,6 +18151,7 @@ function collectPersistedSettings(){
     roadLinesVisible:roadLinesVisible,
     minorRoadsVisible:minorRoadsVisible,   /* 【v995】 */
     photoTextureOn:photoTextureOn,   /* 【v997】 */
+    photoTexSource:photoTexSource,   /* 【v1087】 */
     photoWaterVisible:photoWaterVisible,   /* 【v1000】 */
     photoTune:{day:photoTune.day,night:photoTune.night,haze:photoTune.haze,waterDay:photoTune.waterDay,waterNight:photoTune.waterNight},   /* 【v998】【v1045】【v1046】 */
     bridgeLinesVisible:bridgeLinesVisible,
@@ -18546,6 +18560,7 @@ async function applyPersistedSettingsText(stored){
     roadLinesVisible=!!s.roadLinesVisible;
     minorRoadsVisible=!!s.minorRoadsVisible;   /* 【v995】 */
     photoTextureOn=!!s.photoTextureOn;   /* 【v997】 */
+    if(typeof s.photoTexSource==="string"&&PHOTO_TEX_SOURCES.some(x=>x.key===s.photoTexSource))photoTexSource=s.photoTexSource;   /* 【v1087】 */
     photoWaterVisible=s.photoWaterVisible!==false;   /* 【v1000】 */
     if(s.photoTune&&typeof s.photoTune==="object"){
       for(const key of ["day","night","haze","waterDay","waterNight"]){const v=+s.photoTune[key];if(Number.isFinite(v))photoTune[key]=Math.round(v);}
@@ -27510,10 +27525,25 @@ const PHOTO_TILE_ZOOMS=[16,14,12];   /* 近→遠。5×5枚ずつ */
 const PHOTO_ATLAS_REBUILD_SLACK=1.5;   /* 【v1077】中心からこれだけ離れてから貼り直す（タイル単位。±2 枚あるので 0.5 枚は残る） */
 const PHOTO_TILE_RADIUS=2;
 const PHOTO_ATLAS_N=PHOTO_TILE_RADIUS*2+1;
-const PHOTO_TILE_SRC=(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`;
-const PHOTO_TILE_SRC_FALLBACK=(z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+/* 【v1087】地面に貼るもの。衛星写真のほかに国土地理院の地図も選べる（どれも同じ貼り方・同じ保存の仕組み）。
+   予備（Esri）は衛星写真のときだけ。地図は国土地理院だけで、取れなければその段は出さない。 */
+const PHOTO_TEX_SOURCES=[
+  {key:"photo",label:"衛星写真",url:(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/${z}/${x}/${y}.jpg`,maxZoom:18},
+  {key:"std",  label:"標準地図",url:(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/std/${z}/${x}/${y}.png`,maxZoom:18},
+  {key:"pale", label:"淡色地図",url:(z,x,y)=>`https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${x}/${y}.png`,maxZoom:18}
+];
+function photoTexSourceDef(){return PHOTO_TEX_SOURCES.find(s=>s.key===photoTexSource)||PHOTO_TEX_SOURCES[0];}
+const PHOTO_TILE_SRC=(z,x,y)=>photoTexSourceDef().url(z,x,y);
+const PHOTO_TILE_SRC_FALLBACK=(z,x,y)=>photoTexSource==="photo"
+  ?`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`:"";
 const photoAtlas={key:"",origin16:null,levels:[],version:0,pending:0,fetched:0,failed:0,fromCache:0,busy:false,gain:0.92};
-const photoTileMemo=new Map();   /* "z/x/y" → Promise<ImageBitmap|null> */
+const photoTileMemo=new Map();   /* "種類:z/x/y" → Promise<ImageBitmap|null> */
+/* 【v1087】種類ごとの予備の出どころ。衛星写真だけ Esri を使う。 */
+function PHOTO_TILE_SRC_FALLBACK_FOR(src){
+  return src==="photo"
+    ?((z,x,y)=>`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`)
+    :(()=>"");
+}
 let photoTileActive=0;const photoTileQueue=[];
 function photoMercatorTile(lat,lon,z){
   const n=2**z,clamped=clamp(lat,-85.05112878,85.05112878)*D2R;
@@ -27529,9 +27559,11 @@ function photoMercatorBasis(lat,lon){
   return {ox,oy,x:(sinAz,km)=>bx+sinAz*km*kx,y:(cosAz,km)=>by-cosAz*km*ky};
 }
 function photoTileFetch(z,x,y){
-  const key=`${z}/${x}/${y}`;
+  const key=`${photoTexSource}:${z}/${x}/${y}`;   /* 【v1087】種類ごとに別で覚える */
   if(photoTileMemo.has(key))return photoTileMemo.get(key);
-  const promise=new Promise(resolve=>{photoTileQueue.push({z,x,y,resolve});photoTilePump();});
+  /* 【v1087】取りに行くときの出どころは、頼んだ時点の種類で固める（待っている間に切り替わっても混ざらない）。 */
+  const src=photoTexSource,def=photoTexSourceDef();
+  const promise=new Promise(resolve=>{photoTileQueue.push({z,x,y,resolve,src,url:def.url,fallback:PHOTO_TILE_SRC_FALLBACK_FOR(src)});photoTilePump();});
   photoTileMemo.set(key,promise);
   if(photoTileMemo.size>600){const first=photoTileMemo.keys().next().value;photoTileMemo.delete(first);}
   return promise;
@@ -27541,13 +27573,14 @@ function photoTilePump(){
     const job=photoTileQueue.shift();photoTileActive++;
     (async()=>{
       let bitmap=null;
-      const cacheId=`photo-tile-v1:${job.z}/${job.x}/${job.y}`;
+      const cacheId=`photo-tile-v1:${job.src==="photo"?"":job.src+":"}${job.z}/${job.x}/${job.y}`;   /* 【v1087】写真は今までの鍵のまま（貯めたものを捨てない） */
       /* 【v999】まず端末の保存から。 */
       try{
         const saved=await externalGeoCacheGet(cacheId);
         if(saved&&typeof Blob!=="undefined"&&saved instanceof Blob&&saved.size>0){bitmap=await createImageBitmap(saved);photoAtlas.fromCache++;}
       }catch(e){bitmap=null;}
-      if(!bitmap)for(const url of [PHOTO_TILE_SRC(job.z,job.x,job.y),PHOTO_TILE_SRC_FALLBACK(job.z,job.x,job.y)]){
+      if(!bitmap)for(const url of [job.url(job.z,job.x,job.y),job.fallback(job.z,job.x,job.y)]){
+        if(!url)continue;
         try{
           const r=await fetch(url,{mode:"cors",cache:"force-cache"});
           if(!r.ok)continue;
@@ -27682,6 +27715,20 @@ function photoAtlasEnsure(lat,lon){
   });
 }
 function photoAtlasForgetTextures(){photoAtlas.levels.forEach(level=>{level.texture=null;level.dirty=true;});}
+/* 【v1087】地面に貼るものを取り替える。貼ってある絵は捨てて作り直す（種類ごとにタイルは別に貯まっているので、
+   一度見た場所へ戻れば通信は起きない）。 */
+function setPhotoTexSource(src){
+  const def=PHOTO_TEX_SOURCES.find(s=>s.key===src);
+  if(!def||photoTexSource===src)return;
+  photoTexSource=src;
+  photoAtlas.levels.forEach(level=>{
+    level.tileKey="";level.building="";level.canvas=null;level.ready=false;level.dirty=true;level.texture=null;
+  });
+  photoAtlas.key="";photoAtlas.version++;
+  drawPhoto._terrainRenderKey=null;
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(photoTextureOn&&Number.isFinite(lat)&&Number.isFinite(lon))photoAtlasEnsure(lat,lon);
+}
 /* 描く直前：用意できた段をテクスチャにして束ねる。1段も無ければ false。 */
 function photoAtlasBindTextures(gl,L){
   if(!photoAtlas.levels.length||!photoAtlas.origin16)return false;
