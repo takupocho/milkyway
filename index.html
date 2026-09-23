@@ -6525,7 +6525,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1097-daruma-range-pick";
+const APP_VERSION="1098-daruma-range-drag";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16768,17 +16768,23 @@ function photoDragEnd(pos){
 }
 el.photoCanvas.addEventListener("mousedown",(e)=>{
   const pos=photoCanvasPos(e);
-  if(darumaSilhouettePhotoPicking){pickDarumaSilhouetteBoundary(pos);e.preventDefault();return;}
+  if(darumaSilhouettePhotoPicking){darumaSilhouetteDragBegin(pos);e.preventDefault();return;}
   if(highDetailPhotoPicking){pickHighDetailTargetFromPhoto(pos);e.preventDefault();return;}
   photoDragBegin(pos);e.preventDefault();
 });
-window.addEventListener("mousemove",(e)=>{ if(photoDragging) photoDragMove(photoCanvasPos(e)); });
-window.addEventListener("mouseup",(e)=>{ if(photoDragging) photoDragEnd(photoCanvasPos(e)); });
+window.addEventListener("mousemove",(e)=>{
+  if(darumaSilhouettePickDrag){darumaSilhouetteDragMove(photoCanvasPos(e));return;}   /* 【v1098】 */
+  if(photoDragging) photoDragMove(photoCanvasPos(e));
+});
+window.addEventListener("mouseup",(e)=>{
+  if(darumaSilhouettePickDrag){darumaSilhouetteDragEnd();return;}   /* 【v1098】 */
+  if(photoDragging) photoDragEnd(photoCanvasPos(e));
+});
 el.photoCanvas.addEventListener("touchstart",(e)=>{
   if(!e.touches||e.touches.length!==1) return;
   if(darumaSilhouettePhotoPicking){
     darumaSilhouettePickTouchHandled=true;
-    pickDarumaSilhouetteBoundary(photoCanvasPos(e));
+    darumaSilhouetteDragBegin(photoCanvasPos(e));   /* 【v1098】 */
     e.preventDefault();return;
   }
   if(highDetailPhotoPicking){
@@ -16790,14 +16796,17 @@ el.photoCanvas.addEventListener("touchstart",(e)=>{
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchmove",(e)=>{
-  if(darumaSilhouettePickTouchHandled){e.preventDefault();return;}
+  if(darumaSilhouettePickTouchHandled){
+    if(e.touches&&e.touches.length===1)darumaSilhouetteDragMove(photoCanvasPos(e));   /* 【v1098】 */
+    e.preventDefault();return;
+  }
   if(highDetailPhotoPickTouchHandled){e.preventDefault();return;}
   if(!e.touches||e.touches.length!==1) return;
   photoDragMove(photoCanvasPos(e));
   e.preventDefault();
 },{passive:false});
 el.photoCanvas.addEventListener("touchend",(e)=>{
-  if(darumaSilhouettePickTouchHandled){darumaSilhouettePickTouchHandled=false;e.preventDefault();return;}
+  if(darumaSilhouettePickTouchHandled){darumaSilhouettePickTouchHandled=false;darumaSilhouetteDragEnd();e.preventDefault();return;}   /* 【v1098】 */
   if(highDetailPhotoPickTouchHandled){highDetailPhotoPickTouchHandled=false;e.preventDefault();return;}
   const pos = e.changedTouches && e.changedTouches[0]
     ? [ (e.changedTouches[0].clientX-el.photoCanvas.getBoundingClientRect().left)/el.photoCanvas.getBoundingClientRect().width*el.photoCanvas.width,
@@ -23166,7 +23175,7 @@ function setDarumaSilhouettePhotoPicking(on,{returnToDialog=false}={}){
     darumaSilhouetteRefreshPick();
     return true;
   }
-  darumaSilhouettePhotoPicking=false;darumaSilhouettePickTouchHandled=false;
+  darumaSilhouettePhotoPicking=false;darumaSilhouettePickTouchHandled=false;darumaSilhouettePickDrag=null;
   el.photoCanvas.closest(".photo-canvas-wrap")?.classList.remove("daruma-silhouette-photo-picking");
   el.darumaSilhouettePickOverlay?.setAttribute("aria-hidden","true");
   updateDarumaSilhouettePickOverlay();
@@ -23207,7 +23216,7 @@ function darumaSilhouetteRefreshPick(){
   if(el.darumaSilhouettePickDoneBtn)el.darumaSilhouettePickDoneBtn.disabled=!ready;
   if(el.darumaSilhouettePickHintText){
     el.darumaSilhouettePickHintText.textContent=ready
-      ?`${s.startAz.toFixed(2)}°〜${s.endAz.toFixed(2)}°（幅${(s.halfAngle*2).toFixed(2)}°）${darumaSilhouetteSpanCapped?`／幅は${DARUMA_SILHOUETTE_MAX_SPAN_DEG}°まで`:"／端をタップで調整"}`
+      ?`${s.startAz.toFixed(2)}°〜${s.endAz.toFixed(2)}°（幅${(s.halfAngle*2).toFixed(2)}°）${darumaSilhouetteSpanCapped?`／幅は${DARUMA_SILHOUETTE_MAX_SPAN_DEG}°まで`:"／線か内側をドラッグ"}`
       :"島影を作る範囲の左端をタップ";
     darumaSilhouetteSpanCapped=false;
   }
@@ -23221,6 +23230,121 @@ function darumaSilhouetteSetEdges(a,b){
   darumaSilhouetteSelection={startAz:left.az,endAz:right.az,centerAz:norm360(left.az+signed/2),halfAngle:span/2,startX:left.x,endX:right.x};
   darumaSilhouetteRefreshPick();updateDarumaSilhouetteRangeUi();
   return true;
+}
+/* 【v1098】掴んで動かす。left＝左の線、right＝右の線、band＝2 本の間（幅を保ったまま移動）。
+   動かしている間は方位の計算（highDetailPhotoRayAt）を 1 コマに 2 回までに抑える。
+   幅の上限を超える動きは「動かさない」で止める（位置を探し直す走査はしない＝重くならない）。 */
+let darumaSilhouettePickDrag=null;
+function darumaSilhouetteGrabTarget(x){
+  const s=darumaSilhouetteSelection;
+  if(!Number.isFinite(s.startX)||!Number.isFinite(s.endX))return null;
+  const grab=Math.max(18,el.photoCanvas.width*.035);   /* 指で掴める幅 */
+  const dLeft=Math.abs(x-s.startX),dRight=Math.abs(x-s.endX);
+  if(dLeft<=grab&&dLeft<=dRight)return "left";
+  if(dRight<=grab)return "right";
+  if(x>Math.min(s.startX,s.endX)&&x<Math.max(s.startX,s.endX))return "band";
+  return null;
+}
+/* 2 本の線の x から選択を作り直す。幅が範囲外なら false（呼ぶ側が動かさない）。 */
+function darumaSilhouetteApplyX(leftX,rightX){
+  const W=el.photoCanvas.width;
+  if(!(leftX>=0&&rightX<=W-1&&rightX>leftX))return false;
+  const leftAz=darumaSilhouetteBearingAtCanvasX(leftX),rightAz=darumaSilhouetteBearingAtCanvasX(rightX);
+  if(!Number.isFinite(leftAz)||!Number.isFinite(rightAz))return false;
+  const signed=darumaTelephotoAngleDifference(rightAz,leftAz),span=Math.abs(signed);
+  if(span<.08)return false;
+  if(span>DARUMA_SILHOUETTE_MAX_SPAN_DEG+.02){darumaSilhouetteSpanCapped=true;return false;}
+  darumaSilhouetteSelection={startAz:leftAz,endAz:rightAz,centerAz:norm360(leftAz+signed/2),halfAngle:span/2,startX:leftX,endX:rightX};
+  return true;
+}
+/* 【v1098】右の線の位置から、角度の幅が targetSpan になる左の線の x を二分で探す。右端に張り付いたときに使う。 */
+function darumaSilhouetteLeftXForSpan(rightX,rightAz,targetSpan){
+  let lo=0,hi=rightX-2;
+  const spanAt=x=>{const az=darumaSilhouetteBearingAtCanvasX(x);return Number.isFinite(az)?Math.abs(darumaTelephotoAngleDifference(rightAz,az)):null;};
+  const spanLo=spanAt(lo);
+  if(spanLo===null)return null;
+  if(spanLo<=targetSpan)return lo;
+  for(let i=0;i<14;i++){
+    const mid=(lo+hi)/2,s=spanAt(mid);
+    if(s===null)break;
+    if(s>targetSpan)lo=mid;else hi=mid;
+  }
+  return hi;
+}
+/* 【v1098】左の線の位置から、角度の幅が targetSpan になる右の線の x を二分で探す（画面の端で止める）。
+   帯ごと動かすときに「見た目の幅（px）」ではなく「角度の幅」を保つために使う。ray の計算は十数回で済む。 */
+function darumaSilhouetteRightXForSpan(leftX,leftAz,targetSpan){
+  const W=el.photoCanvas.width;
+  let lo=leftX+2,hi=W-1;
+  const spanAt=x=>{const az=darumaSilhouetteBearingAtCanvasX(x);return Number.isFinite(az)?Math.abs(darumaTelephotoAngleDifference(az,leftAz)):null;};
+  const spanHi=spanAt(hi);
+  if(spanHi===null)return null;
+  if(spanHi<=targetSpan)return null;   /* 画角の端まででも幅が足りない（＝右へはこれ以上動かせない） */
+  for(let i=0;i<14;i++){
+    const mid=(lo+hi)/2,s=spanAt(mid);
+    if(s===null)break;
+    if(s>targetSpan)hi=mid;else lo=mid;
+  }
+  return lo;
+}
+function darumaSilhouetteDragBegin(pos){
+  const s=darumaSilhouetteSelection;
+  const target=darumaSilhouetteGrabTarget(pos[0]);
+  if(target){
+    darumaSilhouettePickDrag={mode:target,grabX:pos[0],startLeft:Math.min(s.startX,s.endX),startRight:Math.max(s.startX,s.endX),
+      spanDeg:Number.isFinite(s.halfAngle)?Math.min(s.halfAngle*2,DARUMA_SILHOUETTE_MAX_SPAN_DEG):null};
+    return true;
+  }
+  /* 掴むものが無ければ、そこを左端にして 12°ぶん（はみ出すなら画面の右端まで）を引き直し、
+     そのまま右の線を掴んだ状態にする。 */
+  if(!pickDarumaSilhouetteBoundary(pos))return false;
+  const now=darumaSilhouetteSelection;
+  darumaSilhouettePickDrag=Number.isFinite(now.endX)
+    ?{mode:"right",grabX:now.endX,startLeft:Math.min(now.startX,now.endX),startRight:Math.max(now.startX,now.endX)}
+    :null;
+  return true;
+}
+let darumaSilhouetteDragRaf=0,darumaSilhouetteDragPos=null;
+function darumaSilhouetteDragMove(pos){
+  if(!darumaSilhouettePickDrag)return;
+  darumaSilhouetteDragPos=pos;
+  if(darumaSilhouetteDragRaf)return;   /* 1 コマ 1 回にまとめる */
+  darumaSilhouetteDragRaf=requestAnimationFrame(()=>{
+    darumaSilhouetteDragRaf=0;
+    const drag=darumaSilhouettePickDrag,p=darumaSilhouetteDragPos;
+    if(!drag||!p)return;
+    const W=el.photoCanvas.width,x=clamp(p[0],0,W-1);
+    if(drag.mode==="left")darumaSilhouetteApplyX(Math.min(x,drag.startRight-2),drag.startRight);
+    else if(drag.mode==="right")darumaSilhouetteApplyX(drag.startLeft,Math.max(x,drag.startLeft+2));
+    else{
+      /* 帯ごと移動。画面の端では 1px あたりの角度が変わるので、px 幅ではなく**角度の幅**を保つ。 */
+      const width=drag.startRight-drag.startLeft;
+      const left=clamp(drag.startLeft+(x-drag.grabX),0,W-3);
+      const leftAz=darumaSilhouetteBearingAtCanvasX(left);
+      let right=left+width,useLeft=left;
+      if(Number.isFinite(leftAz)&&Number.isFinite(drag.spanDeg)){
+        const fitted=darumaSilhouetteRightXForSpan(left,leftAz,drag.spanDeg);
+        if(Number.isFinite(fitted))right=fitted;
+        else{
+          /* 右へはもう行けない：右端に張り付け、幅（角度）を保つように左を決める。 */
+          right=W-1;
+          const rightAz=darumaSilhouetteBearingAtCanvasX(right);
+          const fittedLeft=Number.isFinite(rightAz)?darumaSilhouetteLeftXForSpan(right,rightAz,drag.spanDeg):null;
+          if(Number.isFinite(fittedLeft))useLeft=fittedLeft;
+        }
+      }
+      darumaSilhouetteApplyX(useLeft,Math.min(right,W-1));
+    }
+    darumaSilhouetteRefreshPick();
+  });
+}
+function darumaSilhouetteDragEnd(){
+  if(darumaSilhouetteDragRaf){cancelAnimationFrame(darumaSilhouetteDragRaf);darumaSilhouetteDragRaf=0;}
+  darumaSilhouetteDragPos=null;
+  if(!darumaSilhouettePickDrag)return;
+  darumaSilhouettePickDrag=null;
+  darumaSilhouetteRefreshPick();
+  updateDarumaSilhouetteRangeUi();   /* 重い更新は離したときだけ */
 }
 function pickDarumaSilhouetteBoundary(pos){
   const bearing=darumaSilhouetteBearingAtCanvasX(pos[0]);
