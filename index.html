@@ -6573,7 +6573,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1105-log-elevation";
+const APP_VERSION="1106-dialog-outside-close";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10866,7 +10866,11 @@ el.favPlacesBtn.addEventListener("click",()=>{
   else{el.favEditBox.hidden=true;favSetOverlayOpen(true);}
 });
 el.favPlacesCloseBtn.addEventListener("click",()=>favSetOverlayOpen(false));
-el.favPlacesOverlay.addEventListener("click",e=>{if(e.target===el.favPlacesOverlay)favSetOverlayOpen(false);});
+/* 【v1106】外側（暗い所）を押しても閉じない。
+   入力欄のある画面は、文字を打っている途中に画面の外へ指が触れると、書いたものが消えてしまう
+   （利用者報告）。閉じるのは右上の × だけにする。
+   入力欄の無い「見るだけ」の画面（写真の拡大・地形の上から見た図）は、今までどおり外側で閉じる。 */
+/* 登録地点（名前・検索の入力欄がある）。 */
 el.favEditKindRow.addEventListener("click",e=>{const b=e.target.closest("button[data-kind]");if(b)favSetEditKind(b.dataset.kind);});
 el.favEditSaveBtn.addEventListener("click",favCommitEditor);
 el.favEditName.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.isComposing){e.preventDefault();favCommitEditor();}});
@@ -11156,9 +11160,7 @@ el.osmGoogleOpenBtn.addEventListener("click",()=>{
   if(opened) opened.opener=null;
 });
 el.osmGoogleImportCloseBtn.addEventListener("click",()=>{placeSuggestHide();setGoogleMapsImportOpen(false);});
-el.osmGoogleImportOverlay.addEventListener("click",e=>{
-  if(e.target===el.osmGoogleImportOverlay) setGoogleMapsImportOpen(false);
-});
+/* 【v1106】貼り付け欄があるので、外側を押しても閉じない（上の決めごとを参照）。Esc と × では閉じる。 */
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&el.osmGoogleImportOverlay.classList.contains("show")) setGoogleMapsImportOpen(false);
 });
@@ -13102,7 +13104,7 @@ el.highDetailPickFromPhotoBtn?.addEventListener("click",()=>setHighDetailPhotoPi
 el.highDetailPhotoPickCancelBtn?.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();setHighDetailPhotoPicking(false,{returnToSettings:true});});
 el.highDetailSettingsCloseBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
 el.highDetailSettingsCancelBtn?.addEventListener("click",()=>setHighDetailSettingsOpen(false));
-el.highDetailSettingsOverlay?.addEventListener("click",e=>{if(e.target===el.highDetailSettingsOverlay)setHighDetailSettingsOpen(false);});
+/* 【v1106】座標・前後の km を打ち込むので、外側を押しても閉じない。 */
 document.addEventListener("keydown",e=>{
   if(e.key==="Escape"&&highDetailPhotoPicking){e.preventDefault();setHighDetailPhotoPicking(false,{returnToSettings:true});}
   else if(e.key==="Escape"&&darumaSilhouettePhotoPicking){e.preventDefault();setDarumaSilhouettePhotoPicking(false,{returnToDialog:true});}
@@ -13160,6 +13162,7 @@ function setTerrainTopViewOpen(open){
 }
 el.terrainTopViewBtn.addEventListener("click",()=>setTerrainTopViewOpen(true));
 el.terrainTopViewCloseBtn.addEventListener("click",()=>setTerrainTopViewOpen(false));
+/* 【v1106】ここは入力欄が無い「見るだけ」の画面なので、外側を押すと閉じるままにしてある。 */
 el.terrainTopViewOverlay.addEventListener("click",event=>{if(event.target===el.terrainTopViewOverlay)setTerrainTopViewOpen(false);});
 el.belowHorizonOpacitySlider.addEventListener("input",()=>{
   el.belowHorizonOpacityVal.textContent=`${el.belowHorizonOpacitySlider.value}%`;
@@ -21232,8 +21235,7 @@ if(el.planSaveCameraWork)el.planSaveCameraWork.addEventListener("change",()=>ren
 el.planSaveCloseBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planSaveCancelBtn.addEventListener("click",()=>setPlanModalOpen("save",false));
 el.planLoadCloseBtn.addEventListener("click",()=>setPlanModalOpen("load",false));
-el.planSaveOverlay.addEventListener("click",e=>{if(e.target===el.planSaveOverlay)setPlanModalOpen("save",false);});
-el.planLoadOverlay.addEventListener("click",e=>{if(e.target===el.planLoadOverlay)setPlanModalOpen("load",false);});
+/* 【v1106】保存は計画名、読込は検索の入力欄があるので、外側を押しても閉じない。 */
 /* ジャンルの選び札を組み立てる（v682）。 */
 buildPlanGenreRow(el.planSaveGenreRow,false,()=>planSaveGenres,()=>{
   syncPlanGenreRows();
@@ -21324,6 +21326,7 @@ el.planPhotoRemoveBtn.addEventListener("click",()=>{
   el.planPhotoInput.value="";el.planPhotoPreview.removeAttribute("src");el.planPhotoPreviewWrap.classList.remove("show");el.planPhotoRemoveBtn.hidden=true;el.planPhotoSelectBtn.textContent="写真を選択";el.planPhotoStatus.textContent="写真を削除する設定です。撮影計画を保存すると反映されます。";
 });
 el.photoViewerCloseBtn.addEventListener("click",closePlanPhotoViewer);
+/* 【v1106】ここも入力欄が無い「見るだけ」の画面なので、外側を押すと閉じるままにしてある。 */
 el.photoViewerOverlay.addEventListener("click",e=>{if(e.target===el.photoViewerOverlay||e.target.classList.contains("photo-viewer-content"))closePlanPhotoViewer();});
 el.planSaveRunBtn.addEventListener("click",async()=>{
   el.planSaveRunBtn.disabled=true;el.planSaveRunBtn.textContent="保存中…";
@@ -24440,7 +24443,7 @@ function darumaIslandOverlayActive(s){
 el.darumaTelephotoBtn?.addEventListener("click",()=>setDarumaTelephotoOpen(true));
 el.darumaTelephotoBanner?.addEventListener("click",()=>setDarumaTelephotoOpen(true));
 el.darumaTelephotoCloseBtn?.addEventListener("click",()=>setDarumaTelephotoOpen(false));
-el.darumaTelephotoOverlay?.addEventListener("click",event=>{if(event.target===el.darumaTelephotoOverlay)setDarumaTelephotoOpen(false);});
+/* 【v1106】日付・距離を打ち込むので、外側を押しても閉じない。 */
 el.darumaTelephotoRunBtn?.addEventListener("click",runDarumaTelephotoScan);
 el.darumaTelephotoClearBtn?.addEventListener("click",()=>{clearDarumaTelephotoResult();setDarumaTelephotoOpen(false);});
 el.darumaSilhouettePickBtn?.addEventListener("click",()=>setDarumaSilhouettePhotoPicking(true));
