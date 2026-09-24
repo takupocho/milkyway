@@ -2717,6 +2717,21 @@
   .drive-log-track .t-place{display:block;font-size:10.5px;color:var(--dim-2);}
   .drive-log-track button{width:auto;min-width:0;margin:0;padding:2px 8px;font-size:10.5px;border-radius:6px;flex:0 0 auto;}
   .drive-log-empty{font-size:11px;color:var(--dim-2);padding:6px 2px;}
+  /* 【v1104】GPX の読み込み */
+  .drive-log-import{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0 2px;}
+  .drive-log-import button{width:auto;min-width:0;margin:0;padding:5px 12px;font-size:11.5px;border-radius:8px;}
+  .drive-log-import input[type=file]{display:none;}
+  /* 【v1105】走行／登山の切り替えと、標高まわりの小さな行 */
+  .drive-log-tabs{display:flex;gap:4px;margin:10px 0 2px;}
+  .drive-log-tabs button{flex:1 1 0;width:auto;min-width:0;margin:0;padding:5px 4px;font-size:11.5px;border-radius:8px;
+    border:1px solid rgba(126,154,208,.35);background:rgba(16,20,42,.5);color:var(--dim-2);}
+  .drive-log-tabs button.active{border-color:rgba(120,200,255,.85);background:rgba(30,60,96,.75);color:#fff;font-weight:700;}
+  .drive-log-tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 2px;font-size:11px;color:var(--dim-2);}
+  .drive-log-tools input[type=number]{width:52px;min-width:0;margin:0;padding:3px 5px;font-size:11.5px;text-align:right;}
+  .drive-log-tools button{width:auto;min-width:0;margin:0;padding:4px 10px;font-size:11px;border-radius:7px;}
+  .drive-log-kind{flex:0 0 auto;width:auto;min-width:0;margin:0;padding:2px 6px;font-size:12px;border-radius:6px;
+    border:1px solid rgba(126,154,208,.4);background:rgba(16,20,42,.6);line-height:1.4;}
+  .drive-log-track .t-gain{color:#9fd7a8;}
   /* 地図に出しているときの帯 */
   .drive-log-map-bar{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:8px;
     width:max-content;max-width:calc(100% - 12px);padding:6px 10px;border-radius:10px;background:rgba(16,20,42,.92);border:1px solid rgba(120,200,255,.6);
@@ -5153,11 +5168,28 @@
 
       <!-- 【v1080】走行ログ -->
       <section class="ctrl-group collapsible collapsed" id="driveLogSection">
-        <h2 class="ctrl-group-toggle">🚗 走行ログ<span class="ctrl-arrow">▼</span></h2>
+        <h2 class="ctrl-group-toggle">🚗 走行・登山ログ<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <p class="map-hint" style="margin:0 0 6px;">ドライブモードの帯にある「● 記録開始」で記録します。iPhone は画面を消したり他のアプリに移ると記録が止まるので、車載ホルダーに立てて充電しながらお使いください。止まった分は「切れ目」として残り、細かく分かれても日付ごとにまとめて見られます。</p>
           <label class="map-hint" style="display:flex;align-items:center;gap:6px;margin:6px 0;"><input id="driveLogAutoPause" type="checkbox" checked style="width:auto;margin:0;"> 停車が 5 分続いたら自動で一時停止（動き出したら再開）</label>
+          <!-- 【v1104】ほかのアプリで取ったログを取り込む -->
+          <div class="drive-log-import">
+            <button id="driveLogImportDriveBtn" type="button">🚗 走行として読み込む</button>
+            <button id="driveLogImportHikeBtn" type="button">🥾 登山として読み込む</button>
+            <input id="driveLogImportInput" type="file" accept=".gpx,.kml,.kmz,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" multiple>
+          </div>
+          <p class="map-hint" style="margin:0 0 6px;">画面を消しても記録できる GPS ログアプリ（OsmAnd・Organic Maps・Open GPX Tracker・Geo Tracker・YAMAP・ヤマレコ など）で取った記録を取り込めます。<b>GPX</b> のほか KML・KMZ の軌跡も読めます。標高（GPX の ele）も読み、入っていない点は地理院の標高データで補います。同じ記録を二度読み込んでも重複しません。</p>
+          <!-- 【v1105】累積標高のしきい値と、古い記録の標高の穴埋め -->
+          <div class="drive-log-tools">
+            <label style="display:flex;align-items:center;gap:5px;margin:0;">累積標高は <input id="driveLogGainThreshold" type="number" min="1" max="30" step="1" value="5"> m 以上の変化だけ数える</label>
+            <button id="driveLogFillEleBtn" type="button" class="ghost">標高が無い記録を補う</button>
+          </div>
           <p id="driveLogStatus" class="map-hint" style="margin:4px 0;" aria-live="polite"></p>
+          <div class="drive-log-tabs">
+            <button id="driveLogTabAll" type="button">すべて</button>
+            <button id="driveLogTabDrive" type="button">🚗 走行</button>
+            <button id="driveLogTabHike" type="button">🥾 登山</button>
+          </div>
           <div id="driveLogList"></div>
         </div>
       </section>
@@ -5610,6 +5642,8 @@
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
                 <!-- 【v1082】地図の登録地点（撮影場所・駐車場・気になる所）をシミュレーション画面にも出す。 -->
                 <button id="popupFavPlacesBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="地図に登録した場所（📷撮影場所・🅿駐車場・⭐気になる所）を写真の中にも出します">登録地点</button>
+                <!-- 【v1105】走行・登山ログの軌跡を風景の中へ -->
+                <button id="popupDriveLogBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="走行・登山ログの軌跡を風景の中に描きます（走行＝水色／登山＝緑）。一覧の［地図］で選んだ本、選んでいなければ近くにある新しい記録を出します">ログ軌跡</button>
                 <button id="popupDaylightStarsBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="ONにすると、昼間や薄明でも星座・恒星・惑星の印を出します（OFFでは暗くなってから出ます）">昼も星見え</button>
                 <button id="popupMwFramingBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川構図</button>
                 <button id="popupWaterBoundaryBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">水際境界</button>
@@ -6539,7 +6573,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1103-fisheye-circle";
+const APP_VERSION="1105-log-elevation";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7940,7 +7974,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMoonLinesBtn:$("mapMoonLinesBtn"), mapSunLinesBtn:$("mapSunLinesBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupMinorRoadBtn:$("popupMinorRoadBtn"), popupPhotoTexBtn:$("popupPhotoTexBtn"), popupPhotoWaterBtn:$("popupPhotoWaterBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupHimejiBtn:$("popupHimejiBtn"), popupShiratoriBtn:$("popupShiratoriBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupFavPlacesBtn:$("popupFavPlacesBtn"),   /* 【v1082】 */
+  popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMoonLinesBtn:$("mapMoonLinesBtn"), mapSunLinesBtn:$("mapSunLinesBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupMinorRoadBtn:$("popupMinorRoadBtn"), popupPhotoTexBtn:$("popupPhotoTexBtn"), popupPhotoWaterBtn:$("popupPhotoWaterBtn"), popupRailBtn:$("popupRailBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupHimejiBtn:$("popupHimejiBtn"), popupShiratoriBtn:$("popupShiratoriBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupFavPlacesBtn:$("popupFavPlacesBtn"), popupDriveLogBtn:$("popupDriveLogBtn"),   /* 【v1082】【v1105】 */
   popupTrailBtn:$("popupTrailBtn"), popupTrailNameBtn:$("popupTrailNameBtn"), trailIncludeTrackBox:$("trailIncludeTrackBox"),   /* 【v1101】 */
   overlayTrailDayColor:$("overlayTrailDayColor"), overlayTrailNightColor:$("overlayTrailNightColor"),
   overlayTrailDayBright:$("overlayTrailDayBright"), overlayTrailDayBrightVal:$("overlayTrailDayBrightVal"),
@@ -9862,6 +9896,8 @@ if(el.droneMapTabBtn) el.droneMapTabBtn.addEventListener("click",()=>{
 });
 let placeNameVisible=true; // 画面内の地名表示
 let favPlacesSceneVisible=false;   /* 【v1082】登録地点をシミュレーション画面にも出す */
+let driveLogSceneVisible=false;    /* 【v1105】走行・登山ログの軌跡を風景の中に出す */
+let driveLogSelectedIds=[];        /* 【v1105】一覧の［地図］で選んだ本の id */
 let favPlaceLabelShownId=null;     /* 【v1085】名前の札を出している登録地点（ピンをタップしたもの） */
 /* 水際の判定がどの層で決まっているかを画面に出す。原因の切り分け用。
    既定は非表示で、描画にも触らない（数え上げだけ）。 */
@@ -14736,7 +14772,18 @@ const DRIVE_LOG_AUTO_PAUSE_MS=5*60e3; /* 停車がこれだけ続いたら自動
 const DRIVE_LOG_RESUME_M=30;          /* 自動一時停止からは、これだけ動いたら再開 */
 const DRIVE_LOG_CONTINUE_MS=5*60e3;   /* 中断からこれ以内に戻れば同じ本の続き */
 const DRIVE_LOG_MAX_TRACKS=300;
-let driveLogData={version:1,autoPause:true,tracks:[]};
+/* 【v1105】種別。走行と登山で「別の記録に分ける空き時間」が違う（車は 30 分、山は昼休憩があるので 2 時間）。 */
+const DRIVE_LOG_KINDS={
+  drive:{label:"走行",icon:"🚗",splitMs:30*60e3},
+  hike:{label:"登山",icon:"🥾",splitMs:2*60*60e3}
+};
+function driveLogKindOf(track){return (track&&track.kind==="hike")?"hike":"drive";}
+const DRIVE_LOG_GAIN_THRESHOLD_DEFAULT=5;   /* 累積標高で数え始める変化量（m） */
+function driveLogGainThresholdM(){
+  const v=+(driveLogData&&driveLogData.gainThresholdM);
+  return Number.isFinite(v)&&v>=1&&v<=30?v:DRIVE_LOG_GAIN_THRESHOLD_DEFAULT;
+}
+let driveLogData={version:1,autoPause:true,tracks:[],tab:"all",gainThresholdM:DRIVE_LOG_GAIN_THRESHOLD_DEFAULT};
 let driveLogRecording=false,driveLogPaused=false,driveLogAutoPaused=false;
 let driveLogTrack=null,driveLogLastAt=0,driveLogLastMoveAt=0,driveLogSaveTimer=0,driveLogLoaded=false;
 const driveLogEl=id=>document.getElementById(id);
@@ -14744,20 +14791,37 @@ function driveLogDistanceM(a,b){
   const r=terrainDistanceAndBearing(a[1],a[2],b[1],b[2]);
   return Number.isFinite(r&&r.distanceKm)?r.distanceKm*1000:0;
 }
-/* 1 本の合計。切れ目（60 秒以上あいた所）はつながず、距離にも入れない。 */
+/* 【v1105】点の標高。5 個目が無い古い記録では undefined。 */
+function driveLogEleOf(point){return point&&Number.isFinite(point[4])?point[4]:null;}
+/* 1 本の合計。切れ目（60 秒以上あいた所）はつながず、距離にも入れない。
+   【v1105】標高があれば、累積標高（上り・下り）と斜面を考えた実距離も出す。
+   累積標高は**しきい値より大きい変化だけ**数える。標高には数 m の雑音が必ず乗るので、
+   そのまま足すと平地を歩いただけで「+300m」のような数字になってしまう。 */
 function driveLogStats(track){
   const pts=track&&track.points||[];
-  let dist=0,moving=0,gaps=0;
-  for(let i=1;i<pts.length;i++){
-    const dt=pts[i][0]-pts[i-1][0];
-    if(dt>60e3){gaps++;continue;}
-    if(dt<=0)continue;   /* 時刻が前後している点（時計合わせ等）は距離にも時間にも入れない */
-    dist+=driveLogDistanceM(pts[i-1],pts[i]);
-    moving+=dt;
+  const threshold=driveLogGainThresholdM();
+  let dist=0,moving=0,gaps=0,slope=0,gain=0,drop=0,eleCount=0;
+  let reference=null;   /* しきい値を測る基準の標高 */
+  for(let i=0;i<pts.length;i++){
+    const ele=driveLogEleOf(pts[i]);
+    if(ele!==null)eleCount++;
+    const broken=i>0&&(pts[i][0]-pts[i-1][0]>60e3||pts[i][0]-pts[i-1][0]<=0);
+    if(broken){if(pts[i][0]-pts[i-1][0]>60e3)gaps++;reference=ele;continue;}
+    if(i>0){
+      const flat=driveLogDistanceM(pts[i-1],pts[i]);
+      const previousEle=driveLogEleOf(pts[i-1]);
+      dist+=flat;moving+=pts[i][0]-pts[i-1][0];
+      slope+=(ele!==null&&previousEle!==null)?Math.hypot(flat,ele-previousEle):flat;
+    }
+    if(ele===null)continue;
+    if(reference===null){reference=ele;continue;}
+    if(ele-reference>=threshold){gain+=ele-reference;reference=ele;}
+    else if(reference-ele>=threshold){drop+=reference-ele;reference=ele;}
   }
   let start=track&&track.startAt||0,end=track&&track.endAt||0;
   if(pts.length){start=pts[0][0];end=pts[0][0];for(const p of pts){if(p[0]<start)start=p[0];if(p[0]>end)end=p[0];}}
-  return {km:dist/1000,movingMs:moving,totalMs:Math.max(0,end-start),gaps,start,end,n:pts.length};
+  return {km:dist/1000,slopeKm:slope/1000,movingMs:moving,totalMs:Math.max(0,end-start),gaps,start,end,n:pts.length,
+    gain,drop,hasEle:eleCount>0,eleCount};
 }
 function driveLogDurationText(ms){
   const m=Math.round(ms/60000);
@@ -14779,8 +14843,11 @@ async function driveLogLoad(){
     const v=raw?JSON.parse(raw):null;
     /* 記録中に読み込みが遅れて返ってきても、いま記録している本を捨てない。 */
     if(v&&Array.isArray(v.tracks)){
-      if(driveLogRecording&&driveLogTrack)driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks.concat([driveLogTrack])};
-      else driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks};
+      /* 【v1105】タブとしきい値も引き継ぐ。古い保存には無いので既定値で埋める。 */
+      const extra={tab:["all","drive","hike"].includes(v.tab)?v.tab:"all",
+        gainThresholdM:Number.isFinite(+v.gainThresholdM)?+v.gainThresholdM:DRIVE_LOG_GAIN_THRESHOLD_DEFAULT};
+      if(driveLogRecording&&driveLogTrack)driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks.concat([driveLogTrack]),...extra};
+      else driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks,...extra};
     }
   }catch(e){}
   const box=driveLogEl("driveLogAutoPause");if(box)box.checked=driveLogData.autoPause!==false;
@@ -14803,7 +14870,7 @@ function driveLogFlush(){
   driveLogSave();
 }
 /* 測位が届くたびに呼ぶ（driveHandlePosition から）。 */
-function driveLogHandlePosition(lat,lon,speed,accuracy,timeMs){
+function driveLogHandlePosition(lat,lon,speed,accuracy,timeMs,altitude){
   if(!driveLogRecording||!driveLogTrack)return;
   if(Number.isFinite(accuracy)&&accuracy>DRIVE_LOG_MAX_ACCURACY_M)return;
   const now=timeMs||Date.now();
@@ -14822,7 +14889,10 @@ function driveLogHandlePosition(lat,lon,speed,accuracy,timeMs){
     driveLogPaused=true;driveLogAutoPaused=true;driveLogFlush();driveLogSyncButtons();return;
   }
   if(last&&moved<DRIVE_LOG_MIN_MOVE_M&&now-last[0]<DRIVE_LOG_MIN_INTERVAL_MS)return;
-  pts.push([now,+lat.toFixed(5),+lon.toFixed(5),Number.isFinite(speed)&&speed>=0?Math.round(speed*10)/10:0]);
+  /* 【v1105】端末が標高を返すときは 5 個目に入れる（返さない端末では 4 個のまま）。 */
+  const point=[now,+lat.toFixed(5),+lon.toFixed(5),Number.isFinite(speed)&&speed>=0?Math.round(speed*10)/10:0];
+  if(Number.isFinite(altitude))point.push(Math.round(altitude*10)/10);
+  pts.push(point);
   driveLogTrack.endAt=now;driveLogLastAt=now;
   driveLogScheduleSave();
   driveLogSyncButtons();
@@ -14835,7 +14905,7 @@ function driveLogStart(){
   if(last&&last.points.length&&now-last.endAt<=DRIVE_LOG_CONTINUE_MS){
     driveLogTrack=last;
   }else{
-    driveLogTrack={id:`${now.toString(36)}${Math.random().toString(36).slice(2,6)}`,startAt:now,endAt:now,points:[],place:""};
+    driveLogTrack={id:`${now.toString(36)}${Math.random().toString(36).slice(2,6)}`,startAt:now,endAt:now,points:[],place:"",kind:"drive"};   /* 【v1105】 */
     driveLogData.tracks.push(driveLogTrack);
   }
   driveLogRecording=true;driveLogPaused=false;driveLogAutoPaused=false;driveLogLastMoveAt=now;
@@ -14882,6 +14952,243 @@ async function driveLogFillPlaces(track){
   track.place=from&&to?(from===to?from:`${from}→${to}`):"";
   driveLogFlush();driveLogRenderList();
 }
+/* ===== 【v1104】ほかのアプリで取った軌跡を読み込む =====
+   ログ取り自体は専用アプリ（画面を消しても記録できる）に任せ、書き出した GPX をここへ入れる。
+   読める形：
+     ・GPX  <trk><trkseg><trkpt lat lon><time>     … 無ければ <rte><rtept>
+     ・KML  <gx:Track> の <when> と <gx:coord> の組 … 無ければ <LineString><coordinates>
+     ・KMZ  中の .kml（展開は KMZ 建物と同じ readKmzEntries を使う）
+   時刻が 1 点も無い軌跡は取り込まない（日付ごとのまとめも所要時間も出せないため。勝手に時刻を作らない）。 */
+const DRIVE_LOG_IMPORT_SPLIT_MS=30*60e3;   /* これ以上あいたら別の本に分ける（日付が変わるときも分ける） */
+const DRIVE_LOG_IMPORT_MAX_POINTS=20000;   /* 1 本の上限。超えたら等間隔で間引く */
+function driveLogXmlTime(node){
+  const t=xmlFirstByLocalName(node,"time");
+  if(!t)return NaN;
+  const ms=Date.parse(String(t.textContent||"").trim());
+  return Number.isFinite(ms)?ms:NaN;
+}
+/* XML 文字列 → [{name, points:[[ms,lat,lon]]}]。まだ並べ替えも間引きもしない。 */
+function driveLogParseTrackXml(text){
+  const xml=new DOMParser().parseFromString(String(text||""),"application/xml");
+  if(xml.getElementsByTagName("parsererror").length)throw new Error("ファイルの中身を読み取れませんでした。");
+  const tracks=[],nameOf=node=>String((xmlFirstByLocalName(node,"name")||{}).textContent||"").trim().slice(0,40);
+  /* 【v1105】GPX の <ele>（標高・メートル）。無ければ NaN。 */
+  const eleOf=node=>{
+    const e=xmlFirstByLocalName(node,"ele");
+    if(!e)return NaN;
+    const v=Number(String(e.textContent||"").trim());
+    return Number.isFinite(v)?v:NaN;
+  };
+  /* (1) GPX の軌跡 */
+  for(const trk of xmlChildrenByLocalName(xml,"trk")){
+    const points=[];
+    for(const pt of xmlChildrenByLocalName(trk,"trkpt")){
+      const lat=+pt.getAttribute("lat"),lon=+pt.getAttribute("lon");
+      if(Number.isFinite(lat)&&Number.isFinite(lon))points.push([driveLogXmlTime(pt),lat,lon,eleOf(pt)]);
+    }
+    if(points.length)tracks.push({name:nameOf(trk),points});
+  }
+  /* (2) KML の gx:Track（<when> と <gx:coord> が同じ数だけ並ぶ） */
+  for(const trk of xmlChildrenByLocalName(xml,"Track")){
+    const whens=xmlChildrenByLocalName(trk,"when"),coords=xmlChildrenByLocalName(trk,"coord");
+    const points=[];
+    for(let i=0;i<coords.length;i++){
+      const parts=xmlNumbers(coords[i].textContent);   /* 経度 緯度 標高 の順 */
+      if(parts.length<2||!Number.isFinite(parts[0])||!Number.isFinite(parts[1]))continue;
+      const ms=whens[i]?Date.parse(String(whens[i].textContent||"").trim()):NaN;
+      points.push([Number.isFinite(ms)?ms:NaN,parts[1],parts[0],Number.isFinite(parts[2])?parts[2]:NaN]);   /* 【v1105】3 個目が標高 */
+    }
+    if(points.length)tracks.push({name:nameOf(trk.parentNode||trk),points});
+  }
+  /* (3) (1)(2)が無いときだけ：時刻を持たない線（GPX のルート／KML の LineString）も見る */
+  if(!tracks.length){
+    for(const rte of xmlChildrenByLocalName(xml,"rte")){
+      const points=[];
+      for(const pt of xmlChildrenByLocalName(rte,"rtept")){
+        const lat=+pt.getAttribute("lat"),lon=+pt.getAttribute("lon");
+        if(Number.isFinite(lat)&&Number.isFinite(lon))points.push([driveLogXmlTime(pt),lat,lon,eleOf(pt)]);
+      }
+      if(points.length)tracks.push({name:nameOf(rte),points});
+    }
+    for(const line of xmlChildrenByLocalName(xml,"LineString")){
+      const node=xmlFirstByLocalName(line,"coordinates");if(!node)continue;
+      const points=[];
+      for(const chunk of String(node.textContent||"").trim().split(/\s+/)){
+        const parts=chunk.split(",").map(Number);
+        if(parts.length<2||!Number.isFinite(parts[0])||!Number.isFinite(parts[1]))continue;
+        points.push([NaN,parts[1],parts[0],Number.isFinite(parts[2])?parts[2]:NaN]);   /* 【v1105】 */
+      }
+      if(points.length)tracks.push({name:nameOf(line.parentNode||line),points});
+    }
+  }
+  return tracks;
+}
+/* ファイル 1 つ → XML 文字列。KMZ は中の .kml を取り出す。 */
+async function driveLogReadTrackFile(file){
+  const lower=String(file.name||"").toLowerCase();
+  if(lower.endsWith(".kmz")){
+    const entries=await readKmzEntries(await file.arrayBuffer());
+    const key=[...entries.keys()].find(n=>n.toLowerCase().endsWith(".kml"));
+    if(!key)throw new Error("KMZ の中に .kml が見つかりませんでした。");
+    return new TextDecoder("utf-8").decode(entries.get(key));
+  }
+  return await file.text();
+}
+/* 点を並べ替え・間引き・本に分ける。返すのは走行ログと同じ形の本の配列。 */
+function driveLogBuildImportedTracks(raw,kind){
+  const splitMs=(DRIVE_LOG_KINDS[kind]||DRIVE_LOG_KINDS.drive).splitMs;   /* 【v1105】車は 30 分、山は 2 時間 */
+  const valid=raw.points.filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])&&Number.isFinite(p[2]));
+  if(valid.length<2)return [];
+  valid.sort((a,b)=>a[0]-b[0]);
+  /* 間引きはアプリ内の記録と同じ規則：10m 動いたか、5 秒たったら残す（止まっている間の重複だけが減る）。 */
+  const thin=[valid[0]];
+  for(let i=1;i<valid.length;i++){
+    const last=thin[thin.length-1],point=valid[i];
+    if(point[0]-last[0]>=DRIVE_LOG_MIN_INTERVAL_MS||driveLogDistanceM(last,point)>=DRIVE_LOG_MIN_MOVE_M)thin.push(point);
+  }
+  if(thin[thin.length-1]!==valid[valid.length-1])thin.push(valid[valid.length-1]);
+  /* 30 分以上あいたところ、または日付が変わったところで本を分ける。 */
+  const groups=[];let current=[thin[0]];
+  for(let i=1;i<thin.length;i++){
+    const gap=thin[i][0]-thin[i-1][0];
+    if(gap>splitMs||driveLogDayKey(thin[i][0])!==driveLogDayKey(thin[i-1][0])){groups.push(current);current=[];}
+    current.push(thin[i]);
+  }
+  groups.push(current);
+  const tracks=[];
+  for(let group of groups){
+    if(group.length<2)continue;
+    /* 上限を超える本は等間隔でさらに間引く（端は必ず残す）。 */
+    if(group.length>DRIVE_LOG_IMPORT_MAX_POINTS){
+      const step=Math.ceil(group.length/DRIVE_LOG_IMPORT_MAX_POINTS),kept=[];
+      for(let i=0;i<group.length;i+=step)kept.push(group[i]);
+      if(kept[kept.length-1]!==group[group.length-1])kept.push(group[group.length-1]);
+      group=kept;
+    }
+    const points=group.map((p,i)=>{
+      /* 速さは元ファイルに無いことが多いので、ひとつ前の点との距離と時間から出す。 */
+      let speed=0;
+      if(i>0){
+        const dt=(p[0]-group[i-1][0])/1000;
+        if(dt>0)speed=Math.min(90,driveLogDistanceM(group[i-1],p)/dt);
+      }
+      const point=[p[0],+p[1].toFixed(5),+p[2].toFixed(5),+speed.toFixed(2)];
+      /* 【v1105】標高があれば 5 個目へ。無い点は後で地理院 DEM から補う。 */
+      if(Number.isFinite(p[3]))point.push(Math.round(p[3]*10)/10);
+      return point;
+    });
+    tracks.push({
+      id:`gpx${points[0][0].toString(36)}${Math.random().toString(36).slice(2,6)}`,
+      startAt:points[0][0],endAt:points[points.length-1][0],points,place:"",imported:true,
+      kind:kind==="hike"?"hike":"drive",   /* 【v1105】 */
+      source:String(raw.name||"").slice(0,40)
+    });
+  }
+  return tracks;
+}
+/* 同じ記録を二度読んでも増やさない：最初の点の時刻と位置と点の数が同じなら同じものとみなす。 */
+function driveLogTrackSignature(track){
+  const p=track&&track.points&&track.points[0];
+  return p?`${p[0]}|${p[1].toFixed(5)}|${p[2].toFixed(5)}|${track.points.length}`:"";
+}
+/* 【v1105】標高の入っていない点を、地理院の標高データ（DEM）から補う。
+   使うのは花火の設置と同じ `fireworkGroundElevation`（z14→z12→z10 の順に引く）。
+   日本の外は DEM が無いので埋まらない（その数を呼ぶ側へ返す）。
+   タイルは `gsiDemTileCache` に残るので、同じあたりの点は 2 点目以降は通信しない。 */
+async function driveLogFillElevations(tracks,report){
+  let need=0;
+  for(const track of tracks)for(const point of track.points)if(!Number.isFinite(point[4]))need++;
+  if(!need)return {need:0,filled:0};
+  let done=0,filled=0;
+  for(const track of tracks){
+    for(const point of track.points){
+      if(Number.isFinite(point[4]))continue;
+      try{
+        const elevation=await fireworkGroundElevation(point[1],point[2]);
+        if(Number.isFinite(elevation)){point[4]=Math.round(elevation*10)/10;filled++;}
+      }catch(error){}
+      done++;
+      if(done%40===0){
+        if(report)report(done,need);
+        await new Promise(r=>setTimeout(r,0));   /* 画面を固めない */
+      }
+    }
+  }
+  return {need,filled};
+}
+/* 【v1105】いま保存されている記録のうち、標高が入っていないものを補う（古い記録の救済）。 */
+async function driveLogFillMissingElevations(){
+  const status=driveLogEl("driveLogStatus"),button=driveLogEl("driveLogFillEleBtn");
+  const say=text=>{if(status)status.textContent=text;};
+  await driveLogLoad();
+  const targets=driveLogData.tracks.filter(track=>track.points&&track.points.some(p=>!Number.isFinite(p[4])));
+  if(!targets.length){say("標高はすべての記録に入っています。");return;}
+  if(button)button.disabled=true;
+  try{
+    const result=await driveLogFillElevations(targets,(done,need)=>say(`標高を調べています… ${done}/${need}点`));
+    driveLogFlush();driveLogRenderList();
+    say(result.filled?`${result.filled.toLocaleString()}点の標高を補いました。${result.need-result.filled?`（${(result.need-result.filled).toLocaleString()}点は標高データの範囲外でした）`:""}`
+      :"標高データの範囲外だったため、補えませんでした（地理院の標高は日本国内のみです）。");
+  }finally{if(button)button.disabled=false;}
+}
+async function driveLogImportFiles(files,kind){
+  const status=driveLogEl("driveLogStatus");
+  const say=text=>{if(status)status.textContent=text;};
+  if(!files||!files.length)return;
+  await driveLogLoad();
+  const kindKey=kind==="hike"?"hike":"drive",kindInfo=DRIVE_LOG_KINDS[kindKey];
+  say(`${kindInfo.label}として読み込み中…（${files.length}件）`);
+  const known=new Set(driveLogData.tracks.map(driveLogTrackSignature));
+  const addedTracks=[];
+  let added=0,skipped=0,noTime=0,points=0,km=0;
+  const problems=[];
+  for(const file of files){
+    try{
+      const parsed=driveLogParseTrackXml(await driveLogReadTrackFile(file));
+      if(!parsed.length){problems.push(`${file.name}：軌跡が見つかりませんでした`);continue;}
+      let fileAdded=0,fileSkipped=0,fileNoTime=0;
+      for(const raw of parsed){
+        if(!raw.points.some(p=>Number.isFinite(p[0]))){noTime++;fileNoTime++;continue;}
+        for(const track of driveLogBuildImportedTracks({...raw,name:raw.name||file.name},kindKey)){
+          const signature=driveLogTrackSignature(track);
+          if(known.has(signature)){skipped++;fileSkipped++;continue;}
+          known.add(signature);
+          driveLogData.tracks.push(track);addedTracks.push(track);
+          added++;fileAdded++;points+=track.points.length;km+=driveLogStats(track).km;
+        }
+      }
+      if(!fileAdded&&!fileSkipped&&!fileNoTime)problems.push(`${file.name}：取り込める点がありませんでした`);
+    }catch(error){
+      problems.push(`${file.name}：${String(error&&error.message||error)}`);
+    }
+  }
+  let eleResult=null;
+  if(added){
+    driveLogData.tracks.sort((a,b)=>(a.points[0][0]||0)-(b.points[0][0]||0));
+    driveLogFlush();driveLogRenderList();
+    /* 【v1105】標高の穴埋め。先に一覧を出してから行う（待たされている感じを減らす）。 */
+    eleResult=await driveLogFillElevations(addedTracks,(done,need)=>say(`標高を調べています… ${done}/${need}点`));
+    driveLogFlush();driveLogRenderList();
+    /* 地名は 1 本ずつ後追いで入れる（逆ジオコーダに一度にまとめて投げない）。 */
+    (async()=>{
+      for(const track of addedTracks){
+        if(!track.place&&track.points.length>1){
+          await driveLogFillPlaces(track);
+          await new Promise(r=>setTimeout(r,400));
+        }
+      }
+    })();
+  }
+  const lines=[];
+  if(added)lines.push(`${kindInfo.icon}${kindInfo.label}として ${added}本・${km.toFixed(1)}km・${points.toLocaleString()}点を取り込みました。`);
+  if(eleResult&&eleResult.need)lines.push(eleResult.filled?`標高の無かった ${eleResult.need.toLocaleString()}点のうち ${eleResult.filled.toLocaleString()}点を標高データで補いました。`
+    :"標高は補えませんでした（地理院の標高データは日本国内のみです）。");
+  if(skipped)lines.push(`${skipped}本は取り込み済みだったので飛ばしました。`);
+  if(noTime)lines.push(`${noTime}本は時刻が入っていないため取り込めませんでした。`);
+  if(problems.length)lines.push(problems.join(" ／ "));
+  if(!lines.length)lines.push("取り込めるものがありませんでした。");
+  say(lines.join(" "));
+}
 function driveLogSyncButtons(){
   const start=driveLogEl("driveLogStartBtn"),pause=driveLogEl("driveLogPauseBtn"),stop=driveLogEl("driveLogStopBtn");
   if(!start)return;
@@ -14895,27 +15202,42 @@ function driveLogSyncButtons(){
   }
 }
 /* ── 一覧 ── */
+/* 【v1105】タブの見た目を合わせる。 */
+function driveLogSyncTabs(){
+  const tab=["all","drive","hike"].includes(driveLogData.tab)?driveLogData.tab:"all";
+  for(const [key,id] of [["all","driveLogTabAll"],["drive","driveLogTabDrive"],["hike","driveLogTabHike"]]){
+    const button=driveLogEl(id);if(!button)continue;
+    button.classList.toggle("active",tab===key);
+    button.setAttribute("aria-pressed",String(tab===key));
+  }
+  const threshold=driveLogEl("driveLogGainThreshold");
+  if(threshold&&+threshold.value!==driveLogGainThresholdM())threshold.value=String(driveLogGainThresholdM());
+}
 function driveLogRenderList(){
   const list=driveLogEl("driveLogList");if(!list)return;
+  driveLogSyncTabs();
   list.textContent="";
+  const tab=["all","drive","hike"].includes(driveLogData.tab)?driveLogData.tab:"all";
   const days=new Map();
   for(const track of driveLogData.tracks){
     if(!track||!track.points||track.points.length<2)continue;
+    if(tab!=="all"&&driveLogKindOf(track)!==tab)continue;   /* 【v1105】タブで絞る */
     const key=driveLogDayKey(track.points[0][0]);
     if(!days.has(key))days.set(key,[]);
     days.get(key).push(track);
   }
   if(!days.size){
-    const p=document.createElement("p");p.className="drive-log-empty";p.textContent="記録はまだありません。";
+    const p=document.createElement("p");p.className="drive-log-empty";
+    p.textContent=tab==="all"?"記録はまだありません。":`${DRIVE_LOG_KINDS[tab].label}の記録はまだありません。`;
     list.appendChild(p);return;
   }
   [...days.keys()].sort().reverse().forEach(key=>{
     const tracks=days.get(key).slice().sort((a,b)=>a.points[0][0]-b.points[0][0]);
-    const sum=tracks.reduce((acc,tr)=>{const s=driveLogStats(tr);acc.km+=s.km;acc.ms+=s.movingMs;return acc;},{km:0,ms:0});
+    const sum=tracks.reduce((acc,tr)=>{const s=driveLogStats(tr);acc.km+=s.km;acc.ms+=s.movingMs;acc.gain+=s.gain;acc.ele=acc.ele||s.hasEle;return acc;},{km:0,ms:0,gain:0,ele:false});
     const box=document.createElement("div");box.className="drive-log-day";
     const head=document.createElement("div");head.className="drive-log-day-head";
     head.innerHTML=`<span class="drive-log-day-title">${driveLogDayTitle(key)}</span>
-      <span class="drive-log-day-sum">合計 ${sum.km.toFixed(1)}km ／ ${driveLogDurationText(sum.ms)} ／ ${tracks.length}本</span>`;
+      <span class="drive-log-day-sum">合計 ${sum.km.toFixed(1)}km ／ ${driveLogDurationText(sum.ms)}${sum.ele?` ／ ↑${Math.round(sum.gain).toLocaleString()}m`:""} ／ ${tracks.length}本</span>`;   /* 【v1105】累積標高 */
     const btns=document.createElement("div");btns.className="drive-log-day-btns";
     const mapBtn=document.createElement("button");mapBtn.type="button";mapBtn.textContent="地図で見る";
     mapBtn.addEventListener("click",()=>driveLogShowOnMap(tracks,`${driveLogDayTitle(key)} ${sum.km.toFixed(1)}km`));
@@ -14930,8 +15252,12 @@ function driveLogRenderList(){
       const s=driveLogStats(track);
       const row=document.createElement("div");row.className="drive-log-track";
       const main=document.createElement("div");main.className="t-main";
-      main.innerHTML=`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km ${driveLogDurationText(s.movingMs)}${s.gaps?` ／ 切れ目${s.gaps}`:""}
-        <span class="t-place">${escapeHtml(track.place||`${track.points[0][1].toFixed(4)}, ${track.points[0][2].toFixed(4)}`)}</span>`;
+      /* 【v1105】標高があるときだけ、累積の上り下りを出す。斜面を考えた実距離は 1% 以上違うときだけ添える。 */
+      const gainText=s.hasEle?`<span class="t-gain"> ↑${Math.round(s.gain).toLocaleString()}m ↓${Math.round(s.drop).toLocaleString()}m</span>`:"";
+      /* 表示が同じ数字になるなら添えない（「3.8km（実3.8km）」のような重複を避ける）。 */
+      const slopeText=(s.hasEle&&s.km>0&&s.slopeKm.toFixed(1)!==s.km.toFixed(1))?`（実${s.slopeKm.toFixed(1)}km）`:"";
+      main.innerHTML=`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km${slopeText} ${driveLogDurationText(s.movingMs)}${s.gaps?` ／ 切れ目${s.gaps}`:""}${gainText}
+        <span class="t-place">${track.imported?"📂 ":""}${escapeHtml(track.place||`${track.points[0][1].toFixed(4)}, ${track.points[0][2].toFixed(4)}`)}</span>`;   /* 【v1104】読み込んだ本には印 */
       const one=document.createElement("button");one.type="button";one.textContent="地図";
       one.addEventListener("click",()=>driveLogShowOnMap([track],`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km`));
       const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="×";
@@ -14940,7 +15266,15 @@ function driveLogRenderList(){
         driveLogData.tracks=driveLogData.tracks.filter(x=>x!==track);
         driveLogFlush();driveLogRenderList();
       });
-      row.appendChild(main);row.appendChild(one);row.appendChild(del);
+      /* 【v1105】種別の印。押すと走行↔登山を入れ替えられる（取り込み時に選び間違えても直せる）。 */
+      const kindKey=driveLogKindOf(track),kindBtn=document.createElement("button");
+      kindBtn.type="button";kindBtn.className="drive-log-kind";kindBtn.textContent=DRIVE_LOG_KINDS[kindKey].icon;
+      kindBtn.title=`${DRIVE_LOG_KINDS[kindKey].label}の記録（押すと切り替え）`;
+      kindBtn.addEventListener("click",()=>{
+        track.kind=kindKey==="hike"?"drive":"hike";
+        driveLogFlush();driveLogRenderList();
+      });
+      row.appendChild(kindBtn);row.appendChild(main);row.appendChild(one);row.appendChild(del);
       box.appendChild(row);
     }
     list.appendChild(box);
@@ -14948,6 +15282,12 @@ function driveLogRenderList(){
 }
 /* ── 地図に出す ── */
 let driveLogMapLayers=[];
+/* 【v1105】「消す」を押したとき用。地図の線を消し、3D 側の選択も解いて
+   「近くにある記録を自動で出す」状態へ戻す。描き直しの途中では呼ばない。 */
+function driveLogClearSelection(){
+  driveLogClearMap();
+  if(driveLogSelectedIds.length){driveLogSelectedIds=[];if(driveLogSceneVisible)update();}
+}
 function driveLogClearMap(){
   if(osmMapInstance)for(const layer of driveLogMapLayers){try{osmMapInstance.removeLayer(layer);}catch(e){}}
   driveLogMapLayers=[];
@@ -14983,6 +15323,10 @@ function driveLogShowOnMap(tracks,label){
     if(bounds.length)osmMapInstance.fitBounds(L.latLngBounds(bounds),{padding:[30,30],animate:false});
     const bar=driveLogEl("driveLogMapBar");
     if(bar){driveLogEl("driveLogMapText").textContent=`🚗 ${label}`;bar.hidden=false;}
+    /* 【v1105】3D 画面にも同じ本を出す。driveLogClearMap() のあとに入れること
+       （先に入れると、この関数の中の消す処理で自分の選択が消える）。 */
+    driveLogSelectedIds=tracks.map(track=>track.id).filter(Boolean);
+    if(driveLogSceneVisible)update();
   };
   requestAnimationFrame(draw);
 }
@@ -14992,7 +15336,38 @@ function driveLogShowOnMap(tracks,label){
   driveLogEl("driveLogPauseBtn").addEventListener("click",()=>driveLogSetPaused(!driveLogPaused,false));
   driveLogEl("driveLogStopBtn").addEventListener("click",()=>driveLogStop());
   driveLogEl("driveLogAutoPause").addEventListener("change",e=>{driveLogData.autoPause=e.target.checked;driveLogFlush();});
-  driveLogEl("driveLogMapCloseBtn").addEventListener("click",driveLogClearMap);
+  driveLogEl("driveLogMapCloseBtn").addEventListener("click",driveLogClearSelection);   /* 【v1105】3D の選択も解く */
+  /* 【v1104】GPX の読み込み。同じファイルを続けて選べるよう、終わったら value を空にする。
+     【v1105】走行／登山はボタンを分けた（取り込むときに選ぶ）。押したボタンの種別を覚えてからファイルを選ばせる。 */
+  const importInput=driveLogEl("driveLogImportInput");
+  const importButtons=[["driveLogImportDriveBtn","drive"],["driveLogImportHikeBtn","hike"]];
+  let importPendingKind="drive";
+  if(importInput){
+    for(const [id,kind] of importButtons){
+      const button=driveLogEl(id);if(!button)continue;
+      button.addEventListener("click",()=>{importPendingKind=kind;importInput.click();});
+    }
+    importInput.addEventListener("change",async()=>{
+      const files=[...(importInput.files||[])],kind=importPendingKind;
+      importInput.value="";
+      for(const [id] of importButtons){const b=driveLogEl(id);if(b)b.disabled=true;}
+      try{await driveLogImportFiles(files,kind);}
+      finally{for(const [id] of importButtons){const b=driveLogEl(id);if(b)b.disabled=false;}}
+    });
+  }
+  /* 【v1105】タブ・しきい値・標高の穴埋め */
+  for(const [key,id] of [["all","driveLogTabAll"],["drive","driveLogTabDrive"],["hike","driveLogTabHike"]]){
+    const button=driveLogEl(id);if(!button)continue;
+    button.addEventListener("click",()=>{driveLogData.tab=key;driveLogFlush();driveLogRenderList();});
+  }
+  const thresholdInput=driveLogEl("driveLogGainThreshold");
+  if(thresholdInput)thresholdInput.addEventListener("change",()=>{
+    const v=Math.round(+thresholdInput.value);
+    driveLogData.gainThresholdM=Number.isFinite(v)?clamp(v,1,30):DRIVE_LOG_GAIN_THRESHOLD_DEFAULT;
+    driveLogFlush();driveLogRenderList();
+  });
+  const fillBtn=driveLogEl("driveLogFillEleBtn");
+  if(fillBtn)fillBtn.addEventListener("click",()=>driveLogFillMissingElevations());
   const sec=driveLogEl("driveLogSection");
   if(sec)sec.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{setTimeout(()=>{if(!sec.classList.contains("collapsed")){driveLogLoad();driveLogRenderList();}},0);});
   /* 画面を離れるときは取りこぼさないよう書き出す。 */
@@ -16159,6 +16534,10 @@ function syncDisplayPopupControls(){
     el.popupFavPlacesBtn.classList.toggle("active",favPlacesSceneVisible);
     el.popupFavPlacesBtn.setAttribute("aria-pressed",String(favPlacesSceneVisible));
   }
+  if(el.popupDriveLogBtn){   /* 【v1105】 */
+    el.popupDriveLogBtn.classList.toggle("active",driveLogSceneVisible);
+    el.popupDriveLogBtn.setAttribute("aria-pressed",String(driveLogSceneVisible));
+  }
   if(el.popupDaylightStarsBtn){   /* 【v1037】 */
     el.popupDaylightStarsBtn.classList.toggle("active",daylightStarsOn);
     el.popupDaylightStarsBtn.setAttribute("aria-pressed",String(daylightStarsOn));
@@ -16224,6 +16603,12 @@ if(el.pathAlphaResetBtn)el.pathAlphaResetBtn.addEventListener("click",()=>{
 if(el.popupFavPlacesBtn)el.popupFavPlacesBtn.addEventListener("click",()=>{
   favPlacesSceneVisible=!favPlacesSceneVisible;
   if(favPlacesSceneVisible&&typeof favPlacesLoad==="function"&&!favPlaces.length)favPlacesLoad().then(()=>update());
+  syncDisplayPopupControls();update();scheduleSaveSettings();
+});
+/* 【v1105】ログの軌跡。点けた時点で記録を読み込む（設定画面を開いていなくても出せるように）。 */
+if(el.popupDriveLogBtn)el.popupDriveLogBtn.addEventListener("click",()=>{
+  driveLogSceneVisible=!driveLogSceneVisible;
+  if(driveLogSceneVisible&&typeof driveLogLoad==="function")driveLogLoad().then(()=>update());
   syncDisplayPopupControls();update();scheduleSaveSettings();
 });
 el.popupPlaceNameBtn.addEventListener("click",()=>{
@@ -17906,7 +18291,7 @@ function driveHandlePosition(pos){
   /* GPSの進行方向は、ある程度動いていないと当てにならない。 */
   if(Number.isFinite(c.heading)&&c.heading>=0&&driveSpeedMps>=1.5)driveGpsAz=normalizeAngle(c.heading);
   /* 【v1080】走行ログ。景色を作り直すかどうかとは別に、測位はすべてログへ渡す。 */
-  if(typeof driveLogHandlePosition==="function")driveLogHandlePosition(c.latitude,c.longitude,c.speed,c.accuracy,Date.now());
+  if(typeof driveLogHandlePosition==="function")driveLogHandlePosition(c.latitude,c.longitude,c.speed,c.accuracy,Date.now(),c.altitude);   /* 【v1105】標高も渡す */
   /* 精度の悪い測位で観測地点を飛ばさない。 */
   if(driveAccuracyM!==null&&driveAccuracyM>DRIVE_MAX_ACCURACY_M){driveScheduleRender();return;}
   if(driveLastLat===null){driveApplyPosition(c.latitude,c.longitude);driveScheduleRender();return;}
@@ -18468,6 +18853,7 @@ function collectPersistedSettings(){
     railLinesVisible:railLinesVisible,
     placeNameVisible:placeNameVisible,
     favPlacesSceneVisible:favPlacesSceneVisible,   /* 【v1082】 */
+    driveLogSceneVisible:driveLogSceneVisible,   /* 【v1105】 */
     daylightStarsOn:daylightStarsOn,   /* 【v1037】 */
     animationSpeed:el.animationSpeedSelect?el.animationSpeedSelect.value:20,
     seaDiagVisible:seaDiagVisible,
@@ -18821,6 +19207,7 @@ async function applyPersistedSettingsText(stored){
     el.popupFujiDetailBtn.classList.toggle("active",fujiDetailEnabled);
     el.popupFujiDetailBtn.setAttribute("aria-pressed",String(fujiDetailEnabled));
     if(s.favPlacesSceneVisible!==undefined)favPlacesSceneVisible=s.favPlacesSceneVisible===true;   /* 【v1082】 */
+    if(s.driveLogSceneVisible!==undefined)driveLogSceneVisible=s.driveLogSceneVisible===true;   /* 【v1105】 */
     if(s.pathAlpha&&typeof s.pathAlpha==="object"){   /* 【v1086】 */
       for(const key of Object.keys(PATH_ALPHA_DEFAULT)){
         const v=+s.pathAlpha[key];
@@ -22875,6 +23262,14 @@ try{
         setPlaces:(arr)=>{favPlaces=arr;favPlacesLoaded=true;return favPlaces.length;},
         forget:favForgetPlan}),
       /* 【v1080】走行ログを手元で確かめるための入口（位置情報が無い環境でも点を流し込める）。 */
+      driveLogParse:(text)=>driveLogParseTrackXml(text),   /* 【v1104】 */
+      driveLogImport:(files,kind)=>driveLogImportFiles(files,kind),
+      driveLogStats:(index)=>driveLogStats(driveLogData.tracks[index||0]),   /* 【v1105】 */
+      driveLogFillEle:()=>driveLogFillMissingElevations(),
+      driveLogSceneDiag:()=>drawDriveLogTracks._diag||null,
+      driveLogScene:(on)=>{if(on!==undefined){driveLogSceneVisible=!!on;syncDisplayPopupControls();update();}
+        return {on:driveLogSceneVisible,selected:driveLogSelectedIds.slice(),
+          tracks:driveLogSceneTracks(+el.lat.value,+el.lon.value).map(t=>({id:t.id,kind:driveLogKindOf(t),n:t.points.length}))};},   /* 【v1105】 */
       driveLog:()=>({data:driveLogData,rec:()=>driveLogRecording,paused:()=>driveLogPaused,auto:()=>driveLogAutoPaused,
         start:driveLogStart,stop:driveLogStop,pause:driveLogSetPaused,feed:driveLogHandlePosition,stats:driveLogStats,render:driveLogRenderList,map:driveLogShowOnMap,
         reload:()=>{driveLogLoaded=false;return driveLogLoad();}}),
@@ -27346,6 +27741,96 @@ function drawTrailNameLabels(ctx,s,toXY,W,H){
     ctx.fillStyle="rgba(8,10,20,.62)";ctx.fillRect(box.x1,box.y1,width,height);
     ctx.fillStyle=`rgb(${rgb.join(",")})`;ctx.fillText(item.name,cx,cy+.5);
     placed.push(box);
+  }
+  ctx.restore();
+}
+/* ═════ 【v1105】ログの軌跡を風景の中に描く ═════
+   高さは「記録の標高」→無ければ「その場所の地面の高さ」。
+   手前の地形に隠れる点では線を切る（登録地点・登山道名と同じ favSceneVisible）。
+   1 コマの手間を抑えるため、遠い本は枠で先に落とし、点数の多い本は間引いて描く。 */
+const DRIVE_LOG_SCENE_MAX_KM=30;      /* これより遠い点は描かない */
+const DRIVE_LOG_SCENE_MAX_POINTS=600; /* 1 本あたりに描く点の上限 */
+const DRIVE_LOG_SCENE_AUTO_TRACKS=5;  /* 何も選んでいないときに出す本の数 */
+/* 本の緯度経度の枠。観測地点がこの枠から離れすぎていれば、点をひとつも調べずに落とせる。 */
+const driveLogBoundsCache=new WeakMap();   /* 本そのものに付けると保存の JSON に混ざるので外で持つ */
+function driveLogTrackBounds(track){
+  const cached=driveLogBoundsCache.get(track);
+  if(cached&&cached.n===track.points.length)return cached;
+  let minLat=90,maxLat=-90,minLon=180,maxLon=-180;
+  for(const p of track.points){
+    if(p[1]<minLat)minLat=p[1];if(p[1]>maxLat)maxLat=p[1];
+    if(p[2]<minLon)minLon=p[2];if(p[2]>maxLon)maxLon=p[2];
+  }
+  const bounds={minLat,maxLat,minLon,maxLon,n:track.points.length};
+  driveLogBoundsCache.set(track,bounds);
+  return bounds;
+}
+function driveLogTrackNear(track,lat,lon,rangeKm){
+  const b=driveLogTrackBounds(track);
+  const padLat=rangeKm/111,padLon=rangeKm/Math.max(1,111*Math.cos(lat*D2R));
+  return lat>=b.minLat-padLat&&lat<=b.maxLat+padLat&&lon>=b.minLon-padLon&&lon<=b.maxLon+padLon;
+}
+/* 描く本を決める。［地図］で選んでいればそれ、無ければ近くにある新しい記録。 */
+function driveLogSceneTracks(lat,lon){
+  const usable=driveLogData.tracks.filter(track=>track&&track.points&&track.points.length>1);
+  if(driveLogSelectedIds.length){
+    const set=new Set(driveLogSelectedIds);
+    return usable.filter(track=>set.has(track.id));
+  }
+  return usable.filter(track=>driveLogTrackNear(track,lat,lon,DRIVE_LOG_SCENE_MAX_KM))
+    .slice(-DRIVE_LOG_SCENE_AUTO_TRACKS);
+}
+function drawDriveLogTracks(ctx,s,toXY,W,H){
+  if(!driveLogSceneVisible||arActive)return;
+  if(!realTerrainState.rayGrid||!Number.isFinite(realTerrainState.observerElevation))return;
+  const tracks=driveLogSceneTracks(s.lat,s.lon);
+  if(!tracks.length)return;
+  const eyeElevation=realTerrainState.observerElevation+eyeHeightAboveGroundM();
+  /* 出ないときに原因を切り分けるための数え（__hd.driveLogSceneDiag）。 */
+  const diag={tracks:tracks.length,points:0,far:0,noEle:0,hidden:0,behind:0,offscreen:0,drawn:0,segments:0};
+  drawDriveLogTracks._diag=diag;
+  ctx.save();ctx.lineJoin="round";ctx.lineCap="round";
+  for(const track of tracks){
+    if(!driveLogTrackNear(track,s.lat,s.lon,DRIVE_LOG_SCENE_MAX_KM))continue;
+    const hike=driveLogKindOf(track)==="hike";
+    const rgb=hike?"126,255,158":"72,209,255";
+    const pts=track.points,stride=Math.max(1,Math.ceil(pts.length/DRIVE_LOG_SCENE_MAX_POINTS));
+    let run=[];
+    const flush=()=>{
+      if(run.length>1){
+        diag.segments++;
+        ctx.beginPath();ctx.moveTo(run[0][0],run[0][1]);
+        for(let i=1;i<run.length;i++)ctx.lineTo(run[i][0],run[i][1]);
+        ctx.strokeStyle="rgba(6,10,22,.55)";ctx.lineWidth=5;ctx.stroke();
+        ctx.strokeStyle=`rgba(${rgb},.95)`;ctx.lineWidth=2.4;ctx.stroke();
+      }
+      run=[];
+    };
+    let previousIndex=-1;
+    for(let i=0;i<pts.length;i+=stride){
+      /* 切れ目（60 秒以上あいた所）はつながない。間引いても元の時刻で見る。 */
+      if(previousIndex>=0&&pts[i][0]-pts[previousIndex][0]>60e3*Math.max(1,stride))flush();
+      previousIndex=i;diag.points++;
+      const ray=terrainDistanceAndBearing(s.lat,s.lon,pts[i][1],pts[i][2]);
+      const km=ray.distanceKm;
+      if(!Number.isFinite(km)||km>DRIVE_LOG_SCENE_MAX_KM){diag.far++;flush();continue;}
+      let elevation=driveLogEleOf(pts[i]);
+      if(elevation===null)elevation=favSceneElevationAt(ray.bearing,km);
+      if(!Number.isFinite(elevation)){diag.noEle++;flush();continue;}
+      const metres=Math.max(1,km*1000);
+      /* 軌跡は地面の上を通る。地面ちょうどだと自分の足元の地形に隠されてしまうので、
+         少しだけ持ち上げてから見えるかどうかを調べる（遠いほど大きく、上限 12m）。 */
+      const lift=Math.min(12,1.5+km*.8);
+      const alt=Math.atan2(elevation+lift-eyeElevation-metres*metres/(2*6371000*(7/6)),metres)*R2D;
+      if(!favSceneVisible(ray.bearing,km,alt,eyeElevation)){diag.hidden++;flush();continue;}
+      const pt=toXY(ray.bearing,alt);
+      /* 画面の外でも線はつなぐ。ここで切ると、画面に入ってくる/出ていく線が引かれなくなる。
+         切るのは「カメラの後ろ（投影できない）」と「桁が飛んでいる（望遠で真横に近い）」ときだけ。 */
+      if(!pt||!Number.isFinite(pt[0])||!Number.isFinite(pt[1])){diag.behind++;flush();continue;}
+      if(Math.abs(pt[0])>W*8||Math.abs(pt[1])>H*8){diag.offscreen++;flush();continue;}
+      diag.drawn++;run.push([pt[0],pt[1]]);
+    }
+    flush();
   }
   ctx.restore();
 }
@@ -36355,6 +36840,7 @@ function drawPhoto(ctx,s){
 
   // 実地形と照合して見えている主要な山を、重ならない範囲で最大6山表示する。
   drawMountainNameLabels(ctx,s,toXY,W,H);
+  drawDriveLogTracks(ctx,s,toXY,W,H);   /* 【v1105】走行・登山ログの軌跡（札より先に描いて下に敷く） */
   drawFavPlaceLabels(ctx,s,toXY,W,H);   /* 【v1082】地図に登録した場所 */
   drawTrailNameLabels(ctx,s,toXY,W,H);   /* 【v1101】登山道の名前 */
 
