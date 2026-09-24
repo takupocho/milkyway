@@ -2284,6 +2284,32 @@
   .memo-sync-code{font:700 15px/1.4 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#ffe08a;word-break:break-all;-webkit-user-select:all;user-select:all;}
   .memo-sync-status.error{color:#ff9a9a;}
   /* 【v1070】「KMZを追加」の選択（花火／ファイル）と号数の一覧。 */
+  /* 【v1107】オブジェクト作成 */
+  .object-shape-row{display:flex;gap:8px;margin:2px 0 10px;}
+  .object-shape-row button{flex:1 1 0;width:auto;min-width:0;margin:0;padding:8px 6px;border-radius:9px;
+    border:1px solid rgba(126,154,208,.45);background:rgba(16,20,42,.55);color:var(--dim-2);font:700 13px/1.2 system-ui,sans-serif;}
+  .object-shape-row button.active{border-color:#f3b04f;background:rgba(243,176,79,.16);color:#f6c886;}
+  .object-size-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 10px;margin-bottom:10px;}
+  .object-size-grid label{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--dim-2);white-space:nowrap;}
+  .object-size-grid label.full{grid-column:1 / -1;}
+  .object-size-grid label[hidden]{display:none;}
+  .object-size-grid input{flex:1 1 auto;width:auto;min-width:0;margin:0;padding:6px 8px;font-size:14px;text-align:right;}
+  .object-size-grid .unit{flex:0 0 auto;font-size:11.5px;color:var(--dim-2);}
+  .object-preview{display:block;width:100%;height:230px;margin:0 0 6px;border-radius:10px;
+    border:1px solid rgba(126,154,208,.3);background:rgba(8,12,26,.55);}
+  .object-summary{margin:0 0 10px;font-size:11.5px;line-height:1.6;color:var(--dim-2);min-height:1.6em;}
+  .object-studio-buttons{display:flex;gap:8px;margin-bottom:8px;}
+  .object-studio-buttons button{flex:1 1 0;width:auto;min-width:0;margin:0;padding:9px 6px;border-radius:9px;font-size:13px;}
+  .object-library-list{display:flex;flex-direction:column;gap:6px;margin-top:6px;max-height:210px;overflow:auto;}
+  .object-library-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:rgba(8,12,26,.5);}
+  .object-library-row .o-main{flex:1 1 auto;min-width:0;font-size:12.5px;color:#fff;}
+  .object-library-row .o-sub{display:block;font-size:10.5px;color:var(--dim-2);}
+  .object-library-row button{flex:0 0 auto;width:auto;min-width:0;margin:0;padding:4px 10px;font-size:11px;border-radius:7px;}
+  .object-pick-grid{display:flex;flex-direction:column;gap:6px;margin-top:4px;max-height:240px;overflow:auto;}
+  .object-pick-grid button{width:auto;min-width:0;margin:0;padding:8px 10px;border-radius:8px;text-align:left;
+    border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;font:700 13px/1.25 system-ui,sans-serif;}
+  .object-pick-grid button small{display:block;font-weight:500;font-size:10px;color:rgba(255,255,255,.72);margin-top:2px;}
+  .object-pick-grid button:hover{border-color:#f3b04f;}
   .kmz-add-chooser{display:flex;flex-direction:column;gap:6px;margin:6px 0 8px;padding:8px;border-radius:9px;border:1px solid rgba(243,176,79,.45);background:rgba(16,20,42,.5);}
   .kmz-add-chooser[hidden]{display:none;}
   .kmz-add-chooser .toggle-btn{margin-top:0;}
@@ -4915,6 +4941,13 @@
                 <p class="map-hint" style="margin:2px 0 0;">号数を選んでください。高さ・開花直径は日本煙火協会の資料の平均値（2.5・12・15号は前後の号から按分）。</p>
                 <div id="fireworkSizeGrid" class="firework-size-grid"></div>
               </div>
+              <!-- 【v1107】自分で作ったオブジェクト -->
+              <button id="kmzAddObjectBtn" type="button" class="toggle-btn"><span>🧱 オブジェクトを追加</span><span>›</span></button>
+              <div id="objectPickPanel" hidden>
+                <p class="map-hint" style="margin:2px 0 0;">保存したオブジェクトを選ぶと、地図で置く場所を決められます（地面の標高に合わせて置きます）。</p>
+                <div id="objectPickGrid" class="object-pick-grid"></div>
+                <button id="objectStudioOpenBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 新しく作る・編集する</span><span>›</span></button>
+              </div>
               <button id="kmzAddFileBtn" type="button" class="toggle-btn"><span>📁 ファイルから追加</span><span>›</span></button>
               <button id="kmzAddCancelBtn" type="button" class="ghost" style="margin-top:2px;">キャンセル</button>
             </div>
@@ -5990,6 +6023,36 @@
                   <p class="plan-modal-help" style="margin:8px 0 0;">一覧を押すと地図がその場所へ動きます。地図のマーカーを押すと「この場所を選ぶ」「編集」「削除」ができます。種類のボタンで地図に出す・出さないを切り替えます。</p>
                 </section>
               </div>
+              <!-- 【v1107】オブジェクト作成。入力欄があるので外側を押しても閉じない（v1106 の決めごと）。 -->
+                <div id="objectStudioOverlay" class="plan-modal-overlay" aria-hidden="true">
+                <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="objectStudioTitle">
+                  <div class="plan-modal-header"><h3 id="objectStudioTitle" class="plan-modal-title">オブジェクト作成</h3><button id="objectStudioCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
+                  <p class="plan-modal-help">寸法を入れるだけで簡単な形を作れます。<b>上の寸法を 0</b> にすると先のとがった形（角錐・円錐）、<b>上と下を同じ</b>にするとまっすぐな柱になります。鉄塔・煙突・タンク・仮設の建物などの当たりを付けるのに使えます。</p>
+                  <div class="object-shape-row" role="group" aria-label="形">
+                    <button id="objectShapeBoxBtn" type="button">⬛ 角柱・角錐</button>
+                    <button id="objectShapeCylinderBtn" type="button">⚫ 円柱・円錐</button>
+                  </div>
+                  <div class="object-size-grid">
+                    <label id="objectTopWRow"><span id="objectTopWText">上の幅 W</span><input id="objectTopW" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="0"><span class="unit">m</span></label>
+                    <label id="objectTopDRow"><span>上の奥行 D</span><input id="objectTopD" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="0"><span class="unit">m</span></label>
+                    <label id="objectBottomWRow"><span id="objectBottomWText">下の幅 W</span><input id="objectBottomW" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="8"><span class="unit">m</span></label>
+                    <label id="objectBottomDRow"><span>下の奥行 D</span><input id="objectBottomD" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="8"><span class="unit">m</span></label>
+                    <label class="full"><span>高さ H</span><input id="objectHeight" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="30"><span class="unit">m</span></label>
+                  </div>
+                  <canvas id="objectPreview" class="object-preview"></canvas>
+                  <p id="objectStudioSummary" class="object-summary"></p>
+                  <input id="objectName" class="plan-save-name" type="text" maxlength="30" placeholder="オブジェクト名（例：送電鉄塔 60m）">
+                  <div class="object-studio-buttons">
+                    <button id="objectSaveBtn" type="button" class="primary">保存</button>
+                    <button id="objectLoadBtn" type="button">読込</button>
+                  </div>
+                  <div id="objectLibraryPanel" hidden>
+                    <p class="map-hint" style="margin:2px 0 0;">保存したオブジェクト。押すと寸法と名前が入るので、直してから保存し直せます。<b>名前を変えて保存すれば別のオブジェクト</b>として残ります。</p>
+                    <div id="objectLibraryList" class="object-library-list"></div>
+                  </div>
+                  <p id="objectStudioStatus" class="object-summary" style="margin-top:8px;" aria-live="polite"></p>
+                </section>
+                </div>
               <div id="planSaveOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="planSaveTitle">
                   <div class="plan-modal-header"><h3 id="planSaveTitle" class="plan-modal-title">観測値・撮影計画を保存</h3><button id="planSaveCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
@@ -6573,7 +6636,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1106-dialog-outside-close";
+const APP_VERSION="1107-object-studio";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7783,6 +7846,14 @@ const el={
   citySelect:$("citySelect"), lat:$("lat"), lon:$("lon"), tz:$("tz"), geoBtn:$("geoBtn"), observedPlaceName:$("observedPlaceName"),
   savedLocationName:$("savedLocationName"), savedLocationSelect:$("savedLocationSelect"), registerLocationBtn:$("registerLocationBtn"), loadSavedLocationBtn:$("loadSavedLocationBtn"), deleteSavedLocationBtn:$("deleteSavedLocationBtn"),
   quickSavePlanBtn:$("quickSavePlanBtn"), quickLoadPlanBtn:$("quickLoadPlanBtn"), quickPhotoBtn:$("quickPhotoBtn"),
+  objectStudioOverlay:$("objectStudioOverlay"), objectStudioCloseBtn:$("objectStudioCloseBtn"), objectShapeBoxBtn:$("objectShapeBoxBtn"),   /* 【v1107】 */
+  objectShapeCylinderBtn:$("objectShapeCylinderBtn"), objectTopW:$("objectTopW"), objectTopD:$("objectTopD"),
+  objectBottomW:$("objectBottomW"), objectBottomD:$("objectBottomD"), objectHeight:$("objectHeight"),
+  objectTopWRow:$("objectTopWRow"), objectTopDRow:$("objectTopDRow"), objectBottomWRow:$("objectBottomWRow"), objectBottomDRow:$("objectBottomDRow"),
+  objectTopWText:$("objectTopWText"), objectBottomWText:$("objectBottomWText"),
+  objectPreview:$("objectPreview"), objectStudioSummary:$("objectStudioSummary"), objectName:$("objectName"),
+  objectSaveBtn:$("objectSaveBtn"), objectLoadBtn:$("objectLoadBtn"), objectLibraryPanel:$("objectLibraryPanel"),
+  objectLibraryList:$("objectLibraryList"), objectStudioStatus:$("objectStudioStatus"),
   planSaveOverlay:$("planSaveOverlay"), planSaveTitle:$("planSaveTitle"), planSaveHelp:$("planSaveHelp"), planSaveCloseBtn:$("planSaveCloseBtn"), planSaveCancelBtn:$("planSaveCancelBtn"), planSaveName:$("planSaveName"), planSavePreview:$("planSavePreview"), planSaveRunBtn:$("planSaveRunBtn"),
   planPhotoInput:$("planPhotoInput"), planPhotoSelectBtn:$("planPhotoSelectBtn"), planPhotoRemoveBtn:$("planPhotoRemoveBtn"), planPhotoPreviewWrap:$("planPhotoPreviewWrap"), planPhotoPreview:$("planPhotoPreview"), planPhotoStatus:$("planPhotoStatus"),
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
@@ -8099,7 +8170,138 @@ function buildFireworkModel(go){
           width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
           vertexCount:all.length,firework:spec.go};
 }
+/* ═════ 【v1107】オブジェクト作成 ═════
+   寸法を打ち込むだけで、角柱・角錐（四角）と円柱・円錐（丸）を作れるようにする。
+   上側の寸法を 0 にすると先のとがった錐、上と下を同じにするとまっすぐな柱になる。
+   形の持ち方（これがそのまま保存される中身）：
+     {name, shape:"box"|"cylinder", topW, topD, bottomW, bottomD, height}
+   丸のときは topW===topD（＝上の直径）、bottomW===bottomD（＝下の直径）。
+   【v1099 の教訓】「これはオブジェクトか？」の判定は必ず下の objectSpecOf だけを通すこと。
+   数になりうる曖昧な値（null や ""）を形として受け取ると、別の模型に化ける。 */
+const OBJECT_SHAPES={box:{label:"角柱・角錐",icon:"⬛"},cylinder:{label:"円柱・円錐",icon:"⚫"}};
+const OBJECT_MAX_M=2000;      /* 打ち込める最大（m）。桁の打ち間違いで地形が壊れないように */
+const OBJECT_CYLINDER_SIDES=48;
+/* 中身を検査して、正しければ整えた形を返す。正しくなければ null。 */
+function objectSpecOf(value){
+  if(!value||typeof value!=="object")return null;
+  const shape=value.shape==="cylinder"?"cylinder":(value.shape==="box"?"box":null);
+  if(!shape)return null;
+  const size=(v,{allowZero=true}={})=>{
+    const n=typeof v==="number"?v:(typeof v==="string"&&v.trim()!==""?Number(v):NaN);
+    if(!Number.isFinite(n)||n<0||n>OBJECT_MAX_M)return null;
+    if(!allowZero&&!(n>0))return null;
+    return Math.round(n*1000)/1000;
+  };
+  const height=size(value.height,{allowZero:false});
+  if(height===null)return null;
+  let topW=size(value.topW),topD=size(value.topD),bottomW=size(value.bottomW),bottomD=size(value.bottomD);
+  if(topW===null||topD===null||bottomW===null||bottomD===null)return null;
+  if(shape==="cylinder"){topD=topW;bottomD=bottomW;}   /* 丸は直径ひとつ */
+  /* 上下とも 0 では線にしかならない。 */
+  if(!(topW>0||bottomW>0)||!(topD>0||bottomD>0))return null;
+  const name=String(value.name||"").trim().slice(0,30);
+  return {name,shape,topW,topD,bottomW,bottomD,height};
+}
+/* 見出し用の短い説明（「3×3×10m の角錐」など）。 */
+function objectSpecSummary(spec){
+  if(!spec)return "";
+  const n=v=>(Math.round(v*100)/100).toString();
+  if(spec.shape==="cylinder"){
+    const shapeName=spec.topW<=0?"円錐":(Math.abs(spec.topW-spec.bottomW)<1e-6?"円柱":"円錐台");
+    return `${shapeName}／下の直径${n(spec.bottomW)}m・上の直径${n(spec.topW)}m・高さ${n(spec.height)}m`;
+  }
+  const flat=Math.abs(spec.topW-spec.bottomW)<1e-6&&Math.abs(spec.topD-spec.bottomD)<1e-6;
+  const shapeName=(spec.topW<=0&&spec.topD<=0)?"角錐":(flat?"角柱":"角錐台");
+  return `${shapeName}／下${n(spec.bottomW)}×${n(spec.bottomD)}m・上${n(spec.topW)}×${n(spec.topD)}m・高さ${n(spec.height)}m`;
+}
+/* 寸法から三角形の模型を作る。戻り値の形は花火・KMZ と同じ。
+   x が東、y が北、z が上。底面は z=0（置いた地面の高さ）。 */
+function buildObjectModel(rawSpec){
+  const spec=objectSpecOf(rawSpec);
+  if(!spec)return null;
+  const triangles=[],triangleColors=[],triangleAlphas=[];
+  const BASE=[206,210,220];   /* 建物らしい明るい灰色。陰影は面の向きから付ける */
+  const LIGHT=(()=>{const v=[.42,-.30,.86],l=Math.hypot(...v);return v.map(x=>x/l);})();
+  const shadeOf=(a,b,c)=>{
+    const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    const len=Math.hypot(n[0],n[1],n[2]);
+    if(!(len>1e-9))return null;   /* つぶれた三角形は捨てる（上を 0 にしたときに出る） */
+    const dot=Math.abs((n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2])/len);
+    const k=.52+.48*dot;
+    return BASE.map(c0=>Math.round(clamp(c0*k,0,255)));
+  };
+  const push=(a,b,c)=>{
+    const colour=shadeOf(a,b,c);
+    if(!colour)return;
+    triangles.push([a,b,c]);triangleColors.push(colour);triangleAlphas.push(1);
+  };
+  const quad=(a,b,c,d)=>{push(a,b,c);push(a,c,d);};
+  const h=spec.height;
+  if(spec.shape==="box"){
+    const bw=spec.bottomW/2,bd=spec.bottomD/2,tw=spec.topW/2,td=spec.topD/2;
+    const bottom=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]];
+    const top=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]];
+    for(let i=0;i<4;i++){const j=(i+1)%4;quad(bottom[i],bottom[j],top[j],top[i]);}
+    quad(bottom[3],bottom[2],bottom[1],bottom[0]);   /* 底（裏から見ても出るように） */
+    quad(top[0],top[1],top[2],top[3]);               /* 天 */
+  }else{
+    const rb=spec.bottomW/2,rt=spec.topW/2,n=OBJECT_CYLINDER_SIDES;
+    const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return [Math.cos(a)*r,Math.sin(a)*r,z];});
+    const bottom=ring(rb,0),top=ring(rt,h);
+    for(let i=0;i<n;i++){const j=(i+1)%n;quad(bottom[i],bottom[j],top[j],top[i]);}
+    if(rb>0)for(let i=1;i+1<n;i++)push(bottom[0],bottom[i+1],bottom[i]);
+    if(rt>0)for(let i=1;i+1<n;i++)push(top[0],top[i],top[i+1]);
+  }
+  if(!triangles.length)return null;
+  const all=triangles.flat();
+  const xs=all.map(v=>v[0]),ys=all.map(v=>v[1]),zs=all.map(v=>v[2]);
+  return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
+    width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
+    vertexCount:all.length,object:spec};
+}
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
+function objectCreateSlot(rawSpec,lat,lon,altitude){
+  const spec=objectSpecOf(rawSpec);
+  if(!spec)return null;
+  const model=buildObjectModel(spec);
+  if(!model)return null;
+  const slot={id:++kmzSlotSeq,lat:+lat,lon:+lon,altitude:Number.isFinite(+altitude)?+altitude:0,heading:0,scale:1,opacity:1,
+    visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
+    object:spec,model,fileName:`🧱 ${spec.name||"オブジェクト"}`,kmlLocation:null,sourceDataUrl:""};
+  kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
+  return slot;
+}
+/* ── 作ったものを端末に残す（走行ログと同じ入れもの） ── */
+const OBJECT_LIB_KEY="starchase-objects-v1";
+const OBJECT_LIB_MAX=200;
+let objectLibrary=[],objectLibraryLoaded=false;
+async function objectLibraryLoad(){
+  if(objectLibraryLoaded)return objectLibrary;
+  objectLibraryLoaded=true;
+  try{
+    const raw=await planKvGet(OBJECT_LIB_KEY);
+    const parsed=raw?JSON.parse(raw):null;
+    if(parsed&&Array.isArray(parsed.items)){
+      objectLibrary=parsed.items.map(item=>{
+        const spec=objectSpecOf(item);
+        return spec?{...spec,id:String(item.id||""),updatedAt:+item.updatedAt||0}:null;
+      }).filter(Boolean);
+    }
+  }catch(error){objectLibrary=[];}
+  return objectLibrary;
+}
+async function objectLibrarySave(){
+  try{
+    if(objectLibrary.length>OBJECT_LIB_MAX)objectLibrary=objectLibrary.slice(-OBJECT_LIB_MAX);
+    await planKvSet(OBJECT_LIB_KEY,JSON.stringify({version:1,items:objectLibrary}));
+    return true;
+  }catch(error){return false;}
+}
+function objectLibraryFindByName(name){
+  const key=String(name||"").trim();
+  return objectLibrary.find(item=>item.name===key)||null;
+}
 function fireworkCreateSlot(go,lat,lon,altitude){
   /* 【v1099】号数が正しくないときは作らない（10号に化けさせない）。 */
   if(fireworkGoOf(go)===null)return null;
@@ -8146,6 +8348,62 @@ function fireworkEndPlacement(note){
     fireworkPlaceNoteTimer=setTimeout(()=>{bar.hidden=true;fireworkPlaceNoteTimer=0;},3000);
   }else bar.hidden=true;
 }
+/* ═════ 【v1107】オブジェクトの配置。花火と同じ帯（mapPlaceBar）を使う。 ═════ */
+let objectPlacing=null,objectPlaceMarker=null;
+function objectBeginPlacement(spec){
+  const checked=objectSpecOf(spec);
+  if(!checked)return;
+  objectPlacing={spec:checked,lat:null,lon:null};
+  fireworkPlacing=null;   /* 同じ帯を使うので、花火の配置中なら譲る */
+  document.getElementById("kmzAddChooser").hidden=true;
+  if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
+  if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
+  document.getElementById("mapPlaceText").textContent=`🧱 ${checked.name}（${objectSpecSummary(checked)}）どこに配置しますか？ 地図をタップ`;
+  document.getElementById("mapPlaceOkBtn").disabled=true;
+  if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}
+  document.getElementById("mapPlaceBar").hidden=false;
+  document.body.classList.add("map-place");
+}
+function objectEndPlacement(note){
+  objectPlacing=null;
+  if(objectPlaceMarker&&osmMapInstance){osmMapInstance.removeLayer(objectPlaceMarker);}
+  objectPlaceMarker=null;
+  document.body.classList.remove("map-place");
+  const bar=document.getElementById("mapPlaceBar");
+  if(note){
+    document.getElementById("mapPlaceText").textContent=note;
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    bar.hidden=false;
+    fireworkPlaceNoteTimer=setTimeout(()=>{bar.hidden=true;fireworkPlaceNoteTimer=0;},3000);
+  }else bar.hidden=true;
+}
+function objectMapClick(e){
+  if(!objectPlacing||!osmMapInstance)return false;
+  objectPlacing.lat=e.latlng.lat;objectPlacing.lon=e.latlng.lng;
+  const icon=L.divIcon({className:"",html:'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]});
+  if(!objectPlaceMarker)objectPlaceMarker=L.marker(e.latlng,{pane:"markerPane",interactive:false,icon}).addTo(osmMapInstance);
+  else objectPlaceMarker.setLatLng(e.latlng);
+  document.getElementById("mapPlaceOkBtn").disabled=false;
+  document.getElementById("mapPlaceText").textContent=`🧱 ${objectPlacing.spec.name} ここに置きますか？（${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}）`;
+  return true;
+}
+/* 「KMZを追加 → オブジェクトを追加」の一覧。 */
+async function renderObjectPickGrid(){
+  const grid=document.getElementById("objectPickGrid");if(!grid)return;
+  await objectLibraryLoad();
+  grid.textContent="";
+  if(!objectLibrary.length){
+    const p=document.createElement("p");p.className="drive-log-empty";
+    p.textContent="保存したオブジェクトがありません。下の「新しく作る」から作ってください。";
+    grid.appendChild(p);return;
+  }
+  for(const item of objectLibrary.slice().reverse()){
+    const button=document.createElement("button");button.type="button";
+    button.innerHTML=`${escapeHtml(item.name||"（名前なし）")}<small>${escapeHtml(objectSpecSummary(item))}</small>`;
+    button.addEventListener("click",()=>objectBeginPlacement(item));
+    grid.appendChild(button);
+  }
+}
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
 function fireworkMapClick(e){
   if(!fireworkPlacing||!osmMapInstance)return false;
@@ -8158,6 +8416,22 @@ function fireworkMapClick(e){
   return true;
 }
 document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
+  /* 【v1107】オブジェクトの配置中ならこちら。花火と同じ流れ（標高を調べてから置く）。 */
+  if(objectPlacing&&Number.isFinite(objectPlacing.lat)){
+    const {spec,lat,lon}=objectPlacing;
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    document.getElementById("mapPlaceText").textContent="標高を調べています…";
+    const ground=await fireworkGroundElevation(lat,lon);
+    if(!objectPlacing||objectPlacing.lat!==lat)return;   // 待っている間にやめた
+    const slot=objectCreateSlot(spec,lat,lon,ground===null?0:ground);
+    renderKmzList();refreshKmzBuildingControls(false);
+    setKmzBuildingStatus(slot
+      ?`🧱 ${spec.name} を置きました（${lat.toFixed(5)}, ${lon.toFixed(5)}、地面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
+      :"オブジェクトを作れませんでした（寸法を確かめてください）。",slot?"ready":"error");
+    drawPhoto._terrainRenderKey=null;update();
+    objectEndPlacement(slot?`🧱 ${spec.name} を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`:"置けませんでした");
+    return;
+  }
   if(!fireworkPlacing||!Number.isFinite(fireworkPlacing.lat))return;
   const {go,lat,lon}=fireworkPlacing;
   document.getElementById("mapPlaceOkBtn").disabled=true;
@@ -8171,7 +8445,8 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
 });
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
-  if(fireworkPlacing)fireworkEndPlacement(null);
+  if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
+  else if(fireworkPlacing)fireworkEndPlacement(null);
   else{document.getElementById("mapPlaceBar").hidden=true;if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}}
 });
 function kmzSlotSettings(slot){
@@ -8487,11 +8762,182 @@ function refreshKmzBuildingControls(redraw=true){
   renderKmzList();   // 【v880】表示ON/OFFや選択の見た目を一覧へ反映
   if(redraw&&typeof update==="function")update();
 }
+/* ═════ 【v1107】オブジェクト作成の画面 ═════ */
+let objectStudioShape="box";
+function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
+/* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
+function objectStudioReadSpec(){
+  const num=node=>{
+    const raw=node?String(node.value).trim():"";
+    if(raw==="")return NaN;
+    const n=Number(raw);
+    return Number.isFinite(n)?n:NaN;
+  };
+  const topW=num(el.objectTopW),bottomW=num(el.objectBottomW),height=num(el.objectHeight);
+  const cylinder=objectStudioShape==="cylinder";
+  return objectSpecOf({
+    name:el.objectName?el.objectName.value:"",
+    shape:objectStudioShape,
+    topW,topD:cylinder?topW:num(el.objectTopD),
+    bottomW,bottomD:cylinder?bottomW:num(el.objectBottomD),
+    height
+  });
+}
+/* 形に合わせて入力欄の見出しを変える（丸は直径ひとつ）。 */
+function objectStudioSyncShape(){
+  const cylinder=objectStudioShape==="cylinder";
+  if(el.objectShapeBoxBtn)el.objectShapeBoxBtn.classList.toggle("active",!cylinder);
+  if(el.objectShapeCylinderBtn)el.objectShapeCylinderBtn.classList.toggle("active",cylinder);
+  if(el.objectTopDRow)el.objectTopDRow.hidden=cylinder;
+  if(el.objectBottomDRow)el.objectBottomDRow.hidden=cylinder;
+  if(el.objectTopWRow)el.objectTopWRow.classList.toggle("full",cylinder);
+  if(el.objectBottomWRow)el.objectBottomWRow.classList.toggle("full",cylinder);
+  if(el.objectTopWText)el.objectTopWText.textContent=cylinder?"上の直径":"上の幅 W";
+  if(el.objectBottomWText)el.objectBottomWText.textContent=cylinder?"下の直径":"下の幅 W";
+}
+/* 見取り図。斜め上から見た線画で、W・D・H がどこを指すかを添える。 */
+function objectStudioDrawPreview(){
+  const canvas=el.objectPreview;if(!canvas)return;
+  const ratio=Math.min(2,window.devicePixelRatio||1);
+  const cssW=canvas.clientWidth||320,cssH=canvas.clientHeight||230;
+  if(canvas.width!==Math.round(cssW*ratio)||canvas.height!==Math.round(cssH*ratio)){
+    canvas.width=Math.round(cssW*ratio);canvas.height=Math.round(cssH*ratio);
+  }
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  const spec=objectStudioReadSpec();
+  if(!spec){
+    ctx.fillStyle="rgba(190,200,220,.55)";ctx.font="12px system-ui,sans-serif";ctx.textAlign="center";
+    ctx.fillText("寸法を入れると形が出ます",cssW/2,cssH/2);
+    return;
+  }
+  /* 斜め上から見た投影。x が東、y が北、z が上。 */
+  const COS=Math.cos(Math.PI/6),SIN=Math.sin(Math.PI/6);
+  const project=p=>[(p[0]-p[1])*COS,(p[0]+p[1])*SIN-p[2]];
+  const edges=[],labels=[];
+  if(spec.shape==="box"){
+    const bw=spec.bottomW/2,bd=spec.bottomD/2,tw=spec.topW/2,td=spec.topD/2,h=spec.height;
+    const b=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]];
+    const tp=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]];
+    for(let i=0;i<4;i++){const j=(i+1)%4;edges.push([b[i],b[j]]);edges.push([tp[i],tp[j]]);edges.push([b[i],tp[i]]);}
+    labels.push({text:"W",a:b[0],b:b[1],push:[0,18]});
+    labels.push({text:"D",a:b[1],b:b[2],push:[18,10]});
+    labels.push({text:"H",a:b[3],b:tp[3],push:[-15,0]});
+  }else{
+    const rb=spec.bottomW/2,rt=spec.topW/2,h=spec.height,n=48;
+    const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return [Math.cos(a)*r,Math.sin(a)*r,z];});
+    const b=ring(rb,0),tp=ring(rt,h);
+    for(let i=0;i<n;i++){const j=(i+1)%n;if(rb>0)edges.push([b[i],b[j]]);if(rt>0)edges.push([tp[i],tp[j]]);}
+    /* 輪郭の縦線は、投影して左右の端に来る 2 本だけ引く。 */
+    let left=0,right=0;
+    b.forEach((p,i)=>{const x=project(p)[0];if(x<project(b[left])[0])left=i;if(x>project(b[right])[0])right=i;});
+    edges.push([b[left],tp[rt>0?left:0]]);edges.push([b[right],tp[rt>0?right:0]]);
+    labels.push({text:"直径",a:b[Math.round(n*.625)%n],b:b[Math.round(n*.875)%n],push:[0,24]});
+    labels.push({text:"H",a:b[left],b:tp[rt>0?left:0],push:[-16,0]});
+  }
+  const pts=edges.flat().map(project);
+  const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+  const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  const pad=34,scale=Math.min((cssW-pad*2)/Math.max(.001,maxX-minX),(cssH-pad*2)/Math.max(.001,maxY-minY));
+  const ox=cssW/2-(minX+maxX)/2*scale,oy=cssH/2-(minY+maxY)/2*scale;
+  const to=p=>{const q=project(p);return [ox+q[0]*scale,oy+q[1]*scale];};
+  ctx.lineWidth=1.1;ctx.strokeStyle="rgba(232,238,252,.9)";ctx.lineJoin="round";
+  ctx.beginPath();
+  for(const [a,b2] of edges){const p=to(a),q=to(b2);ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);}
+  ctx.stroke();
+  /* W・D・H の札 */
+  ctx.font="700 12px system-ui,sans-serif";ctx.fillStyle="#7fb2ff";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const label of labels){
+    const p=to(label.a),q=to(label.b);
+    const mx=clamp((p[0]+q[0])/2+label.push[0],18,cssW-18),my=clamp((p[1]+q[1])/2+label.push[1],10,cssH-10);
+    /* 線に重なっても読めるよう、札の下を暗くしておく。 */
+    const w=ctx.measureText(label.text).width+6;
+    ctx.fillStyle="rgba(8,12,26,.78)";ctx.fillRect(mx-w/2,my-8,w,16);
+    ctx.fillStyle="#7fb2ff";ctx.fillText(label.text,mx,my);
+  }
+}
+function objectStudioRefresh(){
+  objectStudioSyncShape();
+  objectStudioDrawPreview();
+  const spec=objectStudioReadSpec();
+  if(el.objectStudioSummary)el.objectStudioSummary.textContent=spec?objectSpecSummary(spec):"寸法が足りません（高さは 0 より大きく、上下のどちらかに大きさが要ります）。";
+}
+function renderObjectLibrary(){
+  const list=el.objectLibraryList;if(!list)return;
+  list.textContent="";
+  if(!objectLibrary.length){
+    const p=document.createElement("p");p.className="drive-log-empty";p.textContent="まだ保存したオブジェクトはありません。";
+    list.appendChild(p);return;
+  }
+  for(const item of objectLibrary.slice().reverse()){
+    const row=document.createElement("div");row.className="object-library-row";
+    const main=document.createElement("div");main.className="o-main";
+    main.innerHTML=`${escapeHtml(item.name||"（名前なし）")}<span class="o-sub">${escapeHtml(objectSpecSummary(item))}</span>`;
+    const load=document.createElement("button");load.type="button";load.textContent="読み込む";
+    load.addEventListener("click",()=>{
+      objectStudioShape=item.shape;
+      el.objectTopW.value=String(item.topW);el.objectTopD.value=String(item.topD);
+      el.objectBottomW.value=String(item.bottomW);el.objectBottomD.value=String(item.bottomD);
+      el.objectHeight.value=String(item.height);el.objectName.value=item.name||"";
+      objectStudioRefresh();
+      objectStudioSay(`「${item.name}」を読み込みました。直してから保存すると上書き、名前を変えて保存すると別のオブジェクトになります。`);
+    });
+    const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="削除";
+    del.addEventListener("click",async()=>{
+      if(!window.confirm(`「${item.name}」を削除します。よろしいですか？`))return;
+      objectLibrary=objectLibrary.filter(x=>x!==item);
+      await objectLibrarySave();renderObjectLibrary();objectStudioSay(`「${item.name}」を削除しました。`);
+    });
+    row.appendChild(main);row.appendChild(load);row.appendChild(del);
+    list.appendChild(row);
+  }
+}
+async function objectStudioSave(){
+  const spec=objectStudioReadSpec();
+  if(!spec){objectStudioSay("寸法を正しく入れてください（高さは 0 より大きく、上下のどちらかに大きさが要ります）。");return;}
+  if(!spec.name){objectStudioSay("名前を入れてから保存してください。");if(el.objectName)el.objectName.focus();return;}
+  await objectLibraryLoad();
+  const existing=objectLibraryFindByName(spec.name);
+  if(existing&&!window.confirm(`「${spec.name}」はすでにあります。上書きしますか？\n（別のオブジェクトにしたいときは名前を変えてください）`))return;
+  if(existing)Object.assign(existing,spec,{updatedAt:Date.now()});
+  else objectLibrary.push({...spec,id:`obj${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,updatedAt:Date.now()});
+  const ok=await objectLibrarySave();
+  renderObjectLibrary();
+  if(ok&&typeof renderObjectPickGrid==="function")renderObjectPickGrid();
+  objectStudioSay(ok?`「${spec.name}」を${existing?"上書き":""}保存しました。「KMZを追加 → オブジェクトを追加」から地図に置けます。`:"保存できませんでした。");
+}
+async function setObjectStudioOpen(open){
+  if(!el.objectStudioOverlay)return;
+  if(open){
+    await objectLibraryLoad();
+    renderObjectLibrary();
+    objectStudioRefresh();
+  }
+  el.objectStudioOverlay.classList.toggle("show",!!open);
+  el.objectStudioOverlay.setAttribute("aria-hidden",open?"false":"true");
+  if(open)requestAnimationFrame(objectStudioDrawPreview);   /* 幅が決まってから描き直す */
+}
+if(el.objectStudioOverlay){
+  el.objectStudioCloseBtn.addEventListener("click",()=>setObjectStudioOpen(false));
+  el.objectShapeBoxBtn.addEventListener("click",()=>{objectStudioShape="box";objectStudioRefresh();});
+  el.objectShapeCylinderBtn.addEventListener("click",()=>{objectStudioShape="cylinder";objectStudioRefresh();});
+  for(const node of [el.objectTopW,el.objectTopD,el.objectBottomW,el.objectBottomD,el.objectHeight]){
+    if(node)node.addEventListener("input",objectStudioRefresh);
+  }
+  el.objectSaveBtn.addEventListener("click",()=>objectStudioSave());
+  el.objectLoadBtn.addEventListener("click",()=>{
+    el.objectLibraryPanel.hidden=!el.objectLibraryPanel.hidden;
+    if(!el.objectLibraryPanel.hidden)renderObjectLibrary();
+  });
+  window.addEventListener("resize",()=>{if(el.objectStudioOverlay.classList.contains("show"))objectStudioDrawPreview();});
+}
 /* 【v1070】「KMZを追加」は選択（花火／ファイル）を開く。ファイルは今までどおり。 */
 el.kmzBuildingSelectBtn.addEventListener("click",()=>{
   const box=document.getElementById("kmzAddChooser");
   box.hidden=!box.hidden;
   document.getElementById("fireworkSizePicker").hidden=true;
+  document.getElementById("objectPickPanel").hidden=true;   /* 【v1107】 */
 });
 document.getElementById("kmzAddFileBtn").addEventListener("click",()=>{
   document.getElementById("kmzAddChooser").hidden=true;
@@ -8501,6 +8947,18 @@ document.getElementById("kmzAddCancelBtn").addEventListener("click",()=>{documen
 document.getElementById("kmzAddFireworkBtn").addEventListener("click",()=>{
   const picker=document.getElementById("fireworkSizePicker");
   picker.hidden=!picker.hidden;
+  document.getElementById("objectPickPanel").hidden=true;
+});
+/* 【v1107】オブジェクト */
+document.getElementById("kmzAddObjectBtn").addEventListener("click",async()=>{
+  const panel=document.getElementById("objectPickPanel");
+  panel.hidden=!panel.hidden;
+  document.getElementById("fireworkSizePicker").hidden=true;
+  if(!panel.hidden)await renderObjectPickGrid();
+});
+document.getElementById("objectStudioOpenBtn").addEventListener("click",()=>{
+  document.getElementById("kmzAddChooser").hidden=true;
+  setObjectStudioOpen(true);
 });
 (function buildFireworkSizeGrid(){
   const grid=document.getElementById("fireworkSizeGrid");if(!grid)return;
@@ -10599,6 +11057,7 @@ function initOsmMap(){
   syncOsmBaseLayer();
   osmMapInstance.on("click",e=>{
     if(typeof fireworkMapClick==="function"&&fireworkMapClick(e))return;   /* 【v1070】花火の配置中 */
+    if(typeof objectMapClick==="function"&&objectMapClick(e))return;       /* 【v1107】オブジェクトの配置中 */
     if(mapMeasureOn) return;   // 測定中は地点選択を受け付けない
     setOsmCandidate(e.latlng.lat,e.latlng.lng,false);
   });
@@ -20061,11 +20520,13 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく */
+    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
-      /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。 */
+      /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
+         【v1107】オブジェクトも同じ考え方で、オブジェクトのときだけ寸法を書く。 */
       ...(fireworkGoOf(slot.firework)!==null?{firework:fireworkGoOf(slot.firework)}:{}),
+      ...(objectSpecOf(slot.object)!==null?{object:objectSpecOf(slot.object)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -20081,7 +20542,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく */
+    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -20094,9 +20555,14 @@ async function restoreKmzBuildingFromPlan(saved){
     for(const item of list){
       /* 【v1099】ファイル（sourceDataUrl）があるものは必ずファイルから戻す。花火は「ファイルが無く、号数が 0 より大きい」ときだけ。
          こうしておけば、記録が壊れていても元の模型を花火に置き換えてしまうことはない。 */
-      const fireworkGo=String(item.sourceDataUrl||"").startsWith("data:")?null:fireworkGoOf(item.firework);
+      const hasFile=String(item.sourceDataUrl||"").startsWith("data:");
+      const fireworkGo=hasFile?null:fireworkGoOf(item.firework);
+      /* 【v1107】オブジェクトも「ファイルが無く、寸法が正しいとき」だけ。順番は ファイル → 花火 → オブジェクト。 */
+      const objectSpec=(hasFile||fireworkGo!==null)?null:objectSpecOf(item.object);
       if(fireworkGo!==null){
         fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0);
+      }else if(objectSpec!==null){
+        objectCreateSlot(objectSpec,+item.lat,+item.lon,+item.altitude||0);
       }else{
       const response=await fetch(item.sourceDataUrl),buffer=await response.arrayBuffer();
       if(token!==kmzBuildingRestoreToken)return false;
@@ -23256,6 +23722,11 @@ try{
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       /* 【v1099】撮影計画の KMZ の保存・復元を手元で確かめるための入口。 */
+      objectSpec:(value)=>objectSpecOf(value),   /* 【v1107】 */
+      objectModel:(value)=>{const m=buildObjectModel(value);return m?{triangles:m.triangles.length,w:m.width,d:m.depth,h:m.height}:null;},
+      objectLibrary:()=>objectLibrary.slice(),
+      objectStudio:(on)=>setObjectStudioOpen(on!==false),
+      objectPlace:(name,lat,lon,alt)=>objectCreateSlot(objectLibraryFindByName(name),lat,lon,alt),
       kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
       /* 【v1100】登録地点と撮影計画の対応を手元で確かめる入口。 */
       favPlaces:()=>({list:()=>favPlaces.map(p=>({name:p.name,kind:p.kind,planId:p.planId||null})),
