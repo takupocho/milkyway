@@ -5969,6 +5969,8 @@
                 <!-- 【v1070】花火の配置モード -->
                 <div id="mapPlaceBar" class="map-place-bar" hidden>
                   <span id="mapPlaceText">どこに配置しますか？ 地図をタップ</span>
+                  <button id="mapPlaceRotateLeftBtn" type="button" class="ghost" hidden title="反時計回りに15度">↺</button>
+                  <button id="mapPlaceRotateRightBtn" type="button" class="ghost" hidden title="時計回りに15度">↻</button>
                   <button id="mapPlaceOkBtn" type="button" class="primary" disabled>決定</button>
                   <button id="mapPlaceCancelBtn" type="button" class="ghost">やめる</button>
                 </div>
@@ -6091,9 +6093,11 @@
                     <label class="full"><input id="lsTrajectory" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 打上げ線を描く</label>
                   </div>
                   <div class="ls-wind">
+                    <span>並びの向き</span><input id="lsAngle" type="range" min="0" max="359" step="1"><span class="val" id="lsAngleVal">北</span>
                     <span>風速</span><input id="lsWindSpeed" type="range" min="0" max="15" step="0.5"><span class="val" id="lsWindSpeedVal">0.0 m/s</span>
                     <span>風向</span><input id="lsWindBearing" type="range" min="0" max="359" step="1"><span class="val" id="lsWindBearingVal">北へ</span>
                   </div>
+                  <p class="map-hint" style="margin:0 0 6px;">「並びの向き」は台を並べる方位です。地図に置くときにも回せます（向きはグループに保存されます）。</p>
                   <p class="map-hint" style="margin:0 0 6px;">風は「流れていく向き」です。光跡の先ほど流され、玉そのものも上がる間に風下へずれます。</p>
                   <input id="lsName" class="plan-save-name" type="text" maxlength="30" placeholder="筒場の名前（例：姫路みなと 打上1）">
                   <div class="ls-row">
@@ -6720,7 +6724,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1111-launch-site";
+const APP_VERSION="1112-launch-site-ui";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7936,6 +7940,7 @@ const el={
   lsLength:$("lsLength"), lsLengthVal:$("lsLengthVal"), lsLengthRow:$("lsLengthRow"),
   lsFanLen:$("lsFanLen"), lsFanLenRow:$("lsFanLenRow"), lsFanSpread:$("lsFanSpread"), lsFanSpreadRow:$("lsFanSpreadRow"),
   lsStand:$("lsStand"), lsOffset:$("lsOffset"), lsStandX:$("lsStandX"), lsStandXRow:$("lsStandXRow"), lsTrajectory:$("lsTrajectory"),
+  lsAngle:$("lsAngle"), lsAngleVal:$("lsAngleVal"),   /* 【v1112】 */
   lsWindSpeed:$("lsWindSpeed"), lsWindSpeedVal:$("lsWindSpeedVal"), lsWindBearing:$("lsWindBearing"), lsWindBearingVal:$("lsWindBearingVal"),
   lsName:$("lsName"), lsGroupSelect:$("lsGroupSelect"), lsGroupLoadBtn:$("lsGroupLoadBtn"), lsGroupSaveBtn:$("lsGroupSaveBtn"),
   lsApplyBtn:$("lsApplyBtn"), lsStatus:$("lsStatus"),
@@ -8492,7 +8497,10 @@ function launchSiteAddShell(bucket,spec,item){
   const pattern=item.pattern;
   const stand=spec.stands.find(s=>s.id===item.standId)||spec.stands[0];
   const axis=spec.groupAngle*D2R;
-  const X=(stand?stand.xOffset:0)+item.xOffset;
+  /* 【v1112】筒（＝台）の位置と、開花点の位置を分ける。
+     台の中で左右にずらした花火は、筒から斜めに上がって開花する（打上げ線が曲がる）。 */
+  const standX=stand?stand.xOffset:0,X=standX+item.xOffset;
+  const tubeEast=Math.cos(axis)*standX,tubeNorth=-Math.sin(axis)*standX;
   /* 台の並びは絶対方位。＋x が groupAngle の向き。 */
   const baseEast=Math.cos(axis)*X,baseNorth=-Math.sin(axis)*X;
   const altitude=fwStoredAltitude(item);
@@ -8550,11 +8558,14 @@ function launchSiteAddShell(bucket,spec,item){
   }
   /* 打上軌道。筒口から開花点まで、上がるほど減速する放物線。風で横へ曲がる。 */
   if(item.showTrajectory){
+    /* 【v1112】横は筒から開花点まで t に比例、高さは上がるほど減速する放物線（原作と同じ式）。
+       台の中で左右にずらすほど、線が斜めに伸びて扇のように開く。 */
     const steps=24,points=[];
+    const spanEast=baseEast-tubeEast,spanNorth=baseNorth-tubeNorth;
     for(let step=0;step<=steps;step++){
       const t=step/steps;
-      points.push([baseEast+fwShellWindOffset(shellDrift*wind.east,t),
-                   baseNorth+fwShellWindOffset(shellDrift*wind.north,t),
+      points.push([tubeEast+spanEast*t+fwShellWindOffset(shellDrift*wind.east,t),
+                   tubeNorth+spanNorth*t+fwShellWindOffset(shellDrift*wind.north,t),
                    altitude*(2*t-t*t)]);
     }
     push("#ffffff",1.1,points,(p)=>p);
@@ -8923,6 +8934,9 @@ function launchSiteBeginPlacement(spec){
 }
 function launchSiteEndPlacement(note){
   launchSitePlacing=null;
+  launchSiteClearPreview();
+  document.getElementById("mapPlaceRotateLeftBtn").hidden=true;
+  document.getElementById("mapPlaceRotateRightBtn").hidden=true;
   if(launchSitePlaceMarker&&osmMapInstance){osmMapInstance.removeLayer(launchSitePlaceMarker);}
   launchSitePlaceMarker=null;
   document.body.classList.remove("map-place");
@@ -8934,6 +8948,38 @@ function launchSiteEndPlacement(note){
     fireworkPlaceNoteTimer=setTimeout(()=>{bar.hidden=true;fireworkPlaceNoteTimer=0;},3000);
   }else bar.hidden=true;
 }
+/* 【v1112】置く場所を決めたら、地図の上に台の並びを描いて向きが見えるようにする。 */
+let launchSitePreviewLayer=null;
+function launchSiteClearPreview(){
+  if(launchSitePreviewLayer&&osmMapInstance){try{osmMapInstance.removeLayer(launchSitePreviewLayer);}catch(e){}}
+  launchSitePreviewLayer=null;
+}
+function launchSiteDrawPreview(){
+  if(!launchSitePlacing||!osmMapInstance||!Number.isFinite(launchSitePlacing.lat))return;
+  launchSiteClearPreview();
+  const spec=launchSitePlacing.spec,lat=launchSitePlacing.lat,lon=launchSitePlacing.lon;
+  const axis=spec.groupAngle*D2R;
+  const at=(x)=>{
+    const east=Math.cos(axis)*x,north=-Math.sin(axis)*x;
+    return [lat+north/111320,lon+east/(111320*Math.cos(lat*D2R))];
+  };
+  const xs=spec.stands.map(s=>s.xOffset);
+  const layers=[];
+  layers.push(L.polyline([at(Math.min(...xs)-30),at(Math.max(...xs)+30)],
+    {pane:"overlayPane",interactive:false,color:"#ffb347",weight:4,opacity:.95,dashArray:"6 4"}));
+  for(const stand of spec.stands){
+    layers.push(L.circleMarker(at(stand.xOffset),
+      {pane:"markerPane",radius:6,color:"#fff",weight:2,fillColor:"#ffb347",fillOpacity:1,interactive:false}));
+  }
+  launchSitePreviewLayer=L.layerGroup(layers).addTo(osmMapInstance);
+}
+function launchSiteRotate(delta){
+  if(!launchSitePlacing)return;
+  launchSitePlacing.spec.groupAngle=fwNormalizeWindBearing(launchSitePlacing.spec.groupAngle+delta);
+  launchSiteDrawPreview();
+  document.getElementById("mapPlaceText").textContent=
+    `🎇 ${launchSitePlacing.spec.name||"筒場"} 並びの向き ${Math.round(launchSitePlacing.spec.groupAngle)}°（${fwWindCompassName(launchSitePlacing.spec.groupAngle)}）　決定でここに置きます`;
+}
 function launchSiteMapClick(e){
   if(!launchSitePlacing||!osmMapInstance)return false;
   launchSitePlacing.lat=e.latlng.lat;launchSitePlacing.lon=e.latlng.lng;
@@ -8941,7 +8987,10 @@ function launchSiteMapClick(e){
   if(!launchSitePlaceMarker)launchSitePlaceMarker=L.marker(e.latlng,{pane:"markerPane",interactive:false,icon}).addTo(osmMapInstance);
   else launchSitePlaceMarker.setLatLng(e.latlng);
   document.getElementById("mapPlaceOkBtn").disabled=false;
-  document.getElementById("mapPlaceText").textContent=`🎇 ${launchSitePlacing.spec.name||"筒場"} ここに置きますか？（${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}）`;
+  document.getElementById("mapPlaceRotateLeftBtn").hidden=false;
+  document.getElementById("mapPlaceRotateRightBtn").hidden=false;
+  launchSiteDrawPreview();
+  document.getElementById("mapPlaceText").textContent=`🎇 ${launchSitePlacing.spec.name||"筒場"} ここに置きますか？　↺↻ で並びを回せます（${Math.round(launchSitePlacing.spec.groupAngle)}°）`;
   return true;
 }
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
@@ -9000,6 +9049,8 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   drawPhoto._terrainRenderKey=null;update();
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
 });
+document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>launchSiteRotate(-15));   /* 【v1112】 */
+document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(15));
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
   if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
   else if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
@@ -9304,6 +9355,7 @@ function refreshKmzBuildingControls(redraw=true){
      入力欄の変更もボタンの切り替えも、必ずこの関数を通るので、
      先頭で書き戻せば取りこぼしが起きない。 */
   kmzCommitEditor();
+  if(typeof syncFireworkSlotPanel==="function")syncFireworkSlotPanel();   /* 【v1112】筒場・花火の欄もここで出し入れする */
   el.kmzBuildingVisibleBtn.classList.toggle("active",kmzBuildingVisible);el.kmzBuildingVisibleState.textContent=kmzBuildingVisible?"ON":"OFF";
   el.kmzBuildingSilhouetteBtn.classList.toggle("active",kmzBuildingSilhouette);el.kmzBuildingSilhouetteState.textContent=kmzBuildingSilhouette?"ON":"OFF";
   if(el.kmzSilhouetteDarkness){
@@ -9324,6 +9376,8 @@ function refreshKmzBuildingControls(redraw=true){
 const LS_GROUP_KEY="starchase-launch-groups-v1";
 let lsGroups=[],lsGroupsLoaded=false;
 let lsDraft=null,lsSelectedId=null,lsSelectedStandId=1,lsTargetSlotId=null,lsBadges=[];
+/* 【v1112】図の縮尺（ドラッグで m へ戻すのに使う）と、いま掴んでいるもの。 */
+let lsView=null,lsDrag=null;
 function lsSay(text){if(el.lsStatus)el.lsStatus.textContent=text||"";}
 function lsNextId(list){return list.reduce((m,x)=>Math.max(m,+x.id||0),0)+1;}
 function lsSelected(){return lsDraft?lsDraft.fireworks.find(f=>f.id===lsSelectedId)||null:null;}
@@ -9385,8 +9439,12 @@ function lsDrawEditor(){
   for(const stand of lsDraft.stands){if(stand.xOffset-40<minX)minX=stand.xOffset-40;if(stand.xOffset+40>maxX)maxX=stand.xOffset+40;}
   const padL=8,padR=64,padT=10,padB=26;
   const scale=Math.min((cssW-padL-padR)/Math.max(1,maxX-minX),(cssH-padT-padB)/Math.max(1,maxTop*1.05));
+  /* 【v1112】高さで縮尺が決まると横に余りが出る。余りを左右に振り分けて**真ん中**に置く。
+     （以前は左端から描いていたので、花火が左隅に寄っていた） */
+  const originX=padL+Math.max(0,((cssW-padL-padR)-(maxX-minX)*scale)/2);
   const groundY=cssH-padB;
-  const toX=x=>padL+(x-minX)*scale,toY=z=>groundY-z*scale;
+  const toX=x=>originX+(x-minX)*scale,toY=z=>groundY-z*scale;
+  lsView={minX,scale,originX,groundY};
   /* 号数の目安（右端に文字） */
   ctx.font="9px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
   ctx.setLineDash([3,3]);
@@ -9454,12 +9512,13 @@ function lsDrawEditor(){
       strokeAll(fwStarmineTrails(radius,64,9,item.starmineLength,driftX,0,sag),
         trail=>palettes.base[trail.baseColorIndex%palettes.base.length],1);
     }
-    /* 打上げ線 */
+    /* 打上げ線。【v1112】筒（台）から開花点まで横へ伸ばす。横は t に比例、高さは放物線。 */
     if(item.showTrajectory&&pattern!=="fan"){
+      const standX=stand?stand.xOffset:0,span=X-standX;
       ctx.strokeStyle="rgba(255,255,255,.75)";ctx.lineWidth=1;
       ctx.beginPath();
       for(let step=0;step<=20;step++){
-        const tt=step/20,px=toX(X+fwShellWindOffset(shellDrift,tt)),py=toY(altitude*(2*tt-tt*tt));
+        const tt=step/20,px=toX(standX+span*tt+fwShellWindOffset(shellDrift,tt)),py=toY(altitude*(2*tt-tt*tt));
         if(step)ctx.lineTo(px,py);else ctx.moveTo(px,py);
       }
       ctx.stroke();
@@ -9523,6 +9582,8 @@ function lsSyncForm(){
   const standIndex=lsDraft.stands.findIndex(s=>s.id===lsSelectedStandId);
   el.lsStandXRow.hidden=!(stand&&standIndex>0);
   if(stand)el.lsStandX.value=String(stand.xOffset);
+  el.lsAngle.value=String(Math.round(lsDraft.groupAngle));
+  el.lsAngleVal.textContent=fwWindCompassName(lsDraft.groupAngle);
   el.lsWindSpeed.value=String(lsDraft.windSpeed);
   el.lsWindSpeedVal.textContent=`${lsDraft.windSpeed.toFixed(1)} m/s`;
   el.lsWindBearing.value=String(lsDraft.windBearing);
@@ -9530,28 +9591,72 @@ function lsSyncForm(){
   el.lsName.value=lsDraft.name||"";
   const standName=standIndex===0?"筒場":`台${standIndex+1}`;
   el.lsHint.innerHTML=`<b>${escapeHtml(standName)}</b>を選択中　→「＋花火」でこの台に乗ります。「＋台」で左右に台を増やせます。`
-    +(item?`　／　いま <b>${lsDraft.fireworks.indexOf(item)+1}番</b>を編集中`:"　／　図の番号を押すと選べます");
+    +(item?`　／　いま <b>${lsDraft.fireworks.indexOf(item)+1}番</b>を編集中`:"")
+    +`　／　<b>図の番号や台をつまんで左右に動かせます</b>`;
 }
 function lsRefresh(){lsSyncForm();lsDrawEditor();}
-function lsCanvasPick(event){
-  const canvas=el.lsCanvas,rect=canvas.getBoundingClientRect();
-  const point=event.touches&&event.touches[0]?event.touches[0]:event;
-  const x=point.clientX-rect.left,y=point.clientY-rect.top;
-  /* 花火の札を先に見る（台の帯と重なることがあるため） */
+/* 【v1112】図の中の位置（画素）→ 掴んだもの。花火の札を先に見る（台の帯と重なることがあるため）。 */
+function lsHitTest(x,y){
   for(const badge of lsBadges){
     if(badge.id==null)continue;
-    if(x>=badge.x&&x<=badge.x+badge.w&&y>=badge.y&&y<=badge.y+badge.h){
-      lsSelectedId=badge.id;
-      const item=lsSelected();if(item)lsSelectedStandId=item.standId;
-      lsRefresh();return;
-    }
+    if(x>=badge.x-6&&x<=badge.x+badge.w+6&&y>=badge.y-6&&y<=badge.y+badge.h+6)return {kind:"firework",id:badge.id};
   }
   for(const badge of lsBadges){
     if(badge.standId==null)continue;
-    if(x>=badge.x&&x<=badge.x+badge.w&&y>=badge.y&&y<=badge.y+badge.h){
-      lsSelectedStandId=badge.standId;lsRefresh();return;
-    }
+    if(x>=badge.x&&x<=badge.x+badge.w&&y>=badge.y-8&&y<=badge.y+badge.h)return {kind:"stand",id:badge.standId};
   }
+  return null;
+}
+function lsCanvasPos(event){
+  const rect=el.lsCanvas.getBoundingClientRect();
+  const point=(event.touches&&event.touches[0])||(event.changedTouches&&event.changedTouches[0])||event;
+  return [point.clientX-rect.left,point.clientY-rect.top];
+}
+/* 【v1112】掴んで左右に動かす。花火は「台の中での左右」、台は「筒場からの左右」が変わる。
+   台1（筒場そのもの）は動かさない＝基準がぶれないように。 */
+function lsDragBegin(event){
+  const [x,y]=lsCanvasPos(event);
+  const hit=lsHitTest(x,y);
+  if(!hit)return;
+  if(hit.kind==="firework"){
+    const item=lsDraft.fireworks.find(f=>f.id===hit.id);
+    if(!item)return;
+    lsSelectedId=item.id;lsSelectedStandId=item.standId;
+    lsDrag={kind:"firework",id:item.id,startX:x,startValue:item.xOffset};
+  }else{
+    lsSelectedStandId=hit.id;
+    const stand=lsDraft.stands.find(s=>s.id===hit.id);
+    const index=lsDraft.stands.indexOf(stand);
+    lsDrag=(stand&&index>0)?{kind:"stand",id:hit.id,startX:x,startValue:stand.xOffset}:null;
+  }
+  lsRefresh();
+  if(lsDrag&&event.cancelable)event.preventDefault();
+}
+function lsDragMove(event){
+  if(!lsDrag||!lsView)return;
+  const [x]=lsCanvasPos(event);
+  const delta=(x-lsDrag.startX)/lsView.scale;   /* 画素 → m */
+  const value=Math.round((lsDrag.startValue+delta)/5)*5;   /* 5m 刻み */
+  if(lsDrag.kind==="firework"){
+    const item=lsDraft.fireworks.find(f=>f.id===lsDrag.id);
+    if(item)item.xOffset=clamp(value,-1000,1000);
+  }else{
+    const stand=lsDraft.stands.find(s=>s.id===lsDrag.id);
+    if(stand)stand.xOffset=clamp(value,-2000,2000);
+  }
+  lsRefresh();
+  if(event.cancelable)event.preventDefault();
+}
+function lsDragEnd(){lsDrag=null;}
+function lsCanvasPick(event){
+  const [x,y]=lsCanvasPos(event);
+  const hit=lsHitTest(x,y);
+  if(!hit)return;
+  if(hit.kind==="firework"){
+    lsSelectedId=hit.id;
+    const item=lsSelected();if(item)lsSelectedStandId=item.standId;
+  }else lsSelectedStandId=hit.id;
+  lsRefresh();
 }
 async function setLaunchSiteStudioOpen(open,slot){
   if(!el.launchSiteOverlay)return;
@@ -9590,6 +9695,13 @@ async function setLaunchSiteStudioOpen(open,slot){
   const edit=(change)=>{const item=lsSelected();if(!item)return;change(item);lsRefresh();};
   el.launchSiteCloseBtn.addEventListener("click",()=>setLaunchSiteStudioOpen(false));
   el.lsCanvas.addEventListener("click",lsCanvasPick);
+  /* 【v1112】掴んで動かす。指でも押さえたまま動かせるように touch も見る。 */
+  el.lsCanvas.addEventListener("mousedown",lsDragBegin);
+  window.addEventListener("mousemove",lsDragMove);
+  window.addEventListener("mouseup",lsDragEnd);
+  el.lsCanvas.addEventListener("touchstart",lsDragBegin,{passive:false});
+  el.lsCanvas.addEventListener("touchmove",lsDragMove,{passive:false});
+  el.lsCanvas.addEventListener("touchend",lsDragEnd);
   el.lsAddFireworkBtn.addEventListener("click",()=>{
     const item=lsDefaultFirework();
     lsDraft.fireworks.push(item);lsSelectedId=item.id;lsRefresh();
@@ -9627,6 +9739,7 @@ async function setLaunchSiteStudioOpen(open,slot){
     if(!stand||lsDraft.stands.indexOf(stand)===0)return;
     stand.xOffset=savedNumber(el.lsStandX.value)||0;lsRefresh();
   });
+  el.lsAngle.addEventListener("input",()=>{lsDraft.groupAngle=fwNormalizeWindBearing(el.lsAngle.value);lsRefresh();});   /* 【v1112】 */
   el.lsWindSpeed.addEventListener("input",()=>{lsDraft.windSpeed=fwNormalizeWindSpeed(el.lsWindSpeed.value);lsRefresh();});
   el.lsWindBearing.addEventListener("input",()=>{lsDraft.windBearing=fwNormalizeWindBearing(el.lsWindBearing.value);lsRefresh();});
   el.lsName.addEventListener("input",()=>{lsDraft.name=el.lsName.value.slice(0,30);});
@@ -24728,7 +24841,11 @@ try{
           return {色の数:m.lines.length,線:m.lines.reduce((a,g)=>a+g.polylines.length,0),節:seg,点:m.vertexCount,
             幅:+m.width.toFixed(1),奥行:+m.depth.toFixed(1),高さ:+m.height.toFixed(1)};},
         place:(v,lat,lon,alt)=>launchSiteCreateSlot(v,lat,lon,alt),
-        summary:(v)=>launchSiteSummary(launchSiteSpecOf(v))
+        summary:(v)=>launchSiteSummary(launchSiteSpecOf(v)),
+        /* 【v1112】編集画面の中身を手元で確かめる入口（札の位置・縮尺・下書き）。 */
+        editor:()=>({badges:lsBadges.slice(),view:lsView,draft:lsDraft?JSON.parse(JSON.stringify(lsDraft)):null,
+          selected:lsSelectedId,stand:lsSelectedStandId}),
+        placing:()=>launchSitePlacing?{angle:launchSitePlacing.spec.groupAngle,lat:launchSitePlacing.lat,lon:launchSitePlacing.lon}:null
       },
       objectSpec:(value)=>objectSpecOf(value),   /* 【v1107】 */
       objectModel:(value)=>{const m=buildObjectModel(value);return m?{triangles:m.triangles.length,w:m.width,d:m.depth,h:m.height}:null;},
