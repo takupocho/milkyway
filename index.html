@@ -2746,7 +2746,8 @@
   /* 【v1104】GPX の読み込み */
   .drive-log-import{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0 2px;}
   .drive-log-import button{width:auto;min-width:0;margin:0;padding:5px 12px;font-size:11.5px;border-radius:8px;}
-  .drive-log-import input[type=file]{display:none;}
+  /* 【v1108】display:none だと端末によっては click() が効かないので、置いたまま見えなくする。 */
+  .drive-log-import input[type=file]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
   /* 【v1105】走行／登山の切り替えと、標高まわりの小さな行 */
   .drive-log-tabs{display:flex;gap:4px;margin:10px 0 2px;}
   .drive-log-tabs button{flex:1 1 0;width:auto;min-width:0;margin:0;padding:5px 4px;font-size:11.5px;border-radius:8px;
@@ -5209,9 +5210,13 @@
           <div class="drive-log-import">
             <button id="driveLogImportDriveBtn" type="button">🚗 走行として読み込む</button>
             <button id="driveLogImportHikeBtn" type="button">🥾 登山として読み込む</button>
-            <input id="driveLogImportInput" type="file" accept=".gpx,.kml,.kmz,application/gpx+xml,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" multiple>
+            <!-- 【v1108】accept は付けない。iPhone の Safari は accept の拡張子をシステムの種類（UTI）へ
+                 引き直してから「ファイル」アプリに渡すが、.gpx は iOS が元から知らないため引き直しに失敗し、
+                 **どのファイルとも一致しない条件**になって全部が灰色（選べない）になる。
+                 中身の検査は読み取り側でやっているので、関係ないファイルを選んでも理由が出るだけ。 -->
+            <input id="driveLogImportInput" type="file" multiple>
           </div>
-          <p class="map-hint" style="margin:0 0 6px;">画面を消しても記録できる GPS ログアプリ（OsmAnd・Organic Maps・Open GPX Tracker・Geo Tracker・YAMAP・ヤマレコ など）で取った記録を取り込めます。<b>GPX</b> のほか KML・KMZ の軌跡も読めます。標高（GPX の ele）も読み、入っていない点は地理院の標高データで補います。同じ記録を二度読み込んでも重複しません。</p>
+          <p class="map-hint" style="margin:0 0 6px;">画面を消しても記録できる GPS ログアプリ（OsmAnd・Organic Maps・Open GPX Tracker・Geo Tracker・YAMAP・ヤマレコ など）で取った記録を取り込めます。<b>GPX</b> のほか KML・KMZ の軌跡も読めます。標高（GPX の ele）も読み、入っていない点は地理院の標高データで補います。同じ記録を二度読み込んでも重複しません。<br>ログアプリから直接「共有 → ファイルに保存」でいったん iPhone の「ファイル」に入れてから選んでください。</p>
           <!-- 【v1105】累積標高のしきい値と、古い記録の標高の穴埋め -->
           <div class="drive-log-tools">
             <label style="display:flex;align-items:center;gap:5px;margin:0;">累積標高は <input id="driveLogGainThreshold" type="number" min="1" max="30" step="1" value="5"> m 以上の変化だけ数える</label>
@@ -6636,7 +6641,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1107-object-studio";
+const APP_VERSION="1108-gpx-picker-fix";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -15596,10 +15601,12 @@ async function driveLogFillMissingElevations(){
 async function driveLogImportFiles(files,kind){
   const status=driveLogEl("driveLogStatus");
   const say=text=>{if(status)status.textContent=text;};
-  if(!files||!files.length)return;
+  /* 【v1108】選んだはずなのに 0 件で戻ってくることがある（選べていない・共有先から渡らなかった）。
+     黙って終わると「押したのに何も起きない」になるので、必ず言う。 */
+  if(!files||!files.length){say("ファイルを受け取れませんでした。「ファイル」アプリに保存してから選び直してください。");return;}
   await driveLogLoad();
   const kindKey=kind==="hike"?"hike":"drive",kindInfo=DRIVE_LOG_KINDS[kindKey];
-  say(`${kindInfo.label}として読み込み中…（${files.length}件）`);
+  say(`${kindInfo.label}として読み込み中…（${files.length}件：${files.map(f=>f.name).join("、").slice(0,80)}）`);   /* 【v1108】何を読んでいるか出す */
   const known=new Set(driveLogData.tracks.map(driveLogTrackSignature));
   const addedTracks=[];
   let added=0,skipped=0,noTime=0,points=0,km=0;
