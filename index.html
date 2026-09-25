@@ -2780,6 +2780,19 @@
     border:1px solid rgba(126,154,208,.4);background:rgba(16,20,42,.6);line-height:1.4;}
   .drive-log-track .t-gain{color:#9fd7a8;}
   /* 地図に出しているときの帯 */
+  /* 【v1114】クラウドの通信量 */
+  .cloud-usage-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0 8px;}
+  .cloud-usage-card{padding:7px 8px;border-radius:9px;background:rgba(16,20,42,.55);border:1px solid rgba(126,154,208,.3);}
+  .cloud-usage-card b{display:block;font-size:10px;color:var(--dim-2);font-weight:700;margin-bottom:3px;}
+  .cloud-usage-card .n{display:block;font:700 15px/1.2 system-ui,sans-serif;color:#fff;}
+  .cloud-usage-card .s{display:block;font-size:10px;color:var(--dim-2);margin-top:2px;line-height:1.5;}
+  .cloud-usage-table{width:100%;border-collapse:collapse;font-size:11px;color:rgba(226,232,246,.9);}
+  .cloud-usage-table th,.cloud-usage-table td{padding:3px 5px;border-bottom:1px solid rgba(126,154,208,.18);text-align:right;white-space:nowrap;}
+  .cloud-usage-table th{color:var(--dim-2);font-weight:700;}
+  .cloud-usage-table th:first-child,.cloud-usage-table td:first-child{text-align:left;}
+  .cloud-usage-scroll{max-height:220px;overflow:auto;margin-top:4px;}
+  .cloud-usage-bar{height:5px;border-radius:3px;background:rgba(126,154,208,.25);overflow:hidden;margin-top:3px;}
+  .cloud-usage-bar i{display:block;height:100%;background:#5bc6ff;}
   /* 【v1113】筒場を回すハンドル */
   .map-rotate-handle{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
     background:rgba(243,176,79,.95);border:2px solid #fff;color:#241503;font:900 16px/1 system-ui,sans-serif;
@@ -5309,6 +5322,22 @@
       </section>
 
       <!-- 【v1072】メモ（端末間で同期） -->
+      <!-- 【v1114】クラウド同期の通信量 -->
+      <section class="ctrl-group collapsible collapsed" id="cloudUsageSection">
+        <h2 class="ctrl-group-toggle">☁ クラウドの通信量<span class="ctrl-arrow">▼</span></h2>
+        <div class="ctrl-group-body">
+          <p class="map-hint" style="margin:0 0 6px;">この端末がクラウド（Firebase）とやり取りした量です。<b>この記録は端末の中だけ</b>に置かれ、クラウドへは送りません。<br>無料枠の目安：1日 読み5万回・書き2万回、保存1GB、下り 月10GB。</p>
+          <div class="cloud-usage-cards" id="cloudUsageCards"></div>
+          <div id="cloudUsageQuota"></div>
+          <p class="map-hint" style="margin:10px 0 2px;color:var(--ink);font-weight:700;">日ごと（新しい順）</p>
+          <div class="cloud-usage-scroll"><table class="cloud-usage-table" id="cloudUsageTable"></table></div>
+          <div class="memo-btn-row" style="margin-top:8px;">
+            <button id="cloudUsageCsvBtn" type="button" class="ghost">CSVで書き出す</button>
+            <button id="cloudUsageClearBtn" type="button" class="ghost" style="color:#ff9a9a;">記録を消す…</button>
+          </div>
+          <p id="cloudUsageStatus" class="map-hint" style="margin:6px 0 0;" aria-live="polite"></p>
+        </div>
+      </section>
       <section class="ctrl-group collapsible collapsed" id="memoSection">
         <h2 class="ctrl-group-toggle">📝 メモ<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
@@ -6730,7 +6759,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1113-firework-core";
+const APP_VERSION="1114-cloud-usage";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16247,6 +16276,144 @@ function settingsExportText(){
    書類：{data: メモ配列の JSON 文字列, updatedAt: ms, app:"starchase"}。
    合流：1 件ごとに updatedAt が新しい方を採用。削除は deleted:true の墓標（90 日で掃除）。
    apiKey は「どのプロジェクトか」の札で秘密ではない（守りは Firestore のルール）。 */
+/* ═════ 【v1114】クラウドの通信量を記録する ═════
+   Firestore へ出す通信はすべて cloudFetch を通す。ここだけで数えれば取りこぼさない。
+   数えるもの：
+     reads  … 読んだ書類の数（無料枠 1日5万）
+     writes … 書いた書類の数（無料枠 1日2万）
+     up/down … 送った・受け取ったバイト数（下りは無料枠 月10GB）
+   記録は端末の中だけ（IndexedDB）。クラウドには送らない。 */
+const CLOUD_USAGE_KEY="starchase-cloud-usage-v1";
+const CLOUD_USAGE_MAX_DAYS=400;
+let cloudUsage={version:1,days:{}},cloudUsageLoaded=false,cloudUsageSaveTimer=0;
+function cloudUsageDayKey(ms){const d=new Date(ms||Date.now());
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
+function cloudUsageBlank(){return {reads:0,writes:0,up:0,down:0,calls:0,errors:0};}
+async function cloudUsageLoad(){
+  if(cloudUsageLoaded)return cloudUsage;
+  cloudUsageLoaded=true;
+  try{
+    const raw=await planKvGet(CLOUD_USAGE_KEY),parsed=raw?JSON.parse(raw):null;
+    if(parsed&&parsed.days&&typeof parsed.days==="object"){
+      cloudUsage={version:1,days:{}};
+      for(const [key,value] of Object.entries(parsed.days)){
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(key)||!value)continue;
+        cloudUsage.days[key]={...cloudUsageBlank(),
+          reads:+value.reads||0,writes:+value.writes||0,up:+value.up||0,down:+value.down||0,
+          calls:+value.calls||0,errors:+value.errors||0};
+      }
+    }
+  }catch(error){cloudUsage={version:1,days:{}};}
+  return cloudUsage;
+}
+function cloudUsageScheduleSave(){
+  if(cloudUsageSaveTimer)return;
+  cloudUsageSaveTimer=setTimeout(async()=>{
+    cloudUsageSaveTimer=0;
+    /* 古い日は落とす（400日ぶん残す）。 */
+    const keys=Object.keys(cloudUsage.days).sort();
+    while(keys.length>CLOUD_USAGE_MAX_DAYS)delete cloudUsage.days[keys.shift()];
+    try{await planKvSet(CLOUD_USAGE_KEY,JSON.stringify(cloudUsage));}catch(error){}
+    renderCloudUsage();
+  },1500);
+}
+function cloudUsageAdd(entry){
+  const key=cloudUsageDayKey();
+  const day=cloudUsage.days[key]||(cloudUsage.days[key]=cloudUsageBlank());
+  day.reads+=entry.reads||0;day.writes+=entry.writes||0;
+  day.up+=entry.up||0;day.down+=entry.down||0;
+  day.calls+=1;if(entry.error)day.errors+=1;
+  cloudUsageScheduleSave();
+}
+/* Firestore への通信はすべてここを通す。
+   docs は「その通信で読み書きした書類の数」（無料枠の数え方に合わせる）。 */
+async function cloudFetch(url,init,{kind="read",docs=1}={}){
+  await cloudUsageLoad();
+  const body=init&&init.body?String(init.body):"";
+  const up=body?new TextEncoder().encode(body).length:0;
+  let response=null,text="",error=false;
+  try{
+    response=await fetch(url,init);
+    text=await response.text();
+    if(!response.ok)error=true;
+  }catch(e){
+    cloudUsageAdd({up,down:0,reads:0,writes:0,error:true});
+    throw e;
+  }
+  const down=new TextEncoder().encode(text).length;
+  /* 失敗した通信は無料枠を消費しないことが多いので、回数には入れない（量だけ数える）。 */
+  cloudUsageAdd({up,down,reads:(!error&&kind==="read")?docs:0,writes:(!error&&kind==="write")?docs:0,error});
+  return {ok:response.ok,status:response.status,text,
+    json:()=>{try{return JSON.parse(text||"{}");}catch(e){return {};}}};
+}
+function cloudUsageBytes(n){
+  if(!n)return "0 B";
+  if(n<1024)return `${n} B`;
+  if(n<1024*1024)return `${(n/1024).toFixed(1)} KB`;
+  if(n<1024*1024*1024)return `${(n/1024/1024).toFixed(2)} MB`;
+  return `${(n/1024/1024/1024).toFixed(2)} GB`;
+}
+function cloudUsageSum(filter){
+  const total=cloudUsageBlank();
+  for(const [key,day] of Object.entries(cloudUsage.days)){
+    if(filter&&!filter(key))continue;
+    total.reads+=day.reads;total.writes+=day.writes;total.up+=day.up;total.down+=day.down;
+    total.calls+=day.calls;total.errors+=day.errors;
+  }
+  return total;
+}
+function renderCloudUsage(){
+  const cards=document.getElementById("cloudUsageCards");
+  if(!cards)return;
+  const today=cloudUsageDayKey(),month=today.slice(0,7);
+  const sets=[["今日",cloudUsageSum(k=>k===today)],["今月",cloudUsageSum(k=>k.startsWith(month))],["全期間",cloudUsageSum(null)]];
+  cards.innerHTML=sets.map(([label,s])=>`<div class="cloud-usage-card"><b>${label}</b>
+    <span class="n">${cloudUsageBytes(s.up+s.down)}</span>
+    <span class="s">↑${cloudUsageBytes(s.up)} ↓${cloudUsageBytes(s.down)}<br>読${s.reads.toLocaleString()}・書${s.writes.toLocaleString()}回</span></div>`).join("");
+  /* 無料枠に対する割合（今日の回数と、今月の下り） */
+  const todaySum=cloudUsageSum(k=>k===today),monthSum=cloudUsageSum(k=>k.startsWith(month));
+  const bar=(now,limit)=>`<div class="cloud-usage-bar"><i style="width:${clamp(now/limit*100,0,100).toFixed(1)}%"></i></div>`;
+  const quota=document.getElementById("cloudUsageQuota");
+  if(quota)quota.innerHTML=`<p class="map-hint" style="margin:2px 0 0;">今日の読み込み ${todaySum.reads.toLocaleString()} / 50,000 回${bar(todaySum.reads,50000)}</p>
+    <p class="map-hint" style="margin:6px 0 0;">今日の書き込み ${todaySum.writes.toLocaleString()} / 20,000 回${bar(todaySum.writes,20000)}</p>
+    <p class="map-hint" style="margin:6px 0 0;">今月の受信 ${cloudUsageBytes(monthSum.down)} / 10 GB${bar(monthSum.down,10*1024*1024*1024)}</p>`;
+  const table=document.getElementById("cloudUsageTable");
+  if(table){
+    const keys=Object.keys(cloudUsage.days).sort().reverse().slice(0,62);
+    table.innerHTML=`<thead><tr><th>日</th><th>読</th><th>書</th><th>↑</th><th>↓</th></tr></thead><tbody>`
+      +(keys.length?keys.map(key=>{const d=cloudUsage.days[key];
+        return `<tr><td>${key.slice(5)}</td><td>${d.reads}</td><td>${d.writes}</td><td>${cloudUsageBytes(d.up)}</td><td>${cloudUsageBytes(d.down)}</td></tr>`;
+      }).join(""):`<tr><td colspan="5" style="text-align:left;color:var(--dim-2);">まだ記録がありません。</td></tr>`)
+      +`</tbody>`;
+  }
+}
+(function cloudUsageInit(){
+  const section=document.getElementById("cloudUsageSection");
+  if(!section)return;
+  section.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{
+    setTimeout(async()=>{if(!section.classList.contains("collapsed")){await cloudUsageLoad();renderCloudUsage();}},0);
+  });
+  const status=document.getElementById("cloudUsageStatus");
+  document.getElementById("cloudUsageCsvBtn").addEventListener("click",async()=>{
+    await cloudUsageLoad();
+    const keys=Object.keys(cloudUsage.days).sort();
+    const rows=[["日付","読み込み回数","書き込み回数","送信バイト","受信バイト","通信回数","失敗"]];
+    for(const key of keys){const d=cloudUsage.days[key];rows.push([key,d.reads,d.writes,d.up,d.down,d.calls,d.errors]);}
+    const csv="\ufeff"+rows.map(r=>r.join(",")).join("\r\n");
+    const blob=new Blob([csv],{type:"text/csv"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download=`starchase-cloud-usage-${cloudUsageDayKey()}.csv`;a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    if(status)status.textContent=`${keys.length}日ぶんを書き出しました。`;
+  });
+  document.getElementById("cloudUsageClearBtn").addEventListener("click",async()=>{
+    if(!window.confirm("通信量の記録を全部消します。よろしいですか？"))return;
+    cloudUsage={version:1,days:{}};
+    try{await planKvSet(CLOUD_USAGE_KEY,JSON.stringify(cloudUsage));}catch(error){}
+    renderCloudUsage();if(status)status.textContent="記録を消しました。";
+  });
+  setTimeout(()=>cloudUsageLoad().then(renderCloudUsage),0);
+})();
 const MEMO_KEY="starchase-memos-v1",MEMO_CODE_KEY="starchase-sync-code-v1";
 const MEMO_FIREBASE={apiKey:"AIzaSyAuznBA0nXa6cMewXB0o46BlGJbstgDDm4",projectId:"starchase"};
 let memos=[],memoSyncCode="",memoEditingId=null,memoSyncTimer=0,memoSyncBusy=false,memoSyncQueued=false;
@@ -16321,14 +16488,14 @@ function cloudBundle(notes,objects,groups){
   return JSON.stringify({notes:(notes||[]).map(memoClean),objects:objects||[],groups:groups||[]});
 }
 async function memoCloudGet(code){
-  const r=await fetch(memoDocUrl(code),{cache:"no-store"});
+  const r=await cloudFetch(memoDocUrl(code),{cache:"no-store"},{kind:"read",docs:1});   /* 【v1114】量を数える */
   if(r.status===404){
-    let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}
+    let msg="";try{msg=r.json().error?.message||"";}catch(e){}
     if(/database/i.test(msg)&&/not exist/i.test(msg))throw new Error(msg);
     return {notes:[],objects:[],groups:[],updatedAt:0,missing:true};
   }
-  if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
-  const j=await r.json(),f=j.fields||{};
+  if(!r.ok){let msg="";try{msg=r.json().error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
+  const j=r.json(),f=j.fields||{};
   let parsed=null;try{parsed=JSON.parse((f.data&&f.data.stringValue)||"[]");}catch(e){parsed=null;}
   /* 古い形＝notes の配列そのもの。新しい形＝{notes,objects,groups}。 */
   const notes=Array.isArray(parsed)?parsed:(parsed&&Array.isArray(parsed.notes)?parsed.notes:[]);
@@ -16338,8 +16505,8 @@ async function memoCloudGet(code){
 }
 async function memoCloudPut(code,list,objects,groups){
   const body={fields:{data:{stringValue:cloudBundle(list,objects,groups)},updatedAt:{integerValue:String(Date.now())},app:{stringValue:"starchase"}}};
-  const r=await fetch(memoDocUrl(code),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
+  const r=await cloudFetch(memoDocUrl(code),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},{kind:"write",docs:1});   /* 【v1114】 */
+  if(!r.ok){let msg="";try{msg=r.json().error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
 }
 /* 端末とクラウドを合流させ、違いがあれば両方へ書く。同時に呼ばれたら 1 回待ってから続けて 1 回だけ。 */
 async function memoSync(){
@@ -16369,6 +16536,7 @@ async function memoSync(){
     const when=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
     const counts=`メモ${memos.filter(n=>!n.deleted).length}・オブジェクト${objectLibrary.filter(o=>!o.deleted).length}・筒場${lsGroups.filter(g=>!g.deleted).length}`;
     memoSetSyncStatus(`☁ 同期しました ${when}（${counts}）`);
+    if(typeof renderCloudUsage==="function")renderCloudUsage();   /* 【v1114】 */
     if(typeof lsSay==="function"&&el.launchSiteOverlay&&el.launchSiteOverlay.classList.contains("show"))lsSay(`☁ クラウドと同期しました（筒場 ${lsGroups.filter(g=>!g.deleted).length}件）`);
     if(typeof objectStudioSay==="function"&&el.objectStudioOverlay&&el.objectStudioOverlay.classList.contains("show"))objectStudioSay(`☁ クラウドと同期しました（オブジェクト ${objectLibrary.filter(o=>!o.deleted).length}件）`);
   }catch(e){memoSetSyncStatus(`同期できませんでした：${memoErrorText(e)}。メモは端末内に保存されています。`,true);}
@@ -25015,6 +25183,7 @@ try{
           modelTop:slot.model?Math.max(...slot.model.triangles.flat().map(v=>v[2])):null};},   /* 【v1109】 */
       fireworkGoSet:(index,go)=>{const slot=kmzSlots[index||0];if(!slot||fireworkGoOf(slot.firework)===null)return null;
         slot.firework=fireworkSpec(fireworkGoOf(go)).go;fireworkSlotChanged(slot);return slot.fileName;},
+      cloudUsage:()=>({days:{...cloudUsage.days},今日:cloudUsageSum(k=>k===cloudUsageDayKey()),全期間:cloudUsageSum(null)}),   /* 【v1114】 */
       launchSite:{   /* 【v1111】 */
         spec:(v)=>launchSiteSpecOf(v),
         model:(v)=>{const m=buildLaunchSiteModel(v);if(!m)return null;
