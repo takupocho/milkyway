@@ -4880,7 +4880,7 @@
           </div>
           <div class="field">
             <label class="top">仰角 <span class="val mono" id="altValLabel">—</span></label>
-            <input type="range" id="facingAlt" min="-30" max="89" step="1">
+            <input type="range" id="facingAlt" min="-89" max="89" step="1">
           </div>
           <button id="snapBtn" type="button" class="ghost">🌌 天の川中心に向ける</button>
         </div>
@@ -6759,7 +6759,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1114-cloud-usage";
+const APP_VERSION="1115-look-down";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19141,7 +19141,7 @@ function photoDragMove(pos){
   photoDragMaxDist=Math.max(photoDragMaxDist, Math.hypot(deltaX,deltaY));
   // 水平・垂直を独立に角度へ変換(ピクセル移動量に画角を比例配分)。ドラッグした分だけ画面内容が追従する向き
   const newAz = norm360(photoDragStartView.az - deltaX/el.photoCanvas.width*photoDragFovH);
-  const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -30, 85);
+  const newAlt = clamp(photoDragStartView.alt + deltaY/el.photoCanvas.height*photoDragFovV, -89, 85);   /* 【v1115】真下まで */
   const roundedAz=roundToAimStep(newAz),roundedAlt=roundToAimStep(newAlt);
   /* 【v721】マウスは非常に細かな移動イベントを送るが、画角に応じた丸め後の
      方位・仰角が変わらない場合は、完成画像も同じなので重い地形描画を要求しない。 */
@@ -22385,7 +22385,7 @@ async function applySavedObservingPlan(location){
     applyMobileLensFocalRange();el.focalLength.value=clamp(focal,+el.focalLength.min,+el.focalLength.max);syncFocalRangeFromValue();syncMobileLensModeButton();
   }
   if(Number.isFinite(+location.facingAz)) el.facingAz.value=norm360(+location.facingAz);
-  if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-30,85);
+  if(Number.isFinite(+location.facingAlt)) el.facingAlt.value=clamp(+location.facingAlt,-89,85);   /* 【v1115】 */
   /* 【v1034】撮影計画に無ければ既定（160cm・0m）へ戻す（前の計画の値を引きずらない） */
   el.tripodHeight.value=Number.isFinite(+location.tripodHeight)?clamp(Math.round(+location.tripodHeight),0,200):160;
   el.viewpointOffset.value=Number.isFinite(+location.viewpointOffset)?clamp(+location.viewpointOffset,0,500):0;
@@ -25183,6 +25183,21 @@ try{
           modelTop:slot.model?Math.max(...slot.model.triangles.flat().map(v=>v[2])):null};},   /* 【v1109】 */
       fireworkGoSet:(index,go)=>{const slot=kmzSlots[index||0];if(!slot||fireworkGoOf(slot.firework)===null)return null;
         slot.firework=fireworkSpec(fireworkGoOf(go)).go;fireworkSlotChanged(slot);return slot.fileName;},
+      /* 【v1115】見下ろしたときの方位の窓・刻み・遠方の打ち切りを外から見る。 */
+      /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
+      lookSpan:()=>({仰角:+el.facingAlt.value,
+        層の数:drawPhoto._lookLayerCount||null,元の層:waterLayerDistancesForCurrentMode().length,
+        刻みの倍率:drawPhoto._lookStepScale||null,
+        GLの頂点:(__hd.glMesh&&__hd.glMesh().count)||null}),   /* rayHalfSpanDeg は drawPhoto の中なのでここからは呼べない */
+      lookDown:(pitchDeg,fovH,fovV,eyeM)=>{
+        const pitch=Math.max(0,-(pitchDeg||0)),halfV=clamp((fovV||60)/2,1,89),halfH=clamp((fovH||53)/2,1,89);
+        const deltaMax=Math.min(89.5,pitch+halfV),deltaMin=Math.max(0,pitch-halfV);
+        const widen=1/Math.max(.02,Math.cos(deltaMax*D2R));
+        const azHalf=(pitch+halfV>=90)?180:Math.min(180,(halfH+2)*widen);
+        const far=(deltaMin>1&&(eyeM||0)>1)?Math.min(220,(eyeM)/Math.tan(deltaMin*D2R)/1000*1.6+.3):Infinity;
+        return {伏角の範囲:[+deltaMin.toFixed(1),+deltaMax.toFixed(1)],方位の半幅:+azHalf.toFixed(1),
+          刻みの倍率:deltaMin>2?+clamp(widen,1,6).toFixed(2):1,遠方の打ち切りkm:far===Infinity?"なし":+far.toFixed(2)};
+      },
       cloudUsage:()=>({days:{...cloudUsage.days},今日:cloudUsageSum(k=>k===cloudUsageDayKey()),全期間:cloudUsageSum(null)}),   /* 【v1114】 */
       launchSite:{   /* 【v1111】 */
         spec:(v)=>launchSiteSpecOf(v),
@@ -33970,7 +33985,22 @@ function drawPhoto(ctx,s){
           // 終端側にも25mの余裕を残し、島・対岸の手前を水面へ食い込ませない。
           return point.distanceKm>=nearKm+.005&&point.distanceKm<=Math.max(nearKm+.005,farKm-.025);
         }
-        const azStart=Math.floor(s.facingAz-half-2),azEnd=Math.ceil(s.facingAz+half+2);
+        /* 【v1115】見下ろすときの方位の窓と、遠方の打ち切り。
+           伏角 δ では方位1°が画面上で cos(δ) に縮むので、必要な方位の半幅は 水平半画角 ÷ cos(δ)。
+           真下（δ=90°）が画面に入ると全周が必要になる。 */
+        const lookDownPitch=Math.max(0,-(+s.facingAlt||0));
+        const lookHalfV=clamp((Number.isFinite(s.fovV)?s.fovV:s.fovH||60)/2,1,89);
+        const lookDeltaMax=Math.min(89.5,lookDownPitch+lookHalfV);   /* 画面のいちばん下が見る伏角 */
+        const lookDeltaMin=Math.max(0,lookDownPitch-lookHalfV);      /* いちばん上（0なら水平線が見えている） */
+        const lookAzWiden=1/Math.max(.02,Math.cos(lookDeltaMax*D2R));
+        const terrainAzHalfDeg=(lookDownPitch+lookHalfV>=90)?180:Math.min(180,(half+2)*lookAzWiden);
+        const azStart=Math.floor(s.facingAz-terrainAzHalfDeg),azEnd=Math.ceil(s.facingAz+terrainAzHalfDeg);
+        /* 見える一番遠い地面。水平線が画面に残っているうち（lookDeltaMin≈0）は打ち切らない。
+           1.6 倍と 0.3km の余裕は、起伏のある地形で手前の谷底が抜けないようにするため。 */
+        const lookEyeAboveGround=Math.max(0,eyeHeightAboveGroundM());
+        const terrainFarCullKm=(lookDeltaMin>1&&lookEyeAboveGround>1)
+          ? Math.min(220,lookEyeAboveGround/Math.tan(lookDeltaMin*D2R)/1000*1.6+.3)
+          : Infinity;
         const landNightNear=[10,12,10],landNightFar=[25,30,28];
         const landDayNear=[62,78,48],landDayFar=[104,118,92];
         const waterNightNear=[8,14,31],waterNightFar=[5,8,20];
@@ -34369,7 +34399,12 @@ function drawPhoto(ctx,s){
         }
         // 距離の遠いリングから手前へ描く。手前の陸地面が後から重なり、奥の海を自然に隠す。
         // 稜線の輪郭線と同じ刻みを使う。ここだけ別の値にすると輪郭と塗りがズレる。
-        const normalTerrainAzimuthStep=terrainAzimuthStep;
+        /* 【v1115】水平線が画面から外れているときだけ、方位の刻みを粗くしてよい。
+           画面上では方位が cos(δ) に縮むので、粗くしても見た目の細かさは変わらない。
+           水平線が残っているうちは稜線の輪郭と刻みを揃えないとズレるので、絶対に触らない。 */
+        const normalTerrainAzimuthStep=(lookDeltaMin>2)
+          ? clamp(Math.round(terrainAzimuthStep*clamp(lookAzWiden,1,6)),1,20)
+          : terrainAzimuthStep;
         const normalTerrainAzimuthCells=[];
         const firstAzimuthCycle=Math.floor(azStart/360)-1,lastAzimuthCycle=Math.floor(azEnd/360)+1;
         for(let cycle=firstAzimuthCycle;cycle<=lastAzimuthCycle;cycle++){
@@ -34453,6 +34488,9 @@ function drawPhoto(ctx,s){
             const cellDistanceKm=(p00.distanceKm+p01.distanceKm+p10.distanceKm+p11.distanceKm)/4;
             // 半径50m以内は後段の正方形XY格子へ完全に置き換える。
             if(cellDistanceKm<=(highDetailOn?.15:.05)) continue;
+            /* 【v1115】見下ろしているときは、見える範囲より遠い地面は画面に出ないので描かない。
+               方位の窓を広げたぶんの手間を、ここで取り返す。 */
+            if(cellDistanceKm>terrainFarCullKm) continue;
             const [near0,near1]=normalTerrainCellEdge(azimuthCellIndex,d,v00,v10,rawAz,cellAzimuthSpan);
             const [far0,far1]=normalTerrainCellEdge(azimuthCellIndex,d+1,v01,v11,rawAz,cellAzimuthSpan);
             paintTriangle(near0,near1,far1);
@@ -35446,15 +35484,20 @@ function drawPhoto(ctx,s){
         const tanHalfV=Math.tan(clamp(s.fovV,1,179)*.5*D2R);
         const cosPitch=Math.cos(s.facingAlt*D2R),sinPitch=Math.sin(s.facingAlt*D2R);
         const dA=cosPitch-tanHalfV*sinPitch,dB=cosPitch+tanHalfV*sinPitch;
-        const denominator=Math.min(dA>0?dA:Infinity,dB>0?dB:Infinity);
-        const cornerAzOffset=Number.isFinite(denominator)?Math.atan2(tanHalfH,denominator)*R2D:120;
+        /* 【v1115】dB ≦ 0 は「真下が画面の中に入っている」状態（|傾き|＋縦半画角 ≧ 90°）。
+           このとき見えるのは**全方位**なので 180° にする。
+           以前はこの枝を捨てて 120° で頭打ちにしていたため、下を向くと残り120°ぶんの地面が
+           作られず、画面が楔形に欠けていた（利用者の報告）。
+           dA ≦ 0 は「真上が入っている」状態。そちらは地面がほぼ映らないので今までどおり。 */
+        const nadirInFrame=!(dB>0),zenithInFrame=!(dA>0);
+        const cornerAzOffset=nadirInFrame?180:(zenithInFrame?120:Math.atan2(tanHalfH,Math.min(dA,dB))*R2D);
         /* v809: 余白を画角に比例させる。
            画角47度以上（35mm判で28mmより広い側）では従来と同じ7度なので、広角の見た目は変わらない。
            望遠では、画角5度に対して7度＝必要の3倍以上を走査していた。
            cornerAzOffset（仰角と縦画角から決まる幾何的な必要量）はそのまま残す。 */
         const edgePad=clamp(s.fovH*.15,.6,7);
         const half=useDiagonalFisheye?89.5:s.fovH/2+edgePad;
-        return Math.min(150,Math.max(half,cornerAzOffset+Math.min(3,edgePad)));
+        return Math.min(180,Math.max(half,cornerAzOffset+Math.min(3,edgePad)));   /* 【v1115】180まで */
       }
 
       /* =========================================================
@@ -37342,8 +37385,22 @@ function drawPhoto(ctx,s){
         const rayGrid=realTerrainState.rayGrid;
         if(!rayGrid||!rayGrid.length) return false;
         const bottomAlt=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
-        const layerKm=waterLayerDistancesForCurrentMode();
+        let layerKm=waterLayerDistancesForCurrentMode();
+        /* 【v1115】下を向いているときは遠くの地面が画面に入らない。
+           画面のいちばん上が見る伏角から「見える一番遠い距離」を出し、それより先の層は作らない。
+           方位の窓を広げたぶんの手間を、ここで取り返す。
+           1.6倍と0.5kmの余裕は、起伏のある地形で谷の向こうが抜けないようにするため。 */
+        const lookTopAlt=clamp(s.facingAlt+halfDiagonalDegForBottom()+2,-89,89);
+        if(lookTopAlt<-1){
+          const eyeAbove=Math.max(0,eyeHeightAboveGroundM());
+          if(eyeAbove>1){
+            const visibleKm=Math.min(220,eyeAbove/Math.tan(-lookTopAlt*D2R)/1000*1.6+.5);
+            const kept=layerKm.filter((km,index)=>index<2||km<=visibleKm);
+            if(kept.length>=4)layerKm=kept;
+          }
+        }
         const layerCount=layerKm.length;
+        drawPhoto._lookLayerCount=layerCount;   /* 【v1115】確認用 */
         const replayGeometry=sharedTerrainProjectionPass==="replay"?sharedTerrainProjectionCache?.layeredGeometry:null;
         let columns,altGrid,waterGrid,cloudGrid;
         // 方位の刻み。画面上で約5画素ごとに頂点を打てば輪郭は十分滑らかになる。
@@ -37355,9 +37412,17 @@ function drawPhoto(ctx,s){
         const highDetailTargetPx=[0,10,8,6,4.5,3][highDetailQuality];
         const highDetailMinDeg=[0,.04,.025,.015,.009,.006][highDetailQuality];
         const highDetailMaxDeg=[0,1.25,1,.8,.65,.5][highDetailQuality];
-        const stepDeg=highDetailOn
+        /* 【v1115】真下が画面に入るほど下を向くと、方位は画面上で cos(伏角) に縮む。
+           その分だけ列の刻みを粗くしてよい（画面上の細かさは変わらない）。
+           方位の窓を 180° へ広げたぶんの手間を、ここで戻す。
+           真下が画面に入らない角度（＝これまでも使えていた範囲）では 1 倍のまま＝見た目は変わらない。 */
+        const lookDownDeg=Math.max(0,-(+s.facingAlt||0));
+        const lookStepScale=(lookDownDeg+clamp((Number.isFinite(s.fovV)?s.fovV:s.fovH||60)/2,1,89)>=90)
+          ?clamp(1/Math.max(.3,Math.cos(Math.min(72,lookDownDeg)*D2R)),1,3.2):1;
+        const stepDeg=(highDetailOn
           ?clamp(highDetailTargetPx/(W/Math.max(1,s.fovH)),highDetailMinDeg,highDetailMaxDeg)
-          :clamp(5/(W/Math.max(1,s.fovH)),.03,1.5);
+          :clamp(5/(W/Math.max(1,s.fovH)),.03,1.5))*lookStepScale;
+        drawPhoto._lookStepScale=lookStepScale;   /* 【v1115】確認用（宣言より前では読めないのでここで） */
         if(replayGeometry&&replayGeometry.layerCount===layerCount){
           // 夜側で完成した小さな数値格子だけを再利用する。大量の帯オブジェクトは作り直さない。
           columns=replayGeometry.columns;
