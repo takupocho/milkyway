@@ -6654,7 +6654,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1109-firework-height";
+const APP_VERSION="1110-kmz-reflection";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -23832,6 +23832,12 @@ try{
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       /* 【v1099】撮影計画の KMZ の保存・復元を手元で確かめるための入口。 */
+      /* 【v1110】映り込みの理屈の確認用。視点の高さ H・距離 D・高度 h から、
+         本当の角度と「水平線で折り返した場合」の角度、反射点までの距離を返す。 */
+      reflectionMath:(H,D,h)=>{
+        const up=Math.atan2(h-H,D)*R2D,down=Math.atan2(h+H,D)*R2D;
+        return {花火の仰角:+up.toFixed(4),鏡像の俯角:+down.toFixed(4),
+          折り返しのずれ:+(down-up).toFixed(4),反射点までの距離m:+(D*H/(H+h)).toFixed(1)};},
       fireworkHeight:(index,m)=>{const slot=kmzSlots[index||0];if(!slot)return null;
         if(m!==undefined){slot.fireworkHeight=savedNumber(m);fireworkSlotChanged(slot);}
         return {go:slot.firework,height:fireworkHeightOf(slot),name:slot.fileName,tri:slot.model&&slot.model.triangles.length,
@@ -28026,10 +28032,15 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
       const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
       const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
       const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
-      const rise=cfg.altitude+vertex[2]*cfg.scale-eye-curvature;
+      /* 【v1110】映り込みの段では、水面（標高 0）を挟んだ反対側の高さにする＝本当の鏡像。
+         以前は画面を水平線で折り返していたが、それは観測者が水面の高さにいるときだけ正しい近似で、
+         高い所から見ると 2H/D（H=視点の高さ・D=距離）ぶん上にずれていた。 */
+      const heightAboveSea=cfg.altitude+vertex[2]*cfg.scale;
+      const rise=(reflectionPass?-heightAboveSea:heightAboveSea)-eye-curvature;
       const bearingRad=ray.bearing*D2R,vec=[Math.sin(bearingRad)*distanceM,Math.cos(bearingRad)*distanceM,rise];
       vecs.push(vec);depth+=distanceM;
-      if(local)local.push([east,north,vertex[2]*cfg.scale]);
+      /* 陰影に使う向きも、鏡像では上下が入れ替わる。 */
+      if(local)local.push([east,north,(reflectionPass?-1:1)*vertex[2]*cfg.scale]);
       if(inside){for(const f of kmzClipPlanes){if(f(vec)<0){inside=false;break;}}}
       if(inside){
         const altitude=Math.atan2(rise,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
@@ -31858,7 +31869,10 @@ function drawPhoto(ctx,s){
            KMZは反射より後に描かれるため `terrainCanvas` には入っておらず、
            山の反射（terrainCanvasの反転貼り）にも含まれない。
 
-           山と同じ手で、KMZだけを別Canvasへ描いてから上下反転して貼る。
+           【v1110】以前は「別Canvasへ描いてから画面を水平線で上下反転」していたが、
+           それは観測者が水面の高さにいるときだけ正しい近似だった（高い所で映り込みが浮く）。
+           いまは drawKmzOneBuilding の中で**頂点そのものを水面の反対側に置いて**描くので、
+           ここでは反転せずそのまま重ねるだけでよい。
            このあとの「水域マスクで抜く」がそのまま効くので、
            岸や陸地へ映り込みが漏れることはない。 */
         /* 【v880】模型ごとに映す。**発光は模型ごとの設定**なので、
@@ -31881,7 +31895,8 @@ function drawPhoto(ctx,s){
           /* 【v871】映り込みの濃さ。0.72だと明石海峡大橋のような大きな構造物で
              水面が埋まってしまうため下げた。 */
           ctx.globalAlpha=KMZ_REFLECTION_ALPHA;
-          ctx.translate(0,mirrorHorizonY*2);ctx.scale(1,-1);
+          /* 【v1110】折り返さない。反射用の段が既に「水面の反対側」を描いているので、そのまま重ねる。
+             このあとの水域マスクで抜かれるため、**反射点が陸地なら自動的に映らない**。 */
           ctx.drawImage(kmzReflection,0,0);
           ctx.restore();
         }
