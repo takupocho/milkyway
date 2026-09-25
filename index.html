@@ -6759,7 +6759,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1115-look-down";
+const APP_VERSION="1116-nadir-seam";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -25185,6 +25185,7 @@ try{
         slot.firework=fireworkSpec(fireworkGoOf(go)).go;fireworkSlotChanged(slot);return slot.fileName;},
       /* 【v1115】見下ろしたときの方位の窓・刻み・遠方の打ち切りを外から見る。 */
       /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
+      lookRing:()=>drawPhoto._lookFullCircle||null,   /* 【v1116】 */
       lookSpan:()=>({仰角:+el.facingAlt.value,
         層の数:drawPhoto._lookLayerCount||null,元の層:waterLayerDistancesForCurrentMode().length,
         刻みの倍率:drawPhoto._lookStepScale||null,
@@ -37401,6 +37402,7 @@ function drawPhoto(ctx,s){
         }
         const layerCount=layerKm.length;
         drawPhoto._lookLayerCount=layerCount;   /* 【v1115】確認用 */
+        drawPhoto._lookFullCircle=null;   /* 【v1116】列を作るところで入れ直す */
         const replayGeometry=sharedTerrainProjectionPass==="replay"?sharedTerrainProjectionCache?.layeredGeometry:null;
         let columns,altGrid,waterGrid,cloudGrid;
         // 方位の刻み。画面上で約5画素ごとに頂点を打てば輪郭は十分滑らかになる。
@@ -37432,11 +37434,19 @@ function drawPhoto(ctx,s){
         }else{
           var __c0=performance.now();
           const cornerHalf=rayHalfSpanDeg();
-          const startAz=s.facingAz-cornerHalf-stepDeg;
-          const endAz=s.facingAz+cornerHalf+stepDeg;
+          /* 【v1116】全周（半幅 180°）のときは、**ちょうど 360° で輪を閉じる**。
+             以前は 360°＋刻み 2 つぶんを作っていたため、継ぎ目のあたりの扇形が二度描かれ、
+             画面中央から真下へ段差の筋が出ていた（利用者の報告。画素で測ると x は画面中央ちょうど、
+             中央より下だけ、中央の行には段差なし＝向いている方位の真裏）。
+             刻みを 360 が割り切れる値に丸め、最後の列を最初の列と同じ向きにすれば、
+             重なりも隙間も無く輪が閉じる。 */
+          const fullCircle=cornerHalf>=180;
+          const ringStep=fullCircle?360/Math.max(8,Math.round(360/stepDeg)):stepDeg;
+          const startAz=fullCircle?s.facingAz-180:s.facingAz-cornerHalf-stepDeg;
+          const endAz=fullCircle?startAz+360:s.facingAz+cornerHalf+stepDeg;
           columns=[];
           const suppressRanges=darumaSilhouetteSuppressRanges(s);   /* 【v968】案B */
-          if(highDetailOn&&!useDiagonalFisheye){
+          if(highDetailOn&&!useDiagonalFisheye&&!fullCircle){
             /* 5m DEMを7.5km先で見ると約3画素が元データ1画素に相当する。
                それより細かい1.5画素走査は情報を増やさず、メモリーだけを倍近く使っていた。 */
             const leftPad=-Math.max(8,W*.025),rightPad=W-leftPad;
@@ -37451,11 +37461,13 @@ function drawPhoto(ctx,s){
               screenX+=pixelStep;
             }
           }else{
-            for(let a=startAz;a<=endAz+1e-6;a+=stepDeg){
+            for(let a=startAz;a<=endAz+1e-6;a+=ringStep){
               const bands=darumaSilhouetteFilterBands(a,azimuthVisibleBands(a,bottomAlt,false,true)||[],suppressRanges);
               columns.push({az:a,bands});
             }
           }
+          drawPhoto._lookFullCircle={全周:fullCircle,列の数:columns.length,刻み:+ringStep.toFixed(4),
+            最初:+columns[0].az.toFixed(3),最後:+columns[columns.length-1].az.toFixed(3)};   /* 【v1116】確認用 */
           /* 【v889】水域レイ診断: **画角内でいちばん高い水の帯**を拾う。
 
              柱に方位を合わせるのは面倒で、細い柱だと難しい。
