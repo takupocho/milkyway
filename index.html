@@ -2294,6 +2294,11 @@
   .ls-grid label.full{grid-column:1 / -1;}
   .ls-grid select,.ls-grid input{width:100%;box-sizing:border-box;margin:0;padding:5px 6px;font-size:13px;}
   .ls-grid label[hidden]{display:none;}
+  /* 【v1118】数字欄の −／＋。指で押しやすいよう 34px 角にする。 */
+  .ls-stepper{display:flex;align-items:stretch;gap:4px;}
+  .ls-stepper button{flex:0 0 auto;width:34px;min-width:0;margin:0;padding:0;border-radius:7px;
+    font:700 17px/1 system-ui,sans-serif;display:grid;place-items:center;touch-action:manipulation;}
+  .ls-stepper input{flex:1 1 auto;min-width:0;text-align:center;}
   .ls-row{display:flex;gap:6px;align-items:center;margin:0 0 8px;}
   .ls-row button,.ls-row select{flex:1 1 0;width:auto;min-width:0;margin:0;padding:7px 6px;font-size:11.5px;border-radius:8px;}
   .ls-wind{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;margin:0 0 8px;font-size:11px;color:var(--dim-2);}
@@ -6117,13 +6122,13 @@
                     </select></label>
                     <label id="lsSizeRow"><span>号数</span><select id="lsSize"></select></label>
                     <label><span>色</span><select id="lsColor"></select></label>
-                    <label id="lsAltRow"><span>開花の高さ（m）</span><input id="lsAlt" type="number" min="10" max="1500" step="5" inputmode="decimal"></label>
+                    <label id="lsAltRow"><span>開花の高さ（m）</span><span class="ls-stepper" data-step="5"><button type="button" data-dir="-1" aria-label="5m 下げる">−</button><input id="lsAlt" type="number" min="10" max="1500" step="5" inputmode="decimal"><button type="button" data-dir="1" aria-label="5m 上げる">＋</button></span></label>
                     <label id="lsLengthRow"><span>光跡の長さ <b id="lsLengthVal">100%</b></span><input id="lsLength" type="range" min="100" max="250" step="5"></label>
-                    <label id="lsFanLenRow" hidden><span>扇の長さ（m）</span><input id="lsFanLen" type="number" min="30" max="500" step="10" inputmode="decimal"></label>
-                    <label id="lsFanSpreadRow" hidden><span>扇の広がり（°）</span><input id="lsFanSpread" type="number" min="15" max="170" step="5" inputmode="decimal"></label>
+                    <label id="lsFanLenRow" hidden><span>扇の長さ（m）</span><span class="ls-stepper" data-step="10"><button type="button" data-dir="-1" aria-label="10m 短く">−</button><input id="lsFanLen" type="number" min="30" max="500" step="10" inputmode="decimal"><button type="button" data-dir="1" aria-label="10m 長く">＋</button></span></label>
+                    <label id="lsFanSpreadRow" hidden><span>扇の広がり（°）</span><span class="ls-stepper" data-step="5"><button type="button" data-dir="-1" aria-label="5度 狭く">−</button><input id="lsFanSpread" type="number" min="15" max="170" step="5" inputmode="decimal"><button type="button" data-dir="1" aria-label="5度 広く">＋</button></span></label>
                     <label><span>どの台に乗せる</span><select id="lsStand"></select></label>
-                    <label><span>台の中での左右（m）</span><input id="lsOffset" type="number" step="5" inputmode="decimal"></label>
-                    <label class="full" id="lsStandXRow"><span>選んだ台の位置（筒場から左右 m）</span><input id="lsStandX" type="number" step="10" inputmode="decimal"></label>
+                    <label><span>台の中での左右（m）</span><span class="ls-stepper" data-step="5"><button type="button" data-dir="-1" aria-label="5m 左へ">−</button><input id="lsOffset" type="number" step="5"><button type="button" data-dir="1" aria-label="5m 右へ">＋</button></span></label>
+                    <label class="full" id="lsStandXRow"><span>選んだ台の位置（筒場から左右 m）</span><span class="ls-stepper" data-step="10"><button type="button" data-dir="-1" aria-label="10m 左へ">−</button><input id="lsStandX" type="number" step="10"><button type="button" data-dir="1" aria-label="10m 右へ">＋</button></span></label>
                     <label class="full"><input id="lsTrajectory" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 打上げ線を描く</label>
                   </div>
                   <div class="ls-wind">
@@ -6759,7 +6764,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1116-nadir-seam";
+const APP_VERSION="1118-number-stepper";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9818,6 +9823,27 @@ async function setLaunchSiteStudioOpen(open,slot){
   const edit=(change)=>{const item=lsSelected();if(!item)return;change(item);lsRefresh();};
   el.launchSiteCloseBtn.addEventListener("click",()=>setLaunchSiteStudioOpen(false));
   el.lsCanvas.addEventListener("click",lsCanvasPick);
+  /* 【v1118】数字欄の −／＋。押したら値を動かして change を出す（既存の処理がそのまま走る）。
+     iPhone の数字キーパッドには「−」が無く、左右の位置をマイナスにできなかったため。 */
+  for(const stepper of el.launchSiteOverlay.querySelectorAll(".ls-stepper")){
+    const input=stepper.querySelector("input");
+    if(!input)continue;
+    const amount=Math.abs(parseFloat(stepper.dataset.step))||1;
+    for(const button of stepper.querySelectorAll("button")){
+      button.addEventListener("click",()=>{
+        if(input.disabled)return;
+        const dir=+button.dataset.dir<0?-1:1;
+        const now=savedNumber(input.value);
+        let next=(now===null?0:now)+dir*amount;
+        const low=savedNumber(input.min),high=savedNumber(input.max);
+        if(low!==null)next=Math.max(low,next);
+        if(high!==null)next=Math.min(high,next);
+        /* 0.1 刻みの誤差が残らないように丸める。 */
+        input.value=String(Math.round(next*1000)/1000);
+        input.dispatchEvent(new Event("change",{bubbles:true}));
+      });
+    }
+  }
   /* 【v1112】掴んで動かす。指でも押さえたまま動かせるように touch も見る。 */
   el.lsCanvas.addEventListener("mousedown",lsDragBegin);
   window.addEventListener("mousemove",lsDragMove);
