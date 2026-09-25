@@ -2780,6 +2780,11 @@
     border:1px solid rgba(126,154,208,.4);background:rgba(16,20,42,.6);line-height:1.4;}
   .drive-log-track .t-gain{color:#9fd7a8;}
   /* 地図に出しているときの帯 */
+  /* 【v1113】筒場を回すハンドル */
+  .map-rotate-handle{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
+    background:rgba(243,176,79,.95);border:2px solid #fff;color:#241503;font:900 16px/1 system-ui,sans-serif;
+    box-shadow:0 2px 8px rgba(0,0,0,.45);cursor:grab;touch-action:none;}
+  .map-place-bar #mapPlaceText{white-space:normal;line-height:1.45;}
   .drive-log-map-bar{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:8px;
     width:max-content;max-width:calc(100% - 12px);padding:6px 10px;border-radius:10px;background:rgba(16,20,42,.92);border:1px solid rgba(120,200,255,.6);
     color:#fff;font:700 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(4,8,20,.4);}
@@ -6093,17 +6098,18 @@
                     <label class="full"><input id="lsTrajectory" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 打上げ線を描く</label>
                   </div>
                   <div class="ls-wind">
-                    <span>並びの向き</span><input id="lsAngle" type="range" min="0" max="359" step="1"><span class="val" id="lsAngleVal">北</span>
+                    <span>正面の向き</span><input id="lsAngle" type="range" min="0" max="359" step="1"><span class="val" id="lsAngleVal">北</span>
                     <span>風速</span><input id="lsWindSpeed" type="range" min="0" max="15" step="0.5"><span class="val" id="lsWindSpeedVal">0.0 m/s</span>
                     <span>風向</span><input id="lsWindBearing" type="range" min="0" max="359" step="1"><span class="val" id="lsWindBearingVal">北へ</span>
                   </div>
-                  <p class="map-hint" style="margin:0 0 6px;">「並びの向き」は台を並べる方位です。地図に置くときにも回せます（向きはグループに保存されます）。</p>
+                  <p class="map-hint" style="margin:0 0 6px;">「正面の向き」は筒場が向いている方位で、<b>台はこれと直角に並びます</b>。地図に置くときにハンドルでも回せます。向きと場所はグループに保存されます。</p>
                   <p class="map-hint" style="margin:0 0 6px;">風は「流れていく向き」です。光跡の先ほど流され、玉そのものも上がる間に風下へずれます。</p>
                   <input id="lsName" class="plan-save-name" type="text" maxlength="30" placeholder="筒場の名前（例：姫路みなと 打上1）">
                   <div class="ls-row">
                     <select id="lsGroupSelect"><option value="">-- 保存したグループ --</option></select>
                     <button id="lsGroupLoadBtn" type="button">呼び出す</button>
                     <button id="lsGroupSaveBtn" type="button">登録</button>
+                    <button id="lsGroupDeleteBtn" type="button" class="ghost" style="color:#ff9a9a;">削除</button>
                   </div>
                   <div class="ls-row">
                     <button id="lsApplyBtn" type="button" class="primary">この内容で決定</button>
@@ -6135,7 +6141,7 @@
                     <button id="objectLoadBtn" type="button">読込</button>
                   </div>
                   <div id="objectLibraryPanel" hidden>
-                    <p class="map-hint" style="margin:2px 0 0;">保存したオブジェクト。押すと寸法と名前が入るので、直してから保存し直せます。<b>名前を変えて保存すれば別のオブジェクト</b>として残ります。</p>
+                    <p class="map-hint" style="margin:2px 0 0;">保存したオブジェクト。押すと寸法と名前が入るので、直してから保存し直せます。<b>名前を変えて保存すれば別のオブジェクト</b>として残ります。保存するとメモと同じ同期コードで<b>クラウドにも保存</b>され、ほかの端末でも使えます。</p>
                     <div id="objectLibraryList" class="object-library-list"></div>
                   </div>
                   <p id="objectStudioStatus" class="object-summary" style="margin-top:8px;" aria-live="polite"></p>
@@ -6724,7 +6730,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1112-launch-site-ui";
+const APP_VERSION="1113-firework-core";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7943,6 +7949,7 @@ const el={
   lsAngle:$("lsAngle"), lsAngleVal:$("lsAngleVal"),   /* 【v1112】 */
   lsWindSpeed:$("lsWindSpeed"), lsWindSpeedVal:$("lsWindSpeedVal"), lsWindBearing:$("lsWindBearing"), lsWindBearingVal:$("lsWindBearingVal"),
   lsName:$("lsName"), lsGroupSelect:$("lsGroupSelect"), lsGroupLoadBtn:$("lsGroupLoadBtn"), lsGroupSaveBtn:$("lsGroupSaveBtn"),
+  lsGroupDeleteBtn:$("lsGroupDeleteBtn"),   /* 【v1113】 */
   lsApplyBtn:$("lsApplyBtn"), lsStatus:$("lsStatus"),
   objectStudioOverlay:$("objectStudioOverlay"), objectStudioCloseBtn:$("objectStudioCloseBtn"), objectShapeBoxBtn:$("objectShapeBoxBtn"),   /* 【v1107】 */
   objectShapeCylinderBtn:$("objectShapeCylinderBtn"), objectTopW:$("objectTopW"), objectTopD:$("objectTopD"),
@@ -8479,7 +8486,11 @@ function launchSiteSpecOf(value){
     };
   });
   if(!fireworks.length)return null;
+  /* 【v1113】置いた場所もグループに持つ。ひとつの花火大会として呼び出せるようにするため。 */
+  const lat=savedNumber(value.lat),lon=savedNumber(value.lon);
   return {name:String(value.name||"").trim().slice(0,30),
+    lat:(lat!==null&&lat>=-90&&lat<=90)?lat:null,
+    lon:(lon!==null&&lon>=-180&&lon<=180)?lon:null,
     groupAngle:((parseFloat(value.groupAngle)||0)%360+360)%360,
     windSpeed:fwNormalizeWindSpeed(value.windSpeed),windBearing:fwNormalizeWindBearing(value.windBearing),
     stands,fireworks};
@@ -8490,7 +8501,8 @@ function launchSiteSummary(spec){
   for(const item of spec.fireworks){const key=fwPatternLabel(item.pattern);byPattern.set(key,(byPattern.get(key)||0)+1);}
   const parts=[...byPattern.entries()].map(([k,n])=>`${k}${n}発`);
   return `${spec.fireworks.length}発（${parts.join("・")}）／台${spec.stands.length}／`
-    +(spec.windSpeed>0?`風 ${fwWindCompassName(spec.windBearing)} ${spec.windSpeed}m/s`:"風なし");
+    +(spec.windSpeed>0?`風 ${fwWindCompassName(spec.windBearing)} ${spec.windSpeed}m/s`:"風なし")
+    +(Number.isFinite(spec.lat)?"／場所つき":"");
 }
 /* 1 発ぶんの光跡を色ごとの入れものへ流し込む。local は [東,北,上]（筒場の原点から m）。 */
 function launchSiteAddShell(bucket,spec,item){
@@ -8511,13 +8523,39 @@ function launchSiteAddShell(bucket,spec,item){
   const shellDrift=pattern==="fan"?0:windSpeed*fwRiseSeconds(altitude)*FW_SHELL_WIND_EFF;
   const centreEast=baseEast+shellDrift*wind.east,centreNorth=baseNorth+shellDrift*wind.north;
   const radius=fwRadius(item.size);
-  const push=(colour,width,points,mapper)=>{
-    const key=`${colour}|${width}`;
-    let group=bucket.get(key);
-    if(!group){group={rgb:cssToRgbTriple(colour),width,polylines:[]};bucket.set(key,group);}
+  /* 【v1113】長時間露光で写る明るさは「その場所に星がいた時間」に比例する＝**速いところほど暗い**。
+     星は開花直後がいちばん速く、燃え尽きるころにはほとんど止まっている。
+     つまり**中心は暗く、先端ほど明るい**のが本当の姿。
+     これまでは一本を同じ明るさで引いていたので、220本が集まる中心が真っ白に潰れていた。
+     光跡を 4 つに割って、それぞれの明るさを変えて引く（色と明るさでまとめるので描く回数は増えない）。 */
+  const FW_ALPHA_BANDS=4;
+  const push=(colour,width,points,mapper,ramp)=>{
     const n=points.length;
-    group.polylines.push(points.map((p,i)=>mapper(p,n<2?0:i/(n-1))));
+    if(n<2)return;
+    const rgb=cssToRgbTriple(colour);
+    const add=(slice,alpha)=>{
+      const key=`${colour}|${width}|${alpha}`;
+      let group=bucket.get(key);
+      if(!group){group={rgb,width,alpha,polylines:[]};bucket.set(key,group);}
+      group.polylines.push(slice);
+    };
+    const mapped=points.map((p,i)=>mapper(p,i/(n-1)));
+    if(!ramp){add(mapped,1);return;}
+    for(let band=0;band<FW_ALPHA_BANDS;band++){
+      const from=Math.floor(band*(n-1)/FW_ALPHA_BANDS),to=Math.ceil((band+1)*(n-1)/FW_ALPHA_BANDS);
+      if(to-from<1)continue;
+      const slice=mapped.slice(from,to+1);
+      if(slice.length<2)continue;
+      /* 明るさは 0.05 刻みに丸めて、同じ値どうしをまとめる（描く回数を増やさないため）。 */
+      const alpha=Math.max(.05,Math.round(clamp(ramp((from+to)/2/(n-1)),.05,1)*20)/20);
+      add(slice,alpha);
+    }
   };
+  /* 星の明るさの傾き。減速が速いほど（＝長い光跡ほど）中心と先端の差が大きくなる。 */
+  const burnScale=fwLengthShape(item.starmineLength).burnScale;
+  const starRamp=(t)=>Math.exp((t-1)*Math.min(2.6,burnScale/FW_DRAG_TAU));
+  const evenRamp=(t)=>.34+.66*t;   /* 千輪・扇はほぼ等速なので、ゆるく先を明るく */
+  const riseRamp=(t)=>.28+.72*t;   /* 打上げ線は上ほど遅くなるので、上ほど明るい */
   /* 生成側には風の横流れを渡さず（向きを自分で決めたいので）、ここで東・北へ足す。
      式は移植元と同じ t^1.8。 */
   const place=(p,t)=>[centreEast+p[0]+fwWindOffset(drift*wind.east,t),
@@ -8532,7 +8570,7 @@ function launchSiteAddShell(bucket,spec,item){
     };
     const palette=fwPalette(item.color);
     fwFanTrails(item.fanLength,item.fanSpread,13,10,0,0,sag).forEach(trail=>{
-      push(palette[trail.colorIndex%palette.length],1.5,trail.points,fanPlace);
+      push(palette[trail.colorIndex%palette.length],1.5,trail.points,fanPlace,evenRamp);
     });
     return;
   }
@@ -8540,20 +8578,20 @@ function launchSiteAddShell(bucket,spec,item){
     const palettes=fwStarmine2Palettes(item.color);
     fwStarmine2Trails(radius,220,10,item.starmineLength,0,0,sag).forEach(trail=>{
       const parts=fwSplitStarmine2(trail.points);
-      push(palettes.inner,1.5,parts.inner,place);
-      push(palettes.outer[trail.colorIndex%palettes.outer.length],1.4,parts.outer,place);
+      push(palettes.inner,1.5,parts.inner,place,starRamp);
+      push(palettes.outer[trail.colorIndex%palettes.outer.length],1.4,parts.outer,place,starRamp);
     });
   }else if(pattern==="senshoku-senrin"){
     const palette=fwPalette(item.color);
     const geometry=fwSenrinTrails(radius,12,40,9,0,0,sag);
     geometry.trails.forEach(trail=>{
-      push(palette[trail.colorIndex%palette.length],1.2,trail.points,place);
+      push(palette[trail.colorIndex%palette.length],1.2,trail.points,place,evenRamp);
     });
   }else{
     const palettes=fwStarminePalettes(item.color);
     fwStarmineTrails(radius,110,11,item.starmineLength,0,0,sag).forEach(trail=>{
-      push(palettes.base[trail.baseColorIndex%palettes.base.length],1.5,trail.points,place);
-      push(palettes.tip[trail.tipColorIndex%palettes.tip.length],1.4,trail.points.slice(7),place);
+      push(palettes.base[trail.baseColorIndex%palettes.base.length],1.5,trail.points,place,starRamp);
+      push(palettes.tip[trail.tipColorIndex%palettes.tip.length],1.4,trail.points.slice(7),place,starRamp);
     });
   }
   /* 打上軌道。筒口から開花点まで、上がるほど減速する放物線。風で横へ曲がる。 */
@@ -8568,7 +8606,7 @@ function launchSiteAddShell(bucket,spec,item){
                    tubeNorth+spanNorth*t+fwShellWindOffset(shellDrift*wind.north,t),
                    altitude*(2*t-t*t)]);
     }
-    push("#ffffff",1.1,points,(p)=>p);
+    push("#ffffff",1.1,points,(p)=>p,riseRamp);
   }
 }
 function cssToRgbTriple(css){
@@ -8642,7 +8680,9 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
     }
     if(!any)continue;
     const rgb=slot.silhouette?[10,12,18]:group.rgb;
-    targetCtx.strokeStyle=`rgba(${rgb.join(",")},${alpha.toFixed(3)})`;
+    /* 【v1113】光跡ごとの明るさ（中心は暗く、先端ほど明るい）を掛ける。 */
+    const lineAlpha=clamp(alpha*(Number.isFinite(group.alpha)?group.alpha:1),0,1);
+    targetCtx.strokeStyle=`rgba(${rgb.join(",")},${lineAlpha.toFixed(3)})`;
     targetCtx.lineWidth=Math.max(.6,group.width*widthScale);
     targetCtx.stroke(path);
   }
@@ -8781,25 +8821,27 @@ async function objectLibraryLoad(){
   try{
     const raw=await planKvGet(OBJECT_LIB_KEY);
     const parsed=raw?JSON.parse(raw):null;
-    if(parsed&&Array.isArray(parsed.items)){
-      objectLibrary=parsed.items.map(item=>{
-        const spec=objectSpecOf(item);
-        return spec?{...spec,id:String(item.id||""),updatedAt:+item.updatedAt||0}:null;
-      }).filter(Boolean);
-    }
+    if(parsed&&Array.isArray(parsed.items))objectLibrary=parsed.items.map(cloudCleanObject).filter(Boolean);
   }catch(error){objectLibrary=[];}
   return objectLibrary;
 }
-async function objectLibrarySave(){
+/* 端末へ書くだけ（同期は呼ばない）。同期の合流結果を書き戻すときに使う。 */
+async function objectLibraryWrite(){
   try{
     if(objectLibrary.length>OBJECT_LIB_MAX)objectLibrary=objectLibrary.slice(-OBJECT_LIB_MAX);
     await planKvSet(OBJECT_LIB_KEY,JSON.stringify({version:1,items:objectLibrary}));
     return true;
   }catch(error){return false;}
 }
+async function objectLibrarySave(){
+  const ok=await objectLibraryWrite();
+  /* 【v1113】メモと同じ同期コードでクラウドへ。 */
+  if(ok&&typeof memoScheduleSync==="function")memoScheduleSync();
+  return ok;
+}
 function objectLibraryFindByName(name){
   const key=String(name||"").trim();
-  return objectLibrary.find(item=>item.name===key)||null;
+  return objectLibrary.find(item=>item.name===key&&!item.deleted)||null;
 }
 function fireworkCreateSlot(go,lat,lon,altitude,burstHeightM){
   /* 【v1099】号数が正しくないときは作らない（10号に化けさせない）。 */
@@ -8904,12 +8946,13 @@ async function renderObjectPickGrid(){
   const grid=document.getElementById("objectPickGrid");if(!grid)return;
   await objectLibraryLoad();
   grid.textContent="";
-  if(!objectLibrary.length){
+  const living=objectLibrary.filter(item=>!item.deleted);
+  if(!living.length){
     const p=document.createElement("p");p.className="drive-log-empty";
     p.textContent="保存したオブジェクトがありません。下の「新しく作る」から作ってください。";
     grid.appendChild(p);return;
   }
-  for(const item of objectLibrary.slice().reverse()){
+  for(const item of living.slice().reverse()){
     const button=document.createElement("button");button.type="button";
     button.innerHTML=`${escapeHtml(item.name||"（名前なし）")}<small>${escapeHtml(objectSpecSummary(item))}</small>`;
     button.addEventListener("click",()=>objectBeginPlacement(item));
@@ -8949,36 +8992,80 @@ function launchSiteEndPlacement(note){
   }else bar.hidden=true;
 }
 /* 【v1112】置く場所を決めたら、地図の上に台の並びを描いて向きが見えるようにする。 */
-let launchSitePreviewLayer=null;
+let launchSitePreviewLayer=null,launchSiteRotateHandle=null;
 function launchSiteClearPreview(){
-  if(launchSitePreviewLayer&&osmMapInstance){try{osmMapInstance.removeLayer(launchSitePreviewLayer);}catch(e){}}
-  launchSitePreviewLayer=null;
+  if(osmMapInstance){
+    if(launchSitePreviewLayer){try{osmMapInstance.removeLayer(launchSitePreviewLayer);}catch(e){}}
+    if(launchSiteRotateHandle){try{osmMapInstance.removeLayer(launchSiteRotateHandle);}catch(e){}}
+  }
+  launchSitePreviewLayer=null;launchSiteRotateHandle=null;
 }
-function launchSiteDrawPreview(){
-  if(!launchSitePlacing||!osmMapInstance||!Number.isFinite(launchSitePlacing.lat))return;
-  launchSiteClearPreview();
-  const spec=launchSitePlacing.spec,lat=launchSitePlacing.lat,lon=launchSitePlacing.lon;
-  const axis=spec.groupAngle*D2R;
-  const at=(x)=>{
-    const east=Math.cos(axis)*x,north=-Math.sin(axis)*x;
-    return [lat+north/111320,lon+east/(111320*Math.cos(lat*D2R))];
-  };
+/* 筒場の原点から「並びの＋x 方向」へ x メートル行った地点。
+   正面の向き（groupAngle）に対して台は直角に並ぶ（移植元と同じ約束）。 */
+function launchSiteOffsetLatLng(lat,lon,angleDeg,x){
+  const axis=angleDeg*D2R;
+  return [lat+(-Math.sin(axis)*x)/111320,lon+(Math.cos(axis)*x)/(111320*Math.cos(lat*D2R))];
+}
+function launchSiteHandleDistance(spec){
   const xs=spec.stands.map(s=>s.xOffset);
+  return Math.max(120,Math.max(...xs)+120);
+}
+function launchSiteDrawPreview({keepHandle=false}={}){
+  if(!launchSitePlacing||!osmMapInstance||!Number.isFinite(launchSitePlacing.lat))return;
+  const spec=launchSitePlacing.spec,lat=launchSitePlacing.lat,lon=launchSitePlacing.lon;
+  const at=(x)=>launchSiteOffsetLatLng(lat,lon,spec.groupAngle,x);
+  const xs=spec.stands.map(s=>s.xOffset);
+  if(launchSitePreviewLayer&&osmMapInstance){try{osmMapInstance.removeLayer(launchSitePreviewLayer);}catch(e){}}
   const layers=[];
   layers.push(L.polyline([at(Math.min(...xs)-30),at(Math.max(...xs)+30)],
     {pane:"overlayPane",interactive:false,color:"#ffb347",weight:4,opacity:.95,dashArray:"6 4"}));
+  /* 正面の向きも短い線で見せる（どちらを向いているか分かるように）。 */
+  const front=[lat+Math.cos(spec.groupAngle*D2R)*160/111320,
+               lon+Math.sin(spec.groupAngle*D2R)*160/(111320*Math.cos(lat*D2R))];
+  layers.push(L.polyline([[lat,lon],front],{pane:"overlayPane",interactive:false,color:"#7fd4ff",weight:3,opacity:.85}));
   for(const stand of spec.stands){
     layers.push(L.circleMarker(at(stand.xOffset),
       {pane:"markerPane",radius:6,color:"#fff",weight:2,fillColor:"#ffb347",fillOpacity:1,interactive:false}));
   }
   launchSitePreviewLayer=L.layerGroup(layers).addTo(osmMapInstance);
+  /* 回すハンドル。掴んでいる間は張り直さない（掴みが外れてしまうため）。 */
+  if(keepHandle&&launchSiteRotateHandle)return;
+  if(launchSiteRotateHandle){try{osmMapInstance.removeLayer(launchSiteRotateHandle);}catch(e){}}
+  const icon=L.divIcon({className:"",html:'<div class="map-rotate-handle">↻</div>',iconSize:[30,30],iconAnchor:[15,15]});
+  launchSiteRotateHandle=L.marker(at(launchSiteHandleDistance(spec)),{pane:"markerPane",draggable:true,icon,
+    title:"つまんで回すと筒場の向きが変わります"}).addTo(osmMapInstance);
+  launchSiteRotateHandle.on("drag",(event)=>{
+    if(!launchSitePlacing)return;
+    const p=event.target.getLatLng();
+    const east=(p.lng-lon)*111320*Math.cos(lat*D2R),north=(p.lat-lat)*111320;
+    if(Math.hypot(east,north)<5)return;
+    /* ＋x 方向が (cos a, −sin a) なので、逆に解く。 */
+    launchSitePlacing.spec.groupAngle=fwNormalizeWindBearing(Math.atan2(-north,east)*R2D);
+    launchSiteDrawPreview({keepHandle:true});
+    launchSiteUpdatePlaceText();
+  });
+  launchSiteRotateHandle.on("dragend",()=>{
+    if(!launchSitePlacing)return;
+    /* Leaflet が掴みの後始末をしている最中にハンドルを作り直すと、
+       その中で消えた要素を触って落ちる。1 拍おいてから張り直す。 */
+    setTimeout(()=>{
+      if(!launchSitePlacing)return;
+      launchSiteDrawPreview();   /* ハンドルを軸の上へ戻す */
+      launchSiteUpdatePlaceText();
+    },0);
+  });
+}
+function launchSiteUpdatePlaceText(){
+  if(!launchSitePlacing)return;
+  const spec=launchSitePlacing.spec;
+  document.getElementById("mapPlaceText").innerHTML=
+    `🎇 ${escapeHtml(spec.name||"筒場")} 　正面の向き ${Math.round(spec.groupAngle)}°（${fwWindCompassName(spec.groupAngle)}）<br>ハンドル（↻の丸）をつまむか ↺↻ で回せます。決定でここに置きます`;
 }
 function launchSiteRotate(delta){
   if(!launchSitePlacing)return;
   launchSitePlacing.spec.groupAngle=fwNormalizeWindBearing(launchSitePlacing.spec.groupAngle+delta);
   launchSiteDrawPreview();
-  document.getElementById("mapPlaceText").textContent=
-    `🎇 ${launchSitePlacing.spec.name||"筒場"} 並びの向き ${Math.round(launchSitePlacing.spec.groupAngle)}°（${fwWindCompassName(launchSitePlacing.spec.groupAngle)}）　決定でここに置きます`;
+  launchSiteUpdatePlaceText();
 }
 function launchSiteMapClick(e){
   if(!launchSitePlacing||!osmMapInstance)return false;
@@ -8990,7 +9077,7 @@ function launchSiteMapClick(e){
   document.getElementById("mapPlaceRotateLeftBtn").hidden=false;
   document.getElementById("mapPlaceRotateRightBtn").hidden=false;
   launchSiteDrawPreview();
-  document.getElementById("mapPlaceText").textContent=`🎇 ${launchSitePlacing.spec.name||"筒場"} ここに置きますか？　↺↻ で並びを回せます（${Math.round(launchSitePlacing.spec.groupAngle)}°）`;
+  launchSiteUpdatePlaceText();
   return true;
 }
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
@@ -9049,8 +9136,8 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   drawPhoto._terrainRenderKey=null;update();
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
 });
-document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>launchSiteRotate(-15));   /* 【v1112】 */
-document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(15));
+document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>launchSiteRotate(-5));   /* 【v1113】5°ずつ */
+document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(5));
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
   if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
   else if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
@@ -9386,13 +9473,19 @@ async function lsGroupsLoad(){
   lsGroupsLoaded=true;
   try{
     const raw=await planKvGet(LS_GROUP_KEY),parsed=raw?JSON.parse(raw):null;
-    if(parsed&&Array.isArray(parsed.items))lsGroups=parsed.items.map(item=>launchSiteSpecOf(item)).filter(Boolean);
+    if(parsed&&Array.isArray(parsed.items))lsGroups=parsed.items.map(cloudCleanGroup).filter(Boolean);
   }catch(error){lsGroups=[];}
   return lsGroups;
 }
-async function lsGroupsSave(){
+async function lsGroupsWrite(){
   try{await planKvSet(LS_GROUP_KEY,JSON.stringify({version:1,items:lsGroups.slice(-100)}));return true;}
   catch(error){return false;}
+}
+async function lsGroupsSave(){
+  const ok=await lsGroupsWrite();
+  /* 【v1113】メモと同じ同期コードでクラウドへ。 */
+  if(ok&&typeof memoScheduleSync==="function")memoScheduleSync();
+  return ok;
 }
 function lsRenderGroupSelect(){
   const select=el.lsGroupSelect;if(!select)return;
@@ -9400,7 +9493,8 @@ function lsRenderGroupSelect(){
   select.textContent="";
   const head=document.createElement("option");head.value="";head.textContent="-- 保存したグループ --";select.appendChild(head);
   for(const group of lsGroups){
-    const option=document.createElement("option");option.value=group.name;option.textContent=`${group.name}（${group.fireworks.length}発）`;
+    if(group.deleted)continue;
+    const option=document.createElement("option");option.value=group.name;option.textContent=`${group.name}（${group.fireworks.length}発${Number.isFinite(group.lat)?"・場所つき":""}）`;
     select.appendChild(option);
   }
   if([...select.options].some(o=>o.value===keep))select.value=keep;
@@ -9471,46 +9565,45 @@ function lsDrawEditor(){
     const shellDrift=pattern==="fan"?0:lsDraft.windSpeed*fwRiseSeconds(altitude)*FW_SHELL_WIND_EFF*axisComponent;
     const cx=X+shellDrift,radius=fwRadius(item.size);
     const selected=item.id===lsSelectedId;
-    const strokeAll=(trails,colourOf,width)=>{
-      ctx.lineWidth=width;
-      trails.forEach(trail=>{
-        ctx.strokeStyle=colourOf(trail);
+    /* 【v1113】3D と同じで、中心は暗く先端ほど明るい。図でも中心が潰れないようにする。 */
+    const burnScale=fwLengthShape(item.starmineLength).burnScale;
+    const starRamp=(tt)=>Math.exp((tt-1)*Math.min(2.6,burnScale/FW_DRAG_TAU));
+    const evenRamp=(tt)=>.34+.66*tt;
+    const strokeRamped=(points,colour,width,ramp,ox,oy)=>{
+      const n=points.length;if(n<2)return;
+      for(let i=0;i+1<n;i++){
+        const t0=(i+.5)/(n-1);
+        ctx.globalAlpha=clamp(ramp(t0),.05,1);
+        ctx.strokeStyle=colour;ctx.lineWidth=width;
         ctx.beginPath();
-        trail.points.forEach((p,i)=>{
-          const px=toX(cx+p[0]),py=toY(altitude+p[2]);
-          if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);
-        });
+        ctx.moveTo(toX(ox+points[i][0]),toY(oy+points[i][2]));
+        ctx.lineTo(toX(ox+points[i+1][0]),toY(oy+points[i+1][2]));
         ctx.stroke();
-      });
+      }
+      ctx.globalAlpha=1;
+    };
+    const strokeAll=(trails,colourOf,width)=>{
+      trails.forEach(trail=>strokeRamped(trail.points,colourOf(trail),width,evenRamp,cx,altitude));
     };
     if(pattern==="fan"){
       const palette=fwPalette(item.color);
       const trails=fwFanTrails(item.fanLength,item.fanSpread,13,10,driftX,0,sag);
-      ctx.lineWidth=1.1;
-      trails.forEach(trail=>{
-        ctx.strokeStyle=palette[trail.colorIndex%palette.length];
-        ctx.beginPath();
-        trail.points.forEach((p,i)=>{const px=toX(X+p[0]),py=toY(p[2]);if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);});
-        ctx.stroke();
-      });
+      trails.forEach(trail=>strokeRamped(trail.points,palette[trail.colorIndex%palette.length],1.1,evenRamp,X,0));
     }else if(pattern==="starmine2"){
       const palettes=fwStarmine2Palettes(item.color);
       const trails=fwStarmine2Trails(radius,110,8,item.starmineLength,driftX,0,sag);
-      ctx.lineWidth=1;
       trails.forEach(trail=>{
         const parts=fwSplitStarmine2(trail.points);
-        const draw=(points,colour)=>{ctx.strokeStyle=colour;ctx.beginPath();
-          points.forEach((p,i)=>{const px=toX(cx+p[0]),py=toY(altitude+p[2]);if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);});ctx.stroke();};
-        draw(parts.inner,palettes.inner);
-        draw(parts.outer,palettes.outer[trail.colorIndex%palettes.outer.length]);
+        strokeRamped(parts.inner,palettes.inner,1,starRamp,cx,altitude);
+        strokeRamped(parts.outer,palettes.outer[trail.colorIndex%palettes.outer.length],1,starRamp,cx,altitude);
       });
     }else if(pattern==="senshoku-senrin"){
       const palette=fwPalette(item.color);
       strokeAll(fwSenrinTrails(radius,12,22,8,driftX,0,sag).trails,trail=>palette[trail.colorIndex%palette.length],.9);
     }else{
       const palettes=fwStarminePalettes(item.color);
-      strokeAll(fwStarmineTrails(radius,64,9,item.starmineLength,driftX,0,sag),
-        trail=>palettes.base[trail.baseColorIndex%palettes.base.length],1);
+      fwStarmineTrails(radius,64,9,item.starmineLength,driftX,0,sag).forEach(trail=>
+        strokeRamped(trail.points,palettes.base[trail.baseColorIndex%palettes.base.length],1,starRamp,cx,altitude));
     }
     /* 打上げ線。【v1112】筒（台）から開花点まで横へ伸ばす。横は t に比例、高さは放物線。 */
     if(item.showTrajectory&&pattern!=="fan"){
@@ -9664,10 +9757,11 @@ async function setLaunchSiteStudioOpen(open,slot){
     await lsGroupsLoad();
     lsRenderGroupSelect();
     if(slot&&slot.launchSite){
-      lsDraft=launchSiteSpecOf(slot.launchSite);lsTargetSlotId=slot.id;
+      /* 【v1113】置いてある場所を下書きに写す（そのまま登録すれば場所ごと残る）。 */
+      lsDraft=launchSiteSpecOf({...slot.launchSite,lat:slot.lat,lon:slot.lon});lsTargetSlotId=slot.id;
       el.lsApplyBtn.textContent="この内容で更新";
     }else{
-      lsDraft={name:"",groupAngle:0,windSpeed:0,windBearing:0,stands:[{id:1,xOffset:0}],
+      lsDraft={name:"",lat:null,lon:null,groupAngle:0,windSpeed:0,windBearing:0,stands:[{id:1,xOffset:0}],
         fireworks:[{id:1,standId:1,xOffset:0,size:10,pattern:"starmine2",color:"mixed",starmineLength:130,
           altitude:null,showTrajectory:true,fanLength:180,fanSpread:90}]};
       lsTargetSlotId=null;
@@ -9744,23 +9838,38 @@ async function setLaunchSiteStudioOpen(open,slot){
   el.lsWindBearing.addEventListener("input",()=>{lsDraft.windBearing=fwNormalizeWindBearing(el.lsWindBearing.value);lsRefresh();});
   el.lsName.addEventListener("input",()=>{lsDraft.name=el.lsName.value.slice(0,30);});
   el.lsGroupSaveBtn.addEventListener("click",async()=>{
+    /* 【v1113】いま編集しているスロットが地図に置いてあれば、その場所も一緒に登録する。 */
+    const placed=lsTargetSlotId?kmzSlots.find(s=>s.id===lsTargetSlotId):null;
+    if(placed){lsDraft.lat=placed.lat;lsDraft.lon=placed.lon;}
     const spec=launchSiteSpecOf(lsDraft);
     if(!spec){lsSay("中身を確かめてください。");return;}
     if(!spec.name){lsSay("名前を入れてから登録してください。");el.lsName.focus();return;}
-    const existing=lsGroups.find(g=>g.name===spec.name);
+    const existing=lsGroups.find(g=>g.name===spec.name&&!g.deleted);
     if(existing&&!window.confirm(`「${spec.name}」はすでにあります。上書きしますか？`))return;
-    if(existing)Object.assign(existing,spec);else lsGroups.push(spec);
+    if(existing)Object.assign(existing,spec,{updatedAt:Date.now(),deleted:false});
+    else lsGroups.push({...spec,updatedAt:Date.now(),deleted:false});
     const ok=await lsGroupsSave();
     lsRenderGroupSelect();el.lsGroupSelect.value=spec.name;
     lsSay(ok?`「${spec.name}」を登録しました。`:"登録できませんでした。");
   });
   el.lsGroupLoadBtn.addEventListener("click",()=>{
-    const group=lsGroups.find(g=>g.name===el.lsGroupSelect.value);
+    const group=lsGroups.find(g=>g.name===el.lsGroupSelect.value&&!g.deleted);
     if(!group){lsSay("呼び出すグループを選んでください。");return;}
     lsDraft=launchSiteSpecOf(group);
     lsSelectedStandId=lsDraft.stands[0].id;
     lsSelectedId=lsDraft.fireworks.length?lsDraft.fireworks[0].id:null;
-    lsRefresh();lsSay(`「${group.name}」を呼び出しました。`);
+    lsRefresh();
+    lsSay(`「${group.name}」を呼び出しました。`
+      +(Number.isFinite(group.lat)?`　場所（${group.lat.toFixed(5)}, ${group.lon.toFixed(5)}）も一緒に入っています。`:""));
+  });
+  el.lsGroupDeleteBtn.addEventListener("click",async()=>{   /* 【v1113】 */
+    const name=el.lsGroupSelect.value;
+    const group=lsGroups.find(g=>g.name===name&&!g.deleted);
+    if(!group){lsSay("削除するグループを選んでください。");return;}
+    if(!window.confirm(`グループ「${name}」を削除します。よろしいですか？`))return;
+    const index=lsGroups.indexOf(group);
+    if(index>=0)lsGroups[index]={name,deleted:true,updatedAt:Date.now()};
+    await lsGroupsSave();lsRenderGroupSelect();lsSay(`「${name}」を削除しました。`);
   });
   el.lsApplyBtn.addEventListener("click",()=>{
     const spec=launchSiteSpecOf(lsDraft);
@@ -9777,6 +9886,18 @@ async function setLaunchSiteStudioOpen(open,slot){
     }
     setLaunchSiteStudioOpen(false);
     launchSiteBeginPlacement(spec);
+    /* 【v1113】グループに場所が入っていれば、そこへ仮置きしておく（動かしたければ地図をタップ）。
+       地図はここで開いたばかりで `osmMapInstance` がまだ無いことがあるので、できるまで少し待つ。 */
+    if(Number.isFinite(spec.lat)&&Number.isFinite(spec.lon)){
+      let tries=0;
+      const drop=()=>{
+        if(!launchSitePlacing)return;
+        if(!osmMapInstance){if(tries++<25)setTimeout(drop,200);return;}
+        osmMapInstance.setView([spec.lat,spec.lon],Math.max(osmMapInstance.getZoom(),15),{animate:false});
+        launchSiteMapClick({latlng:{lat:spec.lat,lng:spec.lon}});
+      };
+      setTimeout(drop,300);
+    }
   });
   window.addEventListener("resize",()=>{if(el.launchSiteOverlay.classList.contains("show"))lsDrawEditor();});
 })();
@@ -9884,11 +10005,12 @@ function objectStudioRefresh(){
 function renderObjectLibrary(){
   const list=el.objectLibraryList;if(!list)return;
   list.textContent="";
-  if(!objectLibrary.length){
+  const living=objectLibrary.filter(item=>!item.deleted);
+  if(!living.length){
     const p=document.createElement("p");p.className="drive-log-empty";p.textContent="まだ保存したオブジェクトはありません。";
     list.appendChild(p);return;
   }
-  for(const item of objectLibrary.slice().reverse()){
+  for(const item of living.slice().reverse()){
     const row=document.createElement("div");row.className="object-library-row";
     const main=document.createElement("div");main.className="o-main";
     main.innerHTML=`${escapeHtml(item.name||"（名前なし）")}<span class="o-sub">${escapeHtml(objectSpecSummary(item))}</span>`;
@@ -9904,8 +10026,12 @@ function renderObjectLibrary(){
     const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="削除";
     del.addEventListener("click",async()=>{
       if(!window.confirm(`「${item.name}」を削除します。よろしいですか？`))return;
-      objectLibrary=objectLibrary.filter(x=>x!==item);
-      await objectLibrarySave();renderObjectLibrary();objectStudioSay(`「${item.name}」を削除しました。`);
+      /* 【v1113】消した印を残す（他の端末にも「消した」ことが伝わるように）。 */
+      const index=objectLibrary.indexOf(item);
+      if(index>=0)objectLibrary[index]={name:item.name,id:item.id||"",deleted:true,updatedAt:Date.now()};
+      await objectLibrarySave();renderObjectLibrary();
+      if(typeof renderObjectPickGrid==="function")renderObjectPickGrid();
+      objectStudioSay(`「${item.name}」を削除しました。`);
     });
     row.appendChild(main);row.appendChild(load);row.appendChild(del);
     list.appendChild(row);
@@ -9918,8 +10044,8 @@ async function objectStudioSave(){
   await objectLibraryLoad();
   const existing=objectLibraryFindByName(spec.name);
   if(existing&&!window.confirm(`「${spec.name}」はすでにあります。上書きしますか？\n（別のオブジェクトにしたいときは名前を変えてください）`))return;
-  if(existing)Object.assign(existing,spec,{updatedAt:Date.now()});
-  else objectLibrary.push({...spec,id:`obj${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,updatedAt:Date.now()});
+  if(existing)Object.assign(existing,spec,{updatedAt:Date.now(),deleted:false});
+  else objectLibrary.push({...spec,id:`obj${Date.now().toString(36)}${Math.random().toString(36).slice(2,6)}`,updatedAt:Date.now(),deleted:false});
   const ok=await objectLibrarySave();
   renderObjectLibrary();
   if(ok&&typeof renderObjectPickGrid==="function")renderObjectPickGrid();
@@ -16139,6 +16265,36 @@ function memoMerge(a,b){
   for(const n of b||[]){if(!n||!n.id)continue;const c=memoClean(n),o=m.get(c.id);if(!o||c.updatedAt>o.updatedAt)m.set(c.id,c);}
   return [...m.values()].sort((x,y)=>y.updatedAt-x.updatedAt||(x.id<y.id?-1:1));
 }
+/* 【v1113】名前を鍵にして合流させる（新しい方を採る）。消したものは印（deleted）を残して伝える。 */
+function cloudMergeByName(local,cloud,clean){
+  const map=new Map();
+  for(const item of local||[]){const c=clean(item);if(c&&c.name)map.set(c.name,c);}
+  for(const item of cloud||[]){
+    const c=clean(item);if(!c||!c.name)continue;
+    const old=map.get(c.name);
+    if(!old||(c.updatedAt||0)>(old.updatedAt||0))map.set(c.name,c);
+  }
+  const old=Date.now()-90*86400e3;
+  return [...map.values()].filter(x=>!(x.deleted&&(x.updatedAt||0)<old));
+}
+function cloudCleanObject(item){
+  if(!item||typeof item!=="object")return null;
+  const name=String(item.name||"").trim().slice(0,30);
+  if(!name)return null;
+  const updatedAt=+item.updatedAt||0;
+  if(item.deleted===true)return {name,deleted:true,updatedAt,id:String(item.id||"")};
+  const spec=objectSpecOf(item);
+  return spec?{...spec,id:String(item.id||""),updatedAt,deleted:false}:null;
+}
+function cloudCleanGroup(item){
+  if(!item||typeof item!=="object")return null;
+  const name=String(item.name||"").trim().slice(0,30);
+  if(!name)return null;
+  const updatedAt=+item.updatedAt||0;
+  if(item.deleted===true)return {name,deleted:true,updatedAt};
+  const spec=launchSiteSpecOf(item);
+  return spec?{...spec,updatedAt,deleted:false}:null;
+}
 function memoPrune(list){const old=Date.now()-90*86400e3;return list.filter(n=>!(n.deleted&&n.updatedAt<old));}
 function memoSetSyncStatus(text,isError){const p=memoEl("memoSyncStatus");if(!p)return;p.textContent=text;p.classList.toggle("error",!!isError);}
 function memoErrorText(e){
@@ -16159,20 +16315,29 @@ async function memoLoadLocal(){
 }
 async function memoSaveLocal(){await persistentSet(MEMO_KEY,JSON.stringify(memos));memoRenderList();memoScheduleSync();}
 function memoScheduleSync(){if(memoSyncTimer)clearTimeout(memoSyncTimer);memoSyncTimer=setTimeout(()=>{memoSyncTimer=0;memoSync();},800);}
+/* 【v1113】クラウドに置く中身。ルールが増やせないので、data の文字列の中で 3 種類を持つ。
+   古い保存（notes の配列そのもの）も読めるようにしておく。 */
+function cloudBundle(notes,objects,groups){
+  return JSON.stringify({notes:(notes||[]).map(memoClean),objects:objects||[],groups:groups||[]});
+}
 async function memoCloudGet(code){
   const r=await fetch(memoDocUrl(code),{cache:"no-store"});
   if(r.status===404){
     let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}
     if(/database/i.test(msg)&&/not exist/i.test(msg))throw new Error(msg);
-    return {notes:[],updatedAt:0,missing:true};
+    return {notes:[],objects:[],groups:[],updatedAt:0,missing:true};
   }
   if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
   const j=await r.json(),f=j.fields||{};
-  let notes=[];try{notes=JSON.parse((f.data&&f.data.stringValue)||"[]");}catch(e){notes=[];}
-  return {notes:Array.isArray(notes)?notes:[],updatedAt:+((f.updatedAt&&f.updatedAt.integerValue)||0),missing:false};
+  let parsed=null;try{parsed=JSON.parse((f.data&&f.data.stringValue)||"[]");}catch(e){parsed=null;}
+  /* 古い形＝notes の配列そのもの。新しい形＝{notes,objects,groups}。 */
+  const notes=Array.isArray(parsed)?parsed:(parsed&&Array.isArray(parsed.notes)?parsed.notes:[]);
+  const objects=(parsed&&!Array.isArray(parsed)&&Array.isArray(parsed.objects))?parsed.objects:[];
+  const groups=(parsed&&!Array.isArray(parsed)&&Array.isArray(parsed.groups))?parsed.groups:[];
+  return {notes,objects,groups,updatedAt:+((f.updatedAt&&f.updatedAt.integerValue)||0),missing:false};
 }
-async function memoCloudPut(code,list){
-  const body={fields:{data:{stringValue:memoSerial(list)},updatedAt:{integerValue:String(Date.now())},app:{stringValue:"starchase"}}};
+async function memoCloudPut(code,list,objects,groups){
+  const body={fields:{data:{stringValue:cloudBundle(list,objects,groups)},updatedAt:{integerValue:String(Date.now())},app:{stringValue:"starchase"}}};
   const r=await fetch(memoDocUrl(code),{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok){let msg="";try{msg=(await r.json()).error?.message||"";}catch(e){}throw new Error(`HTTP ${r.status} ${msg}`);}
 }
@@ -16187,9 +16352,25 @@ async function memoSync(){
     const localChanged=memoSerial(merged)!==memoSerial(memos);
     memos=merged;
     if(localChanged){await persistentSet(MEMO_KEY,JSON.stringify(memos));memoRenderList();}
-    if(cloud.missing||memoSerial(merged)!==memoSerial(memoMerge(cloud.notes,[])))await memoCloudPut(code,merged);
+    /* 【v1113】オブジェクトと筒場グループも同じ書類で合流させる。 */
+    await objectLibraryLoad();await lsGroupsLoad();
+    const mergedObjects=cloudMergeByName(objectLibrary,cloud.objects,cloudCleanObject);
+    const mergedGroups=cloudMergeByName(lsGroups,cloud.groups,cloudCleanGroup);
+    const objectsChanged=JSON.stringify(mergedObjects)!==JSON.stringify(objectLibrary);
+    const groupsChanged=JSON.stringify(mergedGroups)!==JSON.stringify(lsGroups);
+    objectLibrary=mergedObjects;lsGroups=mergedGroups;
+    if(objectsChanged){await objectLibraryWrite();if(typeof renderObjectLibrary==="function")renderObjectLibrary();
+      if(typeof renderObjectPickGrid==="function")renderObjectPickGrid();}
+    if(groupsChanged){await lsGroupsWrite();if(typeof lsRenderGroupSelect==="function")lsRenderGroupSelect();}
+    const cloudBefore=cloudBundle(memoMerge(cloud.notes,[]),
+      cloudMergeByName(cloud.objects,[],cloudCleanObject),cloudMergeByName(cloud.groups,[],cloudCleanGroup));
+    if(cloud.missing||cloudBundle(merged,mergedObjects,mergedGroups)!==cloudBefore)
+      await memoCloudPut(code,merged,mergedObjects,mergedGroups);
     const when=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
-    memoSetSyncStatus(`☁ 同期しました ${when}（${memos.filter(n=>!n.deleted).length}件）`);
+    const counts=`メモ${memos.filter(n=>!n.deleted).length}・オブジェクト${objectLibrary.filter(o=>!o.deleted).length}・筒場${lsGroups.filter(g=>!g.deleted).length}`;
+    memoSetSyncStatus(`☁ 同期しました ${when}（${counts}）`);
+    if(typeof lsSay==="function"&&el.launchSiteOverlay&&el.launchSiteOverlay.classList.contains("show"))lsSay(`☁ クラウドと同期しました（筒場 ${lsGroups.filter(g=>!g.deleted).length}件）`);
+    if(typeof objectStudioSay==="function"&&el.objectStudioOverlay&&el.objectStudioOverlay.classList.contains("show"))objectStudioSay(`☁ クラウドと同期しました（オブジェクト ${objectLibrary.filter(o=>!o.deleted).length}件）`);
   }catch(e){memoSetSyncStatus(`同期できませんでした：${memoErrorText(e)}。メモは端末内に保存されています。`,true);}
   finally{memoSyncBusy=false;if(memoSyncQueued){memoSyncQueued=false;memoSync();}}
 }
