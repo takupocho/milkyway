@@ -2310,6 +2310,10 @@
     border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:#fff;font:700 13px/1.25 system-ui,sans-serif;}
   .object-pick-grid button small{display:block;font-weight:500;font-size:10px;color:rgba(255,255,255,.72);margin-top:2px;}
   .object-pick-grid button:hover{border-color:#f3b04f;}
+  /* 【v1109】花火の号数・高さ */
+  .firework-slot-panel{margin:6px 0 8px;padding:8px;border-radius:9px;border:1px solid rgba(243,176,79,.45);background:rgba(243,176,79,.08);}
+  .firework-slot-panel[hidden]{display:none;}
+  .firework-slot-panel select,.firework-slot-panel input{width:100%;box-sizing:border-box;margin:0;}
   .kmz-add-chooser{display:flex;flex-direction:column;gap:6px;margin:6px 0 8px;padding:8px;border-radius:9px;border:1px solid rgba(243,176,79,.45);background:rgba(16,20,42,.5);}
   .kmz-add-chooser[hidden]{display:none;}
   .kmz-add-chooser .toggle-btn{margin-top:0;}
@@ -5011,6 +5015,15 @@
               <button id="kmzMoveClearBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">この移動を消す</button>
               <p id="kmzMoveSummary" class="map-hint mono" style="margin-top:8px;white-space:pre-wrap;"></p>
             </div>
+            <!-- 【v1109】花火のときだけ出す。号数を選び直せて、開花の高さも変えられる。 -->
+            <div id="fireworkSlotPanel" class="firework-slot-panel" hidden>
+              <div class="row2">
+                <div class="field"><label class="top">号数</label><select id="fireworkSlotGo"></select></div>
+                <div class="field"><label class="top">開花の高さ（m）</label><input id="fireworkSlotHeight" type="number" min="20" max="1500" step="5" value="330"></div>
+              </div>
+              <p id="fireworkSlotHint" class="map-hint" style="margin:2px 0 6px;"></p>
+              <button id="fireworkSlotHeightResetBtn" type="button" class="ghost" style="width:100%;">標準の高さに戻す</button>
+            </div>
             <div class="row2">
               <div class="field"><label class="top">基部の標高（m）<span class="map-hint" style="font-weight:400;">選択中の模型だけに効きます。既定 0</span></label><input id="kmzBuildingAltitude" type="number" step="0.1" value="0"></div>
               <div class="field"><label class="top">回転（°）</label><input id="kmzBuildingHeading" type="number" min="-360" max="360" step="1" value="0"></div>
@@ -6641,7 +6654,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1108-gpx-picker-fix";
+const APP_VERSION="1109-firework-height";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8037,6 +8050,8 @@ const el={
   kmzMoveGoFromBtn:$("kmzMoveGoFromBtn"), kmzMoveGoToBtn:$("kmzMoveGoToBtn"),
   kmzMoveClearBtn:$("kmzMoveClearBtn"), kmzMoveSummary:$("kmzMoveSummary"),
   kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
+  fireworkSlotPanel:$("fireworkSlotPanel"), fireworkSlotGo:$("fireworkSlotGo"), fireworkSlotHeight:$("fireworkSlotHeight"),   /* 【v1109】 */
+  fireworkSlotHint:$("fireworkSlotHint"), fireworkSlotHeightResetBtn:$("fireworkSlotHeightResetBtn"),
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
   kmzBuildingUseKmlBtn:$("kmzBuildingUseKmlBtn"), kmzBuildingDeleteBtn:$("kmzBuildingDeleteBtn"),
@@ -8146,10 +8161,27 @@ function fireworkGoOf(value){
   const go=typeof value==="number"?value:(typeof value==="string"?Number(value):NaN);
   return Number.isFinite(go)&&go>0?go:null;
 }
+/* 【v1109】打ち上げの高さ。玉の号数ごとの標準値（FIREWORK_SIZES の h）を基準に、
+   20〜1500m の範囲で好きな高さに変えられる。範囲の外や数でない値は「標準」として扱う。
+   ここだけを通して読むこと（v1099 の教訓：数になりうる曖昧な値を直接見ない）。 */
+const FIREWORK_HEIGHT_MIN=20,FIREWORK_HEIGHT_MAX=1500;
+function fireworkHeightOf(slot){
+  const go=fireworkGoOf(slot&&slot.firework);
+  if(go===null)return null;
+  const standard=fireworkSpec(go).h;
+  const custom=savedNumber(slot&&slot.fireworkHeight);
+  if(custom===null||!(custom>=FIREWORK_HEIGHT_MIN&&custom<=FIREWORK_HEIGHT_MAX))return standard;
+  return custom;
+}
 /* 号数に合わせた模型を組む。球：中心を h、直径を d に相似縮小。筋（軸上の線）：地面から中心まで届くよう高さだけ伸縮。
-   線は 3 角柱（半径は号数に依らず同じ）。色は白 1 色。parseColladaBuilding と同じ形の物体を返す。 */
-function buildFireworkModel(go){
-  const spec=fireworkSpec(go),k=spec.d/FIREWORK_BASE_D,hz=spec.h/FIREWORK_BASE_H;
+   線は 3 角柱（半径は号数に依らず同じ）。色は白 1 色。parseColladaBuilding と同じ形の物体を返す。
+   【v1109】第 2 引数で開花の高さを差し替えられる。**花の広さ（直径）は号数のまま**で、
+   中心の高さと打ち上げの筋だけが伸び縮みする（実際の花火で揚薬だけを増やしたときと同じ見え方）。 */
+function buildFireworkModel(go,burstHeightM){
+  const spec=fireworkSpec(go);
+  const requested=savedNumber(burstHeightM);
+  const h=(requested!==null&&requested>=FIREWORK_HEIGHT_MIN&&requested<=FIREWORK_HEIGHT_MAX)?requested:spec.h;
+  const k=spec.d/FIREWORK_BASE_D,hz=h/FIREWORK_BASE_H;
   const triangles=[],triangleColors=[],triangleAlphas=[],WHITE=[255,255,255];
   const norm=v=>{const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];};
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
@@ -8165,15 +8197,15 @@ function buildFireworkModel(go){
   for(const line of FIREWORK_BASE_LINES){
     const r=line[0];
     const pts=line.slice(1).map(p=>Math.hypot(p[0],p[1])<1&&p[2]<=FIREWORK_BASE_H+1
-      ?[p[0],p[1],p[2]*hz]
-      :[p[0]*k,p[1]*k,spec.h+(p[2]-FIREWORK_BASE_H)*k]);
+      ?[p[0],p[1],p[2]*hz]                                 /* 打ち上げの筋：高さだけ伸び縮み */
+      :[p[0]*k,p[1]*k,h+(p[2]-FIREWORK_BASE_H)*k]);        /* 花：中心を h、広さは号数のまま 【v1109】 */
     for(let i=0;i+1<pts.length;i++)tube(pts[i],pts[i+1],r);
   }
   const all=triangles.flat();
   const xs=all.map(v=>v[0]),ys=all.map(v=>v[1]),zs=all.map(v=>v[2]);
   return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
           width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
-          vertexCount:all.length,firework:spec.go};
+          vertexCount:all.length,firework:spec.go,burstHeight:h};   /* 【v1109】 */
 }
 /* ═════ 【v1107】オブジェクト作成 ═════
    寸法を打ち込むだけで、角柱・角錐（四角）と円柱・円錐（丸）を作れるようにする。
@@ -8307,15 +8339,28 @@ function objectLibraryFindByName(name){
   const key=String(name||"").trim();
   return objectLibrary.find(item=>item.name===key)||null;
 }
-function fireworkCreateSlot(go,lat,lon,altitude){
+function fireworkCreateSlot(go,lat,lon,altitude,burstHeightM){
   /* 【v1099】号数が正しくないときは作らない（10号に化けさせない）。 */
   if(fireworkGoOf(go)===null)return null;
   const spec=fireworkSpec(go);
   const slot={id:++kmzSlotSeq,lat:+lat,lon:+lon,altitude:Number.isFinite(+altitude)?+altitude:0,heading:0,scale:1,opacity:1,
     visible:true,silhouette:false,glow:true,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
-    firework:spec.go,model:buildFireworkModel(spec.go),fileName:`🎆 花火 ${spec.go}号`,kmlLocation:null,sourceDataUrl:""};
+    firework:spec.go,fireworkHeight:null,model:null,fileName:"",kmlLocation:null,sourceDataUrl:""};
+  /* 【v1109】標準と違う高さを指定されたときだけ覚える（標準のままなら号数を変えると自動で付いてくる）。 */
+  const requested=savedNumber(burstHeightM);
+  if(requested!==null&&requested>=FIREWORK_HEIGHT_MIN&&requested<=FIREWORK_HEIGHT_MAX&&Math.abs(requested-spec.h)>.5)slot.fireworkHeight=requested;
+  fireworkApplySlotShape(slot);
   kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
   return slot;
+}
+/* 【v1109】号数か高さを変えたあとに、模型と名前を作り直す。 */
+function fireworkApplySlotShape(slot){
+  const go=fireworkGoOf(slot&&slot.firework);
+  if(go===null)return false;
+  const spec=fireworkSpec(go),height=fireworkHeightOf(slot);
+  slot.model=buildFireworkModel(go,height);
+  slot.fileName=`🎆 花火 ${spec.go}号${Math.abs(height-spec.h)>.5?`（高さ${Math.round(height)}m）`:""}`;
+  return true;
 }
 /* 置く地点の地面の標高（地理院 DEM。z14 → z12 → z10 の順）。海など無いところは null。 */
 async function fireworkGroundElevation(lat,lon){
@@ -8558,6 +8603,7 @@ function kmzLoadEditor(){
   kmzBuildingGlow=slot.glow===true;
   kmzNudgeForwardTotal=slot.nudgeForward||0;
   kmzNudgeRightTotal=slot.nudgeRight||0;
+  syncFireworkSlotPanel();   /* 【v1109】 */
 }
 /* 【v880】別の模型に切り替える。今の編集内容を取りこぼさないよう、
    **先に今のスロットへ書き戻してから**選択を移す。 */
@@ -8937,6 +8983,61 @@ if(el.objectStudioOverlay){
   });
   window.addEventListener("resize",()=>{if(el.objectStudioOverlay.classList.contains("show"))objectStudioDrawPreview();});
 }
+/* ═════ 【v1109】花火の号数と高さ ═════ */
+function syncFireworkSlotPanel(){
+  const panel=el.fireworkSlotPanel;if(!panel)return;
+  const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
+  panel.hidden=(go===null);
+  if(go===null)return;
+  const spec=fireworkSpec(go),height=fireworkHeightOf(slot);
+  if(el.fireworkSlotGo&&+el.fireworkSlotGo.value!==spec.go)el.fireworkSlotGo.value=String(spec.go);
+  if(el.fireworkSlotHeight&&Math.abs((+el.fireworkSlotHeight.value||0)-height)>.5)el.fireworkSlotHeight.value=String(Math.round(height));
+  if(el.fireworkSlotHint){
+    const diff=height-spec.h;
+    el.fireworkSlotHint.textContent=`${spec.go}号の標準は高さ${spec.h}m・開花直径${spec.d}m。`
+      +(Math.abs(diff)>.5?`いまは標準より${diff>0?"+":"−"}${Math.abs(Math.round(diff))}m。花の広さは号数のままです。`
+                        :"高さを変えても花の広さは変わりません（実際の花火で揚薬だけを増やしたときと同じ）。");
+  }
+}
+/* 号数か高さを変えたときの共通の後始末。 */
+function fireworkSlotChanged(slot){
+  if(!fireworkApplySlotShape(slot))return;
+  kmzBuildingModel=slot.model;
+  syncFireworkSlotPanel();
+  renderKmzList();
+  drawPhoto._terrainRenderKey=null;
+  update();
+}
+(function buildFireworkSlotGoOptions(){
+  const select=el.fireworkSlotGo;if(!select)return;
+  for(const spec of FIREWORK_SIZES){
+    const option=document.createElement("option");
+    option.value=String(spec.go);option.textContent=`${spec.go}号（標準 高さ${spec.h}m・直径${spec.d}m）`;
+    select.appendChild(option);
+  }
+  select.addEventListener("change",()=>{
+    const slot=kmzActiveSlot();if(!slot||fireworkGoOf(slot.firework)===null)return;
+    const go=fireworkGoOf(select.value);if(go===null)return;
+    slot.firework=fireworkSpec(go).go;
+    fireworkSlotChanged(slot);
+    setKmzBuildingStatus(`🎆 ${slot.fileName} に変えました。`,"ready");
+  });
+  el.fireworkSlotHeight.addEventListener("change",()=>{
+    const slot=kmzActiveSlot();if(!slot||fireworkGoOf(slot.firework)===null)return;
+    const spec=fireworkSpec(fireworkGoOf(slot.firework));
+    const asked=savedNumber(el.fireworkSlotHeight.value);
+    if(asked===null){syncFireworkSlotPanel();return;}
+    const height=clamp(asked,FIREWORK_HEIGHT_MIN,FIREWORK_HEIGHT_MAX);
+    /* 標準とほぼ同じなら「標準」に戻す（号数を変えたときに付いてくるように）。 */
+    slot.fireworkHeight=Math.abs(height-spec.h)>.5?height:null;
+    fireworkSlotChanged(slot);
+  });
+  el.fireworkSlotHeightResetBtn.addEventListener("click",()=>{
+    const slot=kmzActiveSlot();if(!slot||fireworkGoOf(slot.firework)===null)return;
+    slot.fireworkHeight=null;
+    fireworkSlotChanged(slot);
+  });
+})();
 /* 【v1070】「KMZを追加」は選択（花火／ファイル）を開く。ファイルは今までどおり。 */
 el.kmzBuildingSelectBtn.addEventListener("click",()=>{
   const box=document.getElementById("kmzAddChooser");
@@ -20533,6 +20634,8 @@ function captureKmzBuildingForPlan(){
       /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
          【v1107】オブジェクトも同じ考え方で、オブジェクトのときだけ寸法を書く。 */
       ...(fireworkGoOf(slot.firework)!==null?{firework:fireworkGoOf(slot.firework)}:{}),
+      /* 【v1109】標準と違う高さのときだけ書く（標準ならキーごと書かない）。 */
+      ...(fireworkGoOf(slot.firework)!==null&&savedNumber(slot.fireworkHeight)!==null?{fireworkHeight:savedNumber(slot.fireworkHeight)}:{}),
       ...(objectSpecOf(slot.object)!==null?{object:objectSpecOf(slot.object)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
@@ -20567,7 +20670,7 @@ async function restoreKmzBuildingFromPlan(saved){
       /* 【v1107】オブジェクトも「ファイルが無く、寸法が正しいとき」だけ。順番は ファイル → 花火 → オブジェクト。 */
       const objectSpec=(hasFile||fireworkGo!==null)?null:objectSpecOf(item.object);
       if(fireworkGo!==null){
-        fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0);
+        fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0,item.fireworkHeight);   /* 【v1109】高さも */
       }else if(objectSpec!==null){
         objectCreateSlot(objectSpec,+item.lat,+item.lon,+item.altitude||0);
       }else{
@@ -23729,6 +23832,12 @@ try{
       /* 検証用。実物のKMZが無くても、箋形の建物を置いて見た目を確かめられるようにする。 */
       rise:(m)=>{cameraRiseM=m;drawPhoto._terrainRenderKey=null;update();return cameraRiseM;},
       /* 【v1099】撮影計画の KMZ の保存・復元を手元で確かめるための入口。 */
+      fireworkHeight:(index,m)=>{const slot=kmzSlots[index||0];if(!slot)return null;
+        if(m!==undefined){slot.fireworkHeight=savedNumber(m);fireworkSlotChanged(slot);}
+        return {go:slot.firework,height:fireworkHeightOf(slot),name:slot.fileName,tri:slot.model&&slot.model.triangles.length,
+          modelTop:slot.model?Math.max(...slot.model.triangles.flat().map(v=>v[2])):null};},   /* 【v1109】 */
+      fireworkGoSet:(index,go)=>{const slot=kmzSlots[index||0];if(!slot||fireworkGoOf(slot.firework)===null)return null;
+        slot.firework=fireworkSpec(fireworkGoOf(go)).go;fireworkSlotChanged(slot);return slot.fileName;},
       objectSpec:(value)=>objectSpecOf(value),   /* 【v1107】 */
       objectModel:(value)=>{const m=buildObjectModel(value);return m?{triangles:m.triangles.length,w:m.width,d:m.depth,h:m.height}:null;},
       objectLibrary:()=>objectLibrary.slice(),
