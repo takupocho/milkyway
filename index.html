@@ -2284,6 +2284,22 @@
   .memo-sync-code{font:700 15px/1.4 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#ffe08a;word-break:break-all;-webkit-user-select:all;user-select:all;}
   .memo-sync-status.error{color:#ff9a9a;}
   /* 【v1070】「KMZを追加」の選択（花火／ファイル）と号数の一覧。 */
+  /* 【v1111】筒場の編集 */
+  .ls-toolbar{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 6px;}
+  .ls-toolbar button{flex:1 1 0;width:auto;min-width:64px;margin:0;padding:7px 4px;font-size:11.5px;border-radius:8px;}
+  .ls-canvas{display:block;width:100%;height:280px;margin:0 0 6px;border-radius:10px;
+    border:1px solid rgba(126,154,208,.3);background:rgba(10,14,30,.75);touch-action:manipulation;}
+  .ls-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;margin:0 0 8px;}
+  .ls-grid label{display:flex;flex-direction:column;gap:2px;margin:0;font-size:10.5px;color:var(--dim-2);}
+  .ls-grid label.full{grid-column:1 / -1;}
+  .ls-grid select,.ls-grid input{width:100%;box-sizing:border-box;margin:0;padding:5px 6px;font-size:13px;}
+  .ls-grid label[hidden]{display:none;}
+  .ls-row{display:flex;gap:6px;align-items:center;margin:0 0 8px;}
+  .ls-row button,.ls-row select{flex:1 1 0;width:auto;min-width:0;margin:0;padding:7px 6px;font-size:11.5px;border-radius:8px;}
+  .ls-wind{display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;margin:0 0 8px;font-size:11px;color:var(--dim-2);}
+  .ls-wind input[type=range]{margin:0;}
+  .ls-wind .val{font-size:11px;color:#fff;white-space:nowrap;}
+  .launch-site-modal{max-width:560px;}
   /* 【v1107】オブジェクト作成 */
   .object-shape-row{display:flex;gap:8px;margin:2px 0 10px;}
   .object-shape-row button{flex:1 1 0;width:auto;min-width:0;margin:0;padding:8px 6px;border-radius:9px;
@@ -4946,6 +4962,8 @@
                 <p class="map-hint" style="margin:2px 0 0;">号数を選んでください。高さ・開花直径は日本煙火協会の資料の平均値（2.5・12・15号は前後の号から按分）。</p>
                 <div id="fireworkSizeGrid" class="firework-size-grid"></div>
               </div>
+              <!-- 【v1111】花火グループ（筒場） -->
+              <button id="kmzAddLaunchSiteBtn" type="button" class="toggle-btn"><span>🎇 花火グループ（筒場）を作る</span><span>›</span></button>
               <!-- 【v1107】自分で作ったオブジェクト -->
               <button id="kmzAddObjectBtn" type="button" class="toggle-btn"><span>🧱 オブジェクトを追加</span><span>›</span></button>
               <div id="objectPickPanel" hidden>
@@ -5015,6 +5033,8 @@
               <button id="kmzMoveClearBtn" type="button" class="ghost" style="width:100%;margin-top:6px;">この移動を消す</button>
               <p id="kmzMoveSummary" class="map-hint mono" style="margin-top:8px;white-space:pre-wrap;"></p>
             </div>
+            <!-- 【v1111】筒場のときだけ出す。 -->
+            <button id="kmzEditLaunchSiteBtn" type="button" class="toggle-btn" hidden style="margin-bottom:8px;"><span>🎇 この筒場の花火を編集</span><span>›</span></button>
             <!-- 【v1109】花火のときだけ出す。号数を選び直せて、開花の高さも変えられる。 -->
             <div id="fireworkSlotPanel" class="firework-slot-panel" hidden>
               <div class="row2">
@@ -6041,6 +6061,52 @@
                   <p class="plan-modal-help" style="margin:8px 0 0;">一覧を押すと地図がその場所へ動きます。地図のマーカーを押すと「この場所を選ぶ」「編集」「削除」ができます。種類のボタンで地図に出す・出さないを切り替えます。</p>
                 </section>
               </div>
+              <!-- 【v1111】筒場（花火グループ）の編集。入力欄があるので外側では閉じない。 -->
+              <div id="launchSiteOverlay" class="plan-modal-overlay" aria-hidden="true">
+                <section class="plan-modal launch-site-modal" role="dialog" aria-modal="true" aria-labelledby="launchSiteTitle">
+                  <div class="plan-modal-header"><h3 id="launchSiteTitle" class="plan-modal-title">花火を編集（筒場）</h3><button id="launchSiteCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
+                  <div class="ls-toolbar">
+                    <button id="lsAddFireworkBtn" type="button" class="primary">＋花火</button>
+                    <button id="lsAddStandBtn" type="button">＋台</button>
+                    <button id="lsDeleteBtn" type="button" class="ghost">削除</button>
+                  </div>
+                  <p id="lsHint" class="map-hint" style="margin:0 0 4px;"></p>
+                  <canvas id="lsCanvas" class="ls-canvas"></canvas>
+                  <div class="ls-grid" id="lsForm">
+                    <label class="full"><span>種類</span><select id="lsPattern">
+                      <option value="starmine">スターマイン</option>
+                      <option value="starmine2">スターマイン2（菊）</option>
+                      <option value="senshoku-senrin">彩色千輪</option>
+                      <option value="fan">扇形花火（扇打ち）</option>
+                    </select></label>
+                    <label id="lsSizeRow"><span>号数</span><select id="lsSize"></select></label>
+                    <label><span>色</span><select id="lsColor"></select></label>
+                    <label id="lsAltRow"><span>開花の高さ（m）</span><input id="lsAlt" type="number" min="10" max="1500" step="5" inputmode="decimal"></label>
+                    <label id="lsLengthRow"><span>光跡の長さ <b id="lsLengthVal">100%</b></span><input id="lsLength" type="range" min="100" max="250" step="5"></label>
+                    <label id="lsFanLenRow" hidden><span>扇の長さ（m）</span><input id="lsFanLen" type="number" min="30" max="500" step="10" inputmode="decimal"></label>
+                    <label id="lsFanSpreadRow" hidden><span>扇の広がり（°）</span><input id="lsFanSpread" type="number" min="15" max="170" step="5" inputmode="decimal"></label>
+                    <label><span>どの台に乗せる</span><select id="lsStand"></select></label>
+                    <label><span>台の中での左右（m）</span><input id="lsOffset" type="number" step="5" inputmode="decimal"></label>
+                    <label class="full" id="lsStandXRow"><span>選んだ台の位置（筒場から左右 m）</span><input id="lsStandX" type="number" step="10" inputmode="decimal"></label>
+                    <label class="full"><input id="lsTrajectory" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 打上げ線を描く</label>
+                  </div>
+                  <div class="ls-wind">
+                    <span>風速</span><input id="lsWindSpeed" type="range" min="0" max="15" step="0.5"><span class="val" id="lsWindSpeedVal">0.0 m/s</span>
+                    <span>風向</span><input id="lsWindBearing" type="range" min="0" max="359" step="1"><span class="val" id="lsWindBearingVal">北へ</span>
+                  </div>
+                  <p class="map-hint" style="margin:0 0 6px;">風は「流れていく向き」です。光跡の先ほど流され、玉そのものも上がる間に風下へずれます。</p>
+                  <input id="lsName" class="plan-save-name" type="text" maxlength="30" placeholder="筒場の名前（例：姫路みなと 打上1）">
+                  <div class="ls-row">
+                    <select id="lsGroupSelect"><option value="">-- 保存したグループ --</option></select>
+                    <button id="lsGroupLoadBtn" type="button">呼び出す</button>
+                    <button id="lsGroupSaveBtn" type="button">登録</button>
+                  </div>
+                  <div class="ls-row">
+                    <button id="lsApplyBtn" type="button" class="primary">この内容で決定</button>
+                  </div>
+                  <p id="lsStatus" class="map-hint" style="margin:0;" aria-live="polite"></p>
+                </section>
+              </div>
               <!-- 【v1107】オブジェクト作成。入力欄があるので外側を押しても閉じない（v1106 の決めごと）。 -->
                 <div id="objectStudioOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="objectStudioTitle">
@@ -6654,7 +6720,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1110-kmz-reflection";
+const APP_VERSION="1111-launch-site";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -7864,6 +7930,15 @@ const el={
   citySelect:$("citySelect"), lat:$("lat"), lon:$("lon"), tz:$("tz"), geoBtn:$("geoBtn"), observedPlaceName:$("observedPlaceName"),
   savedLocationName:$("savedLocationName"), savedLocationSelect:$("savedLocationSelect"), registerLocationBtn:$("registerLocationBtn"), loadSavedLocationBtn:$("loadSavedLocationBtn"), deleteSavedLocationBtn:$("deleteSavedLocationBtn"),
   quickSavePlanBtn:$("quickSavePlanBtn"), quickLoadPlanBtn:$("quickLoadPlanBtn"), quickPhotoBtn:$("quickPhotoBtn"),
+  launchSiteOverlay:$("launchSiteOverlay"), launchSiteCloseBtn:$("launchSiteCloseBtn"), lsAddFireworkBtn:$("lsAddFireworkBtn"),   /* 【v1111】 */
+  lsAddStandBtn:$("lsAddStandBtn"), lsDeleteBtn:$("lsDeleteBtn"), lsHint:$("lsHint"), lsCanvas:$("lsCanvas"), lsForm:$("lsForm"),
+  lsPattern:$("lsPattern"), lsSize:$("lsSize"), lsSizeRow:$("lsSizeRow"), lsColor:$("lsColor"), lsAlt:$("lsAlt"), lsAltRow:$("lsAltRow"),
+  lsLength:$("lsLength"), lsLengthVal:$("lsLengthVal"), lsLengthRow:$("lsLengthRow"),
+  lsFanLen:$("lsFanLen"), lsFanLenRow:$("lsFanLenRow"), lsFanSpread:$("lsFanSpread"), lsFanSpreadRow:$("lsFanSpreadRow"),
+  lsStand:$("lsStand"), lsOffset:$("lsOffset"), lsStandX:$("lsStandX"), lsStandXRow:$("lsStandXRow"), lsTrajectory:$("lsTrajectory"),
+  lsWindSpeed:$("lsWindSpeed"), lsWindSpeedVal:$("lsWindSpeedVal"), lsWindBearing:$("lsWindBearing"), lsWindBearingVal:$("lsWindBearingVal"),
+  lsName:$("lsName"), lsGroupSelect:$("lsGroupSelect"), lsGroupLoadBtn:$("lsGroupLoadBtn"), lsGroupSaveBtn:$("lsGroupSaveBtn"),
+  lsApplyBtn:$("lsApplyBtn"), lsStatus:$("lsStatus"),
   objectStudioOverlay:$("objectStudioOverlay"), objectStudioCloseBtn:$("objectStudioCloseBtn"), objectShapeBoxBtn:$("objectShapeBoxBtn"),   /* 【v1107】 */
   objectShapeCylinderBtn:$("objectShapeCylinderBtn"), objectTopW:$("objectTopW"), objectTopD:$("objectTopD"),
   objectBottomW:$("objectBottomW"), objectBottomD:$("objectBottomD"), objectHeight:$("objectHeight"),
@@ -8052,6 +8127,7 @@ const el={
   kmzBuildingCoordinatePaste:$("kmzBuildingCoordinatePaste"), kmzBuildingCoordinateApplyBtn:$("kmzBuildingCoordinateApplyBtn"),
   fireworkSlotPanel:$("fireworkSlotPanel"), fireworkSlotGo:$("fireworkSlotGo"), fireworkSlotHeight:$("fireworkSlotHeight"),   /* 【v1109】 */
   fireworkSlotHint:$("fireworkSlotHint"), fireworkSlotHeightResetBtn:$("fireworkSlotHeightResetBtn"),
+  kmzEditLaunchSiteBtn:$("kmzEditLaunchSiteBtn"),   /* 【v1111】 */
   kmzBuildingLat:$("kmzBuildingLat"), kmzBuildingLon:$("kmzBuildingLon"), kmzBuildingAltitude:$("kmzBuildingAltitude"), kmzBuildingHeading:$("kmzBuildingHeading"),
   kmzBuildingScale:$("kmzBuildingScale"), kmzBuildingScaleVal:$("kmzBuildingScaleVal"), kmzBuildingOpacity:$("kmzBuildingOpacity"), kmzBuildingOpacityVal:$("kmzBuildingOpacityVal"),
   kmzBuildingUseKmlBtn:$("kmzBuildingUseKmlBtn"), kmzBuildingDeleteBtn:$("kmzBuildingDeleteBtn"),
@@ -8207,6 +8283,360 @@ function buildFireworkModel(go,burstHeightM){
           width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
           vertexCount:all.length,firework:spec.go,burstHeight:h};   /* 【v1109】 */
 }
+/* ═════ 【v1111】花火の筒場グループ（花火シミュレーター v3.7.7 からの移植） ═════
+   移植元の考え方をそのまま持ってきている。名前だけ fw… に揃えて既存の花火（FIREWORK_SIZES 系）と分けた。
+   出てくるのは「開花中心からの 3D 折れ線」。StarChase 側はそれを線で描く。 */
+const fwColorOptions={
+  mixed:{label:"多色",css:null},
+  red:{label:"赤",css:"#e8433a"}, green:{label:"緑",css:"#34c759"}, blue:{label:"青",css:"#0a84ff"},
+  yellow:{label:"黄",css:"#f4c430"}, gold:{label:"金色",css:"#f6e3a8"}, silver:{label:"銀色",css:"#e8f0ff"},
+  orange:{label:"オレンジ",css:"#ff8b3d"}
+};
+const fwColorOrder=["mixed","red","green","blue","yellow","gold","silver","orange"];
+const fwSenrinColors=["#ff3b30","#ff9f0a","#30d158","#0a84ff","#bf5af2","#ffffff"];
+const fwStarmineBaseColors=["#fff7df","#c9d7ff","#ffe0a6"];
+const fwStarmine2Inner="#eef3ff";
+function fwColorKey(value){return fwColorOptions[value]?value:"red";}
+function fwColorLabel(value){return fwColorOptions[fwColorKey(value)].label;}
+/* 光跡用のパレット。単色なら1色、'mixed' なら6色。 */
+function fwPalette(value){const o=fwColorOptions[fwColorKey(value)];return o.css?[o.css]:fwSenrinColors;}
+function fwStarminePalettes(value){const o=fwColorOptions[fwColorKey(value)];
+  return o.css?{base:[o.css],tip:[o.css]}:{base:fwStarmineBaseColors,tip:fwSenrinColors};}
+function fwStarmine2Palettes(value){const o=fwColorOptions[fwColorKey(value)];
+  return {inner:fwStarmine2Inner,outer:o.css?[o.css]:fwSenrinColors};}
+function fwPattern(value){return value==="senshoku-senrin"?"senshoku-senrin":value==="fan"?"fan":value==="starmine2"?"starmine2":"starmine";}
+function fwPatternLabel(value){const p=fwPattern(value);
+  return p==="senshoku-senrin"?"彩色千輪":p==="fan"?"扇形花火":p==="starmine2"?"スターマイン2（菊）":"スターマイン";}
+const FW_SIZES=[2.5,3,4,5,6,7,8,10,12,15,20];
+/* 号数ごとの既定の開花高度と開花半径（移植元の式そのまま）。 */
+function fwDefaultAltitude(size){const v=parseFloat(size);if(!Number.isFinite(v))return fwDefaultAltitude(4);
+  return v===2.5?80:v*30+50;}
+function fwRadius(size){const v=parseFloat(size);if(!Number.isFinite(v))return fwRadius(4);
+  return v===2.5?25:v*15;}
+/* ── 光跡の長さ（100%＝従来の見た目、上げるほど下へ長く垂れ下がる） ──
+   長さ＝星の燃焼時間。横への広がりは号数（開花半径）でほぼ決まる。
+   実際の菊は、星が空気抵抗ですぐ減速して開花半径付近で横向きには止まり、
+   そのあとは燃え尽きるまで落ちるだけ。長い星ほど「落ちる時間」が伸びて冠菊になる。 */
+function fwNormalizeLength(value){const n=parseFloat(value);
+  return Math.max(100,Math.min(250,Math.round((Number.isFinite(n)?n:100)/5)*5));}
+const FW_DRAG_TAU=.45;      /* 星が減速しきるまでの時間（100%の燃焼時間を1とした値） */
+const FW_FALL_AT_MAX=.78;   /* 250%のとき、開花半径の78%ぶん余計に落ちる */
+function fwRadialProfile(t,burnScale){const norm=1-Math.exp(-1/FW_DRAG_TAU);
+  return (1-Math.exp(-t*burnScale/FW_DRAG_TAU))/norm;}
+function fwLengthShape(lengthPercent){const factor=fwNormalizeLength(lengthPercent)/100;
+  return {burnScale:factor,spreadScale:fwRadialProfile(1,factor),
+    extraDroop:FW_FALL_AT_MAX*(factor*factor-1)/(2.5*2.5-1)};}
+/* ── 風 ──
+   長時間露光は星が燃え尽きるまでの軌跡を写すので、「風速 × その星の燃焼時間」だけ
+   光跡の先端が流される。中心付近はまだ流されていないので、時間の約2乗で効かせると
+   写真と同じ「先だけ揃って掃かれる羽根」の形になる。 */
+function fwWindOffset(drift,t){return (drift||0)*Math.pow(t,1.8);}
+function fwWindSagOffset(sag,t){return (sag||0)*t*t;}
+const FW_WIND_SAG_RATIO=.3;
+const FW_BURN_SECONDS={starmine:2.5,starmine2:3.5,"senshoku-senrin":4,fan:2};
+function fwBurnSeconds(item){const p=fwPattern(item&&item.pattern),base=FW_BURN_SECONDS[p]||2.5;
+  return (p==="starmine"||p==="starmine2")?base*(fwNormalizeLength(item&&item.starmineLength)/100):base;}
+function fwNormalizeWindSpeed(value){const n=parseFloat(value);
+  return Math.max(0,Math.min(15,Math.round((Number.isFinite(n)?n:0)*10)/10));}
+function fwNormalizeWindBearing(value){const n=parseFloat(value);
+  return ((Math.round(Number.isFinite(n)?n:0)%360)+360)%360;}
+const FW_COMPASS_NAMES=["北","北北東","北東","東北東","東","東南東","南東","南南東","南","南南西","南西","西南西","西","西北西","北西","北北西"];
+function fwWindCompassName(bearing){return FW_COMPASS_NAMES[Math.round(fwNormalizeWindBearing(bearing)/22.5)%16];}
+/* 風が流れていく向きの単位ベクトル（東成分・北成分） */
+function fwWindUnit(bearing){const r=fwNormalizeWindBearing(bearing)*D2R;return {east:Math.sin(r),north:Math.cos(r)};}
+/* 【v3.7.7】打ち上がっている最中の風。
+   玉は真上に打ち出されるが、開花するまでの数秒間ずっと風を受けている。
+   高い（＝大きい）玉ほど上がっている時間が長いので、ずれもカーブも大きくなる。 */
+const FW_RISE_GRAVITY=26.5;     /* 空気抵抗込みの見かけの重力加速度。10号=5.0秒、20号=7.0秒になる値 */
+const FW_SHELL_WIND_EFF=.45;    /* 玉は星ほど素直には流されない */
+function fwRiseSeconds(altitudeMeters){return Math.sqrt(Math.max(0,(parseFloat(altitudeMeters)||0)*2/FW_RISE_GRAVITY));}
+/* 上がっている途中(t)までに玉が風下へずれている割合。積分すると 1.5t^2 - 0.5t^3 になる。 */
+function fwShellWindOffset(drift,t){return (drift||0)*(1.5*t*t-0.5*t*t*t);}
+function fwNormalizeFanLength(value){return Math.max(30,Math.min(500,parseFloat(value)||180));}
+function fwNormalizeFanSpread(value){return Math.max(15,Math.min(170,parseFloat(value)||90));}
+function fwStoredAltitude(item){if(fwPattern(item&&item.pattern)==="fan")return 0;
+  const a=parseFloat(item&&item.altitude);
+  return Number.isFinite(a)?a:fwDefaultAltitude(parseFloat(item&&item.size)||4);}
+/* ── 光跡の形（ここが移植の本体） ── */
+function fwStarmineTrails(radius,trailCount,pointCount,lengthPercent,driftX,driftY,sagDrop){
+  const trails=[],goldenAngle=Math.PI*(3-Math.sqrt(5)),shape=fwLengthShape(lengthPercent);
+  for(let index=0;index<trailCount;index++){
+    const vertical=1-2*(index+.5)/trailCount;
+    const horizontal=Math.sqrt(Math.max(.02,1-vertical*vertical));
+    const azimuth=index*goldenAngle;
+    const length=radius*(.80+.2*((index*17)%11)/10);
+    const curl=(((index*7)%5)-2)*radius*.008;
+    const points=[];
+    for(let p=0;p<pointCount;p++){
+      const t=p/(pointCount-1),reach=fwRadialProfile(t,shape.burnScale);
+      const gravity=radius*((.10+.035*(index%4)/3)+shape.extraDroop*(.74+.52*((index*11)%9)/8))*t*t;
+      points.push([Math.cos(azimuth)*horizontal*length*reach-Math.sin(azimuth)*curl*t*t+fwWindOffset(driftX,t),
+                   Math.sin(azimuth)*horizontal*length*reach+Math.cos(azimuth)*curl*t*t+fwWindOffset(driftY,t),
+                   vertical*length*reach-gravity-fwWindSagOffset(sagDrop,t)]);
+    }
+    const tipCycle=[0,1,0,3,2,1,0,5];
+    trails.push({baseColorIndex:index%3,tipColorIndex:tipCycle[index%tipCycle.length],points});
+  }
+  return trails;
+}
+/* 菊型：全方向へ均等（黄金角）に、ほぼ同じ長さで真っすぐ伸ばす。輪郭が真円になる。
+   色は内側45%が銀白、外側が選んだ色。 */
+function fwStarmine2Trails(radius,trailCount,pointCount,lengthPercent,driftX,driftY,sagDrop){
+  const shape=fwLengthShape(lengthPercent),goldenAngle=Math.PI*(3-Math.sqrt(5)),trails=[];
+  for(let index=0;index<trailCount;index++){
+    const vertical=1-2*(index+.5)/trailCount;
+    const horizontal=Math.sqrt(Math.max(.02,1-vertical*vertical));
+    const azimuth=index*goldenAngle;
+    const length=radius*(.95+.05*((index*13)%7)/6);
+    const points=[];
+    for(let p=0;p<pointCount;p++){
+      const t=p/(pointCount-1),reach=fwRadialProfile(t,shape.burnScale);
+      const gravity=radius*(.05+shape.extraDroop*(.74+.52*((index*11)%9)/8))*t*t;
+      points.push([Math.cos(azimuth)*horizontal*length*reach+fwWindOffset(driftX,t),
+                   Math.sin(azimuth)*horizontal*length*reach+fwWindOffset(driftY,t),
+                   vertical*length*reach-gravity-fwWindSagOffset(sagDrop,t)]);
+    }
+    trails.push({colorIndex:index%fwSenrinColors.length,points});
+  }
+  return trails;
+}
+/* 光跡を内側／外側に分ける位置（45%） */
+function fwSplitStarmine2(points){const split=Math.max(1,Math.round((points.length-1)*.45));
+  return {inner:points.slice(0,split+1),outer:points.slice(split)};}
+/* 千輪の子玉を「同じ距離」で球状に並べる（距離をそろえると正面から丸い輪に見える）。 */
+function fwSenrinChildren(radius,count){
+  const goldenAngle=Math.PI*(3-Math.sqrt(5)),spread=radius*.66;
+  return Array.from({length:count},(_,index)=>{
+    const y=count<=1?0:1-(index/(count-1))*2,ring=Math.sqrt(Math.max(0,1-y*y)),theta=index*goldenAngle;
+    return {x:Math.cos(theta)*ring*spread,y:Math.sin(theta)*ring*spread,z:y*spread,
+      radius:radius*.145,colorIndex:index%fwSenrinColors.length};
+  });
+}
+/* 子玉1つを全方向へ均等に開かせる。色は子玉ごとに1色（＝彩色千輪本来の見え方）。 */
+function fwSenrinTrails(radius,clusterCount,trailsPerCluster,pointCount,driftX,driftY,sagDrop){
+  const clusters=fwSenrinChildren(radius,clusterCount),goldenAngle=Math.PI*(3-Math.sqrt(5)),trails=[];
+  clusters.forEach((cluster,clusterIndex)=>{
+    for(let i=0;i<trailsPerCluster;i++){
+      const vertical=1-2*(i+.5)/trailsPerCluster;
+      const horizontal=Math.sqrt(Math.max(.02,1-vertical*vertical));
+      const azimuth=i*goldenAngle+clusterIndex*.47;
+      const length=radius*(.21+.05*((clusterIndex*11+i*5)%7)/6);
+      const points=[];
+      for(let p=0;p<pointCount;p++){
+        const t=p/(pointCount-1),gravity=radius*.07*t*t;
+        points.push([cluster.x+Math.cos(azimuth)*horizontal*length*t+fwWindOffset(driftX,t),
+                     cluster.y+Math.sin(azimuth)*horizontal*length*t+fwWindOffset(driftY,t),
+                     cluster.z+vertical*length*t-gravity-fwWindSagOffset(sagDrop,t)]);
+      }
+      trails.push({colorIndex:cluster.colorIndex,points});
+    }
+  });
+  return {clusters,trails};
+}
+/* 扇形花火（扇打ち）：地上から扇状に打ち上げる光跡。号数・色ではなく長さ(m)と広がり(度)で決まる。 */
+function fwFanTrails(length,spread,count,pointCount,driftX,driftY,sagDrop){
+  const safeLength=Math.max(.1,parseFloat(length)||180),safeSpread=fwNormalizeFanSpread(spread)*Math.PI/180;
+  return Array.from({length:count},(_,index)=>{
+    const ratio=count===1?.5:index/(count-1),angle=-safeSpread/2+safeSpread*ratio;
+    const varied=safeLength*(.9+.1*((index*7)%5)/4),points=[];
+    for(let p=0;p<pointCount;p++){
+      const t=p/(pointCount-1),gravity=safeLength*.08*t*t;
+      points.push([Math.sin(angle)*varied*t+fwWindOffset(driftX,t),fwWindOffset(driftY,t),
+                   Math.cos(angle)*varied*t-gravity-fwWindSagOffset(sagDrop,t)]);
+    }
+    return {colorIndex:index%fwSenrinColors.length,points};
+  });
+}
+/* ── 筒場ぜんたいの形を組み立てる ──
+   出てくるのは「筒場の原点（台1の足元）から見た東・北・上（m）の折れ線」。
+   色ごとにまとめておく（描くときに色ごと 1 本の Path2D にして stroke 1 回で済ませるため。
+   1 発あたり数百本の光跡があるので、1 本ずつ stroke すると到底間に合わない）。 */
+function launchSiteSpecOf(value){
+  if(!value||typeof value!=="object")return null;
+  const raw=Array.isArray(value.stands)?value.stands:[];
+  const stands=raw.map((stand,index)=>({id:stand&&stand.id!=null?stand.id:index+1,
+    xOffset:index===0?0:(parseFloat(stand&&stand.xOffset)||0)}));
+  if(!stands.length)stands.push({id:1,xOffset:0});
+  const fireworks=(Array.isArray(value.fireworks)?value.fireworks:[]).map((item,index)=>{
+    const pattern=fwPattern(item&&item.pattern);
+    const size=FW_SIZES.includes(+(item&&item.size))?+item.size:4;
+    const altitude=savedNumber(item&&item.altitude);
+    return {
+      id:item&&item.id!=null?item.id:index+1,
+      standId:item&&item.standId!=null?item.standId:stands[0].id,
+      xOffset:Number.isFinite(parseFloat(item&&item.xOffset))?parseFloat(item.xOffset):0,
+      size,pattern,color:fwColorKey(item&&item.color),
+      starmineLength:fwNormalizeLength(item&&item.starmineLength),
+      altitude:(altitude!==null&&altitude>=10&&altitude<=1500)?altitude:null,
+      showTrajectory:(item&&item.showTrajectory)!==false,
+      fanLength:fwNormalizeFanLength(item&&item.fanLength),
+      fanSpread:fwNormalizeFanSpread(item&&item.fanSpread)
+    };
+  });
+  if(!fireworks.length)return null;
+  return {name:String(value.name||"").trim().slice(0,30),
+    groupAngle:((parseFloat(value.groupAngle)||0)%360+360)%360,
+    windSpeed:fwNormalizeWindSpeed(value.windSpeed),windBearing:fwNormalizeWindBearing(value.windBearing),
+    stands,fireworks};
+}
+function launchSiteSummary(spec){
+  if(!spec)return "";
+  const byPattern=new Map();
+  for(const item of spec.fireworks){const key=fwPatternLabel(item.pattern);byPattern.set(key,(byPattern.get(key)||0)+1);}
+  const parts=[...byPattern.entries()].map(([k,n])=>`${k}${n}発`);
+  return `${spec.fireworks.length}発（${parts.join("・")}）／台${spec.stands.length}／`
+    +(spec.windSpeed>0?`風 ${fwWindCompassName(spec.windBearing)} ${spec.windSpeed}m/s`:"風なし");
+}
+/* 1 発ぶんの光跡を色ごとの入れものへ流し込む。local は [東,北,上]（筒場の原点から m）。 */
+function launchSiteAddShell(bucket,spec,item){
+  const pattern=item.pattern;
+  const stand=spec.stands.find(s=>s.id===item.standId)||spec.stands[0];
+  const axis=spec.groupAngle*D2R;
+  const X=(stand?stand.xOffset:0)+item.xOffset;
+  /* 台の並びは絶対方位。＋x が groupAngle の向き。 */
+  const baseEast=Math.cos(axis)*X,baseNorth=-Math.sin(axis)*X;
+  const altitude=fwStoredAltitude(item);
+  const wind=fwWindUnit(spec.windBearing),windSpeed=spec.windSpeed;
+  /* 星が燃え尽きるまでに流される距離と、それに伴う垂れ下がり。 */
+  const drift=windSpeed*fwBurnSeconds(item),sag=drift*FW_WIND_SAG_RATIO;
+  /* 玉そのものが上がっている間に風下へずれる距離（扇形は上がらないのでずれない）。 */
+  const shellDrift=pattern==="fan"?0:windSpeed*fwRiseSeconds(altitude)*FW_SHELL_WIND_EFF;
+  const centreEast=baseEast+shellDrift*wind.east,centreNorth=baseNorth+shellDrift*wind.north;
+  const radius=fwRadius(item.size);
+  const push=(colour,width,points,mapper)=>{
+    const key=`${colour}|${width}`;
+    let group=bucket.get(key);
+    if(!group){group={rgb:cssToRgbTriple(colour),width,polylines:[]};bucket.set(key,group);}
+    const n=points.length;
+    group.polylines.push(points.map((p,i)=>mapper(p,n<2?0:i/(n-1))));
+  };
+  /* 生成側には風の横流れを渡さず（向きを自分で決めたいので）、ここで東・北へ足す。
+     式は移植元と同じ t^1.8。 */
+  const place=(p,t)=>[centreEast+p[0]+fwWindOffset(drift*wind.east,t),
+                      centreNorth+p[1]+fwWindOffset(drift*wind.north,t),
+                      altitude+p[2]];
+  if(pattern==="fan"){
+    /* 扇は向きがあるので、台の並びに沿って開かせる。 */
+    const fanPlace=(p,t)=>{
+      const east=Math.cos(axis)*p[0],north=-Math.sin(axis)*p[0];
+      return [baseEast+east+fwWindOffset(drift*wind.east,t),
+              baseNorth+north+fwWindOffset(drift*wind.north,t),p[2]];
+    };
+    const palette=fwPalette(item.color);
+    fwFanTrails(item.fanLength,item.fanSpread,13,10,0,0,sag).forEach(trail=>{
+      push(palette[trail.colorIndex%palette.length],1.5,trail.points,fanPlace);
+    });
+    return;
+  }
+  if(pattern==="starmine2"){
+    const palettes=fwStarmine2Palettes(item.color);
+    fwStarmine2Trails(radius,220,10,item.starmineLength,0,0,sag).forEach(trail=>{
+      const parts=fwSplitStarmine2(trail.points);
+      push(palettes.inner,1.5,parts.inner,place);
+      push(palettes.outer[trail.colorIndex%palettes.outer.length],1.4,parts.outer,place);
+    });
+  }else if(pattern==="senshoku-senrin"){
+    const palette=fwPalette(item.color);
+    const geometry=fwSenrinTrails(radius,12,40,9,0,0,sag);
+    geometry.trails.forEach(trail=>{
+      push(palette[trail.colorIndex%palette.length],1.2,trail.points,place);
+    });
+  }else{
+    const palettes=fwStarminePalettes(item.color);
+    fwStarmineTrails(radius,110,11,item.starmineLength,0,0,sag).forEach(trail=>{
+      push(palettes.base[trail.baseColorIndex%palettes.base.length],1.5,trail.points,place);
+      push(palettes.tip[trail.tipColorIndex%palettes.tip.length],1.4,trail.points.slice(7),place);
+    });
+  }
+  /* 打上軌道。筒口から開花点まで、上がるほど減速する放物線。風で横へ曲がる。 */
+  if(item.showTrajectory){
+    const steps=24,points=[];
+    for(let step=0;step<=steps;step++){
+      const t=step/steps;
+      points.push([baseEast+fwShellWindOffset(shellDrift*wind.east,t),
+                   baseNorth+fwShellWindOffset(shellDrift*wind.north,t),
+                   altitude*(2*t-t*t)]);
+    }
+    push("#ffffff",1.1,points,(p)=>p);
+  }
+}
+function cssToRgbTriple(css){
+  const hex=String(css||"").replace("#","");
+  if(hex.length===6)return [parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16)];
+  return [255,255,255];
+}
+function buildLaunchSiteModel(rawSpec){
+  const spec=launchSiteSpecOf(rawSpec);
+  if(!spec)return null;
+  const bucket=new Map();
+  for(const item of spec.fireworks)launchSiteAddShell(bucket,spec,item);
+  const groups=[...bucket.values()];
+  if(!groups.length)return null;
+  let minE=Infinity,maxE=-Infinity,minN=Infinity,maxN=-Infinity,minU=Infinity,maxU=-Infinity,count=0;
+  for(const group of groups)for(const line of group.polylines)for(const p of line){
+    if(p[0]<minE)minE=p[0];if(p[0]>maxE)maxE=p[0];
+    if(p[1]<minN)minN=p[1];if(p[1]>maxN)maxN=p[1];
+    if(p[2]<minU)minU=p[2];if(p[2]>maxU)maxU=p[2];count++;
+  }
+  return {lines:groups,launchSite:spec,
+    width:maxE-minE,depth:maxN-minN,height:maxU,
+    vertexCount:count,triangles:[],triangleColors:[],triangleAlphas:[],coloredCount:0};
+}
+/* ── 線の模型を風景の中に描く ──
+   筒場は差し渡し数百 m しかないのに対して、見る距離は km 単位。
+   なので一点ずつ測地線を引き直さず、**観測者を原点にした東・北・上**で足し算するだけにする
+   （数百 m の範囲では違いは出ない）。これで 1 点あたりの手間が桁で減る。 */
+function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
+  const model=slot&&slot.model;
+  if(!model||!model.lines||!model.lines.length)return;
+  const cfg=kmzSlotSettings(slot);
+  if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;
+  const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
+  if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
+  const reflectionPass=phase==="reflection";
+  const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  const earthRadius=6371000*(7/6);
+  const heading=cfg.heading*D2R,scale=cfg.scale;
+  const baseBearing=base.bearing*D2R,baseDistance=base.distanceKm*1000;
+  const originEast=Math.sin(baseBearing)*baseDistance,originNorth=Math.cos(baseBearing)*baseDistance;
+  const project=(p)=>{
+    /* 回転（模型の向き）と倍率。 */
+    const east=originEast+(p[0]*Math.cos(heading)+p[1]*Math.sin(heading))*scale;
+    const north=originNorth+(-p[0]*Math.sin(heading)+p[1]*Math.cos(heading))*scale;
+    const distance=Math.hypot(east,north);
+    if(!(distance>1))return null;
+    const curvature=distance*distance/(2*earthRadius);
+    const heightAboveSea=cfg.altitude+p[2]*scale;
+    const rise=(reflectionPass?-heightAboveSea:heightAboveSea)-eye-curvature;
+    const point=toXY(norm360(Math.atan2(east,north)*R2D),Math.atan2(rise,distance)*R2D);
+    if(!point||!Number.isFinite(point[0])||!Number.isFinite(point[1]))return null;
+    if(Math.abs(point[0])>W*8||Math.abs(point[1])>H*8)return null;
+    return point;
+  };
+  const alpha=clamp(cfg.opacity,0,1);
+  targetCtx.save();
+  targetCtx.lineCap="round";targetCtx.lineJoin="round";
+  if(slot.glow)targetCtx.globalCompositeOperation="lighter";
+  const widthScale=clamp(W/800,.7,2.2);
+  for(const group of model.lines){
+    const path=new Path2D();let any=false;
+    for(const line of group.polylines){
+      let started=false;
+      for(const p of line){
+        const point=project(p);
+        if(!point){started=false;continue;}
+        if(!started){path.moveTo(point[0],point[1]);started=true;any=true;}
+        else path.lineTo(point[0],point[1]);
+      }
+    }
+    if(!any)continue;
+    const rgb=slot.silhouette?[10,12,18]:group.rgb;
+    targetCtx.strokeStyle=`rgba(${rgb.join(",")},${alpha.toFixed(3)})`;
+    targetCtx.lineWidth=Math.max(.6,group.width*widthScale);
+    targetCtx.stroke(path);
+  }
+  targetCtx.restore();
+}
 /* ═════ 【v1107】オブジェクト作成 ═════
    寸法を打ち込むだけで、角柱・角錐（四角）と円柱・円錐（丸）を作れるようにする。
    上側の寸法を 0 にすると先のとがった錐、上と下を同じにするとまっすぐな柱になる。
@@ -8296,6 +8726,27 @@ function buildObjectModel(rawSpec){
   return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
     width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
     vertexCount:all.length,object:spec};
+}
+/* 【v1111】筒場のスロットを作る。 */
+function launchSiteCreateSlot(rawSpec,lat,lon,altitude){
+  const spec=launchSiteSpecOf(rawSpec);
+  if(!spec)return null;
+  const model=buildLaunchSiteModel(spec);
+  if(!model)return null;
+  const slot={id:++kmzSlotSeq,lat:+lat,lon:+lon,altitude:Number.isFinite(+altitude)?+altitude:0,heading:0,scale:1,opacity:1,
+    visible:true,silhouette:false,glow:true,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
+    launchSite:spec,model,fileName:`🎇 ${spec.name||"筒場"}`,kmlLocation:null,sourceDataUrl:""};
+  kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
+  return slot;
+}
+/* 中身を変えたあとに模型と名前を作り直す。 */
+function launchSiteApplySlot(slot){
+  const spec=launchSiteSpecOf(slot&&slot.launchSite);
+  if(!spec)return false;
+  const model=buildLaunchSiteModel(spec);
+  if(!model)return false;
+  slot.launchSite=spec;slot.model=model;slot.fileName=`🎇 ${spec.name||"筒場"}`;
+  return true;
 }
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
 function objectCreateSlot(rawSpec,lat,lon,altitude){
@@ -8454,6 +8905,45 @@ async function renderObjectPickGrid(){
     grid.appendChild(button);
   }
 }
+/* ═════ 【v1111】筒場の配置。花火・オブジェクトと同じ帯を使う。 ═════ */
+let launchSitePlacing=null,launchSitePlaceMarker=null;
+function launchSiteBeginPlacement(spec){
+  const checked=launchSiteSpecOf(spec);
+  if(!checked)return;
+  launchSitePlacing={spec:checked,lat:null,lon:null};
+  fireworkPlacing=null;objectPlacing=null;
+  document.getElementById("kmzAddChooser").hidden=true;
+  if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
+  if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
+  document.getElementById("mapPlaceText").textContent=`🎇 ${checked.name||"筒場"}（${launchSiteSummary(checked)}）どこに置きますか？ 地図をタップ`;
+  document.getElementById("mapPlaceOkBtn").disabled=true;
+  if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}
+  document.getElementById("mapPlaceBar").hidden=false;
+  document.body.classList.add("map-place");
+}
+function launchSiteEndPlacement(note){
+  launchSitePlacing=null;
+  if(launchSitePlaceMarker&&osmMapInstance){osmMapInstance.removeLayer(launchSitePlaceMarker);}
+  launchSitePlaceMarker=null;
+  document.body.classList.remove("map-place");
+  const bar=document.getElementById("mapPlaceBar");
+  if(note){
+    document.getElementById("mapPlaceText").textContent=note;
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    bar.hidden=false;
+    fireworkPlaceNoteTimer=setTimeout(()=>{bar.hidden=true;fireworkPlaceNoteTimer=0;},3000);
+  }else bar.hidden=true;
+}
+function launchSiteMapClick(e){
+  if(!launchSitePlacing||!osmMapInstance)return false;
+  launchSitePlacing.lat=e.latlng.lat;launchSitePlacing.lon=e.latlng.lng;
+  const icon=L.divIcon({className:"",html:'<div class="map-place-pin">🎇</div>',iconSize:[0,0],iconAnchor:[0,0]});
+  if(!launchSitePlaceMarker)launchSitePlaceMarker=L.marker(e.latlng,{pane:"markerPane",interactive:false,icon}).addTo(osmMapInstance);
+  else launchSitePlaceMarker.setLatLng(e.latlng);
+  document.getElementById("mapPlaceOkBtn").disabled=false;
+  document.getElementById("mapPlaceText").textContent=`🎇 ${launchSitePlacing.spec.name||"筒場"} ここに置きますか？（${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}）`;
+  return true;
+}
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
 function fireworkMapClick(e){
   if(!fireworkPlacing||!osmMapInstance)return false;
@@ -8466,6 +8956,22 @@ function fireworkMapClick(e){
   return true;
 }
 document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
+  /* 【v1111】筒場の配置中ならこちら。 */
+  if(launchSitePlacing&&Number.isFinite(launchSitePlacing.lat)){
+    const {spec,lat,lon}=launchSitePlacing;
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    document.getElementById("mapPlaceText").textContent="標高を調べています…";
+    const ground=await fireworkGroundElevation(lat,lon);
+    if(!launchSitePlacing||launchSitePlacing.lat!==lat)return;
+    const slot=launchSiteCreateSlot(spec,lat,lon,ground===null?0:ground);
+    renderKmzList();refreshKmzBuildingControls(false);
+    setKmzBuildingStatus(slot
+      ?`🎇 ${spec.name||"筒場"} を置きました（${lat.toFixed(5)}, ${lon.toFixed(5)}、足元の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
+      :"筒場を作れませんでした。",slot?"ready":"error");
+    drawPhoto._terrainRenderKey=null;update();
+    launchSiteEndPlacement(slot?`🎇 ${spec.name||"筒場"} を置きました`:"置けませんでした");
+    return;
+  }
   /* 【v1107】オブジェクトの配置中ならこちら。花火と同じ流れ（標高を調べてから置く）。 */
   if(objectPlacing&&Number.isFinite(objectPlacing.lat)){
     const {spec,lat,lon}=objectPlacing;
@@ -8495,7 +9001,8 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
 });
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
-  if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
+  if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
+  else if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
   else if(fireworkPlacing)fireworkEndPlacement(null);
   else{document.getElementById("mapPlaceBar").hidden=true;if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}}
 });
@@ -8813,6 +9320,353 @@ function refreshKmzBuildingControls(redraw=true){
   renderKmzList();   // 【v880】表示ON/OFFや選択の見た目を一覧へ反映
   if(redraw&&typeof update==="function")update();
 }
+/* ═════ 【v1111】筒場の編集画面 ═════ */
+const LS_GROUP_KEY="starchase-launch-groups-v1";
+let lsGroups=[],lsGroupsLoaded=false;
+let lsDraft=null,lsSelectedId=null,lsSelectedStandId=1,lsTargetSlotId=null,lsBadges=[];
+function lsSay(text){if(el.lsStatus)el.lsStatus.textContent=text||"";}
+function lsNextId(list){return list.reduce((m,x)=>Math.max(m,+x.id||0),0)+1;}
+function lsSelected(){return lsDraft?lsDraft.fireworks.find(f=>f.id===lsSelectedId)||null:null;}
+async function lsGroupsLoad(){
+  if(lsGroupsLoaded)return lsGroups;
+  lsGroupsLoaded=true;
+  try{
+    const raw=await planKvGet(LS_GROUP_KEY),parsed=raw?JSON.parse(raw):null;
+    if(parsed&&Array.isArray(parsed.items))lsGroups=parsed.items.map(item=>launchSiteSpecOf(item)).filter(Boolean);
+  }catch(error){lsGroups=[];}
+  return lsGroups;
+}
+async function lsGroupsSave(){
+  try{await planKvSet(LS_GROUP_KEY,JSON.stringify({version:1,items:lsGroups.slice(-100)}));return true;}
+  catch(error){return false;}
+}
+function lsRenderGroupSelect(){
+  const select=el.lsGroupSelect;if(!select)return;
+  const keep=select.value;
+  select.textContent="";
+  const head=document.createElement("option");head.value="";head.textContent="-- 保存したグループ --";select.appendChild(head);
+  for(const group of lsGroups){
+    const option=document.createElement("option");option.value=group.name;option.textContent=`${group.name}（${group.fireworks.length}発）`;
+    select.appendChild(option);
+  }
+  if([...select.options].some(o=>o.value===keep))select.value=keep;
+}
+/* 既定の1発。最後に選んでいた内容を引き継ぐ。 */
+function lsDefaultFirework(base){
+  const source=base||lsSelected()||{size:4,pattern:"starmine",color:"red",starmineLength:100};
+  return {id:lsNextId(lsDraft.fireworks),standId:lsSelectedStandId,xOffset:0,
+    size:source.size,pattern:source.pattern,color:source.color,starmineLength:source.starmineLength,
+    altitude:null,showTrajectory:true,fanLength:180,fanSpread:90};
+}
+/* ── 横から見た配置図 ──
+   見せ方は移植元の編集画面に合わせる。左右＝台の並び（m）、上下＝高さ（m）。
+   号数ごとの標準の高さに点線の目安を引く。番号の札を押すとその花火を選べる。 */
+function lsDrawEditor(){
+  const canvas=el.lsCanvas;if(!canvas||!lsDraft)return;
+  const ratio=Math.min(2,window.devicePixelRatio||1);
+  const cssW=canvas.clientWidth||320,cssH=canvas.clientHeight||280;
+  if(canvas.width!==Math.round(cssW*ratio)||canvas.height!==Math.round(cssH*ratio)){
+    canvas.width=Math.round(cssW*ratio);canvas.height=Math.round(cssH*ratio);
+  }
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(ratio,0,0,ratio,0,0);ctx.clearRect(0,0,cssW,cssH);
+  lsBadges=[];
+  /* 入る範囲を決める */
+  let maxTop=200,minX=-60,maxX=60;
+  for(const item of lsDraft.fireworks){
+    const stand=lsDraft.stands.find(s=>s.id===item.standId)||lsDraft.stands[0];
+    const X=(stand?stand.xOffset:0)+item.xOffset;
+    const pattern=fwPattern(item.pattern);
+    const radius=pattern==="fan"?fwNormalizeFanLength(item.fanLength):fwRadius(item.size);
+    const top=pattern==="fan"?fwNormalizeFanLength(item.fanLength):fwStoredAltitude(item)+radius;
+    if(top>maxTop)maxTop=top;
+    if(X-radius<minX)minX=X-radius;if(X+radius>maxX)maxX=X+radius;
+  }
+  for(const stand of lsDraft.stands){if(stand.xOffset-40<minX)minX=stand.xOffset-40;if(stand.xOffset+40>maxX)maxX=stand.xOffset+40;}
+  const padL=8,padR=64,padT=10,padB=26;
+  const scale=Math.min((cssW-padL-padR)/Math.max(1,maxX-minX),(cssH-padT-padB)/Math.max(1,maxTop*1.05));
+  const groundY=cssH-padB;
+  const toX=x=>padL+(x-minX)*scale,toY=z=>groundY-z*scale;
+  /* 号数の目安（右端に文字） */
+  ctx.font="9px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
+  ctx.setLineDash([3,3]);
+  for(const size of FW_SIZES){
+    const altitude=fwDefaultAltitude(size),y=toY(altitude);
+    if(y<padT||y>groundY)continue;
+    ctx.strokeStyle="rgba(150,170,210,.22)";ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(cssW-padR+2,y);ctx.stroke();
+    ctx.fillStyle="rgba(190,205,235,.65)";ctx.fillText(`${size}号玉：${altitude}m`,cssW-padR+6,y);
+  }
+  ctx.setLineDash([]);
+  /* 地面 */
+  ctx.strokeStyle="rgba(210,220,245,.75)";ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(padL,groundY);ctx.lineTo(cssW-padR,groundY);ctx.stroke();
+  /* 花火。3D と同じ生成関数を使い、横から見た面（左右＝x、上下＝z）へ落とす。 */
+  const wind=fwWindUnit(lsDraft.windBearing);
+  const axisComponent=Math.cos(lsDraft.groupAngle*D2R)*wind.east-Math.sin(lsDraft.groupAngle*D2R)*wind.north;
+  lsDraft.fireworks.forEach((item,index)=>{
+    const stand=lsDraft.stands.find(s=>s.id===item.standId)||lsDraft.stands[0];
+    const X=(stand?stand.xOffset:0)+item.xOffset;
+    const pattern=fwPattern(item.pattern);
+    const altitude=fwStoredAltitude(item);
+    const drift=lsDraft.windSpeed*fwBurnSeconds(item),sag=drift*FW_WIND_SAG_RATIO;
+    const driftX=drift*axisComponent;
+    const shellDrift=pattern==="fan"?0:lsDraft.windSpeed*fwRiseSeconds(altitude)*FW_SHELL_WIND_EFF*axisComponent;
+    const cx=X+shellDrift,radius=fwRadius(item.size);
+    const selected=item.id===lsSelectedId;
+    const strokeAll=(trails,colourOf,width)=>{
+      ctx.lineWidth=width;
+      trails.forEach(trail=>{
+        ctx.strokeStyle=colourOf(trail);
+        ctx.beginPath();
+        trail.points.forEach((p,i)=>{
+          const px=toX(cx+p[0]),py=toY(altitude+p[2]);
+          if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);
+        });
+        ctx.stroke();
+      });
+    };
+    if(pattern==="fan"){
+      const palette=fwPalette(item.color);
+      const trails=fwFanTrails(item.fanLength,item.fanSpread,13,10,driftX,0,sag);
+      ctx.lineWidth=1.1;
+      trails.forEach(trail=>{
+        ctx.strokeStyle=palette[trail.colorIndex%palette.length];
+        ctx.beginPath();
+        trail.points.forEach((p,i)=>{const px=toX(X+p[0]),py=toY(p[2]);if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);});
+        ctx.stroke();
+      });
+    }else if(pattern==="starmine2"){
+      const palettes=fwStarmine2Palettes(item.color);
+      const trails=fwStarmine2Trails(radius,110,8,item.starmineLength,driftX,0,sag);
+      ctx.lineWidth=1;
+      trails.forEach(trail=>{
+        const parts=fwSplitStarmine2(trail.points);
+        const draw=(points,colour)=>{ctx.strokeStyle=colour;ctx.beginPath();
+          points.forEach((p,i)=>{const px=toX(cx+p[0]),py=toY(altitude+p[2]);if(i)ctx.lineTo(px,py);else ctx.moveTo(px,py);});ctx.stroke();};
+        draw(parts.inner,palettes.inner);
+        draw(parts.outer,palettes.outer[trail.colorIndex%palettes.outer.length]);
+      });
+    }else if(pattern==="senshoku-senrin"){
+      const palette=fwPalette(item.color);
+      strokeAll(fwSenrinTrails(radius,12,22,8,driftX,0,sag).trails,trail=>palette[trail.colorIndex%palette.length],.9);
+    }else{
+      const palettes=fwStarminePalettes(item.color);
+      strokeAll(fwStarmineTrails(radius,64,9,item.starmineLength,driftX,0,sag),
+        trail=>palettes.base[trail.baseColorIndex%palettes.base.length],1);
+    }
+    /* 打上げ線 */
+    if(item.showTrajectory&&pattern!=="fan"){
+      ctx.strokeStyle="rgba(255,255,255,.75)";ctx.lineWidth=1;
+      ctx.beginPath();
+      for(let step=0;step<=20;step++){
+        const tt=step/20,px=toX(X+fwShellWindOffset(shellDrift,tt)),py=toY(altitude*(2*tt-tt*tt));
+        if(step)ctx.lineTo(px,py);else ctx.moveTo(px,py);
+      }
+      ctx.stroke();
+    }
+    /* 番号の札 */
+    const bx=toX(cx),by=toY(pattern==="fan"?fwNormalizeFanLength(item.fanLength)*.6:altitude+radius*.55);
+    const label=String(index+1),w=Math.max(18,ctx.measureText(label).width+14),h=17;
+    const rect={x:bx-w/2,y:clamp(by-h/2,padT,groundY-h),w,h,id:item.id};
+    lsBadges.push(rect);
+    ctx.fillStyle=selected?"rgba(243,176,79,.92)":"rgba(12,16,32,.82)";
+    ctx.strokeStyle=selected?"#f3b04f":"rgba(200,212,240,.5)";ctx.lineWidth=selected?2:1;
+    ctx.beginPath();ctx.roundRect?ctx.roundRect(rect.x,rect.y,w,h,5):ctx.rect(rect.x,rect.y,w,h);
+    ctx.fill();ctx.stroke();
+    ctx.fillStyle=selected?"#1a1206":"#e8eefc";
+    ctx.font="700 11px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(label,rect.x+w/2,rect.y+h/2);
+    ctx.font="9px system-ui,sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";
+  });
+  /* 台の名前 */
+  ctx.textAlign="center";ctx.textBaseline="top";ctx.font="700 10px system-ui,sans-serif";
+  lsDraft.stands.forEach((stand,index)=>{
+    const x=toX(stand.xOffset),selected=stand.id===lsSelectedStandId;
+    ctx.fillStyle=selected?"#f3b04f":"rgba(205,215,240,.8)";
+    ctx.beginPath();ctx.arc(x,groundY,selected?4:3,0,Math.PI*2);ctx.fill();
+    ctx.fillText(index===0?"筒場":`台${index+1}`,clamp(x,20,cssW-padR-20),groundY+5);
+    lsBadges.push({x:x-24,y:groundY-6,w:48,h:22,standId:stand.id});
+  });
+}
+function lsSyncForm(){
+  if(!lsDraft)return;
+  const item=lsSelected(),pattern=item?fwPattern(item.pattern):"starmine";
+  const fan=pattern==="fan";
+  el.lsForm.style.opacity=item?"1":".45";
+  for(const node of [el.lsPattern,el.lsSize,el.lsColor,el.lsAlt,el.lsLength,el.lsFanLen,el.lsFanSpread,el.lsStand,el.lsOffset,el.lsTrajectory])if(node)node.disabled=!item;
+  if(item){
+    el.lsPattern.value=pattern;
+    el.lsSize.value=String(item.size);
+    el.lsColor.value=item.color;
+    el.lsAlt.value=String(Math.round(fwStoredAltitude(item)));
+    el.lsLength.value=String(item.starmineLength);
+    el.lsLengthVal.textContent=`${item.starmineLength}%`;
+    el.lsFanLen.value=String(item.fanLength);
+    el.lsFanSpread.value=String(item.fanSpread);
+    el.lsOffset.value=String(item.xOffset);
+    el.lsTrajectory.checked=item.showTrajectory!==false;
+    el.lsStand.value=String(item.standId);
+  }
+  el.lsSizeRow.hidden=fan;el.lsAltRow.hidden=fan;
+  el.lsLengthRow.hidden=fan||pattern==="senshoku-senrin";
+  el.lsFanLenRow.hidden=!fan;el.lsFanSpreadRow.hidden=!fan;
+  /* 台の一覧 */
+  const keep=el.lsStand.value;
+  el.lsStand.textContent="";
+  lsDraft.stands.forEach((stand,index)=>{
+    const option=document.createElement("option");option.value=String(stand.id);
+    option.textContent=index===0?"筒場（台1）":`台${index+1}`;
+    el.lsStand.appendChild(option);
+  });
+  if(item)el.lsStand.value=String(item.standId);else if(keep)el.lsStand.value=keep;
+  const stand=lsDraft.stands.find(s=>s.id===lsSelectedStandId);
+  const standIndex=lsDraft.stands.findIndex(s=>s.id===lsSelectedStandId);
+  el.lsStandXRow.hidden=!(stand&&standIndex>0);
+  if(stand)el.lsStandX.value=String(stand.xOffset);
+  el.lsWindSpeed.value=String(lsDraft.windSpeed);
+  el.lsWindSpeedVal.textContent=`${lsDraft.windSpeed.toFixed(1)} m/s`;
+  el.lsWindBearing.value=String(lsDraft.windBearing);
+  el.lsWindBearingVal.textContent=lsDraft.windSpeed>0?`${fwWindCompassName(lsDraft.windBearing)}へ`:"風なし";
+  el.lsName.value=lsDraft.name||"";
+  const standName=standIndex===0?"筒場":`台${standIndex+1}`;
+  el.lsHint.innerHTML=`<b>${escapeHtml(standName)}</b>を選択中　→「＋花火」でこの台に乗ります。「＋台」で左右に台を増やせます。`
+    +(item?`　／　いま <b>${lsDraft.fireworks.indexOf(item)+1}番</b>を編集中`:"　／　図の番号を押すと選べます");
+}
+function lsRefresh(){lsSyncForm();lsDrawEditor();}
+function lsCanvasPick(event){
+  const canvas=el.lsCanvas,rect=canvas.getBoundingClientRect();
+  const point=event.touches&&event.touches[0]?event.touches[0]:event;
+  const x=point.clientX-rect.left,y=point.clientY-rect.top;
+  /* 花火の札を先に見る（台の帯と重なることがあるため） */
+  for(const badge of lsBadges){
+    if(badge.id==null)continue;
+    if(x>=badge.x&&x<=badge.x+badge.w&&y>=badge.y&&y<=badge.y+badge.h){
+      lsSelectedId=badge.id;
+      const item=lsSelected();if(item)lsSelectedStandId=item.standId;
+      lsRefresh();return;
+    }
+  }
+  for(const badge of lsBadges){
+    if(badge.standId==null)continue;
+    if(x>=badge.x&&x<=badge.x+badge.w&&y>=badge.y&&y<=badge.y+badge.h){
+      lsSelectedStandId=badge.standId;lsRefresh();return;
+    }
+  }
+}
+async function setLaunchSiteStudioOpen(open,slot){
+  if(!el.launchSiteOverlay)return;
+  if(open){
+    await lsGroupsLoad();
+    lsRenderGroupSelect();
+    if(slot&&slot.launchSite){
+      lsDraft=launchSiteSpecOf(slot.launchSite);lsTargetSlotId=slot.id;
+      el.lsApplyBtn.textContent="この内容で更新";
+    }else{
+      lsDraft={name:"",groupAngle:0,windSpeed:0,windBearing:0,stands:[{id:1,xOffset:0}],
+        fireworks:[{id:1,standId:1,xOffset:0,size:10,pattern:"starmine2",color:"mixed",starmineLength:130,
+          altitude:null,showTrajectory:true,fanLength:180,fanSpread:90}]};
+      lsTargetSlotId=null;
+      el.lsApplyBtn.textContent="この内容で地図に置く";
+    }
+    lsSelectedStandId=lsDraft.stands[0].id;
+    lsSelectedId=lsDraft.fireworks.length?lsDraft.fireworks[0].id:null;
+    lsSay("");
+    lsRefresh();
+  }
+  el.launchSiteOverlay.classList.toggle("show",!!open);
+  el.launchSiteOverlay.setAttribute("aria-hidden",open?"false":"true");
+  if(open)requestAnimationFrame(lsDrawEditor);
+}
+(function launchSiteStudioInit(){
+  if(!el.launchSiteOverlay)return;
+  for(const size of FW_SIZES){
+    const option=document.createElement("option");option.value=String(size);option.textContent=`${size}号（標準 ${fwDefaultAltitude(size)}m）`;
+    el.lsSize.appendChild(option);
+  }
+  for(const key of fwColorOrder){
+    const option=document.createElement("option");option.value=key;option.textContent=fwColorLabel(key);
+    el.lsColor.appendChild(option);
+  }
+  const edit=(change)=>{const item=lsSelected();if(!item)return;change(item);lsRefresh();};
+  el.launchSiteCloseBtn.addEventListener("click",()=>setLaunchSiteStudioOpen(false));
+  el.lsCanvas.addEventListener("click",lsCanvasPick);
+  el.lsAddFireworkBtn.addEventListener("click",()=>{
+    const item=lsDefaultFirework();
+    lsDraft.fireworks.push(item);lsSelectedId=item.id;lsRefresh();
+  });
+  el.lsAddStandBtn.addEventListener("click",()=>{
+    const id=lsNextId(lsDraft.stands);
+    const used=lsDraft.stands.map(s=>s.xOffset);
+    const step=80,next=used.length%2?Math.max(...used)+step:Math.min(...used)-step;
+    lsDraft.stands.push({id,xOffset:next});lsSelectedStandId=id;lsRefresh();
+  });
+  el.lsDeleteBtn.addEventListener("click",()=>{
+    const item=lsSelected();
+    if(item){
+      if(lsDraft.fireworks.length<=1){lsSay("花火は1発以上必要です。");return;}
+      lsDraft.fireworks=lsDraft.fireworks.filter(f=>f!==item);
+      lsSelectedId=lsDraft.fireworks.length?lsDraft.fireworks[0].id:null;lsRefresh();return;
+    }
+    lsSay("削除する花火を図から選んでください。");
+  });
+  el.lsPattern.addEventListener("change",()=>edit(item=>{item.pattern=fwPattern(el.lsPattern.value);}));
+  el.lsSize.addEventListener("change",()=>edit(item=>{item.size=+el.lsSize.value;item.altitude=null;}));
+  el.lsColor.addEventListener("change",()=>edit(item=>{item.color=fwColorKey(el.lsColor.value);}));
+  el.lsAlt.addEventListener("change",()=>edit(item=>{
+    const v=savedNumber(el.lsAlt.value);
+    item.altitude=(v!==null)?clamp(v,10,1500):null;
+  }));
+  el.lsLength.addEventListener("input",()=>edit(item=>{item.starmineLength=fwNormalizeLength(el.lsLength.value);}));
+  el.lsFanLen.addEventListener("change",()=>edit(item=>{item.fanLength=fwNormalizeFanLength(el.lsFanLen.value);}));
+  el.lsFanSpread.addEventListener("change",()=>edit(item=>{item.fanSpread=fwNormalizeFanSpread(el.lsFanSpread.value);}));
+  el.lsOffset.addEventListener("change",()=>edit(item=>{item.xOffset=savedNumber(el.lsOffset.value)||0;}));
+  el.lsTrajectory.addEventListener("change",()=>edit(item=>{item.showTrajectory=el.lsTrajectory.checked;}));
+  el.lsStand.addEventListener("change",()=>edit(item=>{item.standId=+el.lsStand.value;lsSelectedStandId=item.standId;}));
+  el.lsStandX.addEventListener("change",()=>{
+    const stand=lsDraft.stands.find(s=>s.id===lsSelectedStandId);
+    if(!stand||lsDraft.stands.indexOf(stand)===0)return;
+    stand.xOffset=savedNumber(el.lsStandX.value)||0;lsRefresh();
+  });
+  el.lsWindSpeed.addEventListener("input",()=>{lsDraft.windSpeed=fwNormalizeWindSpeed(el.lsWindSpeed.value);lsRefresh();});
+  el.lsWindBearing.addEventListener("input",()=>{lsDraft.windBearing=fwNormalizeWindBearing(el.lsWindBearing.value);lsRefresh();});
+  el.lsName.addEventListener("input",()=>{lsDraft.name=el.lsName.value.slice(0,30);});
+  el.lsGroupSaveBtn.addEventListener("click",async()=>{
+    const spec=launchSiteSpecOf(lsDraft);
+    if(!spec){lsSay("中身を確かめてください。");return;}
+    if(!spec.name){lsSay("名前を入れてから登録してください。");el.lsName.focus();return;}
+    const existing=lsGroups.find(g=>g.name===spec.name);
+    if(existing&&!window.confirm(`「${spec.name}」はすでにあります。上書きしますか？`))return;
+    if(existing)Object.assign(existing,spec);else lsGroups.push(spec);
+    const ok=await lsGroupsSave();
+    lsRenderGroupSelect();el.lsGroupSelect.value=spec.name;
+    lsSay(ok?`「${spec.name}」を登録しました。`:"登録できませんでした。");
+  });
+  el.lsGroupLoadBtn.addEventListener("click",()=>{
+    const group=lsGroups.find(g=>g.name===el.lsGroupSelect.value);
+    if(!group){lsSay("呼び出すグループを選んでください。");return;}
+    lsDraft=launchSiteSpecOf(group);
+    lsSelectedStandId=lsDraft.stands[0].id;
+    lsSelectedId=lsDraft.fireworks.length?lsDraft.fireworks[0].id:null;
+    lsRefresh();lsSay(`「${group.name}」を呼び出しました。`);
+  });
+  el.lsApplyBtn.addEventListener("click",()=>{
+    const spec=launchSiteSpecOf(lsDraft);
+    if(!spec){lsSay("中身を確かめてください（花火が1発以上必要です）。");return;}
+    const slot=lsTargetSlotId?kmzSlots.find(s=>s.id===lsTargetSlotId):null;
+    if(slot){
+      slot.launchSite=spec;
+      if(!launchSiteApplySlot(slot)){lsSay("作り直せませんでした。");return;}
+      kmzBuildingModel=slot.model;renderKmzList();refreshKmzBuildingControls(false);
+      drawPhoto._terrainRenderKey=null;update();
+      setLaunchSiteStudioOpen(false);
+      setKmzBuildingStatus(`${slot.fileName} を更新しました。`,"ready");   /* fileName に既に 🎇 が入っている */
+      return;
+    }
+    setLaunchSiteStudioOpen(false);
+    launchSiteBeginPlacement(spec);
+  });
+  window.addEventListener("resize",()=>{if(el.launchSiteOverlay.classList.contains("show"))lsDrawEditor();});
+})();
 /* ═════ 【v1107】オブジェクト作成の画面 ═════ */
 let objectStudioShape="box";
 function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
@@ -8985,6 +9839,11 @@ if(el.objectStudioOverlay){
 }
 /* ═════ 【v1109】花火の号数と高さ ═════ */
 function syncFireworkSlotPanel(){
+  /* 【v1111】筒場の編集ボタンもここで出し入れする。 */
+  if(el.kmzEditLaunchSiteBtn){
+    const site=kmzActiveSlot();
+    el.kmzEditLaunchSiteBtn.hidden=!(site&&site.launchSite);
+  }
   const panel=el.fireworkSlotPanel;if(!panel)return;
   const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
   panel.hidden=(go===null);
@@ -9008,6 +9867,13 @@ function fireworkSlotChanged(slot){
   drawPhoto._terrainRenderKey=null;
   update();
 }
+if(el.kmzEditLaunchSiteBtn)el.kmzEditLaunchSiteBtn.addEventListener("click",()=>{   /* 【v1111】 */
+  const slot=kmzActiveSlot();
+  if(slot&&slot.launchSite){
+    if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
+    setLaunchSiteStudioOpen(true,slot);
+  }
+});
 (function buildFireworkSlotGoOptions(){
   const select=el.fireworkSlotGo;if(!select)return;
   for(const spec of FIREWORK_SIZES){
@@ -9061,6 +9927,10 @@ document.getElementById("kmzAddObjectBtn").addEventListener("click",async()=>{
   panel.hidden=!panel.hidden;
   document.getElementById("fireworkSizePicker").hidden=true;
   if(!panel.hidden)await renderObjectPickGrid();
+});
+document.getElementById("kmzAddLaunchSiteBtn").addEventListener("click",()=>{   /* 【v1111】 */
+  document.getElementById("kmzAddChooser").hidden=true;
+  setLaunchSiteStudioOpen(true,null);
 });
 document.getElementById("objectStudioOpenBtn").addEventListener("click",()=>{
   document.getElementById("kmzAddChooser").hidden=true;
@@ -11164,6 +12034,7 @@ function initOsmMap(){
   osmMapInstance.on("click",e=>{
     if(typeof fireworkMapClick==="function"&&fireworkMapClick(e))return;   /* 【v1070】花火の配置中 */
     if(typeof objectMapClick==="function"&&objectMapClick(e))return;       /* 【v1107】オブジェクトの配置中 */
+    if(typeof launchSiteMapClick==="function"&&launchSiteMapClick(e))return; /* 【v1111】筒場の配置中 */
     if(mapMeasureOn) return;   // 測定中は地点選択を受け付けない
     setOsmCandidate(e.latlng.lat,e.latlng.lng,false);
   });
@@ -20628,7 +21499,7 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも */
+    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
       /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
@@ -20637,6 +21508,8 @@ function captureKmzBuildingForPlan(){
       /* 【v1109】標準と違う高さのときだけ書く（標準ならキーごと書かない）。 */
       ...(fireworkGoOf(slot.firework)!==null&&savedNumber(slot.fireworkHeight)!==null?{fireworkHeight:savedNumber(slot.fireworkHeight)}:{}),
       ...(objectSpecOf(slot.object)!==null?{object:objectSpecOf(slot.object)}:{}),
+      /* 【v1111】筒場のときだけ中身を書く。 */
+      ...(launchSiteSpecOf(slot.launchSite)!==null?{launchSite:launchSiteSpecOf(slot.launchSite)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -20652,7 +21525,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも */
+    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -20669,7 +21542,11 @@ async function restoreKmzBuildingFromPlan(saved){
       const fireworkGo=hasFile?null:fireworkGoOf(item.firework);
       /* 【v1107】オブジェクトも「ファイルが無く、寸法が正しいとき」だけ。順番は ファイル → 花火 → オブジェクト。 */
       const objectSpec=(hasFile||fireworkGo!==null)?null:objectSpecOf(item.object);
-      if(fireworkGo!==null){
+      /* 【v1111】順番は ファイル → 花火 → オブジェクト → 筒場。 */
+      const siteSpec=(hasFile||fireworkGo!==null||objectSpec!==null)?null:launchSiteSpecOf(item.launchSite);
+      if(siteSpec!==null){
+        launchSiteCreateSlot(siteSpec,+item.lat,+item.lon,+item.altitude||0);
+      }else if(fireworkGo!==null){
         fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0,item.fireworkHeight);   /* 【v1109】高さも */
       }else if(objectSpec!==null){
         objectCreateSlot(objectSpec,+item.lat,+item.lon,+item.altitude||0);
@@ -23844,6 +24721,15 @@ try{
           modelTop:slot.model?Math.max(...slot.model.triangles.flat().map(v=>v[2])):null};},   /* 【v1109】 */
       fireworkGoSet:(index,go)=>{const slot=kmzSlots[index||0];if(!slot||fireworkGoOf(slot.firework)===null)return null;
         slot.firework=fireworkSpec(fireworkGoOf(go)).go;fireworkSlotChanged(slot);return slot.fileName;},
+      launchSite:{   /* 【v1111】 */
+        spec:(v)=>launchSiteSpecOf(v),
+        model:(v)=>{const m=buildLaunchSiteModel(v);if(!m)return null;
+          let seg=0;for(const g of m.lines)for(const l of g.polylines)seg+=Math.max(0,l.length-1);
+          return {色の数:m.lines.length,線:m.lines.reduce((a,g)=>a+g.polylines.length,0),節:seg,点:m.vertexCount,
+            幅:+m.width.toFixed(1),奥行:+m.depth.toFixed(1),高さ:+m.height.toFixed(1)};},
+        place:(v,lat,lon,alt)=>launchSiteCreateSlot(v,lat,lon,alt),
+        summary:(v)=>launchSiteSummary(launchSiteSpecOf(v))
+      },
       objectSpec:(value)=>objectSpecOf(value),   /* 【v1107】 */
       objectModel:(value)=>{const m=buildObjectModel(value);return m?{triangles:m.triangles.length,w:m.width,d:m.depth,h:m.height}:null;},
       objectLibrary:()=>objectLibrary.slice(),
@@ -27955,7 +28841,11 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
 }
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(arActive)return;
-  for(const slot of kmzSlots)drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
+  for(const slot of kmzSlots){
+    /* 【v1111】筒場は三角形ではなく線の集まりなので、別の道で描く。 */
+    if(slot&&slot.model&&slot.model.lines)drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot);
+    else drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
+  }
 }
 function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
@@ -31888,7 +32778,8 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.globalCompositeOperation="source-over";
           kmzReflectionContext.globalAlpha=1;
           kmzReflectionContext.clearRect(0,0,W,H);
-          drawKmzOneBuilding(kmzReflectionContext,s,toXY,W,H,"reflection",slot);
+          if(slot.model&&slot.model.lines)drawKmzLineModel(kmzReflectionContext,s,toXY,W,H,"reflection",slot);   /* 【v1111】 */
+          else drawKmzOneBuilding(kmzReflectionContext,s,toXY,W,H,"reflection",slot);
           ctx.save();
           /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
           if(slot.glow)ctx.globalCompositeOperation="lighter";
