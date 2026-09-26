@@ -4994,6 +4994,18 @@
                 <div id="objectPickGrid" class="object-pick-grid"></div>
                 <button id="objectStudioOpenBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 新しく作る・編集する</span><span>›</span></button>
               </div>
+              <!-- 【v1120】まわりの建物 -->
+              <button id="kmzAddTownBtn" type="button" class="toggle-btn"><span>🏙 まわりの建物を取り込む</span><span>›</span></button>
+              <div id="townPanel" hidden>
+                <p class="map-hint" style="margin:2px 0 0;">いまの<b>撮影地点のまわり</b>の建物を OpenStreetMap から取り込んで、箱として置きます。花火や星が建物に隠れるかを確かめるためのものです。</p>
+                <div class="field" style="margin-top:6px;">
+                  <label class="top">取り込む半径 <span class="val mono" id="townRadiusVal">500m</span></label>
+                  <input type="range" id="townRadius" min="200" max="1500" step="100" value="500">
+                </div>
+                <p class="map-hint" style="margin-top:4px;">隠すのはほとんど手前の建物です。高さ30mのビルが塞ぐ仰角は、200m先で8.5°、1km先で1.7°、2km先で0.86°。<b>500mで足ります。</b>広げるほど通信量と描く手間が増えます（いちばん密な街で1km＝約2.9MB）。</p>
+                <button id="townImportBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>⬇️ この地点の建物を取り込む</span><span>›</span></button>
+                <p class="map-hint" style="margin-top:4px;">高さは ①地図に高さがある建物はその値 ②階数だけある建物は階数×3.3m ③どちらも無い建物は6m。<b>③は琥珀色で描く</b>ので、当てにならない建物がひと目で分かります。取り込んだ結果は撮影計画に保存され、次からは取りに行きません。</p>
+              </div>
               <button id="kmzAddFileBtn" type="button" class="toggle-btn"><span>📁 ファイルから追加</span><span>›</span></button>
               <button id="kmzAddCancelBtn" type="button" class="ghost" style="margin-top:2px;">キャンセル</button>
             </div>
@@ -6766,7 +6778,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1119-depth-order";
+const APP_VERSION="1120-town";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8162,6 +8174,8 @@ const el={
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
+  kmzAddTownBtn:$("kmzAddTownBtn"), townPanel:$("townPanel"), townRadius:$("townRadius"),
+  townRadiusVal:$("townRadiusVal"), townImportBtn:$("townImportBtn"),   /* 【v1120】 */
   kmzBuildingNudgeVal:$("kmzBuildingNudgeVal"), kmzBuildingNudgeStepBtn:$("kmzBuildingNudgeStepBtn"),
   kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
@@ -8814,6 +8828,212 @@ function buildObjectModel(rawSpec){
   return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
     width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),height:Math.max(...zs)-Math.min(...zs),
     vertexCount:all.length,object:spec};
+}
+/* =========================================================
+   【v1120】まわりの建物（町）を取り込む。
+
+   ★ どこから取るか（3つ測って決めた）
+     | 源 | 輪郭 | 高さ | 1kmあたり通信 | 安定性 |
+     |---|---|---|---|---|
+     | **OSM Overpass** | 実物の輪郭 | **72%が実測** | **2.2〜2.9MB / 2〜5秒** | 429で一時的に弾かれる（復活する） |
+     | Shortbread(既存) | 5,807棟/タイル | **ゼロ** | 既に落としている | 鉄板 |
+     | PLATEAU LOD1 | 外接箱のみ | **100%実測** | **8〜27MB** | 重すぎ |
+   PLATEAU は Draco を触らずヘッダのバッチテーブルだけで高さ・標高・外接箱が全部取れる
+   （`bldg:measuredHeight` と `_xmin/_xmax/_ymin/_ymax/_zmin/_zmax`）。理屈は最高だが、
+   属性表が1タイル178KBあり（防災情報の列が大半）、姫路駅前の半径500mで**27MB**。
+   現地でスマホから押すボタンには使えないので見送った。将来の「高精度モード」候補。
+
+   ★ v774 で水域の Overpass をやめた件との関係
+     あれは**半径10km・自動・起動のたび**の使い方。ここは**ボタンを押したときだけ・1回**。
+     さらに取れた結果は撮影計画へ保存して二度と取りに行かない。負荷の質がまるで違う。
+   ========================================================= */
+const TOWN_DEFAULT_HEIGHT_M=6;        /* 高さの手がかりが何も無いときの仮の高さ */
+const TOWN_METRES_PER_LEVEL=3.3;      /* 1階ぶん。日本の住宅・事務所のおおよその平均 */
+const TOWN_MAX_BUILDINGS=1500;        /* 近い順にこれだけ。多すぎると1コマが重くなる */
+const TOWN_OVERPASS_URL="https://overpass-api.de/api/interpreter";
+/* 高さの読み取り。"12" "12 m" "12m" を通し、階数はその次。どちらも無ければ null（＝推定）。 */
+function townHeightFromTags(tags){
+  const raw=tags&&tags.height;
+  if(raw!==undefined&&raw!==null){
+    const v=parseFloat(String(raw).replace(/[^0-9.\-]/g,""));
+    if(Number.isFinite(v)&&v>0&&v<800)return {h:v,estimated:false};
+  }
+  const levels=tags&&(tags["building:levels"]);
+  if(levels!==undefined&&levels!==null){
+    const v=parseFloat(String(levels).replace(/[^0-9.\-]/g,""));
+    if(Number.isFinite(v)&&v>0&&v<200)return {h:v*TOWN_METRES_PER_LEVEL,estimated:false};
+  }
+  return {h:TOWN_DEFAULT_HEIGHT_M,estimated:true};
+}
+/* 取り込んだ町の中身。保存して読み直せるように、局所メートルの数字だけで持つ。
+   r=輪郭[[東m,北m],…] / h=高さm / g=地面の標高m / e=推定なら1 */
+function townSpecOf(value){
+  if(!value||typeof value!=="object")return null;
+  const lat=savedNumber(value.lat),lon=savedNumber(value.lon);
+  if(lat===null||lon===null||Math.abs(lat)>90||Math.abs(lon)>180)return null;
+  const list=Array.isArray(value.b)?value.b:null;
+  if(!list||!list.length)return null;
+  const buildings=[];
+  for(const item of list){
+    if(!item||!Array.isArray(item.r)||item.r.length<3)continue;
+    const ring=[];
+    for(const point of item.r){
+      if(!Array.isArray(point)||point.length<2)continue;
+      const east=savedNumber(point[0]),north=savedNumber(point[1]);
+      if(east===null||north===null)continue;
+      ring.push([east,north]);
+    }
+    if(ring.length<3)continue;
+    const height=savedNumber(item.h),ground=savedNumber(item.g);
+    if(height===null||!(height>0))continue;
+    buildings.push({r:ring,h:height,g:ground===null?0:ground,e:item.e?1:0});
+  }
+  if(!buildings.length)return null;
+  const radius=savedNumber(value.radius);
+  return {lat,lon,radius:radius===null?500:clamp(radius,50,3000),at:String(value.at||""),b:buildings};
+}
+/* 耳切りで屋根を三角形に割る。L字の建物でも切り欠きの上に板が張らない。
+   輪郭は小さい（平均7頂点）ので、素朴なやり方で十分速い。 */
+function townEarClip(ring){
+  const n=ring.length;if(n<3)return [];
+  const index=[];for(let i=0;i<n;i++)index.push(i);
+  let twice=0;for(let i=0;i<n;i++){const j=(i+1)%n;twice+=ring[i][0]*ring[j][1]-ring[j][0]*ring[i][1];}
+  if(twice<0)index.reverse();
+  const cross=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const inside=(p,a,b,c)=>cross(a,b,p)>=0&&cross(b,c,p)>=0&&cross(c,a,p)>=0;
+  const out=[];let guard=0;
+  while(index.length>3&&guard++<n*n+32){
+    let clipped=false;
+    for(let i=0;i<index.length;i++){
+      const ia=index[(i+index.length-1)%index.length],ib=index[i],ic=index[(i+1)%index.length];
+      const a=ring[ia],b=ring[ib],c=ring[ic];
+      if(!(cross(a,b,c)>1e-9))continue;   /* 凹みの角は耳にならない */
+      let ok=true;
+      for(const k of index){
+        if(k===ia||k===ib||k===ic)continue;
+        if(inside(ring[k],a,b,c)){ok=false;break;}
+      }
+      if(!ok)continue;
+      out.push([a,b,c]);index.splice(i,1);clipped=true;break;
+    }
+    if(!clipped)break;   /* 自己交差などで詰んだら、そこまでで諦める（壁は残る） */
+  }
+  if(index.length===3)out.push([ring[index[0]],ring[index[1]],ring[index[2]]]);
+  return out;
+}
+/* 箱の集まりを組み立てる。頂点は [東m,北m,標高m]。スロットの altitude は 0 なので、
+   z にそのまま海抜を入れれば、坂の街でも建物ごとに正しい高さに乗る。 */
+function buildTownModel(rawSpec){
+  const spec=townSpecOf(rawSpec);
+  if(!spec)return null;
+  const triangles=[],triangleColors=[],triangleAlphas=[];
+  const KNOWN=[198,202,212];   /* 高さが分かっている建物：ふつうの灰色 */
+  const GUESS=[214,168,104];   /* 高さが推定の建物：見分けられるように琥珀色 */
+  const LIGHT=(()=>{const v=[.42,-.30,.86],l=Math.hypot(v[0],v[1],v[2]);return v.map(x=>x/l);})();
+  const push=(a,b,c,base)=>{
+    const u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    const nx=u[1]*v[2]-u[2]*v[1],ny=u[2]*v[0]-u[0]*v[2],nz=u[0]*v[1]-u[1]*v[0];
+    const len=Math.hypot(nx,ny,nz);
+    if(!(len>1e-9))return;
+    const k=.52+.48*Math.abs((nx*LIGHT[0]+ny*LIGHT[1]+nz*LIGHT[2])/len);
+    triangles.push([a,b,c]);
+    triangleColors.push(base.map(c0=>Math.round(clamp(c0*k,0,255))));
+    triangleAlphas.push(1);
+  };
+  for(const building of spec.b){
+    const colour=building.e?GUESS:KNOWN;
+    const bottom=building.g,top=building.g+building.h,ring=building.r;
+    for(let i=0;i<ring.length;i++){
+      const j=(i+1)%ring.length;
+      const p0=[ring[i][0],ring[i][1],bottom],p1=[ring[j][0],ring[j][1],bottom];
+      const p2=[ring[j][0],ring[j][1],top],p3=[ring[i][0],ring[i][1],top];
+      push(p0,p1,p2,colour);push(p0,p2,p3,colour);
+    }
+    for(const tri of townEarClip(ring))
+      push([tri[0][0],tri[0][1],top],[tri[1][0],tri[1][1],top],[tri[2][0],tri[2][1],top],colour);
+  }
+  if(!triangles.length)return null;
+  const all=triangles.flat();
+  const xs=all.map(v=>v[0]),ys=all.map(v=>v[1]),zs=all.map(v=>v[2]);
+  return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
+    width:Math.max.apply(null,xs)-Math.min.apply(null,xs),
+    depth:Math.max.apply(null,ys)-Math.min.apply(null,ys),
+    height:Math.max.apply(null,zs)-Math.min.apply(null,zs),
+    vertexCount:all.length,town:spec};
+}
+/* 取り込んだ町を1つのスロットとして置く。町は1つだけ（押し直したら入れ替え）。 */
+function townCreateSlot(rawSpec){
+  const spec=townSpecOf(rawSpec);
+  if(!spec)return null;
+  const model=buildTownModel(spec);
+  if(!model)return null;
+  kmzSlots=kmzSlots.filter(slot=>townSpecOf(slot.town)===null);
+  const slot={id:++kmzSlotSeq,lat:spec.lat,lon:spec.lon,altitude:0,heading:0,scale:1,opacity:1,
+    visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
+    town:spec,model,fileName:`🏙 まわりの建物 ${spec.b.length}棟`,kmlLocation:null,sourceDataUrl:""};
+  kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
+  renderKmzList();refreshKmzBuildingControls();
+  drawPhoto._terrainRenderKey=null;update();
+  return slot;
+}
+/* 地面の標高。建物ごとに引くと重いので、約50mの升目にまとめて覚える。 */
+const townGroundCache=new Map();
+async function townGroundElevation(lat,lon){
+  const key=`${Math.round(lat*2000)}:${Math.round(lon*2000)}`;   /* 緯度0.0005°≒55m */
+  if(townGroundCache.has(key))return townGroundCache.get(key);
+  const promise=fireworkGroundElevation(lat,lon).then(v=>Number.isFinite(v)?v:0).catch(()=>0);
+  townGroundCache.set(key,promise);
+  return promise;
+}
+/* OSM から取ってきて、保存できる形に畳む。 */
+async function townImport(lat,lon,radiusM,onProgress){
+  const note=(text)=>{if(typeof onProgress==="function")onProgress(text);};
+  note(`OpenStreetMap に問い合わせ中…（半径${radiusM}m）`);
+  const query=`[out:json][timeout:40];way["building"](around:${radiusM},${lat},${lon});out tags geom;`;
+  let response;
+  try{
+    response=await fetch(TOWN_OVERPASS_URL,{method:"POST",body:"data="+encodeURIComponent(query)});
+  }catch(error){throw new Error("通信できませんでした。電波の届くところで、もう一度お試しください。");}
+  if(response.status===429||response.status===504)
+    throw new Error("OpenStreetMap が混んでいます。1〜2分おいて、もう一度お試しください。");
+  if(!response.ok)throw new Error(`OpenStreetMap から返事がありません（HTTP ${response.status}）。`);
+  const text=await response.text();
+  if(text[0]!=="{")throw new Error("OpenStreetMap が混んでいます。1〜2分おいて、もう一度お試しください。");
+  let parsed=null;try{parsed=JSON.parse(text);}catch(error){parsed=null;}
+  const elements=parsed&&Array.isArray(parsed.elements)?parsed.elements:[];
+  if(!elements.length)throw new Error("このあたりには、地図に登録された建物がありませんでした。");
+  const bytes=new Blob([text]).size;
+  note(`${elements.length}棟ぶんを受け取りました。高さを調べています…`);
+  /* 近い順に並べて、多すぎるときは手前から残す（隠すのは手前の建物なので）。 */
+  const metresPerDegLat=111320,metresPerDegLon=111320*Math.cos(lat*D2R);
+  const rows=[];
+  for(const element of elements){
+    const geometry=element&&element.geometry;
+    if(!Array.isArray(geometry)||geometry.length<4)continue;
+    let ring=geometry.map(p=>[(p.lon-lon)*metresPerDegLon,(p.lat-lat)*metresPerDegLat]);
+    /* 閉じた輪の最後の点は最初と同じなので落とす。 */
+    if(ring.length>3&&Math.abs(ring[0][0]-ring[ring.length-1][0])<.01&&Math.abs(ring[0][1]-ring[ring.length-1][1])<.01)ring.pop();
+    if(ring.length<3)continue;
+    let cx=0,cy=0;for(const p of ring){cx+=p[0];cy+=p[1];}
+    cx/=ring.length;cy/=ring.length;
+    const found=townHeightFromTags(element.tags);
+    rows.push({ring,h:found.h,e:found.estimated?1:0,d:Math.hypot(cx,cy),
+      lat:lat+cy/metresPerDegLat,lon:lon+cx/metresPerDegLon});
+  }
+  rows.sort((a,b)=>a.d-b.d);
+  const dropped=Math.max(0,rows.length-TOWN_MAX_BUILDINGS);
+  const kept=rows.slice(0,TOWN_MAX_BUILDINGS);
+  note(`${kept.length}棟の地面の高さを調べています…`);
+  const buildings=[];
+  for(const row of kept){
+    const ground=await townGroundElevation(row.lat,row.lon);
+    buildings.push({r:row.ring.map(p=>[Math.round(p[0]*10)/10,Math.round(p[1]*10)/10]),
+      h:Math.round(row.h*10)/10,g:Math.round(ground*10)/10,e:row.e});
+  }
+  const estimated=buildings.filter(b=>b.e).length;
+  return {spec:{lat,lon,radius:radiusM,at:new Date().toISOString().slice(0,16),b:buildings},
+    stats:{受け取り:elements.length,置いた:buildings.length,捨てた:dropped,推定の高さ:estimated,
+      通信MB:+(bytes/1048576).toFixed(2)}};
 }
 /* 【v1111】筒場のスロットを作る。 */
 function launchSiteCreateSlot(rawSpec,lat,lon,altitude){
@@ -10241,6 +10461,34 @@ el.kmzBuildingSelectBtn.addEventListener("click",()=>{
   box.hidden=!box.hidden;
   document.getElementById("fireworkSizePicker").hidden=true;
   document.getElementById("objectPickPanel").hidden=true;   /* 【v1107】 */
+});
+/* 【v1120】まわりの建物 */
+el.kmzAddTownBtn.addEventListener("click",()=>{
+  el.townPanel.hidden=!el.townPanel.hidden;
+  document.getElementById("fireworkSizePicker").hidden=true;
+  document.getElementById("objectPickPanel").hidden=true;
+});
+el.townRadius.addEventListener("input",()=>{el.townRadiusVal.textContent=`${el.townRadius.value}m`;});
+el.townImportBtn.addEventListener("click",async()=>{
+  if(el.townImportBtn.disabled)return;
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)){setKmzBuildingStatus("先に撮影地点を決めてください。","error");return;}
+  const radius=clamp(+el.townRadius.value||500,200,1500);
+  el.townImportBtn.disabled=true;
+  try{
+    const result=await townImport(lat,lon,radius,text=>setKmzBuildingStatus(text,"loading"));
+    const slot=townCreateSlot(result.spec);
+    if(!slot)throw new Error("建物を組み立てられませんでした。");
+    const s=result.stats;
+    /* 捨てた数と推定の数は**必ず出す**。黙って間引くと、無い建物を無いと思い込ませてしまう。 */
+    setKmzBuildingStatus(`🏙 ${s.置いた}棟を置きました（半径${radius}m・${s.通信MB}MB）。`
+      +`高さが推定の建物は${s.推定の高さ}棟で、琥珀色で描いています。`
+      +(s.捨てた?`　多すぎたため、遠い${s.捨てた}棟は置いていません。`:""),"ready");
+    el.townPanel.hidden=true;
+    document.getElementById("kmzAddChooser").hidden=true;
+  }catch(error){
+    setKmzBuildingStatus(String(error&&error.message||error),"error");
+  }finally{el.townImportBtn.disabled=false;}
 });
 document.getElementById("kmzAddFileBtn").addEventListener("click",()=>{
   document.getElementById("kmzAddChooser").hidden=true;
@@ -22026,7 +22274,7 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも */
+    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null||townSpecOf(slot.town)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
       /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
@@ -22037,6 +22285,8 @@ function captureKmzBuildingForPlan(){
       ...(objectSpecOf(slot.object)!==null?{object:objectSpecOf(slot.object)}:{}),
       /* 【v1111】筒場のときだけ中身を書く。 */
       ...(launchSiteSpecOf(slot.launchSite)!==null?{launchSite:launchSiteSpecOf(slot.launchSite)}:{}),
+      /* 【v1120】取り込んだ町のときだけ中身を書く。取り直さなくて済むように丸ごと入れる。 */
+      ...(townSpecOf(slot.town)!==null?{town:townSpecOf(slot.town)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -22052,7 +22302,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも */
+    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null||townSpecOf(item.town)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -22071,7 +22321,11 @@ async function restoreKmzBuildingFromPlan(saved){
       const objectSpec=(hasFile||fireworkGo!==null)?null:objectSpecOf(item.object);
       /* 【v1111】順番は ファイル → 花火 → オブジェクト → 筒場。 */
       const siteSpec=(hasFile||fireworkGo!==null||objectSpec!==null)?null:launchSiteSpecOf(item.launchSite);
-      if(siteSpec!==null){
+      /* 【v1120】順番は ファイル → 花火 → オブジェクト → 筒場 → 町。 */
+      const townSpec=(hasFile||fireworkGo!==null||objectSpec!==null||siteSpec!==null)?null:townSpecOf(item.town);
+      if(townSpec!==null){
+        townCreateSlot(townSpec);
+      }else if(siteSpec!==null){
         launchSiteCreateSlot(siteSpec,+item.lat,+item.lon,+item.altitude||0);
       }else if(fireworkGo!==null){
         fireworkCreateSlot(fireworkGo,+item.lat,+item.lon,+item.altitude||0,item.fireworkHeight);   /* 【v1109】高さも */
@@ -25283,6 +25537,19 @@ try{
       objectLibrary:()=>objectLibrary.slice(),
       objectStudio:(on)=>setObjectStudioOpen(on!==false),
       objectPlace:(name,lat,lon,alt)=>objectCreateSlot(objectLibraryFindByName(name),lat,lon,alt),
+      /* 【v1120】取り込んだ町。 */
+      town:()=>{
+        const slot=kmzSlots.find(s=>townSpecOf(s.town)!==null);
+        if(!slot)return null;
+        const spec=slot.town;
+        return {棟数:spec.b.length,半径:spec.radius,取得:spec.at,
+          推定の高さ:spec.b.filter(b=>b.e).length,
+          三角形:slot.model&&slot.model.triangles.length,
+          いちばん高い:spec.b.reduce((m,b)=>b.h>(m?m.h:0)?b:m,null),
+          保存KB:Math.round(JSON.stringify(spec).length/1024)};
+      },
+      townImport:(radius)=>townImport(+el.lat.value,+el.lon.value,+radius||500,t=>console.log(t)),
+      townPlace:(spec)=>townCreateSlot(spec),
       /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
       kmzOrder:()=>drawPhoto._kmzOrder||null,
       kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
@@ -29403,7 +29670,9 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
 function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
-  if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
+  /* 【v1120】町は観測地点を囲んでいるので、中心までの距離（＝0）で切ってはいけない。 */
+  const isTown=townSpecOf(slot.town)!==null;
+  if(!Number.isFinite(base.distanceKm)||(!isTown&&base.distanceKm<.003)||base.distanceKm>120)return;
   /* 手前の地形だけの稜線が作れるなら地形のあとに描く（奥の山に隠されない）。
      作れないときだけ、従来どおり地形の前に描いて全部に隠させる。 */
   /* 【v853】水面へ映すための段。
@@ -29425,8 +29694,14 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
      外れる方向は「あいだの地形に隠れなくなる」で、消えるより安全な側。 */
   const modelHalfSpanKm=(Math.hypot(slot.model.width||0,slot.model.depth||0)/2)*cfg.scale/1000;
   const skylineLimitKm=Math.max(.05,base.distanceKm-modelHalfSpanKm);
-  const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
-  if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
+  /* 【v1120】町は稜線で切らない。基準点が足元なので skylineLimitKm が 50m まで縮み、
+     半径500mぶんの建物を半径50mの地形の稜線で切ってしまう（足元が丸ごと消える）。
+     町は地形のあとに 1 回だけ描く。 */
+  const nearSky=(reflectionPass||isTown)?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
+  if(!reflectionPass){
+    if(isTown){ if(phase!=="after")return; }
+    else if(phase==="before"?!!nearSky:!nearSky) return;
+  }
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
