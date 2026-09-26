@@ -5008,6 +5008,8 @@
             <!-- 【v903】面の前後の決め方を切り替える。同じ画角で見比べるためのスイッチ。 -->
             <button id="kmzBuildingDepthBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>🧊 面の前後を1画素ごとに決める</span><span id="kmzBuildingDepthState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
             <p class="map-hint" style="margin-top:6px;">OFFにすると v902 までと同じ「三角形の重心の距離で並べ替える」描き方に戻ります。近くで見たときに窓が消えたり車体が崩れるのは、その並べ替えが原因です。</p>
+            <button id="kmzBuildingOrderBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>📐 模型どうしの前後を距離で決める</span><span id="kmzBuildingOrderState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
+            <p class="map-hint" style="margin-top:6px;">ONのあいだは遠い模型から順に描くので、<b>手前の建物が奥の花火を隠します</b>。障害物の確認はこれをONにしてください。橋のように長い模型は中心までの距離で測るため、手前の端の前後がずれることがあります。そのときだけOFFにして、一覧のつまみで手で並べ替えてください。</p>
             <p class="map-hint" style="margin-top:6px;">「自ら光る」をONにすると、昼夜の暗転も太陽の陰影も掛けずに、そのままの色で加算合成します。夜でも明るいままです。強さは下の「建物の濃さ」で調整します。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
@@ -6764,7 +6766,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1118-number-stepper";
+const APP_VERSION="1119-depth-order";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8159,6 +8161,7 @@ const el={
   kmzSilhouetteDarkness:$("kmzSilhouetteDarkness"), kmzSilhouetteDarknessVal:$("kmzSilhouetteDarknessVal"),
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
+  kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
   kmzBuildingNudgeVal:$("kmzBuildingNudgeVal"), kmzBuildingNudgeStepBtn:$("kmzBuildingNudgeStepBtn"),
   kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
@@ -9231,6 +9234,35 @@ let kmzSilhouetteDarkness=0;
    模型ごとではなく**描き方そのもの**なので全体で1つ。
    OFFにすると v902 までとまったく同じ描き方（重心の距離で並べ替え）に戻る。 */
 let kmzDepthBuffer=true;
+/* 【v1119】物体どうしの前後を距離で決める。
+
+   いままでは一覧の並び順（v1028 のつまみ）だけで描く順を決めていたので、
+   **手前のビルの上に、奥の花火が出てしまっていた**。面の中の前後は
+   1画素ごとのZバッファ（v903）で正しいが、それは模型 1 つの中だけの話で、
+   模型と模型の間には前後の判定が無かった。
+
+   遠い順に描けば、手前の物が後から重なって奥の物を隠す（画家のアルゴリズム）。
+   模型どうしは奥行きがはっきり離れているので、これで足りる。
+
+   ★ 限界：距離は模型の**中心**で測る。明石海峡大橋のように全長 3.9km ある物は
+     中心より手前の端のほうがずっと近いので、その端まわりの前後は正しくならない。
+     そのときは自動を切って、つまみで手で並べ替える。 */
+let kmzSlotDepthSort=true;
+function kmzSlotDistanceKm(s,slot){
+  if(!slot)return Infinity;
+  const cfg=kmzSlotSettings(slot);
+  if(!cfg||!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return Infinity;
+  const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
+  return Number.isFinite(base.distanceKm)?base.distanceKm:Infinity;
+}
+function kmzSlotsInDrawOrder(s){
+  if(!kmzSlotDepthSort||!s||kmzSlots.length<2)return kmzSlots;
+  /* Infinity どうしを引くと NaN になって並びが壊れるので、有限の大きな値に置き換えてから比べる。
+     sort は安定なので、距離が同じ物は一覧の並び順のまま残る。 */
+  return kmzSlots.map((slot,index)=>({slot,index,km:kmzSlotDistanceKm(s,slot)}))
+    .sort((a,b)=>((Number.isFinite(b.km)?b.km:1e9)-(Number.isFinite(a.km)?a.km:1e9))||(a.index-b.index))
+    .map(entry=>entry.slot);
+}
 /* 【v852】自ら光るもの（花火・イルミネーション）用。
    昼夜の暗転も太陽の陰影も掛けず、そのままの色で加算合成する。
    シルエットより優先する（両方ONなら発光）。 */
@@ -9399,7 +9431,10 @@ function kmzDragStart(event,row){
       kmzSlots=next;
       renderKmzList();refreshKmzBuildingControls();
       drawPhoto._terrainRenderKey=null;update();
-      setKmzBuildingStatus("順番を入れ替えました（下の行ほど手前に描きます）。","ready");
+      /* 【v1119】自動のときは手の並びは使われない。黙って効かないのがいちばん困るので、そう言う。 */
+      setKmzBuildingStatus(kmzSlotDepthSort
+        ?"順番を入れ替えました。ただし今は「模型どうしの前後を距離で決める」がONなので、この並びは使いません。"
+        :"順番を入れ替えました（下の行ほど手前に描きます）。","ready");
     }
     /* 動かさずに離した＝行の選択にしない（つまみは選ばない） */
     setTimeout(()=>{kmzDragState.moved=false;},0);
@@ -9486,6 +9521,8 @@ function refreshKmzBuildingControls(redraw=true){
   }
   el.kmzBuildingGlowBtn.classList.toggle("active",kmzBuildingGlow);el.kmzBuildingGlowState.textContent=kmzBuildingGlow?"ON":"OFF";
   if(el.kmzBuildingDepthBtn){el.kmzBuildingDepthBtn.classList.toggle("active",kmzDepthBuffer);el.kmzBuildingDepthState.textContent=kmzDepthBuffer?"ON":"OFF";}
+  /* 【v1119】 */
+  if(el.kmzBuildingOrderBtn){el.kmzBuildingOrderBtn.classList.toggle("active",kmzSlotDepthSort);el.kmzBuildingOrderState.textContent=kmzSlotDepthSort?"ON":"OFF";}
   if(el.kmzBuildingNudgeStepBtn){el.kmzBuildingNudgeStepBtn.textContent=`${kmzNudgeStepM}m`;el.kmzBuildingNudgeVal.textContent=kmzNudgeLabel();}
   if(el.kmzBuildingPlacement)el.kmzBuildingPlacement.textContent=kmzPlacementReport();
   syncKmzMoveControls();   /* 【v928】 */
@@ -10325,6 +10362,8 @@ el.kmzBuildingSilhouetteBtn.addEventListener("click",()=>{kmzBuildingSilhouette=
 if(el.kmzSilhouetteDarkness)el.kmzSilhouetteDarkness.addEventListener("input",()=>{refreshKmzBuildingControls();scheduleSaveSettings();});
 el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuildingGlow;refreshKmzBuildingControls();});
 el.kmzBuildingDepthBtn.addEventListener("click",()=>{kmzDepthBuffer=!kmzDepthBuffer;refreshKmzBuildingControls();});
+/* 【v1119】並べ替えを切り替えたら、地形の作り直しは要らないが描き直しは要る。 */
+el.kmzBuildingOrderBtn.addEventListener("click",()=>{kmzSlotDepthSort=!kmzSlotDepthSort;refreshKmzBuildingControls();update();});
 
 /* 【v854】KMZの置き場所を前後左右へ動かす。
 
@@ -25244,6 +25283,8 @@ try{
       objectLibrary:()=>objectLibrary.slice(),
       objectStudio:(on)=>setObjectStudioOpen(on!==false),
       objectPlace:(name,lat,lon,alt)=>objectCreateSlot(objectLibraryFindByName(name),lat,lon,alt),
+      /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
+      kmzOrder:()=>drawPhoto._kmzOrder||null,
       kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
       /* 【v1100】登録地点と撮影計画の対応を手元で確かめる入口。 */
       favPlaces:()=>({list:()=>favPlaces.map(p=>({name:p.name,kind:p.kind,planId:p.planId||null})),
@@ -29350,7 +29391,10 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
 }
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(arActive)return;
-  for(const slot of kmzSlots){
+  const drawOrder=kmzSlotsInDrawOrder(s);
+  /* 【v1119】確かめる用に描いた順を控えておく。 */
+  drawPhoto._kmzOrder={自動:kmzSlotDepthSort,順:drawOrder.map(slot=>({名:slot&&slot.fileName,km:+kmzSlotDistanceKm(s,slot).toFixed(3)}))};
+  for(const slot of drawOrder){
     /* 【v1111】筒場は三角形ではなく線の集まりなので、別の道で描く。 */
     if(slot&&slot.model&&slot.model.lines)drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot);
     else drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
@@ -33278,7 +33322,8 @@ function drawPhoto(ctx,s){
            まとめて1枚に描いてしまうと合成のしかたを切り替えられない
            （花火は加算、城はふつうに重ねる、が同時に成り立たない）。
            スロットは数個なので、1枚ずつ描いても費用は小さい。 */
-        for(const slot of kmzSlots){
+        /* 【v1119】映り込みも同じ順にする。手前の物の映り込みは、奥の物の映り込みより手前に出る。 */
+        for(const slot of kmzSlotsInDrawOrder(s)){
           if(!slot.visible||!slot.model||arActive)continue;
           const kmzReflection=drawPhoto._kmzReflectionCanvas||(drawPhoto._kmzReflectionCanvas=document.createElement("canvas"));
           if(kmzReflection.width!==W||kmzReflection.height!==H){kmzReflection.width=W;kmzReflection.height=H;}
