@@ -6783,7 +6783,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1126-island-occlude";
+const APP_VERSION="1127-island-layers";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -23467,15 +23467,18 @@ function renderSavedPlansList(query=""){
 }
 /* 【v1123】 */
 if(el.planSyncBtn)el.planSyncBtn.addEventListener("click",()=>planCloudSync());
-/* 【v1126】島影の色。押すたびに「シルエット（黒）」と「山と同じ色」を行き来する。 */
+/* 【v1126】【v1127】島影の色。押すたびに3つを順に回る。
+   silhouette（黒）→ terrain（山と同じ色）→ distance（距離で色分け）→ silhouette … */
+const DARUMA_ISLAND_TONES=[["silhouette","シルエット（黒）"],["terrain","山と同じ色"],["distance","距離で色分け"]];
 function refreshDarumaIslandToneBtn(){
   if(!el.darumaIslandToneBtn)return;
-  const terrain=darumaIslandTone==="terrain";
-  el.darumaIslandToneBtn.textContent=`🎨 島影の色：${terrain?"山と同じ色":"シルエット（黒）"}`;
-  el.darumaIslandToneBtn.classList.toggle("active",terrain);
+  const found=DARUMA_ISLAND_TONES.find(item=>item[0]===darumaIslandTone)||DARUMA_ISLAND_TONES[0];
+  el.darumaIslandToneBtn.textContent=`🎨 島影の色：${found[1]}`;
+  el.darumaIslandToneBtn.classList.toggle("active",darumaIslandTone!=="silhouette");
 }
 if(el.darumaIslandToneBtn)el.darumaIslandToneBtn.addEventListener("click",()=>{
-  darumaIslandTone=darumaIslandTone==="terrain"?"silhouette":"terrain";
+  const at=DARUMA_ISLAND_TONES.findIndex(item=>item[0]===darumaIslandTone);
+  darumaIslandTone=DARUMA_ISLAND_TONES[(at<0?0:at+1)%DARUMA_ISLAND_TONES.length][0];
   refreshDarumaIslandToneBtn();
   drawPhoto._terrainRenderKey=null;update();
 });
@@ -25958,7 +25961,27 @@ try{
           y範囲:cols?[Math.round(minY),Math.round(maxY)]:null,
           physicalHorizon:found?found.physicalHorizon:null};
       },
-      islandTone:(v)=>{if(v==="terrain"||v==="silhouette"){darumaIslandTone=v;
+      /* 【v1127】島影が距離でいくつの尾根に分かれるか。 */
+      islandLayers:()=>{
+        const s=drawPhoto._skylineS;
+        if(!s)return "まだ描いていません";
+        const found=darumaIslandProfilesFor(s);
+        if(!found)return "島影なし";
+        const all=[];
+        for(const profile of found.list)for(const point of profile)
+          if(point&&Number.isFinite(point.distanceKm)&&point.altitude>found.physicalHorizon+.002)
+            all.push({km:point.distanceKm});
+        if(!all.length)return "見えている点なし";
+        let lo=Infinity,hi=-Infinity;
+        for(const p of all){if(p.km<lo)lo=p.km;if(p.km>hi)hi=p.km;}
+        const pieces=darumaIslandSplitByDistance(all,hi-lo);
+        return {点の数:all.length,距離の範囲km:[+lo.toFixed(2),+hi.toFixed(2)],
+          切れ目の閾値km:+Math.max(.8,(hi-lo)*.12).toFixed(2),
+          尾根の数:pieces.length,
+          尾根ごとの平均km:pieces.map(list=>{let s2=0,n=0;for(const p of list)if(Number.isFinite(p.km)){s2+=p.km;n++;}
+            return {点:list.length,平均km:n?+(s2/n).toFixed(1):null};})};
+      },
+      islandTone:(v)=>{if(v==="terrain"||v==="silhouette"||v==="distance"){darumaIslandTone=v;
         if(typeof refreshDarumaIslandToneBtn==="function")refreshDarumaIslandToneBtn();
         drawPhoto._terrainRenderKey=null;update();}return darumaIslandTone;},
       /* 【v1122】直前に線の模型（花火・筒場）を描いたときの、手前の地形の稜線の様子。 */
@@ -27160,21 +27183,47 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
   const points=profile.map(point=>{
     if(!point||point.altitude<=physicalHorizon+.002)return null;
     const top=toXY(point.az,seaLine+(point.altitude-physicalHorizon)),base=toXY(point.az,seaLine);
-    return top&&base&&[...top,...base].every(Number.isFinite)?{top,base}:null;
+    /* 【v1127】距離も持ち歩く。色分けと尾根の切れ目の判定に使う。 */
+    return top&&base&&[...top,...base].every(Number.isFinite)
+      ?{top,base,km:Number.isFinite(point.distanceKm)?point.distanceKm:null}:null;
   });
+  /* 【v1127】この島影ぜんたいの距離の幅。色の濃淡と尾根の切れ目の基準にする。 */
+  let kmMin=Infinity,kmMax=-Infinity;
+  for(const item of points)if(item&&Number.isFinite(item.km)){if(item.km<kmMin)kmMin=item.km;if(item.km>kmMax)kmMax=item.km;}
+  const kmSpan=(Number.isFinite(kmMin)&&kmMax>kmMin)?kmMax-kmMin:0;
   let start=0;
   while(start<points.length){
     while(start<points.length&&!points[start])start++;
     let end=start;while(end<points.length&&points[end])end++;
-    const run=points.slice(start,end);
+    const wholeRun=points.slice(start,end);
+    /* 【v1127】「距離で色分け」を選んだときだけ尾根ごとに分け、**遠い順に**塗る。
+       手前の尾根があとから重なるので、層になって見える。 */
+    const pieces=(darumaIslandTone==="distance")
+      ?darumaIslandSplitByDistance(wholeRun,kmSpan).slice().sort((a,b)=>{
+          const mean=list=>{let s=0,n=0;for(const p of list)if(Number.isFinite(p.km)){s+=p.km;n++;}return n?s/n:0;};
+          return mean(b)-mean(a);
+        })
+      :[wholeRun];
+    for(const run of pieces){
     if(run.length>=2){
       const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
       /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。
-         【v1126】「山と同じ色」を選んだときは、この黒寄せを掛けない。 */
-      const shade=darumaIslandTone==="terrain"?1:(1-clamp(backlit||0,0,1)*.94);
-      const topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
-                    Math.round(lerp(45,111,dayFactor)*shade),
-                    Math.round(lerp(55,101,dayFactor)*shade)];
+         【v1126】「山と同じ色」を選んだときは、この黒寄せを掛けない。
+         【v1127】「距離で色分け」も黒寄せは掛けない（潰れると距離の差が見えないため）。 */
+      const shade=(darumaIslandTone==="terrain"||darumaIslandTone==="distance")?1:(1-clamp(backlit||0,0,1)*.94);
+      let topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
+                  Math.round(lerp(45,111,dayFactor)*shade),
+                  Math.round(lerp(55,101,dayFactor)*shade)];
+      /* 【v1127】遠い尾根ほど空の色へ寄せる（空気遠近法）。
+         いちばん手前は素の色のまま、いちばん奥で 65% だけ空へ寄る。 */
+      if(darumaIslandTone==="distance"&&kmSpan>0){
+        let sum=0,n=0;for(const p of run)if(Number.isFinite(p.km)){sum+=p.km;n++;}
+        if(n){
+          const far=clamp((sum/n-kmMin)/kmSpan,0,1);
+          const haze=(typeof skyColorAtY==="function"?skyColorAtY(topY):null)||[120,130,150];
+          topRGB=topRGB.map((value,i)=>Math.round(lerp(value,haze[i]!==undefined?haze[i]:value,far*.65)));
+        }
+      }
       const bottomRGB=topRGB.map(value=>Math.round(value*.82));
       const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
       gradient.addColorStop(0,`rgb(${topRGB.join(",")})`);gradient.addColorStop(1,`rgb(${bottomRGB.join(",")})`);
@@ -27191,8 +27240,27 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
         drawPhoto._darumaIslandMaskUsed=true;
       }
     }
+    }
     start=Math.max(end,start+1);
   }
+}
+/* 【v1127】ひと続きの輪郭を「尾根ごと」に切る。
+   1方位につき1点しか無いので、**隣どうしで距離が飛ぶ所**がそのまま別の尾根の境目になる。
+   境目の点は前後どちらの塗りにも入れて、隙間が出ないようにする。 */
+function darumaIslandSplitByDistance(run,spanKm){
+  if(!(spanKm>0)||run.length<3)return [run];
+  const gap=Math.max(.8,spanKm*.12);
+  const out=[];let current=[run[0]];
+  for(let i=1;i<run.length;i++){
+    const a=run[i-1].km,b=run[i].km;
+    if(Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(b-a)>gap){
+      current.push(run[i]);
+      if(current.length>=2)out.push(current);
+      current=[run[i]];
+    }else current.push(run[i]);
+  }
+  if(current.length>=2)out.push(current);
+  return out.length?out:[run];
 }
 /* 【v1126】いま描いている島影の輪郭を**1か所で**決める。
    描く所と隠れ判定で別々に判定すると必ずズレるので、入口を1つにする（v1099 の作法）。
