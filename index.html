@@ -5023,6 +5023,9 @@
             <button id="kmzBuildingOrderBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>📐 模型どうしの前後を距離で決める</span><span id="kmzBuildingOrderState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
             <p class="map-hint" style="margin-top:6px;">ONのあいだは遠い模型から順に描くので、<b>手前の建物が奥の花火を隠します</b>。障害物の確認はこれをONにしてください。橋のように長い模型は中心までの距離で測るため、手前の端の前後がずれることがあります。そのときだけOFFにして、一覧のつまみで手で並べ替えてください。</p>
             <p class="map-hint" style="margin-top:6px;">「自ら光る」をONにすると、昼夜の暗転も太陽の陰影も掛けずに、そのままの色で加算合成します。夜でも明るいままです。強さは下の「建物の濃さ」で調整します。</p>
+            <!-- 【v1130】地図で置き直す（花火・筒場・オブジェクト） -->
+            <button id="kmzBuildingRePlaceBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📍 地図で置き直す（場所・向き）</span><span>›</span></button>
+            <p class="map-hint" style="margin-top:4px;">選んでいる花火・筒場・オブジェクトを、置いたときと同じ地図の画面でやり直します。筒場は回転のハンドルも使えます。中身（花火の並びや寸法）はそのまま残ります。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
               <input id="kmzBuildingCoordinatePaste" type="text" inputmode="decimal" placeholder="例：34.849123, 134.693456">
@@ -6783,7 +6786,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1129-nadir-cap";
+const APP_VERSION="1130-replace-place";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8187,6 +8190,7 @@ const el={
   kmzBuildingNudgeFwdBtn:$("kmzBuildingNudgeFwdBtn"), kmzBuildingNudgeBackBtn:$("kmzBuildingNudgeBackBtn"),
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
   kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"), kmzBuildingPlacement:$("kmzBuildingPlacement"),
+  kmzBuildingRePlaceBtn:$("kmzBuildingRePlaceBtn"),   /* 【v1130】 */
   kmzMoveOnBtn:$("kmzMoveOnBtn"), kmzMoveOnState:$("kmzMoveOnState"),
   kmzMoveFromH:$("kmzMoveFromH"), kmzMoveFromM:$("kmzMoveFromM"), kmzMoveFromS:$("kmzMoveFromS"),
   kmzMoveToH:$("kmzMoveToH"), kmzMoveToM:$("kmzMoveToM"), kmzMoveToS:$("kmzMoveToS"),
@@ -9229,6 +9233,62 @@ function fireworkEndPlacement(note){
   }else bar.hidden=true;
 }
 /* ═════ 【v1107】オブジェクトの配置。花火と同じ帯（mapPlaceBar）を使う。 ═════ */
+/* 【v1130】置き直し。ここに id が入っているあいだは、配置の確定で
+   「新しく足す」のではなく「このスロットへ差し替える」。 */
+let kmzReplaceSlotId=null;
+/* 置き直しを始める。選んでいるスロットの種類に合わせて、配置の流れをそのまま使う。 */
+function kmzBeginReplace(){
+  const slot=kmzActiveSlot();
+  if(!slot){setKmzBuildingStatus("置き直す模型を一覧から選んでください。","error");return false;}
+  const site=launchSiteSpecOf(slot.launchSite),obj=objectSpecOf(slot.object),go=fireworkGoOf(slot.firework);
+  const lat=+slot.lat,lon=+slot.lon;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)){setKmzBuildingStatus("いまの場所が分からないので置き直せません。","error");return false;}
+  kmzReplaceSlotId=slot.id;
+  if(site!==null)launchSiteBeginPlacement(site);
+  else if(obj!==null)objectBeginPlacement(obj);
+  else if(go!==null)fireworkBeginPlacement(go);
+  else{
+    kmzReplaceSlotId=null;
+    setKmzBuildingStatus("この模型は地図で置き直せません。緯度・経度と「回転（°）」で直してください。","error");
+    return false;
+  }
+  /* いまの場所を最初から入れておく。地図をタップしなくても向きだけ直せる。 */
+  const seed={latlng:{lat,lng:lon}};
+  const put=()=>{
+    if(!osmMapInstance)return false;
+    try{osmMapInstance.setView([lat,lon],Math.max(osmMapInstance.getZoom()||15,15));}catch(e){}
+    if(site!==null)return launchSiteMapClick(seed);
+    if(obj!==null)return objectMapClick(seed);
+    return fireworkMapClick(seed);
+  };
+  /* 地図はあとから作られることがあるので、出来るまで少し待つ（v1113 と同じ作法）。 */
+  if(!put()){let tries=0;const timer=setInterval(()=>{if(put()||++tries>25)clearInterval(timer);},200);}
+  return true;
+}
+/* 出来た新しいスロットを、古いスロットの場所へ差し替える。 */
+function kmzApplyReplace(newSlot){
+  if(!kmzReplaceSlotId)return;
+  const oldIndex=kmzSlots.findIndex(s=>s.id===kmzReplaceSlotId);
+  const old=oldIndex>=0?kmzSlots[oldIndex]:null;
+  kmzReplaceSlotId=null;
+  if(!old||!newSlot||newSlot.id===old.id)return;
+  /* 見た目の設定は引き継ぐ。直したいのは場所と向きだけ。 */
+  newSlot.visible=old.visible!==false;
+  newSlot.silhouette=old.silhouette===true;
+  newSlot.glow=old.glow===true;
+  if(Number.isFinite(+old.opacity))newSlot.opacity=+old.opacity;
+  if(Number.isFinite(+old.scale))newSlot.scale=+old.scale;
+  if(Number.isFinite(+old.heading))newSlot.heading=+old.heading;
+  if(Number.isFinite(+old.nudgeForward))newSlot.nudgeForward=+old.nudgeForward;
+  if(Number.isFinite(+old.nudgeRight))newSlot.nudgeRight=+old.nudgeRight;
+  if(old.move)newSlot.move=old.move;
+  if(savedNumber(old.fireworkHeight)!==null)newSlot.fireworkHeight=old.fireworkHeight;
+  /* 一覧の並び（＝v1119 で自動にしたが、手で並べている人もいる）を崩さない。 */
+  kmzSlots=kmzSlots.filter(s=>s.id!==old.id&&s.id!==newSlot.id);
+  kmzSlots.splice(Math.min(oldIndex,kmzSlots.length),0,newSlot);
+  kmzActiveId=newSlot.id;
+  kmzLoadEditor();
+}
 let objectPlacing=null,objectPlaceMarker=null;
 function objectBeginPlacement(spec){
   const checked=objectSpecOf(spec);
@@ -9425,10 +9485,12 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
     document.getElementById("mapPlaceText").textContent="標高を調べています…";
     const ground=await fireworkGroundElevation(lat,lon);
     if(!launchSitePlacing||launchSitePlacing.lat!==lat)return;
+    const replacing=!!kmzReplaceSlotId;   /* 【v1130】 */
     const slot=launchSiteCreateSlot(spec,lat,lon,ground===null?0:ground);
+    kmzApplyReplace(slot);
     renderKmzList();refreshKmzBuildingControls(false);
     setKmzBuildingStatus(slot
-      ?`🎇 ${spec.name||"筒場"} を置きました（${lat.toFixed(5)}, ${lon.toFixed(5)}、足元の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
+      ?`🎇 ${spec.name||"筒場"} を${replacing?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、足元の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
       :"筒場を作れませんでした。",slot?"ready":"error");
     drawPhoto._terrainRenderKey=null;update();
     launchSiteEndPlacement(slot?`🎇 ${spec.name||"筒場"} を置きました`:"置けませんでした");
@@ -9441,10 +9503,12 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
     document.getElementById("mapPlaceText").textContent="標高を調べています…";
     const ground=await fireworkGroundElevation(lat,lon);
     if(!objectPlacing||objectPlacing.lat!==lat)return;   // 待っている間にやめた
+    const replacing=!!kmzReplaceSlotId;   /* 【v1130】 */
     const slot=objectCreateSlot(spec,lat,lon,ground===null?0:ground);
+    kmzApplyReplace(slot);
     renderKmzList();refreshKmzBuildingControls(false);
     setKmzBuildingStatus(slot
-      ?`🧱 ${spec.name} を置きました（${lat.toFixed(5)}, ${lon.toFixed(5)}、地面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
+      ?`🧱 ${spec.name} を${replacing?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、地面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`
       :"オブジェクトを作れませんでした（寸法を確かめてください）。",slot?"ready":"error");
     drawPhoto._terrainRenderKey=null;update();
     objectEndPlacement(slot?`🧱 ${spec.name} を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`:"置けませんでした");
@@ -9456,15 +9520,18 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   document.getElementById("mapPlaceText").textContent="標高を調べています…";
   const ground=await fireworkGroundElevation(lat,lon);
   if(!fireworkPlacing||fireworkPlacing.lat!==lat)return;   // 待っている間にやめた
+  const replacingFw=!!kmzReplaceSlotId;   /* 【v1130】 */
   fireworkCreateSlot(go,lat,lon,ground===null?0:ground);
+  kmzApplyReplace(kmzActiveSlot());
   renderKmzList();refreshKmzBuildingControls(false);
-  setKmzBuildingStatus(`🎆 花火 ${go}号 を置きました（${lat.toFixed(5)}, ${lon.toFixed(5)}、基部の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。「自ら光る」ON。`,"ready");
+  setKmzBuildingStatus(`🎆 花火 ${go}号 を${replacingFw?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、基部の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`,"ready");
   drawPhoto._terrainRenderKey=null;update();
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
 });
 document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>launchSiteRotate(-5));   /* 【v1113】5°ずつ */
 document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(5));
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
+  kmzReplaceSlotId=null;   /* 【v1130】置き直しをやめた */
   if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
   else if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
   else if(fireworkPlacing)fireworkEndPlacement(null);
@@ -10679,6 +10746,8 @@ el.kmzBuildingSilhouetteBtn.addEventListener("click",()=>{kmzBuildingSilhouette=
 if(el.kmzSilhouetteDarkness)el.kmzSilhouetteDarkness.addEventListener("input",()=>{refreshKmzBuildingControls();scheduleSaveSettings();});
 el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuildingGlow;refreshKmzBuildingControls();});
 el.kmzBuildingDepthBtn.addEventListener("click",()=>{kmzDepthBuffer=!kmzDepthBuffer;refreshKmzBuildingControls();});
+/* 【v1130】 */
+if(el.kmzBuildingRePlaceBtn)el.kmzBuildingRePlaceBtn.addEventListener("click",()=>kmzBeginReplace());
 /* 【v1119】並べ替えを切り替えたら、地形の作り直しは要らないが描き直しは要る。 */
 el.kmzBuildingOrderBtn.addEventListener("click",()=>{kmzSlotDepthSort=!kmzSlotDepthSort;refreshKmzBuildingControls();update();});
 
@@ -26012,6 +26081,14 @@ try{
       /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
       lookRing:()=>drawPhoto._lookFullCircle||null,   /* 【v1116】 */
       nadirCap:()=>glTerrainBuildMesh._nadir||null,   /* 【v1129】足元のリングの閉じ方 */
+      /* 【v1130】置き直し。 */
+      rePlace:()=>kmzBeginReplace(),
+      rePlaceState:()=>({置き直し中のid:kmzReplaceSlotId,
+        選択中:(()=>{const s=kmzActiveSlot();return s?{id:s.id,名:s.fileName,lat:s.lat,lon:s.lon,heading:s.heading,
+          種類:launchSiteSpecOf(s.launchSite)!==null?"筒場":(objectSpecOf(s.object)!==null?"オブジェクト":
+            (fireworkGoOf(s.firework)!==null?"花火":(townSpecOf(s.town)!==null?"町":"ファイル"))),
+          向き:launchSiteSpecOf(s.launchSite)!==null?s.launchSite.groupAngle:null}:null;})(),
+        一覧:kmzSlots.map(s=>({id:s.id,名:s.fileName}))}),
       lookSpan:()=>({仰角:+el.facingAlt.value,
         層の数:drawPhoto._lookLayerCount||null,元の層:waterLayerDistancesForCurrentMode().length,
         刻みの倍率:drawPhoto._lookStepScale||null,
