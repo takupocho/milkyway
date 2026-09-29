@@ -6280,6 +6280,7 @@
                     <p id="darumaSilhouetteRangeSummary" class="plan-modal-help" style="margin-top:8px;">左右範囲を選択してください。</p>
                     <div id="darumaSilhouetteStatus" class="daruma-island-silhouette-status" hidden aria-live="polite"></div>
                     <div class="daruma-island-silhouette-actions">
+                      <button id="darumaIslandToneBtn" type="button" style="flex:1 1 100%;margin-bottom:6px;">🎨 島影の色：シルエット（黒）</button>
                       <button id="darumaSilhouetteClearBtn" type="button">島影を消す</button>
                       <button id="darumaSilhouetteRunBtn" type="button" class="primary" disabled>島影を作成</button>
                     </div>
@@ -6782,7 +6783,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1125-plan-parts";
+const APP_VERSION="1126-island-occlude";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8015,6 +8016,7 @@ const el={
   planPhotoInput:$("planPhotoInput"), planPhotoSelectBtn:$("planPhotoSelectBtn"), planPhotoRemoveBtn:$("planPhotoRemoveBtn"), planPhotoPreviewWrap:$("planPhotoPreviewWrap"), planPhotoPreview:$("planPhotoPreview"), planPhotoStatus:$("planPhotoStatus"),
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
   planSyncBtn:$("planSyncBtn"), planSyncStatus:$("planSyncStatus"),   /* 【v1123】 */
+  darumaIslandToneBtn:$("darumaIslandToneBtn"),   /* 【v1126】 */
   planExportBtn:$("planExportBtn"), planImportBtn:$("planImportBtn"), planImportInput:$("planImportInput"),
   planLoadMap:$("planLoadMap"), planLoadMapWrap:$("planLoadMapWrap"), planBrowseSeg:$("planBrowseSeg"),
   walkerBubble:$("walkerBubble"), walkerBubbleText:$("walkerBubbleText"), walkerBubbleCaret:$("walkerBubbleCaret"),
@@ -23465,6 +23467,21 @@ function renderSavedPlansList(query=""){
 }
 /* 【v1123】 */
 if(el.planSyncBtn)el.planSyncBtn.addEventListener("click",()=>planCloudSync());
+/* 【v1126】島影の色。押すたびに「シルエット（黒）」と「山と同じ色」を行き来する。 */
+function refreshDarumaIslandToneBtn(){
+  if(!el.darumaIslandToneBtn)return;
+  const terrain=darumaIslandTone==="terrain";
+  el.darumaIslandToneBtn.textContent=`🎨 島影の色：${terrain?"山と同じ色":"シルエット（黒）"}`;
+  el.darumaIslandToneBtn.classList.toggle("active",terrain);
+}
+if(el.darumaIslandToneBtn)el.darumaIslandToneBtn.addEventListener("click",()=>{
+  darumaIslandTone=darumaIslandTone==="terrain"?"silhouette":"terrain";
+  refreshDarumaIslandToneBtn();
+  drawPhoto._terrainRenderKey=null;update();
+});
+/* 【v1126】ここで refreshDarumaIslandToneBtn() を呼んではいけない。
+   `darumaIslandTone` の宣言はこの行よりずっと下なので、読み込み中は TDZ で落ちる
+   （v1115 と同じ間違い）。ボタンの初期表示は HTML に書いてあるので呼ぶ必要も無い。 */
 async function exportSavedPlans(){
   if(!savedObservingLocations.length){alert("エクスポートする撮影計画がありません。");return;}
   el.planExportBtn.disabled=true;el.planExportBtn.textContent="書き出し中…";
@@ -25920,6 +25937,30 @@ try{
         return {題名:plan.title,計画KB:Math.round(JSON.stringify(body).length/1024),
           写真KB:photo?Math.round(photo.fullDataUrl.length/1024):0,縮小:photo?photo.reduced:null,内訳:parts};
       },
+      /* 【v1126】島影が隠れ判定に入っているか。 */
+      island:()=>({色:darumaIslandTone,
+        直前の稜線に島影が入った:drawPhoto._kmzSkylineIsland===true,
+        線の模型の稜線:drawKmzLineModel._diag||null}),
+      /* 【v1126】いまの場面で、指定した距離までの島影が稜線に何列ぶん効くか。 */
+      islandSkyline:(limitKm)=>{
+        const s=drawPhoto._skylineS,toXY=drawPhoto._skylineToXY,wh=drawPhoto._skylineWH||[800,1200];
+        if(!s||!toXY)return "まだ描いていません";
+        const found=darumaIslandProfilesFor(s);
+        const all=[];
+        if(found)for(const p of found.list)for(const pt of p)if(pt&&Number.isFinite(pt.distanceKm))all.push(pt.distanceKm);
+        all.sort((a,b)=>a-b);
+        const arr=darumaIslandSkylineY(s,toXY,wh[0],wh[1],+limitKm||1e9);
+        let cols=0,minY=Infinity,maxY=-Infinity;
+        if(arr)for(const v of arr)if(Number.isFinite(v)){cols++;if(v<minY)minY=v;if(v>maxY)maxY=v;}
+        return {輪郭が取れた:!!found,点の数:all.length,
+          距離の範囲km:all.length?[+all[0].toFixed(2),+all[all.length-1].toFixed(2)]:null,
+          指定km:+limitKm||null,効いた列:cols,
+          y範囲:cols?[Math.round(minY),Math.round(maxY)]:null,
+          physicalHorizon:found?found.physicalHorizon:null};
+      },
+      islandTone:(v)=>{if(v==="terrain"||v==="silhouette"){darumaIslandTone=v;
+        if(typeof refreshDarumaIslandToneBtn==="function")refreshDarumaIslandToneBtn();
+        drawPhoto._terrainRenderKey=null;update();}return darumaIslandTone;},
       /* 【v1122】直前に線の模型（花火・筒場）を描いたときの、手前の地形の稜線の様子。 */
       lineSkyline:()=>drawKmzLineModel._diag||null,
       /* 【v1121】いまの鏡の面の標高と、方位ごとの拾えぐあい。 */
@@ -26214,6 +26255,8 @@ let darumaTelephotoState={status:"idle",result:null,message:""};
 /* 日付ごとの判定結果とは別に保持する、観測地点専用の軽量な島影。
    DEM画像そのものは残さず、各方位で最も高く見える点だけを保存する。 */
 let darumaIslandSilhouette=null;
+/* 【v1126】島影の色。"silhouette"＝逆光で黒く潰す（従来どおり）／"terrain"＝山と同じ色のまま。 */
+let darumaIslandTone="silhouette";
 let darumaSilhouetteSelection={startAz:null,endAz:null,centerAz:null,halfAngle:null,startX:null,endX:null};
 let darumaSilhouettePhotoPicking=false,darumaSilhouettePickTouchHandled=false;
 let darumaSilhouetteGeneration=0,darumaSilhouetteLoading=false;
@@ -27126,8 +27169,9 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
     const run=points.slice(start,end);
     if(run.length>=2){
       const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
-      /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。 */
-      const shade=1-clamp(backlit||0,0,1)*.94;
+      /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。
+         【v1126】「山と同じ色」を選んだときは、この黒寄せを掛けない。 */
+      const shade=darumaIslandTone==="terrain"?1:(1-clamp(backlit||0,0,1)*.94);
       const topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
                     Math.round(lerp(45,111,dayFactor)*shade),
                     Math.round(lerp(55,101,dayFactor)*shade)];
@@ -27150,6 +27194,56 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
     start=Math.max(end,start+1);
   }
 }
+/* 【v1126】いま描いている島影の輪郭を**1か所で**決める。
+   描く所と隠れ判定で別々に判定すると必ずズレるので、入口を1つにする（v1099 の作法）。
+   優先順位は今までの描画とまったく同じ：保存した島影 → 望遠で今出した結果。 */
+function darumaIslandProfilesFor(s){
+  if(darumaIslandSilhouetteMatches(s)&&darumaIslandSilhouette&&Array.isArray(darumaIslandSilhouette.segments)){
+    const list=darumaIslandSilhouette.segments.map(seg=>seg&&seg.profile).filter(Array.isArray);
+    if(list.length)return {list,physicalHorizon:darumaIslandSilhouette.physicalHorizon};
+  }
+  if(typeof darumaTelephotoResultMatches==="function"&&darumaTelephotoResultMatches(s)){
+    const result=darumaTelephotoState&&darumaTelephotoState.result;
+    if(result&&Array.isArray(result.profile))return {list:[result.profile],physicalHorizon:result.physicalHorizon};
+  }
+  return null;
+}
+/* 【v1126】島影を「手前の地形」として列ごとの y 座標にする。
+   ・位置の出し方は `drawDarumaIslandProfile` と同じ（seaLine + (altitude - physicalHorizon)）
+   ・`limitKm` より手前の点だけ。奥の島は花火を隠さない
+   ・島の無い列は Infinity。あとで地形の稜線と「高いほう（y が小さいほう）」を採る */
+function darumaIslandSkylineY(s,toXY,W,H,limitKm){
+  const found=darumaIslandProfilesFor(s);
+  if(!found||!Number.isFinite(limitKm))return null;
+  const seaLine=renderedSeaHorizonAltDeg();
+  const width=Math.max(1,Math.ceil(W));
+  const arr=new Float32Array(width).fill(Infinity);
+  let any=false;
+  for(const profile of found.list){
+    let prev=null;
+    for(const point of profile){
+      const usable=point&&Number.isFinite(point.distanceKm)&&point.distanceKm<limitKm
+        &&Number.isFinite(point.altitude)&&point.altitude>found.physicalHorizon+.002;
+      if(!usable){prev=null;continue;}
+      const here=toXY(norm360(point.az),seaLine+(point.altitude-found.physicalHorizon));
+      if(!here||!here.every(Number.isFinite)){prev=null;continue;}
+      if(prev){
+        const left=prev[0]<=here[0]?prev:here,right=prev[0]<=here[0]?here:prev;
+        const span=right[0]-left[0];
+        /* 画面を回り込む繋ぎ（魚眼で反対側へ出る）は捨てる。 */
+        if(span>=0&&span<width){
+          const x0=Math.max(0,Math.ceil(left[0])),x1=Math.min(width-1,Math.floor(right[0]));
+          for(let x=x0;x<=x1;x++){
+            const y=span>1e-6?lerp(left[1],right[1],(x-left[0])/span):Math.min(left[1],right[1]);
+            if(y<arr[x]){arr[x]=y;any=true;}
+          }
+        }
+      }
+      prev=here;
+    }
+  }
+  return any?arr:null;
+}
 function drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,dayFactor){
   const backlit=darumaIslandBacklitFactor(s);   /* 【v939】 */
   /* 【v940】形を残すマスクを毎コマ作り直す。描かなかったコマの古い形を残さない。 */
@@ -27159,15 +27253,11 @@ function drawDarumaTelephotoIslandOverlay(ctx,s,toXY,W,H,dayFactor){
   maskCtx.globalCompositeOperation="source-over";maskCtx.globalAlpha=1;maskCtx.filter="none";
   maskCtx.clearRect(0,0,W,H);
   drawPhoto._darumaIslandMaskUsed=false;
-  if(darumaIslandSilhouetteMatches(s)){
-    for(const segment of darumaIslandSilhouette.segments){
-      if(Array.isArray(segment.profile))drawDarumaIslandProfile(ctx,segment.profile,darumaIslandSilhouette.physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx);
-    }
-    return;
-  }
-  if(!darumaTelephotoResultMatches(s))return;
-  const result=darumaTelephotoState.result;
-  if(Array.isArray(result.profile))drawDarumaIslandProfile(ctx,result.profile,result.physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx);
+  /* 【v1126】隠れ判定とまったく同じ入口から輪郭を取る。 */
+  const found=darumaIslandProfilesFor(s);
+  if(!found)return;
+  for(const profile of found.list)
+    drawDarumaIslandProfile(ctx,profile,found.physicalHorizon,toXY,W,H,dayFactor,backlit,maskCtx);
 }
 /* 【v940】いま島影が描かれている場面かどうか。
    島を描く関数が呼ばれなかったコマで古いマスクを掴まないための見張り。 */
@@ -29851,7 +29941,18 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
     if(!point||!point.every(Number.isFinite)) continue;
     samples.push(point);
   }
-  return samples.length>=8?buildSkylineYArray(samples,W,H):null;
+  const base=samples.length>=8?buildSkylineYArray(samples,W,H):null;
+  /* 【v1126】ダルマの島影も手前の地形として混ぜる。列ごとに高いほう（y が小さいほう）を採る。
+     `buildSkylineYArray` は端の値を画面の端まで伸ばすので、島影を同じ関数へ入れてはいけない
+     （島の無い方位まで島の高さで埋まり、関係ない花火まで切ってしまう）。 */
+  drawPhoto._skylineS=s;drawPhoto._skylineToXY=toXY;drawPhoto._skylineWH=[W,H];   /* 【v1126】確認用 */
+  const islandY=darumaIslandSkylineY(s,toXY,W,H,limitKm);
+  if(base&&islandY){
+    for(let x=0;x<base.length&&x<islandY.length;x++)
+      if(Number.isFinite(islandY[x])&&islandY[x]<base[x])base[x]=islandY[x];
+  }
+  drawPhoto._kmzSkylineIsland=!!islandY;   /* 【v1126】確認用 */
+  return base;
 }
 /* 【v902】模型の足元の高密度点を、**地形とは独立して**用意する。
 
