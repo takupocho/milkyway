@@ -6783,7 +6783,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1128-island-ridges";
+const APP_VERSION="1129-nadir-cap";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -26011,6 +26011,7 @@ try{
       /* 【v1115】見下ろしたときの方位の窓・刻み・遠方の打ち切りを外から見る。 */
       /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
       lookRing:()=>drawPhoto._lookFullCircle||null,   /* 【v1116】 */
+      nadirCap:()=>glTerrainBuildMesh._nadir||null,   /* 【v1129】足元のリングの閉じ方 */
       lookSpan:()=>({仰角:+el.facingAlt.value,
         層の数:drawPhoto._lookLayerCount||null,元の層:waterLayerDistancesForCurrentMode().length,
         刻みの倍率:drawPhoto._lookStepScale||null,
@@ -31922,8 +31923,17 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
       runs++;runStart=runEnd+1;
     }
   }
+  /* 【v1129】真下（仰角 -90°）の投影。方位はどれでも同じ点に来るので 0,0 でよい。
+     これが**画面の下端より上**にあるとき＝見下ろしているとき、足元のリングの内側は
+     「下端まで」ではなく「真下の点へ収束」させる。そうしないと中央から下へ帯が伸びる。 */
+  let nadirX=0,nadirY=0,nadirCap=false;
+  if(projector.project(0,0,-90,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){
+    nadirX=tmp[0];nadirY=tmp[1];
+    nadirCap=nadirY<bottomY;
+  }
+  glTerrainBuildMesh._nadir={x:+nadirX.toFixed(1),y:+nadirY.toFixed(1),使う:nadirCap,bottomY};   /* 確認用 */
   /* 2巡目：奥から順に、層 k の稜線（遠）と、ひとつ近い「使う層」の稜線（近）に挟まれた四角形を色 k で。
-     いちばん近い層の下は画面下端まで。 */
+     いちばん近い層の下は画面下端まで（見下ろしているときは真下の点まで）。 */
   const put=(x,y,d,a,w,mx,my)=>{data[n++]=x;data[n++]=y;data[n++]=d;data[n++]=a;data[n++]=w;data[n++]=mx;data[n++]=my;};
   const tri=(x1,y1,m1x,m1y,x2,y2,m2x,m2y,x3,y3,m3x,m3y,d,a,w)=>{need(GL_STRIDE*3);put(x1,y1,d,a,w,m1x,m1y);put(x2,y2,d,a,w,m2x,m2y);put(x3,y3,d,a,w,m3x,m3y);};
   for(let k=layerCount-1;k>=0;k--){
@@ -31947,7 +31957,8 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
         if(!w&&rise>WATER_ATLAS_STEEP_M)w+=2;
       }
       const x1=pxA[i],y1=pyA[i],x2=pxB[i],y2=pyB[i];
-      let x3=x2,y3=bottomY,x4=x1,y4=bottomY;
+      /* 【v1129】いちばん近い層の内側。見下ろしているときは真下の点へ収束させる（＝扇の三角形）。 */
+      let x3=nadirCap?nadirX:x2,y3=nadirCap?nadirY:bottomY,x4=nadirCap?nadirX:x1,y4=nadirCap?nadirY:bottomY;
       if(nbase>=0&&ok[nbase+c]){x3=pxB[nbase+c];y3=pyB[nbase+c];x4=pxA[nbase+c];y4=pyA[nbase+c];}
       if(y1===y4&&y2===y3&&x1===x4&&x2===x3)continue;
       /* 四隅の地面の位置（列 c／c+1 × 距離 遠／近）。 */
@@ -38482,7 +38493,11 @@ function drawPhoto(ctx,s){
              重なりも隙間も無く輪が閉じる。 */
           const fullCircle=cornerHalf>=180;
           const ringStep=fullCircle?360/Math.max(8,Math.round(360/stepDeg)):stepDeg;
-          const startAz=fullCircle?s.facingAz-180:s.facingAz-cornerHalf-stepDeg;
+          /* 【v1129】全周のときの輪の継ぎ目を**見ている方向（画面の上）**へ移す。
+             v1116 では真後ろ（facingAz-180）に置いていたが、見下ろすと真後ろは
+             画面の下＝足元から下へ伸びる線になり、いちばん目につく所だった。
+             見ている方向は、傾けているときは水平線・空の側へ抜けるので目立ちにくい。 */
+          const startAz=fullCircle?s.facingAz:s.facingAz-cornerHalf-stepDeg;
           const endAz=fullCircle?startAz+360:s.facingAz+cornerHalf+stepDeg;
           columns=[];
           const suppressRanges=darumaSilhouetteSuppressRanges(s);   /* 【v968】案B */
