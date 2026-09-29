@@ -6782,7 +6782,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1124-sync-why";
+const APP_VERSION="1125-plan-parts";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -22862,7 +22862,46 @@ function planCloudError(status,text,where){
   return new Error(`${head}HTTP ${status}${why?`／${why}`:""}`);
 }
 /* 1文書 1MiB。名前や型の分も要るので、送る中身は 900KB までにしておく。 */
-const PLAN_DOC_MAX=900*1024;
+let PLAN_DOC_MAX=900*1024;   /* 【v1125】試験のため __hd.planDocMax() で変えられる */
+/* 【v1125】重い順に切り出す候補。ここに無いものは必ず計画本体に残る（小さいものばかりなので）。 */
+const PLAN_HEAVY_KEYS=["darumaIslandSilhouette","kmzBuilding","cameraWork","localDetailTerrain","comets"];
+const PLAN_PART_MARK="__part__";
+function planPartDocId(planId,key,index){return `${planId}${PLAN_PART_MARK}${key}__${index}`;}
+function planIsPartId(id){return String(id).includes(PLAN_PART_MARK);}
+/* 計画を「本体＋切り出した部品」に分ける。本体が上限に収まるまで、**大きい部品から**外へ出す。 */
+function planSplitForCloud(plan){
+  const parts={};
+  const body={...plan};
+  if(JSON.stringify(body).length<=PLAN_DOC_MAX)return {body,parts};
+  const sizes=PLAN_HEAVY_KEYS
+    .filter(key=>body[key]!==undefined&&body[key]!==null)
+    .map(key=>({key,size:JSON.stringify(body[key]).length}))
+    .sort((a,b)=>b.size-a.size);
+  const moved={};
+  for(const {key} of sizes){
+    parts[key]=body[key];
+    delete body[key];
+    moved[key]=true;
+    if(JSON.stringify({...body,__parts:{}}).length<=PLAN_DOC_MAX)break;
+  }
+  return {body,parts};
+}
+/* 文字列を切る（JSON をそのまま切って、受け側で繋いでから読む）。
+
+   ★ 実機で踏んだ罠：単純に PLAN_DOC_MAX で切ると、その断片を `{chunk:"…"}` へ
+     入れ直すときに **JSON のエスケープで膟らんで**上限を超える（50KB → 54KB で失敗）。
+     切ったあとの**実際の長さを見て縮める**。 */
+function planChunkText(text){
+  const out=[];
+  let i=0,guard=0;
+  while(i<text.length&&guard++<4096){
+    let size=Math.min(text.length-i,Math.max(1024,Math.floor(PLAN_DOC_MAX*.6)));
+    while(size>512&&JSON.stringify({chunk:text.slice(i,i+size)}).length>PLAN_DOC_MAX)size=Math.floor(size*.8);
+    out.push(text.slice(i,i+size));
+    i+=size;
+  }
+  return out.length?out:[""];
+}
 async function planCloudIndex(code,kind){
   const map=new Map();let token="";
   for(let page=0;page<30;page++){
@@ -22922,6 +22961,7 @@ async function planCloudSync(){
     /* ① クラウドにあって、こちらが古い（または無い）ものを取りに行く */
     let changed=false;
     for(const [id,remoteAt] of remote){
+      if(planIsPartId(id))continue;   /* 【v1125】切り出した部品は本体と一緒に取りに行く */
       const tomb=+planTombs[id]||0;
       if(tomb&&tomb>=remoteAt)continue;               /* こちらで消した方が新しい */
       const mine=localById.get(id);
@@ -22939,6 +22979,21 @@ async function planCloudSync(){
       }
       const incoming={...doc};
       incoming.id=id;
+      /* 【v1125】切り出された部品を集めて戻す。1つでも欠けたら、その部品は入れない
+         （半端なデータで上書きするより、無いほうが安全）。 */
+      if(incoming.__parts&&typeof incoming.__parts==="object"){
+        for(const [key,count] of Object.entries(incoming.__parts)){
+          const pieces=[];let ok=true;
+          for(let n=0;n<(+count||0);n++){
+            const piece=await planCloudGet(code,"plans",planPartDocId(id,key,n)).catch(()=>null);
+            if(!piece||typeof piece.chunk!=="string"){ok=false;break;}
+            pieces.push(piece.chunk);
+          }
+          if(!ok)continue;
+          try{incoming[key]=JSON.parse(pieces.join(""));stat.部品取得=(stat.部品取得||0)+pieces.length;}catch(e){}
+        }
+        delete incoming.__parts;
+      }
       /* 【v1123】クラウドにはスナップショットが入っていない。
          こちらで既に作ってあるものは**消さずに残す**（作り直しの通信を無駄にしない）。 */
       if(mine&&mine.waterSnapshotKey&&!incoming.waterSnapshotKey)incoming.waterSnapshotKey=mine.waterSnapshotKey;
@@ -22969,7 +23024,31 @@ async function planCloudSync(){
       const id=String(plan.id),at=+plan.updatedAt||0;
       if(remote.has(id)&&remote.get(id)>=at)continue;
       const payload=await planCloudPayload(plan);
-      const put=await planCloudPut(code,"plans",id,payload,at||Date.now(),`計画「${plan.title||id}」`);
+      /* 【v1125】大きすぎる計画は、重い部品を別の文書へ切り出してから送る。
+         精度は一切落とさない（丸めると遠景の稜線が崩れるため）。 */
+      const split=planSplitForCloud(payload);
+      const partNames=Object.keys(split.parts);
+      if(partNames.length){
+        const counts={};
+        /* ★ 実機で踏んだ罠：断片が失敗したのに本体だけ先に書けてしまい、
+           クラウドに半端な状態（本体は 3 つと言うのに 1 つしか無い）が残った。
+           しかも updatedAt は揃ってしまうので、次の同期で「変更なし」になりやり直されない。
+           → **全部の断片が成功してから本体を書く**。失敗したらこの計画は飛ばして次回やり直す。 */
+        let allOk=true;
+        for(const key of partNames){
+          const chunks=planChunkText(JSON.stringify(split.parts[key]));
+          counts[key]=chunks.length;
+          for(let n=0;n<chunks.length;n++){
+            const put=await planCloudPut(code,"plans",planPartDocId(id,key,n),{chunk:chunks[n]},
+              at||Date.now(),`計画「${plan.title||id}」の ${key}（${n+1}/${chunks.length}）`);
+            if(put.skipped){skipped.push(put.why);allOk=false;}
+            else stat.部品送信=(stat.部品送信||0)+1;   /* 送れたものだけ数える */
+          }
+        }
+        if(!allOk)continue;   /* 半端な状態をクラウドに残さない */
+        split.body.__parts=counts;
+      }
+      const put=await planCloudPut(code,"plans",id,split.body,at||Date.now(),`計画「${plan.title||id}」`);
       if(put.skipped){skipped.push(put.why);continue;}
       stat.送信++;
       const photo=await planPhotoCloudPayload(plan).catch(()=>null);
@@ -22985,6 +23064,7 @@ async function planCloudSync(){
 
     /* ③ こちらで消したものの墓標を送る */
     for(const [id,at] of Object.entries(planTombs)){
+      if(planIsPartId(id))continue;   /* 【v1125】 */
       if(!remote.has(id))continue;
       if(remote.get(id)>=+at)continue;
       await planCloudPut(code,"plans",id,{deleted:true},+at,`削除の記録（${id}）`);
@@ -23003,6 +23083,7 @@ async function planCloudSync(){
     if(stat.送信)parts.push(`送信${stat.送信}件`);
     if(stat.削除)parts.push(`削除${stat.削除}件`);
     if(stat.写真取得||stat.写真送信)parts.push(`写真↓${stat.写真取得}・↑${stat.写真送信}`);
+    if(stat.部品取得||stat.部品送信)parts.push(`分割↓${stat.部品取得||0}・↑${stat.部品送信||0}`);   /* 【v1125】 */
     planSyncSay(`☁ 同期しました ${when}（計画${savedObservingLocations.length}件`
       +(parts.length?` ／ ${parts.join("・")}`:"／ 変更なし")+`）`
       +(stat.縮小?`　※写真${stat.縮小}件は大きすぎたため縮小版を同期しました。` : "")
@@ -25789,6 +25870,8 @@ try{
          本当の角度と「水平線で折り返した場合」の角度、反射点までの距離を返す。 */
       /* 【v1123】撮影計画の同期。 */
       planSync:()=>planCloudSync(),
+      /* 【v1125】1文書の上限を一時的に変える（分割の動きを確かめる用）。 */
+      planDocMax:(n)=>{if(Number.isFinite(+n)&&+n>64)PLAN_DOC_MAX=Math.round(+n);return PLAN_DOC_MAX;},
       /* 【v1124】手元の計画を1件ずつ測る。どれが大きいかを名前で出す。 */
       planSyncSizes:async()=>{
         const rows=[];
@@ -25800,6 +25883,19 @@ try{
             写真KB:photo?Math.round(JSON.stringify(photo).length/1024):0,
             縮小:photo?!!photo.reduced:null,
             updatedAt:plan.updatedAt,型:typeof plan.updatedAt});
+        }
+        /* 【v1125】どの部品が重いのかまで出す。 */
+        for(const row of rows){
+          const plan=savedObservingLocations.find(p=>p.id===row.id);
+          const body=await planCloudPayload(plan);
+          const heavy={};
+          for(const [k,v] of Object.entries(body)){
+            const kb=Math.round(JSON.stringify(v===undefined?null:v).length/1024);
+            if(kb>=20)heavy[k]=kb+"KB";
+          }
+          row.重い部品=heavy;
+          if(body.darumaIslandSilhouette&&typeof savedDarumaIslandPointCount==="function")
+            row.稜線の点数=savedDarumaIslandPointCount(body.darumaIslandSilhouette);
         }
         rows.sort((a,b)=>(b.計画KB+b.写真KB)-(a.計画KB+a.写真KB));
         return rows;
