@@ -6782,7 +6782,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1123-plan-sync";
+const APP_VERSION="1124-sync-why";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -22853,15 +22853,21 @@ async function planPhotoCloudPayload(location){
     fullDataUrl:full,thumbDataUrl:thumbDataUrl||full,reduced};
 }
 /* ── Firestore の読み書き ── */
-function planCloudError(status){
+/* 【v1124】Firestore は理由を本文で教えてくれる。握りつぶさずに画面まで持って行く。 */
+function planCloudError(status,text,where){
   if(status===403)return new Error("RULES");
-  return new Error(`HTTP ${status}`);
+  let why="";
+  try{const j=JSON.parse(text||"{}");why=(j.error&&j.error.message)||"";}catch(e){}
+  const head=where?`${where}：`:"";
+  return new Error(`${head}HTTP ${status}${why?`／${why}`:""}`);
 }
+/* 1文書 1MiB。名前や型の分も要るので、送る中身は 900KB までにしておく。 */
+const PLAN_DOC_MAX=900*1024;
 async function planCloudIndex(code,kind){
   const map=new Map();let token="";
   for(let page=0;page<30;page++){
     const r=await cloudFetch(planCloudListUrl(code,kind,token),{cache:"no-store"},{kind:"read",docs:0});
-    if(!r.ok)throw planCloudError(r.status);
+    if(!r.ok)throw planCloudError(r.status,r.text,`${kind} の一覧`);
     const j=r.json(),docs=j.documents||[];
     /* Firestore は返した件数ぶん読み取りを数えるので、こちらも件数で数える。 */
     if(docs.length)cloudUsageAdd({up:0,down:0,reads:docs.length,writes:0,error:false});
@@ -22877,18 +22883,24 @@ async function planCloudIndex(code,kind){
 async function planCloudGet(code,kind,id){
   const r=await cloudFetch(planCloudDocUrl(code,kind,id),{cache:"no-store"},{kind:"read",docs:1});
   if(r.status===404)return null;
-  if(!r.ok)throw planCloudError(r.status);
+  if(!r.ok)throw planCloudError(r.status,r.text,`${kind} の取得（${id}）`);
   const f=r.json().fields||{};
   try{return JSON.parse((f.data&&f.data.stringValue)||"null");}catch(e){return null;}
 }
-async function planCloudPut(code,kind,id,value,updatedAt){
-  const body={fields:{data:{stringValue:JSON.stringify(value)},
-    updatedAt:{integerValue:String(Math.round(updatedAt||Date.now()))},
+async function planCloudPut(code,kind,id,value,updatedAt,label){
+  const text=JSON.stringify(value);
+  /* 【v1124】送る前に大きさを見る。1件のせいで同期全体が止まらないように、
+     大きすぎるものは投げずに「飛ばした」と返す。 */
+  if(text.length>PLAN_DOC_MAX)
+    return {skipped:true,why:`${label||id} は ${Math.round(text.length/1024)}KB あり、クラウドの1件あたりの上限（1MB）を超えるため送れませんでした`};
+  const at=Math.round(Number(updatedAt));
+  const body={fields:{data:{stringValue:text},
+    updatedAt:{integerValue:String(Number.isFinite(at)&&at>0?at:Date.now())},
     app:{stringValue:PLAN_SYNC_APP}}};
   const r=await cloudFetch(planCloudDocUrl(code,kind,id),
     {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)},{kind:"write",docs:1});
-  if(!r.ok)throw planCloudError(r.status);
-  return true;
+  if(!r.ok)throw planCloudError(r.status,r.text,`${label||id} の送信`);
+  return {skipped:false};
 }
 /* ── 同期の本体 ── */
 async function planCloudSync(){
@@ -22897,6 +22909,7 @@ async function planCloudSync(){
   const btn=document.getElementById("planSyncBtn");
   if(btn)btn.disabled=true;
   const stat={取得:0,送信:0,削除:0,写真取得:0,写真送信:0,縮小:0};
+  const skipped=[];   /* 【v1124】大きすぎて送れなかったもの */
   try{
     if(!memoSyncCode)await memoLoadLocal();
     const code=memoSyncCode;
@@ -22956,14 +22969,16 @@ async function planCloudSync(){
       const id=String(plan.id),at=+plan.updatedAt||0;
       if(remote.has(id)&&remote.get(id)>=at)continue;
       const payload=await planCloudPayload(plan);
-      await planCloudPut(code,"plans",id,payload,at||Date.now());
+      const put=await planCloudPut(code,"plans",id,payload,at||Date.now(),`計画「${plan.title||id}」`);
+      if(put.skipped){skipped.push(put.why);continue;}
       stat.送信++;
       const photo=await planPhotoCloudPayload(plan).catch(()=>null);
       if(photo){
         const photoAt=+photo.updatedAt||at||Date.now();
         if(!remotePhotos.has(photo.id)||remotePhotos.get(photo.id)<photoAt){
-          await planCloudPut(code,"photos",photo.id,photo,photoAt);
-          stat.写真送信++;if(photo.reduced)stat.縮小++;
+          const put=await planCloudPut(code,"photos",photo.id,photo,photoAt,`「${plan.title||id}」の写真`);
+          if(put.skipped)skipped.push(put.why);
+          else{stat.写真送信++;if(photo.reduced)stat.縮小++;}
         }
       }
     }
@@ -22972,7 +22987,7 @@ async function planCloudSync(){
     for(const [id,at] of Object.entries(planTombs)){
       if(!remote.has(id))continue;
       if(remote.get(id)>=+at)continue;
-      await planCloudPut(code,"plans",id,{deleted:true},+at);
+      await planCloudPut(code,"plans",id,{deleted:true},+at,`削除の記録（${id}）`);
       stat.送信++;
     }
 
@@ -22990,7 +23005,9 @@ async function planCloudSync(){
     if(stat.写真取得||stat.写真送信)parts.push(`写真↓${stat.写真取得}・↑${stat.写真送信}`);
     planSyncSay(`☁ 同期しました ${when}（計画${savedObservingLocations.length}件`
       +(parts.length?` ／ ${parts.join("・")}`:"／ 変更なし")+`）`
-      +(stat.縮小?`　※写真${stat.縮小}件は大きすぎたため縮小版を同期しました。` : ""));
+      +(stat.縮小?`　※写真${stat.縮小}件は大きすぎたため縮小版を同期しました。` : "")
+      +(skipped.length?`　⚠ ${skipped.length}件を送れませんでした：${skipped.join("／")}` : ""));
+    if(skipped.length)planSyncSay(document.getElementById("planSyncStatus").textContent,true);
     if(typeof renderCloudUsage==="function")renderCloudUsage();
   }catch(e){
     if(e&&e.message==="RULES")
@@ -25772,6 +25789,21 @@ try{
          本当の角度と「水平線で折り返した場合」の角度、反射点までの距離を返す。 */
       /* 【v1123】撮影計画の同期。 */
       planSync:()=>planCloudSync(),
+      /* 【v1124】手元の計画を1件ずつ測る。どれが大きいかを名前で出す。 */
+      planSyncSizes:async()=>{
+        const rows=[];
+        for(const plan of savedObservingLocations){
+          const body=await planCloudPayload(plan);
+          const photo=await planPhotoCloudPayload(plan).catch(()=>null);
+          rows.push({題名:plan.title,id:plan.id,
+            計画KB:Math.round(JSON.stringify(body).length/1024),
+            写真KB:photo?Math.round(JSON.stringify(photo).length/1024):0,
+            縮小:photo?!!photo.reduced:null,
+            updatedAt:plan.updatedAt,型:typeof plan.updatedAt});
+        }
+        rows.sort((a,b)=>(b.計画KB+b.写真KB)-(a.計画KB+a.写真KB));
+        return rows;
+      },
       planSyncState:async()=>{
         if(!memoSyncCode)await memoLoadLocal();
         await planTombsLoad();
