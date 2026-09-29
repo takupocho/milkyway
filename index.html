@@ -6778,7 +6778,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1121-lake-mirror";
+const APP_VERSION="1122-line-skyline";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8733,6 +8733,23 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
   const originEast=Math.sin(baseBearing)*baseDistance,originNorth=Math.cos(baseBearing)*baseDistance;
   /* 【v1121】鏡の面。模型ごとに1回だけ出す。 */
   const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing):0;
+  /* 【v1122】手前の地形で隠す。面の模型（drawKmzOneBuilding）と同じ仕組みをここにも入れる。
+
+     稜線を作る範囲は「模型のいちばん手前」まで（v877 と同じ考え方）。
+     筒場は差し渡し数百 m あるので、中心までの距離をそのまま使うと
+     自分自身の手前側が稜線より下に来て切られてしまう。
+     映り込みの段では掛けない（水域マスクで抜かれるので二重に切る必要がない）。 */
+  const lineHalfSpanKm=(Math.hypot(model.width||0,model.depth||0)/2)*scale/1000;
+  const lineSkylineLimitKm=Math.max(.05,base.distanceKm-lineHalfSpanKm);
+  const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,lineSkylineLimitKm);
+  /* 稜線が作れたら地形のあとに描く（奥の山に丸ごと消されない）。
+     作れないときだけ、従来どおり地形の前に描いて全部に隠させる。 */
+  if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
+  /* 【v1122】確かめる用。 */
+  if(!reflectionPass)drawKmzLineModel._diag={名:slot.fileName,段:phase,距離km:+base.distanceKm.toFixed(3),
+    稜線を作る範囲km:+lineSkylineLimitKm.toFixed(3),稜線:nearSky?nearSky.length:null,
+    稜線の最上y:nearSky?Math.round(Math.min.apply(null,nearSky)):null,
+    稜線の最下y:nearSky?Math.round(Math.max.apply(null,nearSky)):null};
   const project=(p)=>{
     /* 回転（模型の向き）と倍率。 */
     const east=originEast+(p[0]*Math.cos(heading)+p[1]*Math.sin(heading))*scale;
@@ -8750,6 +8767,16 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
   };
   const alpha=clamp(cfg.opacity,0,1);
   targetCtx.save();
+  /* 【v1122】手前の地形の稜線より上だけを残す。稜線より下は手前の山に隠れている。
+     面の模型と同じ形の切り抜き。 */
+  if(nearSky){
+    const clip=new Path2D();
+    clip.moveTo(0,nearSky[0]);
+    for(let x=1;x<nearSky.length;x++) clip.lineTo(x,nearSky[x]);
+    clip.lineTo(W,nearSky[nearSky.length-1]);
+    clip.lineTo(W,-H);clip.lineTo(0,-H);clip.closePath();
+    targetCtx.clip(clip);
+  }
   targetCtx.lineCap="round";targetCtx.lineJoin="round";
   if(slot.glow)targetCtx.globalCompositeOperation="lighter";
   const widthScale=clamp(W/800,.7,2.2);
@@ -25527,6 +25554,8 @@ try{
       /* 【v1099】撮影計画の KMZ の保存・復元を手元で確かめるための入口。 */
       /* 【v1110】映り込みの理屈の確認用。視点の高さ H・距離 D・高度 h から、
          本当の角度と「水平線で折り返した場合」の角度、反射点までの距離を返す。 */
+      /* 【v1122】直前に線の模型（花火・筒場）を描いたときの、手前の地形の稜線の様子。 */
+      lineSkyline:()=>drawKmzLineModel._diag||null,
       /* 【v1121】いまの鏡の面の標高と、方位ごとの拾えぐあい。 */
       waterMirror:(az)=>({
         方位指定:Number.isFinite(+az)?waterMirrorElevationM(+az):null,
