@@ -6783,7 +6783,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1127-island-layers";
+const APP_VERSION="1128-island-ridges";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -25974,12 +25974,15 @@ try{
         if(!all.length)return "見えている点なし";
         let lo=Infinity,hi=-Infinity;
         for(const p of all){if(p.km<lo)lo=p.km;if(p.km>hi)hi=p.km;}
-        const pieces=darumaIslandSplitByDistance(all,hi-lo);
+        /* 【v1128】帯の分かれ方と、尾根の列を持っているかを見る。 */
+        let withSteps=0,stepTotal=0;
+        for(const profile of found.list)for(const point of profile)
+          if(point&&Array.isArray(point.steps)&&point.steps.length>1){withSteps++;stepTotal+=point.steps.length;}
+        const bands=darumaIslandBands(found.list[0]||[]);
         return {点の数:all.length,距離の範囲km:[+lo.toFixed(2),+hi.toFixed(2)],
-          切れ目の閾値km:+Math.max(.8,(hi-lo)*.12).toFixed(2),
-          尾根の数:pieces.length,
-          尾根ごとの平均km:pieces.map(list=>{let s2=0,n=0;for(const p of list)if(Number.isFinite(p.km)){s2+=p.km;n++;}
-            return {点:list.length,平均km:n?+(s2/n).toFixed(1):null};})};
+          尾根の列を持つ点:withSteps,尾根の総数:stepTotal,
+          層になるか:withSteps>0?"なる":"ならない（島影を作り直すと層になります）",
+          帯:bands?bands.map(b=>({までkm:+b.limitKm.toFixed(1),遠さ:+b.far.toFixed(2)})):null};
       },
       islandTone:(v)=>{if(v==="terrain"||v==="silhouette"||v==="distance"){darumaIslandTone=v;
         if(typeof refreshDarumaIslandToneBtn==="function")refreshDarumaIslandToneBtn();
@@ -26754,10 +26757,24 @@ function pickDarumaSilhouetteBoundary(pos){
   return true;
 }
 function packDarumaIslandProfile(profile){
-  return (profile||[]).map(point=>point?[Math.round(norm360(point.az)*10000),Math.round(point.altitude*100000),Math.round(point.distanceKm*1000),Math.round(point.elevationM*10)]:null);
+  return (profile||[]).map(point=>{
+    if(!point)return null;
+    const packed=[Math.round(norm360(point.az)*10000),Math.round(point.altitude*100000),
+      Math.round(point.distanceKm*1000),Math.round(point.elevationM*10)];
+    /* 【v1128】尾根の列。無い島影（古い保存・尾根が1つ）は今までと同じ4つのまま。 */
+    if(Array.isArray(point.steps)&&point.steps.length>1)
+      packed.push(point.steps.map(step=>[Math.round(step[0]*1000),Math.round(step[1]*100000)]));
+    return packed;
+  });
 }
 function unpackDarumaIslandProfile(samples){
-  return (samples||[]).map(item=>Array.isArray(item)&&item.length>=4?{az:item[0]/10000,altitude:item[1]/100000,distanceKm:item[2]/1000,elevationM:item[3]/10}:null);
+  return (samples||[]).map(item=>{
+    if(!Array.isArray(item)||item.length<4)return null;
+    const point={az:item[0]/10000,altitude:item[1]/100000,distanceKm:item[2]/1000,elevationM:item[3]/10};
+    if(Array.isArray(item[4])&&item[4].length>1)
+      point.steps=item[4].map(step=>[step[0]/1000,step[1]/100000]);
+    return point;
+  });
 }
 function savedDarumaIslandPointCount(saved){
   return saved&&Array.isArray(saved.segments)?saved.segments.reduce((sum,segment)=>sum+(Array.isArray(segment.samples)?segment.samples.filter(Boolean).length:0),0):0;
@@ -26926,6 +26943,8 @@ function scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,par
   for(let offset=-halfAngle;offset<=halfAngle+.000001;offset+=azStep){
     const az=norm360(contact.aa.az+offset),bearing=az*D2R,sinBearing=Math.sin(bearing),cosBearing=Math.cos(bearing);
     let highest=null,rayUnknown=false;
+    /* 【v1128】外へ進みながら最大値が更新された点の列。これが「尾根の連なり」になる。 */
+    const steps=[];
     for(let distanceKm=nearKm;distanceKm<=farKm+.000001;distanceKm+=distanceStepKm){
       const angular=distanceKm/6371,sinAngular=Math.sin(angular),cosAngular=Math.cos(angular);
       const lat2=Math.asin(sinLat1*cosAngular+cosLat1*sinAngular*cosBearing);
@@ -26935,10 +26954,29 @@ function scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,par
       if(!Number.isFinite(sample.value)||sample.value<-.5)continue;
       const distanceM=distanceKm*1000,curvatureDrop=distanceM*distanceM/(2*effectiveEarthRadius);
       const altitude=Math.atan2(sample.value-eye-curvatureDrop,distanceM)*R2D;
-      if(!highest||altitude>highest.altitude){highest={az,altitude,distanceKm,elevationM:sample.value};}
+      if(!highest||altitude>highest.altitude){
+        highest={az,altitude,distanceKm,elevationM:sample.value};
+        /* 【v1128】0.03°（走査の方位刻みの3倍）以上高くなったときだけ新しい尾根として足す。
+           それ未満は同じ尾根の続きなので、最後の1つを更新するだけ。
+           0.01° だと 1方位22個・全体 11,838 個になり保存が重かった（実測）。
+           0.03° より細かい段差は、層として見分けられない。 */
+        const last=steps[steps.length-1];
+        if(!last||altitude-last[1]>=.03)steps.push([distanceKm,altitude]);
+        else{last[0]=distanceKm;last[1]=altitude;}
+      }
     }
     if(rayUnknown)unknownSamples++;
     if(highest){
+      /* 【v1128】1方位あたり10個まで。多いときは**高さの伸びが小さい段から**捨てる
+         （いちばん手前と、いちばん奥＝見えている稜線は必ず残す）。 */
+      if(steps.length>10){
+        while(steps.length>10){
+          let worst=1,worstGain=Infinity;
+          for(let i=1;i<steps.length-1;i++){const gain=steps[i][1]-steps[i-1][1];if(gain<worstGain){worstGain=gain;worst=i;}}
+          steps.splice(worst,1);
+        }
+      }
+      if(steps.length>1)highest.steps=steps;   /* 1つだけなら最後の点と同じなので持たない */
       highest.displayAltitudeDeg=highest.altitude-contact.physicalHorizon;
       if(highest.displayAltitudeDeg>.002&&(!highestVisible||highest.displayAltitudeDeg>highestVisible.displayAltitudeDeg))highestVisible=highest;
     }
@@ -27180,69 +27218,110 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
 
      OFFのときは seaLine=0 なので従来と1ビットも変わらない。 */
   const seaLine=renderedSeaHorizonAltDeg();
-  const points=profile.map(point=>{
-    if(!point||point.altitude<=physicalHorizon+.002)return null;
-    const top=toXY(point.az,seaLine+(point.altitude-physicalHorizon)),base=toXY(point.az,seaLine);
-    /* 【v1127】距離も持ち歩く。色分けと尾根の切れ目の判定に使う。 */
-    return top&&base&&[...top,...base].every(Number.isFinite)
-      ?{top,base,km:Number.isFinite(point.distanceKm)?point.distanceKm:null}:null;
-  });
-  /* 【v1127】この島影ぜんたいの距離の幅。色の濃淡と尾根の切れ目の基準にする。 */
-  let kmMin=Infinity,kmMax=-Infinity;
-  for(const item of points)if(item&&Number.isFinite(item.km)){if(item.km<kmMin)kmMin=item.km;if(item.km>kmMax)kmMax=item.km;}
-  const kmSpan=(Number.isFinite(kmMin)&&kmMax>kmMin)?kmMax-kmMin:0;
-  let start=0;
-  while(start<points.length){
-    while(start<points.length&&!points[start])start++;
-    let end=start;while(end<points.length&&points[end])end++;
-    const wholeRun=points.slice(start,end);
-    /* 【v1127】「距離で色分け」を選んだときだけ尾根ごとに分け、**遠い順に**塗る。
-       手前の尾根があとから重なるので、層になって見える。 */
-    const pieces=(darumaIslandTone==="distance")
-      ?darumaIslandSplitByDistance(wholeRun,kmSpan).slice().sort((a,b)=>{
-          const mean=list=>{let s=0,n=0;for(const p of list)if(Number.isFinite(p.km)){s+=p.km;n++;}return n?s/n:0;};
-          return mean(b)-mean(a);
-        })
-      :[wholeRun];
-    for(const run of pieces){
-    if(run.length>=2){
-      const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
-      /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。
-         【v1126】「山と同じ色」を選んだときは、この黒寄せを掛けない。
-         【v1127】「距離で色分け」も黒寄せは掛けない（潰れると距離の差が見えないため）。 */
-      const shade=(darumaIslandTone==="terrain"||darumaIslandTone==="distance")?1:(1-clamp(backlit||0,0,1)*.94);
-      let topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
-                  Math.round(lerp(45,111,dayFactor)*shade),
-                  Math.round(lerp(55,101,dayFactor)*shade)];
-      /* 【v1127】遠い尾根ほど空の色へ寄せる（空気遠近法）。
-         いちばん手前は素の色のまま、いちばん奥で 65% だけ空へ寄る。 */
-      if(darumaIslandTone==="distance"&&kmSpan>0){
-        let sum=0,n=0;for(const p of run)if(Number.isFinite(p.km)){sum+=p.km;n++;}
-        if(n){
-          const far=clamp((sum/n-kmMin)/kmSpan,0,1);
+  /* 【v1128】距離の帯。「距離で色分け」を選び、かつ尾根の列を持っているときだけ層にする。
+     帯は**遠い順**に並んでいる。奥から水面まで塗り、手前の帯を上に重ねると層になる。
+     古い島影（尾根の列が無い）は今までどおり 1 枚。 */
+  const bands=(darumaIslandTone==="distance")?darumaIslandBands(profile):null;
+  const passes=bands||[null];
+  for(const band of passes){
+    const limitKm=band?band.limitKm:NaN;
+    const points=profile.map(point=>{
+      const ridge=darumaIslandRidgeAt(point,limitKm);
+      if(!ridge||!(ridge.alt>physicalHorizon+.002))return null;
+      const top=toXY(point.az,seaLine+(ridge.alt-physicalHorizon)),base=toXY(point.az,seaLine);
+      return top&&base&&[...top,...base].every(Number.isFinite)?{top,base}:null;
+    });
+    let start=0;
+    while(start<points.length){
+      while(start<points.length&&!points[start])start++;
+      let end=start;while(end<points.length&&points[end])end++;
+      const run=points.slice(start,end);
+      if(run.length>=2){
+        const topY=Math.min(...run.map(item=>item.top[1])),bottomY=Math.max(...run.map(item=>item.base[1]));
+        /* 【v939】逆光ぶんだけ黒へ寄せる。0°では6%まで落ちて、ほぼシルエットになる。
+           【v1126】「山と同じ色」を選んだときは、この黒寄せを掛けない。
+           【v1128】層のときも掛けない（潰れると遠近の差が見えないため）。 */
+        const shade=(darumaIslandTone==="terrain"||darumaIslandTone==="distance")?1:(1-clamp(backlit||0,0,1)*.94);
+        let topRGB=[Math.round(lerp(38,98,dayFactor)*shade),
+                    Math.round(lerp(45,111,dayFactor)*shade),
+                    Math.round(lerp(55,101,dayFactor)*shade)];
+        /* 【v1128】遠い帯ほど空の色へ寄せる（空気遠近法）。いちばん奥で 62%。 */
+        if(band&&band.far>0){
           const haze=(typeof skyColorAtY==="function"?skyColorAtY(topY):null)||[120,130,150];
-          topRGB=topRGB.map((value,i)=>Math.round(lerp(value,haze[i]!==undefined?haze[i]:value,far*.65)));
+          topRGB=topRGB.map((value,i)=>Math.round(lerp(value,Number.isFinite(haze[i])?haze[i]:value,band.far*.62)));
+        }
+        const bottomRGB=topRGB.map(value=>Math.round(value*.82));
+        const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
+        gradient.addColorStop(0,`rgb(${topRGB.join(",")})`);gradient.addColorStop(1,`rgb(${bottomRGB.join(",")})`);
+        /* 【v940】同じ形を1つの Path2D にして、絵とマスクの両方へ塗る。
+           別々に組み立てると、片方だけ直したときに形がずれる。 */
+        const shape=new Path2D();
+        shape.moveTo(run[0].top[0],run[0].top[1]);
+        for(let i=1;i<run.length;i++)shape.lineTo(run[i].top[0],run[i].top[1]);
+        for(let i=run.length-1;i>=0;i--)shape.lineTo(run[i].base[0],run[i].base[1]);
+        shape.closePath();
+        ctx.save();ctx.fillStyle=gradient;ctx.fill(shape);ctx.restore();
+        if(maskCtx){
+          maskCtx.fillStyle="#ffffff";maskCtx.fill(shape);
+          drawPhoto._darumaIslandMaskUsed=true;
         }
       }
-      const bottomRGB=topRGB.map(value=>Math.round(value*.82));
-      const gradient=ctx.createLinearGradient(0,topY,0,Math.max(topY+1,bottomY));
-      gradient.addColorStop(0,`rgb(${topRGB.join(",")})`);gradient.addColorStop(1,`rgb(${bottomRGB.join(",")})`);
-      /* 【v940】同じ形を1つの Path2D にして、絵とマスクの両方へ塗る。
-         別々に組み立てると、片方だけ直したときに形がずれる。 */
-      const shape=new Path2D();
-      shape.moveTo(run[0].top[0],run[0].top[1]);
-      for(let i=1;i<run.length;i++)shape.lineTo(run[i].top[0],run[i].top[1]);
-      for(let i=run.length-1;i>=0;i--)shape.lineTo(run[i].base[0],run[i].base[1]);
-      shape.closePath();
-      ctx.save();ctx.fillStyle=gradient;ctx.fill(shape);ctx.restore();
-      if(maskCtx){
-        maskCtx.fillStyle="#ffffff";maskCtx.fill(shape);
-        drawPhoto._darumaIslandMaskUsed=true;
-      }
+      start=Math.max(end,start+1);
     }
-    }
-    start=Math.max(end,start+1);
   }
+}
+/* 【v1128】「距離 D までの稜線」をその方位について出す。
+   steps は距離も高さも増える一方なので、**距離 D 以下で最後のもの**がそのまま答えになる。
+   D を指定しなければ、いちばん高い尾根（＝従来の1点）。
+   steps を持たない古い島影は、その1点を距離で通すか捨てるかだけ（層にはならない）。 */
+function darumaIslandRidgeAt(point,limitKm){
+  if(!point)return null;
+  if(!Number.isFinite(limitKm))return {alt:point.altitude,km:point.distanceKm};
+  const steps=point.steps;
+  if(Array.isArray(steps)&&steps.length){
+    let found=null;
+    for(const step of steps){if(step[0]<=limitKm)found=step;else break;}
+    return found?{alt:found[1],km:found[0]}:null;
+  }
+  return (Number.isFinite(point.distanceKm)&&point.distanceKm<=limitKm)
+    ?{alt:point.altitude,km:point.distanceKm}:null;
+}
+/* 【v1128】距離の帯を決める。尾根の距離の四分位で 4 段まで。
+   近すぎる帯は捨てる（同じ絵を何度も塗らない）。返す順は**遠い帯から**。 */
+function darumaIslandBands(profile){
+  const all=[];
+  for(const point of profile||[]){
+    if(!point)continue;
+    if(Array.isArray(point.steps)&&point.steps.length){for(const step of point.steps)all.push(step[0]);}
+    else if(Number.isFinite(point.distanceKm))all.push(point.distanceKm);
+  }
+  if(all.length<16)return null;
+  all.sort((a,b)=>a-b);
+  const lo0=all[0],hi0=all[all.length-1];
+  if(!(hi0>lo0))return null;
+  /* 【v1128】**距離の並びの「谷」で切る。**
+     走査は手前から外へ進むので段の数は近い距離に偏る。数の分布（四分位）で切ると
+     境目が同じ所に固まった（実測：71.1/26.0/24.8/24.2km）。
+     隙間の大きい所＝別の山の連なりの境目なので、そこへ境界を置く。 */
+  const gapMin=Math.max(1.5,(hi0-lo0)*.06);
+  const cuts=[];
+  for(let i=1;i<all.length;i++){
+    const gap=all[i]-all[i-1];
+    if(gap>=gapMin)cuts.push({at:(all[i]+all[i-1])/2,gap});
+  }
+  cuts.sort((a,b)=>b.gap-a.gap);
+  const limits=cuts.slice(0,3).map(c=>c.at);
+  limits.push(hi0);
+  limits.sort((a,b)=>b-a);   /* 遠い順 */
+  const bands=[];
+  for(const limitKm of limits){
+    if(bands.length&&bands[bands.length-1].limitKm-limitKm<gapMin*.5)continue;
+    bands.push({limitKm});
+  }
+  if(bands.length<2)return null;
+  const lo=all[0],hi=all[all.length-1],span=hi>lo?hi-lo:0;
+  for(const band of bands)band.far=span?clamp((band.limitKm-lo)/span,0,1):0;
+  return bands;
 }
 /* 【v1127】ひと続きの輪郭を「尾根ごと」に切る。
    1方位につき1点しか無いので、**隣どうしで距離が飛ぶ所**がそのまま別の尾根の境目になる。
@@ -27290,10 +27369,13 @@ function darumaIslandSkylineY(s,toXY,W,H,limitKm){
   for(const profile of found.list){
     let prev=null;
     for(const point of profile){
-      const usable=point&&Number.isFinite(point.distanceKm)&&point.distanceKm<limitKm
-        &&Number.isFinite(point.altitude)&&point.altitude>found.physicalHorizon+.002;
+      /* 【v1128】「花火より手前でいちばん高い尾根」で切る。
+         v1126 は「その方位でいちばん高い1点」しか見ていなかったので、
+         花火が手前の尾根と奥の尾根の**間**にあるとき島影側は何もしなかった。 */
+      const ridge=darumaIslandRidgeAt(point,limitKm);
+      const usable=ridge&&Number.isFinite(ridge.alt)&&ridge.alt>found.physicalHorizon+.002;
       if(!usable){prev=null;continue;}
-      const here=toXY(norm360(point.az),seaLine+(point.altitude-found.physicalHorizon));
+      const here=toXY(norm360(point.az),seaLine+(ridge.alt-found.physicalHorizon));
       if(!here||!here.every(Number.isFinite)){prev=null;continue;}
       if(prev){
         const left=prev[0]<=here[0]?prev:here,right=prev[0]<=here[0]?here:prev;
