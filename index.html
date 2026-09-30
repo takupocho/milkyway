@@ -6817,7 +6817,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1135-object-narrow";
+const APP_VERSION="1136-ls-ruler";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10041,7 +10041,8 @@ function lsDrawEditor(){
     if(X-radius<minX)minX=X-radius;if(X+radius>maxX)maxX=X+radius;
   }
   for(const stand of lsDraft.stands){if(stand.xOffset-40<minX)minX=stand.xOffset-40;if(stand.xOffset+40>maxX)maxX=stand.xOffset+40;}
-  const padL=8,padR=64,padT=10,padB=26;
+  /* 【v1136】地面の下に「台の名前」の段と「横幅の目盛り」の段を置くので、下の余白を広げる。 */
+  const padL=8,padR=64,padT=10,padB=40;
   const scale=Math.min((cssW-padL-padR)/Math.max(1,maxX-minX),(cssH-padT-padB)/Math.max(1,maxTop*1.05));
   /* 【v1112】高さで縮尺が決まると横に余りが出る。余りを左右に振り分けて**真ん中**に置く。
      （以前は左端から描いていたので、花火が左隅に寄っていた） */
@@ -10057,6 +10058,22 @@ function lsDrawEditor(){
     if(y<padT||y>groundY)continue;
     ctx.strokeStyle="rgba(150,170,210,.22)";ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(cssW-padR+2,y);ctx.stroke();
     ctx.fillStyle="rgba(190,205,235,.65)";ctx.fillText(`${size}号玉：${altitude}m`,cssW-padR+6,y);
+  }
+  /* 【v1136】横幅の目盛り。刻みは画面で 52px 以上あく中からいちばん細かいものを選ぶ。 */
+  const LS_RULER_STEPS=[5,10,20,25,50,100,200,250,500,1000,2000,5000];
+  let rulerStep=LS_RULER_STEPS[LS_RULER_STEPS.length-1];
+  for(const candidate of LS_RULER_STEPS){if(candidate*scale>=38){rulerStep=candidate;break;}}
+  const rulerFrom=Math.ceil(minX/rulerStep)*rulerStep,rulerTo=Math.floor(maxX/rulerStep)*rulerStep;
+  const rulerTicks=[];
+  for(let v=rulerFrom;v<=rulerTo+1e-6;v+=rulerStep){
+    const x=toX(v);
+    if(x<padL-.5||x>cssW-padR+.5)continue;
+    rulerTicks.push({v:Math.round(v*1000)/1000,x});
+  }
+  /* 花火に重ねて幅を読めるよう、薄い縦の点線。高さの点線（.22）より薄くして邪魔にならないように。 */
+  for(const tick of rulerTicks){
+    ctx.strokeStyle=tick.v===0?"rgba(243,176,79,.26)":"rgba(150,170,210,.12)";
+    ctx.beginPath();ctx.moveTo(tick.x,padT);ctx.lineTo(tick.x,groundY);ctx.stroke();
   }
   ctx.setLineDash([]);
   /* 地面 */
@@ -10149,6 +10166,25 @@ function lsDrawEditor(){
     ctx.fillText(index===0?"筒場":`台${index+1}`,clamp(x,20,cssW-padR-20),groundY+5);
     lsBadges.push({x:x-24,y:groundY-6,w:48,h:22,standId:stand.id});
   });
+  /* 【v1136】横幅の目盛り（定規）。台の名前の下の段に置く。0＝筒場の真ん中。 */
+  const rulerY=groundY+21;
+  lsDrawEditor._ruler={刻みm:rulerStep,目盛りの数:rulerTicks.length,
+    値:rulerTicks.map(t=>t.v),縮尺:+scale.toFixed(4),
+    左端m:Math.round(minX),右端m:Math.round(maxX)};   /* 確認用 */
+  ctx.strokeStyle="rgba(210,220,245,.45)";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,rulerY);ctx.lineTo(cssW-padR,rulerY);ctx.stroke();
+  ctx.font="9px system-ui,sans-serif";ctx.textAlign="center";ctx.textBaseline="top";
+  for(const tick of rulerTicks){
+    const zero=tick.v===0;
+    ctx.strokeStyle=zero?"rgba(243,176,79,.9)":"rgba(210,220,245,.55)";
+    ctx.lineWidth=zero?1.4:1;
+    ctx.beginPath();ctx.moveTo(tick.x,rulerY);ctx.lineTo(tick.x,rulerY+(zero?6:4));ctx.stroke();
+    ctx.fillStyle=zero?"rgba(243,176,79,.95)":"rgba(190,205,235,.72)";
+    ctx.fillText(zero?"0":`${tick.v>0?"+":""}${tick.v}`,tick.x,rulerY+7);
+  }
+  /* 単位は右の余白（号数の文字が並ぶ所）へ。目盛りの数字とぶつからない。 */
+  ctx.textAlign="left";ctx.fillStyle="rgba(190,205,235,.6)";
+  ctx.fillText("m",cssW-padR+6,rulerY+7);   /* 右の余白は 64px しかないので単位だけ */
 }
 function lsSyncForm(){
   if(!lsDraft)return;
@@ -26484,6 +26520,8 @@ try{
       /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
       lookRing:()=>drawPhoto._lookFullCircle||null,   /* 【v1116】 */
       nadirCap:()=>glTerrainBuildMesh._nadir||null,   /* 【v1129】足元のリングの閉じ方 */
+      /* 【v1136】筒場の編集画面の横の目盛り。 */
+      lsRuler:()=>lsDrawEditor._ruler||null,
       /* 【v1133】見取り図の見る向き。 */
       objectView:(yaw,pitch,zoom)=>{
         if(Number.isFinite(+yaw))objectView.yaw=((+yaw%360)+360)%360;
