@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1138-train";
+const APP_VERSION="1139-train-fix";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9503,6 +9503,57 @@ async function trainRailSnap(lat,lon,carCount){
           movedM:best.d,bearing:norm360(best.bearing),path,points:path.length,
           lengthM:Math.round(pathLength)};
 }
+/* 【v1139】鉄橋の上なら、DEMではなく**橋面の高さ**に載せる。
+   DEM に橋は無いので、川の上では水面の高さになり、桁のぶんだけ列車が沈む（利用者報告）。
+   橋を描くときの式（v777／v782）をそのまま使う：
+     橋面 = 両端のDEM標高を橋に沿って混ぜた値 ＋ 足りないクリアランスぶんの反り
+   見つからなければ null を返し、呼ぶ側は今までどおり DEM を使う。 */
+async function trainBridgeDeckElevationM(lat,lon){
+  let ways=null;
+  try{ways=await fetchStaticBridgeWays(lat,lon,.5);}catch(e){return null;}
+  if(!Array.isArray(ways)||!ways.length)return null;
+  const mLat=111320,mLon=111320*Math.cos(lat*D2R);
+  let best=null;
+  for(const way of ways){
+    if(way.kind!=="rail")continue;   /* 鉄道橋だけ */
+    const pts=(way.points||[]).map(p=>[(p[1]-lon)*mLon,(p[0]-lat)*mLat]);
+    if(pts.length<2)continue;
+    const lens=[],cum=[0];
+    for(let i=0;i+1<pts.length;i++){
+      const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);
+      lens.push(l);cum.push(cum[i]+l);
+    }
+    for(let i=0;i<lens.length;i++){
+      if(!(lens[i]>1e-6))continue;
+      const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay;
+      let u=(-ax*dx-ay*dy)/(dx*dx+dy*dy);u=Math.max(0,Math.min(1,u));
+      const d=Math.hypot(ax+dx*u,ay+dy*u);
+      if(!best||d<best.d)best={d,way,travel:cum[i]+lens[i]*u,total:cum[cum.length-1]};
+    }
+  }
+  /* 橋の線からこれ以上離れていれば、橋の上ではない。 */
+  if(!best||best.d>12||!(best.total>1))return null;
+  const way=best.way,pts=way.points;
+  const startElevation=await fireworkGroundElevation(pts[0][0],pts[0][1]);
+  const endElevation=await fireworkGroundElevation(pts[pts.length-1][0],pts[pts.length-1][1]);
+  if(!Number.isFinite(startElevation)||!Number.isFinite(endElevation))return null;
+  const middle=pts[Math.floor(pts.length/2)];
+  const middleGround=await fireworkGroundElevation(middle[0],middle[1]);
+  const totalM=best.total,t=clamp(best.travel/totalM,0,1);
+  const lineMiddle=(startElevation+endElevation)/2;
+  const defaultClearance=clamp(3+totalM*.01,2.8,6.5);
+  const layerClearance=way.layer>1?Math.min(8,3.5*(way.layer-1)):0;
+  const requestedClearance=Math.max(defaultClearance,layerClearance);
+  const missingClearance=Number.isFinite(middleGround)?Math.max(0,requestedClearance-(lineMiddle-middleGround)):0;
+  const structuralCamberM=clamp(totalM*.00055,.04,.18);
+  const clearanceCamberM=Math.min(missingClearance,.28);
+  const deck=lerp(startElevation,endElevation,t)+Math.sin(Math.PI*t)*(structuralCamberM+clearanceCamberM);
+  trainBridgeDeckElevationM._diag={橋の長さm:Math.round(totalM),線からm:+best.d.toFixed(1),
+    両端の標高:[+startElevation.toFixed(1),+endElevation.toFixed(1)],
+    中央の地面:Number.isFinite(middleGround)?+middleGround.toFixed(1):null,
+    橋面:+deck.toFixed(2)};
+  return Number.isFinite(deck)?deck:null;
+}
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
 function trainCreateSlot(rawSpec,lat,lon,altitude){
   const spec=trainSpecOf(rawSpec);
@@ -9985,9 +10036,13 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
     document.getElementById("mapPlaceOkBtn").disabled=true;
     document.getElementById("mapPlaceText").textContent="標高を調べています…";
     const ground=await fireworkGroundElevation(lat,lon);
+    /* 【v1139】鉄橋の上なら橋面の高さに載せる（DEM に橋は無いので、川の上では沈む）。 */
+    const deck=await trainBridgeDeckElevationM(lat,lon);
     if(!trainPlacing||trainPlacing.lat!==lat)return;   /* 待っている間にやめた */
+    const onBridge=Number.isFinite(deck)&&(!Number.isFinite(ground)||deck>ground+.3);
+    const baseM=onBridge?deck:(ground===null?0:ground);
     const replacing=!!kmzReplaceSlotId;
-    const slot=trainCreateSlot(spec,lat,lon,ground===null?0:ground);
+    const slot=trainCreateSlot(spec,lat,lon,baseM);
     kmzApplyReplace(slot);
     if(slot)slot.heading=0;   /* 向きは線形に入っているので、模型の回転は 0 のまま */
     renderKmzList();refreshKmzBuildingControls(false);
@@ -9995,7 +10050,9 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
       ?`線路へ ${Math.round(trainPlacing.snap.movedM)}m 寄せ、向きを ${Math.round(trainPlacing.snap.bearing)}° に合わせました。`
       :"近くに線路が無かったので、真北を向いています。";
     setKmzBuildingStatus(slot
-      ?`🚃 ${spec.name} を${replacing?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、レール面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。${snapNote}`
+      ?`🚃 ${spec.name} を${replacing?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、`
+        +(onBridge?`鉄橋の上・橋面の標高 ${deck.toFixed(1)} m／地面は ${ground===null?"不明":ground.toFixed(1)} m`
+                  :`レール面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m`)+`）。${snapNote}`
       :"列車を作れませんでした。",slot?"ready":"error");
     drawPhoto._terrainRenderKey=null;update();
     trainEndPlacement(slot?`🚃 ${spec.name} を置きました`:"置けませんでした");
@@ -27102,6 +27159,7 @@ try{
         layout:(v)=>{const s=trainSpecOf(v);return s?trainLayout(s).map(c=>({東:+c.x.toFixed(2),北:+c.y.toFixed(2),方位:+c.bearing.toFixed(2)})):null;},
         snap:(lat,lon,cars)=>trainRailSnap(+lat,+lon,+cars||2),
         place:(cars,lat,lon,alt,path,reverse)=>trainCreateSlot({name:`${cars}両編成`,cars:+cars,path:path||[],reverse:!!reverse},+lat,+lon,+alt),
+        deck:(lat,lon)=>trainBridgeDeckElevationM(+lat,+lon).then(v=>({橋面:v,内訳:trainBridgeDeckElevationM._diag||null})),
         placing:()=>trainPlacing?{名:trainPlacing.spec.name,両数:trainPlacing.spec.cars,
           座標:[trainPlacing.lat,trainPlacing.lon],線形の点:trainPlacing.path.length,
           寄せたm:trainPlacing.snap?+trainPlacing.snap.movedM.toFixed(2):null,
@@ -31092,6 +31150,8 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
      1度あたり数百点を見るので、ここでノイズを引くと重い。 */
   const cloudFloor=(typeof cloudSeaCoversGround==="function"&&cloudSeaCoversGround())?cloudSeaElevationM:null;
   const samples=[];
+  /* 【v1139】この範囲の地形のいちばん高い標高。雲海を出しているときは雲の高さも下限になる。 */
+  let skylineMaxElevation=(cloudFloor!==null)?cloudFloor:-Infinity;
   /* 360方位すべてを拾ってはいけない。画角の外の方位も toXY は座標を返すので、
      背後の山が画面内のx座標に紛れ込み、稜線が滅茶苦茶になる。
      v568ではそれが原因で、遠くの稜線と水平線の間に建物をえぐる帯が出ていた。
@@ -31148,6 +31208,13 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
         alt=Math.atan2(surface-eyeNow-distanceM*distanceM/(2*earthRadius),distanceM)*R2D;
       }
       if(Number.isFinite(alt)&&alt>best) best=alt;
+      /* 【v1139】角度だけでなく**標高**も控える。
+         近い地形 (d,h) が遠い模型 (D,B) を隠すには (B-E)/D < (h-E)/d が要る。
+         h ≤ B なら D>d のときこれは成り立たない＝**隠せない**と言い切れる。
+         角度で比べると、平らな地面でも近いほうが高く見えるので、
+         地面に接している模型（列車）が丸ごと消えてしまう。 */
+      if(Number.isFinite(pt.baseElevation)&&pt.baseElevation>skylineMaxElevation)
+        skylineMaxElevation=pt.baseElevation;
     }
     }
     if(!Number.isFinite(best)) continue;
@@ -31166,6 +31233,9 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
       if(Number.isFinite(islandY[x])&&islandY[x]<base[x])base[x]=islandY[x];
   }
   drawPhoto._kmzSkylineIsland=!!islandY;   /* 【v1126】確認用 */
+  /* 【v1139】「この稜線を作った範囲の地形のいちばん高い標高」を一緒に返す。
+     島影を混ぜたときは、島の高さは分からないので∞扱いにして従来どおり切る。 */
+  if(base)base.maxElevationM=islandY?Infinity:skylineMaxElevation;
   return base;
 }
 /* 【v902】模型の足元の高密度点を、**地形とは独立して**用意する。
@@ -31264,7 +31334,12 @@ async function buildKmzDetailGrid(signature){
    0.72（v870まで）→ 0.25（v871）→ 0.10（v872）と、
    利用者が実写と見比べながら2度下げた。
    明石海峡大橋のような大きな構造物だと、少し映るくらいが実写に近い。 */
-const KMZ_REFLECTION_ALPHA=.10;
+/* 【v1139】0.10 → 0.34。最後の重ねが 0.6 なので、実質 6% → 20%。
+   6% だと、暗い海では見えても**昼の衛星写真で明るく出ている湖面では消えていた**
+   （利用者報告：列車が水面に映らない）。
+   v871 で 0.72 から下げたのは明石海峡大橋で水面が埋まったためなので、
+   その半分以下に留めている。 */
+const KMZ_REFLECTION_ALPHA=.34;
 /* 【v1137】映り込みの鏡の面を模型ごとに控える。数値を足すだけなので描画の重さは変わらない。 */
 let kmzMirrorLog=[];
 function kmzMirrorDiag(slot,bearing,baseAltitudeM,mirrorZ){
@@ -31454,15 +31529,33 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
      「模型のいちばん手前より、さらに手前の地形」だけが稜線に入る。
      外れる方向は「あいだの地形に隠れなくなる」で、消えるより安全な側。 */
   const modelHalfSpanKm=(Math.hypot(slot.model.width||0,slot.model.depth||0)/2)*cfg.scale/1000;
-  const skylineLimitKm=Math.max(.05,base.distanceKm-modelHalfSpanKm);
+  /* 【v1139】**50m の下限をやめた。**
+     下限があると、模型の手前の端より遠い地形まで「手前の地形」に入ってしまう。
+     実測：60m 先の2両編成（半径21.7m）は手前の端が 37.7m なのに 50m までを使っていた＝
+     **模型の真横や下の地面で模型を切っていた**。
+     手前に地形が無い（模型が目の前）ときは、そもそも切らない。 */
+  const skylineNearestKm=base.distanceKm-modelHalfSpanKm;
+  const skylineLimitKm=skylineNearestKm;
   /* 【v1120】町は稜線で切らない。基準点が足元なので skylineLimitKm が 50m まで縮み、
      半径500mぶんの建物を半径50mの地形の稜線で切ってしまう（足元が丸ごと消える）。
      町は地形のあとに 1 回だけ描く。 */
-  const nearSky=(reflectionPass||isTown)?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
+  let nearSky=(reflectionPass||isTown||!(skylineLimitKm>.005))
+    ?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
+  /* 【v1139】あいだの地形の**標高**が模型の足元より低ければ、その地形は模型を隠せない。
+     角度で比べると平らな地面でも近いほうが高く見えるので、
+     線路の上の列車のように地面に接している模型が丸ごと消えていた（実測：96面すべて）。
+     ここで切るのをやめても、**奥の地形に隠れる判定（"after" の段）は今までどおり効く**。 */
+  let skylineSkipped=false;
+  if(nearSky&&Number.isFinite(cfg.altitude)&&Number.isFinite(nearSky.maxElevationM)
+     &&nearSky.maxElevationM<=cfg.altitude){
+    skylineSkipped=true;
+  }
   if(!reflectionPass){
     if(isTown){ if(phase!=="after")return; }
+    /* 手前に地形が無い／隠せないと分かっているときも、地形のあとに描く（"before" だと地形に塗り潰される）。 */
     else if(phase==="before"?!!nearSky:!nearSky) return;
   }
+  if(skylineSkipped)nearSky=null;
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
