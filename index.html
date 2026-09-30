@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1144-bridge-opaque";
+const APP_VERSION="1145-rail-over-bridge";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -38502,11 +38502,22 @@ function drawPhoto(ctx,s){
           const CROSS_SLOPE_BASE_M=10;
           /* 1つの断面を、左右の縁と中心の「実寸の3次元ベクトル」で返す。
              ここでは投影も視野の判定もしない。写るかどうかは切り取りが決める。 */
-          const sectionAt=(eastM,northM,perpEast,perpNorth,halfWidth)=>{
+          const sectionAt=(eastM,northM,perpEast,perpNorth,halfWidth,forcedElevation)=>{
             const distanceM=Math.hypot(eastM,northM);
             if(distanceM>roadRangeM) return null;
             const az=norm360(atan2d(eastM,northM));
             const distanceKm=distanceM/1000;
+            /* 【v1145】高さを外から与えられたとき＝線路が橋の上に載っているとき。
+               橋面は地面より上なので、地形に隠す判定も横断勾配も要らない。
+               **橋が実際に描いた面そのもの**を使うので、つなぎ目に段差が出ない。 */
+            if(Number.isFinite(forcedElevation)){
+              return {
+                centre:groundVec(eastM,northM,forcedElevation),
+                left:groundVec(eastM+perpEast*halfWidth,northM+perpNorth*halfWidth,forcedElevation),
+                right:groundVec(eastM-perpEast*halfWidth,northM-perpNorth*halfWidth,forcedElevation),
+                distanceM
+              };
+            }
             /* 【v879】海の上の道路がギザギザになる件は
                `baseElevationAtDistanceInRow` 側で直した（欠測をまたいだらnull）。
                下の `if(!Number.isFinite(elevation)) return null;` で
@@ -38586,7 +38597,7 @@ function drawPhoto(ctx,s){
           const buildRibbon=(ways,fillPaths,markPaths,markKind,opts)=>{
           const bucketFor=(opts&&opts.bucketOf)||roadBucketOf;
           const rangeLimitM=(opts&&opts.rangeM)||roadRangeM;
-          const skipHere=(opts&&opts.skipHere)||null;   /* 【v1142】 */
+          const elevationAt=(opts&&opts.elevationAt)||null;   /* 【v1145】橋の上では橋面の高さを使う */
           for(const way of ways){
             const halfWidth=way.widthM/2;
             const points=way.points;
@@ -38615,11 +38626,9 @@ function drawPhoto(ctx,s){
                 const here=travelM+segmentM*f;
                 // 【v863】画角の外は作らない。どうせ最後に捨てていたもの。
                 if(outsideView(eastM,northM,halfWidth)){previous=null;continue;}
-                /* 【v1142】橋に乗っている区間は地面に描かない（橋のほうが描く）。
-                   ここで `previous=null` にすると、その区間だけリボンが切れて
-                   前後のアプローチはそのまま残る。 */
-                if(skipHere&&skipHere(eastM,northM)){previous=null;continue;}
-                const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth);
+                /* 【v1145】橋の上なら橋面の高さで作る（与えなければ今までどおり地面）。 */
+                const forced=elevationAt?elevationAt(eastM,northM):null;
+                const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth,forced);
                 if(!current){previous=null;continue;}
                 if(previous){
                   // 前の断面との間を1枚の四角形として塗る。距離でバケツ分けして濃さを変える。
@@ -38746,6 +38755,31 @@ function drawPhoto(ctx,s){
             }
             return frontDrawn||sideDrawn;
           };
+          /* 【v1145】鉄道橋の橋面の標本（東m・北m・橋面の標高）。
+             線路の帯をこの上へ載せるために使う。20m の升目に分けて速く引けるようにする。 */
+          const railDeckSamples=new Map();
+          const RAIL_DECK_CELL_M=20,RAIL_DECK_NEAR_M2=10*10;
+          const railDeckPush=(e,n,z)=>{
+            const key=`${Math.floor(e/RAIL_DECK_CELL_M)},${Math.floor(n/RAIL_DECK_CELL_M)}`;
+            let list=railDeckSamples.get(key);
+            if(!list){list=[];railDeckSamples.set(key,list);}
+            list.push([e,n,z]);
+          };
+          /* 10m 以内でいちばん近い標本の高さ。無ければ null＝地面のまま。 */
+          const railDeckElevationAt=(eastM,northM)=>{
+            if(!railDeckSamples.size)return null;
+            let best=null,bestD=RAIL_DECK_NEAR_M2;
+            const cx=Math.floor(eastM/RAIL_DECK_CELL_M),cy=Math.floor(northM/RAIL_DECK_CELL_M);
+            for(let gx=cx-1;gx<=cx+1;gx++)for(let gy=cy-1;gy<=cy+1;gy++){
+              const list=railDeckSamples.get(`${gx},${gy}`);
+              if(!list)continue;
+              for(const p of list){
+                const dx=p[0]-eastM,dy=p[1]-northM,d=dx*dx+dy*dy;
+                if(d<bestD){bestD=d;best=p[2];}
+              }
+            }
+            return best;
+          };
           const buildBridgeRibbons=(ways)=>{
             for(const way of ways){
               const points=way.points;
@@ -38846,6 +38880,8 @@ function drawPhoto(ctx,s){
                   const displayThicknessM=uniformThicknessM;
                   const current=bridgeSectionAt(eastM,northM,perpEast,perpNorth,displayHalfWidth,deckElevation,terrainElevation,displayThicknessM);
                   if(!current){previous=null;continue;}
+                  /* 【v1145】線路の帯をこの上へ載せるので、橋面の高さを控える。 */
+                  if(way.kind==="rail")railDeckPush(eastM,northM,deckElevation);
                   current.travel=travelM;
                   if(previous){
                     const bucket=bridgeBucketOf(current.distanceM);
@@ -38907,69 +38943,21 @@ function drawPhoto(ctx,s){
             if(!minorRoadsVisible)ways=ways.filter(way=>!way.minor);   /* 【v995】細い道は ON のときだけ */
             buildRibbon(ways,roadPaths,roadCentrePaths,"centre");
           }
-          if(railPaths){
-            let ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
-            /* 【v1142】表示している鉄道橋の線を、観測地点を原点とする東m・北mで持っておく。
-               1本ごとに外接箱も持ち、遠い線は距離計算の前に弾く。 */
-            let railBridgeSegments=null;
-            if(activeBridgeSignatures&&bridgeWaysForDisplay.length){
-              const lines=[];
-              for(const way of bridgeWaysForDisplay){
-                if(way.kind!=="rail"||!Array.isArray(way.points)||way.points.length<2)continue;
-                const xy=way.points.map(p=>[(p[1]-originLon)*metrePerDegLon,(p[0]-originLat)*111320]);
-                let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
-                for(const p of xy){
-                  if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];
-                  if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];
-                }
-                lines.push({xy,x0:x0-20,y0:y0-20,x1:x1+20,y1:y1+20});
-              }
-              if(lines.length)railBridgeSegments=lines;
-            }
-            /* 【v1143】**橋の区間の内側だけ**切る。
-               v1142 は垂線の足を 0〜1 に丸めていたので、橋の端に半径15mの円ができ、
-               **橋の手前15mぶんの線路まで消えて**いた（利用者報告：線路と橋がつながらない）。
-               丸めをやめて「足が線分の内側にあるときだけ」にすると、切れ目が橋の端でぴたりと止まる。 */
-            const RAIL_ON_BRIDGE_M2=10*10;
-            const railSkipHere=railBridgeSegments?((eastM,northM)=>{
-              for(const line of railBridgeSegments){
-                if(eastM<line.x0||eastM>line.x1||northM<line.y0||northM>line.y1)continue;
-                const xy=line.xy;
-                for(let i=0;i+1<xy.length;i++){
-                  const ax2=xy[i][0]-eastM,ay2=xy[i][1]-northM;
-                  const bx2=xy[i+1][0]-eastM,by2=xy[i+1][1]-northM;
-                  const dx=bx2-ax2,dy=by2-ay2,len2=dx*dx+dy*dy;
-                  if(!(len2>1e-6))continue;
-                  const u=(-ax2*dx-ay2*dy)/len2;
-                  if(u<0||u>1)continue;   /* 橋の外は切らない */
-                  const px=ax2+dx*u,py=ay2+dy*u;
-                  if(px*px+py*py<=RAIL_ON_BRIDGE_M2)return true;
-                }
-              }
-              return false;
-            }):null;
-            /* 【v1141】端の座標の一致だけでは足りない。
-               線路は半径1.2km、橋は半径5kmで**別々に取っている**ので、
-               読み込むタイルの組が違い、同じ鉄橋でも切れ目が変わって端の座標が合わない。
-               実測：表示している鉄道橋5本に対し、除けた線路は**1本だけ**だった。
-               残りは地面（DEMの高さ）と橋（橋面の高さ。加古川橋梁で3.4m上）の両方に出て、
-               見る位置を変えるとズレ方が変わる（視差）。
-               そこで「線に重なっているか」でも除く。点の8割以上が橋の線から15m以内なら橋のぶん。 */
-            /* 【v1142】**まるごと消すのをやめた。**
-               線路の1本は「橋の区間＋前後のアプローチ」をまとめて持っている。
-               加古川橋梁は340mだが線路のほうは1km近くあるので、重なるのは3〜4割。
-               v1141 の「8割以上なら消す」では届かず、まるごと残っていた。
-               残ったぶんは DEM の高さ（川の上では水面16.3m）で描かれ、
-               橋面19.7m と **3.4m 違うものが二重に出て、視差で左右にズレて見えていた**
-               （利用者報告：移動すると橋が右へ行ったり左へ行ったりする）。
-               区間だけ切るので、前後のアプローチは途切れない。 */
-            buildRibbon(ways,railPaths,railTiePaths,"ties",{skipHere:railSkipHere});
-          }
+          const buildRailRibbons=()=>{
+            /* 【v1145】**切るのをやめた。**橋の上では線路の帯を橋面へ載せる（`elevationAt`）。
+               切ると、どこで切っても「橋の端の高さ」と「そこの地面の高さ」の差が段差として残る。
+               v1047 の作りで、橋の端の高さは**橋の外側 8〜20m を探った値**から採ることがあるため。
+               載せてしまえば一本の帯のままなので、段差が出ようがないし、二重にもならない。 */
+            buildRibbon(osmRailState.ways,railPaths,railTiePaths,"ties",{elevationAt:railDeckElevationAt});
+          };
           if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
             const ways=osmTrailState.ways.filter(way=>trailIncludeTrack||!way.track);
             buildRibbon(ways,trailPaths,null,null,{bucketOf:trailBucketOf,rangeM:trailRangeM});
           }
           if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
+          /* 【v1145】線路は**橋のあと**に作る。橋面の標本ができてから載せるため。
+             塗る順番（下の for ループ）は変わらないので、見た目の重なりは今までどおり。 */
+          if(railPaths) buildRailRibbons();
         }
         /* 【v844】昼用のために形を預ける。色は預けない（昼夜で変わるのは色だけ）。 */
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
