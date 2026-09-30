@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1140-train-near";
+const APP_VERSION="1141-rail-bridge";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -38870,7 +38870,45 @@ function drawPhoto(ctx,s){
             buildRibbon(ways,roadPaths,roadCentrePaths,"centre");
           }
           if(railPaths){
-            const ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
+            let ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
+            /* 【v1141】端の座標の一致だけでは足りない。
+               線路は半径1.2km、橋は半径5kmで**別々に取っている**ので、
+               読み込むタイルの組が違い、同じ鉄橋でも切れ目が変わって端の座標が合わない。
+               実測：表示している鉄道橋5本に対し、除けた線路は**1本だけ**だった。
+               残りは地面（DEMの高さ）と橋（橋面の高さ。加古川橋梁で3.4m上）の両方に出て、
+               見る位置を変えるとズレ方が変わる（視差）。
+               そこで「線に重なっているか」でも除く。点の8割以上が橋の線から15m以内なら橋のぶん。 */
+            if(activeBridgeSignatures&&bridgeWaysForDisplay.length){
+              const bridgeLines=bridgeWaysForDisplay
+                .filter(way=>way.kind==="rail"&&Array.isArray(way.points)&&way.points.length>=2)
+                .map(way=>way.points);
+              if(bridgeLines.length){
+                const NEAR_M=15,HIT_RATIO=.8;
+                const onBridgeLine=(points)=>{
+                  if(!Array.isArray(points)||points.length<2)return false;
+                  const mLat=111320,mLon=111320*Math.cos((+points[0][0])*D2R);
+                  let hit=0;
+                  for(const p of points){
+                    let best=Infinity;
+                    for(const line of bridgeLines){
+                      for(let i=0;i+1<line.length;i++){
+                        const ax=(line[i][1]-p[1])*mLon,ay=(line[i][0]-p[0])*mLat;
+                        const bx=(line[i+1][1]-p[1])*mLon,by=(line[i+1][0]-p[0])*mLat;
+                        const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+                        let u=len2>1e-6?(-ax*dx-ay*dy)/len2:0;
+                        u=Math.max(0,Math.min(1,u));
+                        const d=Math.hypot(ax+dx*u,ay+dy*u);
+                        if(d<best){best=d;if(best<=NEAR_M)break;}
+                      }
+                      if(best<=NEAR_M)break;
+                    }
+                    if(best<=NEAR_M)hit++;
+                  }
+                  return hit/points.length>=HIT_RATIO;
+                };
+                ways=ways.filter(way=>!onBridgeLine(way.points));
+              }
+            }
             buildRibbon(ways,railPaths,railTiePaths,"ties");
           }
           if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
