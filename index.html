@@ -6201,7 +6201,7 @@
                       <label><span>前後のずれ（m）</span><span class="ls-stepper" data-step="1"><button type="button" data-dir="-1" aria-label="1m 手前へ">−</button><input id="objectPartY" type="number" step="1"><button type="button" data-dir="1" aria-label="1m 奥へ">＋</button></span></label>
                     </div>
                   <!-- 【v1133】横並びにすると注意書きが1文字ずつに潰れる（この画面の親の指定のせい）。縦に積む。 -->
-                  <p class="map-hint" style="margin:6px 0 4px;">見取り図はつまんで回せます（横＝向き／縦＝見下ろす角度）。ホイールか二本指で拡大縮小。</p>
+                  <p class="map-hint" style="margin:6px 0 4px;">見取り図はつまんで回せます（横＝向き／縦＝見下ろす角度）。ホイールか二本指で拡大縮小。<b>右ドラッグ・Shift＋ドラッグ・二本指でなぞる</b>と上下左右へ動かせます。</p>
                   <button id="objectViewResetBtn" type="button" style="width:100%;margin:0 0 6px;padding:7px 12px;font-size:12px;">↺ 向きと大きさを戻す</button>
                   <canvas id="objectPreview" class="object-preview"></canvas>
                   <p id="objectStudioSummary" class="object-summary"></p>
@@ -6806,7 +6806,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1133-object-view";
+const APP_VERSION="1134-object-pan";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10427,7 +10427,7 @@ function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.te
 /* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
 /* 【v1133】見取り図をどこから見ているか。
    yaw=左右の回り／pitch=見下ろす角度（0°で真横、90°で真上）／zoom=拡大率。 */
-const OBJECT_VIEW_HOME={yaw:45,pitch:30,zoom:1};
+const OBJECT_VIEW_HOME={yaw:45,pitch:30,zoom:1,panX:0,panY:0};
 let objectView={...OBJECT_VIEW_HOME};
 function objectViewReset(){
   objectView={...OBJECT_VIEW_HOME};
@@ -10642,28 +10642,62 @@ function objectStudioDrawPreview(){
   });
   /* 【v1132】選んでいるパーツは別に貯めてあるので、描く前に合流させる。
      分けたまま `edges` だけ描いていたため、選んでいるパーツが見取り図から消えていた（実測）。 */
-  const selCount=dimEdges.length;
-  for(const e of dimEdges)edges.push(e);
+  /* 【v1134】位置合わせには両方を使うが、**描くときは分けて色を変える**（選択中はオレンジ）。 */
   /* 【v1133】立体そのものの真ん中と大きさで決める。
      投影したあとの外形に合わせると、**回すたびに伸び縮みして落ち着かない**。
      外接球の半径は回しても変わらないので、これを基準にする。 */
-  const all=edges.flat();
+  const all=edges.concat(dimEdges).flat();
   let lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
   for(const p of all)for(let i=0;i<3;i++){if(p[i]<lo[i])lo[i]=p[i];if(p[i]>hi[i])hi[i]=p[i];}
   const mid=[0,1,2].map(i=>(lo[i]+hi[i])/2);
   let radius=0;
   for(const p of all){const d=Math.hypot(p[0]-mid[0],p[1]-mid[1],p[2]-mid[2]);if(d>radius)radius=d;}
   radius=Math.max(.001,radius);
-  const pad=30;
-  const fit=Math.min(cssW-pad*2,cssH-pad*2)/(radius*2);
+  /* 【v1134】左右の端に寸法の欄を出すので、その幅ぶんだけ内側に収める。 */
+  const sideW=Math.min(112,Math.max(78,cssW*.2)),padY=26;
+  const fit=Math.min(Math.max(40,cssW-sideW*2),Math.max(40,cssH-padY*2))/(radius*2);
   const scale=fit*clamp(objectView.zoom,.2,12);
   const centre=project(mid);
-  const ox=cssW/2-centre[0]*scale,oy=cssH/2-centre[1]*scale;
+  /* 【v1134】平行移動。拡大して真横にしたとき、上や下へずらして見られるように。 */
+  const ox=cssW/2-centre[0]*scale+(objectView.panX||0),oy=cssH/2-centre[1]*scale+(objectView.panY||0);
   const to=p=>{const q=project(p);return [ox+q[0]*scale,oy+q[1]*scale];};
-  ctx.lineWidth=1.1;ctx.strokeStyle="rgba(232,238,252,.9)";ctx.lineJoin="round";
+  ctx.lineJoin="round";
+  /* 選んでいないパーツは控えめに。 */
+  ctx.lineWidth=1.1;ctx.strokeStyle="rgba(232,238,252,.62)";
   ctx.beginPath();
   for(const [a,b2] of edges){const p=to(a),q=to(b2);ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);}
   ctx.stroke();
+  /* 【v1134】選んでいるパーツはオレンジで少し太く。どれを直しているか一目で分かる。 */
+  ctx.lineWidth=1.7;ctx.strokeStyle="#ffa94d";
+  ctx.beginPath();
+  for(const [a,b2] of dimEdges){const p=to(a),q=to(b2);ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);}
+  ctx.stroke();
+  /* 【v1134】左端に模型ぜんたい、右端に選んでいるパーツの大きさ。
+     lo/hi は立体の外接箱なので、そのまま全高・全幅・全奥行になる。 */
+  const round1=v=>Math.round(v*10)/10;
+  const leftLines=[["全高",`${round1(hi[2]-lo[2])}m`],["全幅",`${round1(hi[0]-lo[0])}m`],["全奥行",`${round1(hi[1]-lo[1])}m`]];
+  const part=spec.parts[objectStudioPartIndex]||spec.parts[0];
+  const cyl=part&&part.shape==="cylinder";
+  const rightLines=part?[
+    ["",`選択パーツ${objectStudioPartIndex+1}`],
+    ["",cyl?"（円柱・円錐）":"（角柱・角錐）"],
+    [cyl?"上直径":"上の幅",`${round1(part.topW)}m`],
+    [cyl?"下直径":"下の幅",`${round1(part.bottomW)}m`],
+    ["高さ",`${round1(part.height)}m`]
+  ]:[];
+  ctx.textBaseline="middle";
+  const panel=(lines,x,align)=>{
+    ctx.textAlign=align;
+    let y=17;
+    for(const [key,val] of lines){
+      ctx.font=key?"600 11px system-ui,sans-serif":"700 12px system-ui,sans-serif";
+      ctx.fillStyle=key?"rgba(190,202,224,.75)":"#ffa94d";
+      ctx.fillText(key?`${key}：${val}`:val,x,y);
+      y+=17;
+    }
+  };
+  panel(leftLines,10,"left");
+  panel(rightLines,cssW-10,"right");
   /* W・D・H の札 */
   ctx.font="700 12px system-ui,sans-serif";ctx.fillStyle="#7fb2ff";ctx.textAlign="center";ctx.textBaseline="middle";
   for(const label of labels){
@@ -10788,20 +10822,30 @@ if(el.objectStudioOverlay){
     const canvas=el.objectPreview;
     canvas.style.touchAction="none";
     canvas.style.cursor="grab";
-    let dragId=null,lastX=0,lastY=0;
-    const pinch={active:false,distance:0,zoom:1};
+    let dragId=null,lastX=0,lastY=0,dragPan=false;
+    const pinch={active:false,distance:0,zoom:1,cx:0,cy:0,panX:0,panY:0};
+    /* 【v1134】右ボタン、または Shift を押しながらは**平行移動**。 */
+    canvas.addEventListener("contextmenu",(e)=>e.preventDefault());
     canvas.addEventListener("pointerdown",(e)=>{
       if(pinch.active)return;
       dragId=e.pointerId;lastX=e.clientX;lastY=e.clientY;
-      canvas.setPointerCapture(e.pointerId);canvas.style.cursor="grabbing";
+      dragPan=(e.button===2||e.button===1||e.shiftKey);
+      /* 【v1134】掴み損ねても落ちないように。既に離れたポインタだと例外になる。 */
+      try{canvas.setPointerCapture(e.pointerId);}catch(err){}
+      canvas.style.cursor=dragPan?"move":"grabbing";
     });
     canvas.addEventListener("pointermove",(e)=>{
       if(dragId!==e.pointerId||pinch.active)return;
       const dx=e.clientX-lastX,dy=e.clientY-lastY;
       lastX=e.clientX;lastY=e.clientY;
-      /* 横は向き、縦は見下ろす角度。真上・真下を越えると裏返って分かりにくいので手前で止める。 */
-      objectView.yaw=((objectView.yaw-dx*.5)%360+360)%360;
-      objectView.pitch=clamp(objectView.pitch+dy*.4,-89,89);
+      if(dragPan||e.shiftKey){
+        objectView.panX=(objectView.panX||0)+dx;
+        objectView.panY=(objectView.panY||0)+dy;
+      }else{
+        /* 横は向き、縦は見下ろす角度。真上・真下を越えると裏返って分かりにくいので手前で止める。 */
+        objectView.yaw=((objectView.yaw-dx*.5)%360+360)%360;
+        objectView.pitch=clamp(objectView.pitch+dy*.4,-89,89);
+      }
       objectStudioDrawPreview();
     });
     const endDrag=(e)=>{
@@ -10822,12 +10866,20 @@ if(el.objectStudioOverlay){
       pinch.active=true;dragId=null;
       pinch.distance=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
       pinch.zoom=objectView.zoom;
+      /* 【v1134】二本指の真ん中を覚えておき、動いたぶんだけ平行移動する。 */
+      pinch.cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      pinch.cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      pinch.panX=objectView.panX||0;pinch.panY=objectView.panY||0;
       e.preventDefault();
     },{passive:false});
     canvas.addEventListener("touchmove",(e)=>{
       if(!pinch.active||e.touches.length!==2)return;
       const d=Math.hypot(e.touches[1].clientX-e.touches[0].clientX,e.touches[1].clientY-e.touches[0].clientY);
       objectView.zoom=clamp(pinch.zoom*(d/Math.max(1,pinch.distance)),.2,12);
+      const cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      const cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      objectView.panX=pinch.panX+(cx-pinch.cx);
+      objectView.panY=pinch.panY+(cy-pinch.cy);
       objectStudioDrawPreview();
       e.preventDefault();
     },{passive:false});
@@ -26430,6 +26482,13 @@ try{
         return {...objectView,既定:OBJECT_VIEW_HOME};
       },
       objectViewReset:()=>{objectViewReset();return {...objectView};},
+      /* 【v1134】平行移動を外から動かす。 */
+      objectPan:(x,y)=>{
+        if(Number.isFinite(+x))objectView.panX=+x;
+        if(Number.isFinite(+y))objectView.panY=+y;
+        if(typeof objectStudioDrawPreview==="function")objectStudioDrawPreview();
+        return {panX:objectView.panX,panY:objectView.panY};
+      },
       /* 【v1131】置いてある模型の形の編集。 */
       objectEdit:()=>objectStudioEditSlot(),
       objectApply:()=>objectStudioApplyToSlot(),
