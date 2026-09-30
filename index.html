@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1147-bridge-end-chamfer";
+const APP_VERSION="1148-bridge-taper";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -29834,9 +29834,11 @@ function bridgeEndpointSignature(points){
 /* v781: Shortbreadのbridge属性には、河川橋だけでなく道路・谷・線路をまたぐ
    小さな陸橋も含まれる。撮影画面では水面上の橋を主役にし、高速道路系だけは
    高架橋として水域外でも残す。水域が未取得なら誤消去を避けてnullを返す。 */
-/* 【v1147】橋の端の斜めカットの深さ（桁の厚みに対する比）。
-   1.0 で 45°、0.5 で約 63°。数値ひとつで角度を変えられる。 */
-const BRIDGE_END_CHAMFER_RATIO=1.0;
+/* 【v1148】桁を両端に向かって細くする長さ（橋の長さに対する比。4〜40m で頭打ち）。
+   大きくするほど、ゆるやかに長く細くなる。 */
+const BRIDGE_END_TAPER_RATIO=.15;
+/* 端での厚みの残り（0 にすると面が潰れて描けないので、わずかに残す）。 */
+const BRIDGE_END_TAPER_MIN=.06;
 const BRIDGE_ALWAYS_VISIBLE_HIGHWAYS=new Set(["motorway","motorway_link","trunk","trunk_link"]);
 function bridgeIsAlwaysVisibleHighway(way){
   return way?.kind==="road"&&BRIDGE_ALWAYS_VISIBLE_HIGHWAYS.has(String(way.highwayClass||""));
@@ -38803,6 +38805,14 @@ function drawPhoto(ctx,s){
               const camberM=structuralCamberM+clearanceCamberM;
               /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
               const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
+              /* 【v1148】両端に向かって桁を細くする。
+                 橋面（上の面）は端から端までまっすぐのまま、**下の面だけ**が端で橋面へ近づく。
+                 側面は前後の断面をつないで塗っているので、厚みを変えるだけで楔になる。 */
+              const endTaperM=clamp(totalM*BRIDGE_END_TAPER_RATIO,4,40);
+              const thicknessScaleAt=(travel)=>{
+                const fromEnd=Math.min(travel,totalM-travel);
+                return clamp(fromEnd/Math.max(.01,endTaperM),BRIDGE_END_TAPER_MIN,1);
+              };
               const halfWidth=Math.max(1,(way.widthM||5)/2);
               const pierIntervalM=clamp(totalM/Math.max(1,Math.round(totalM/38)),24,48);
               /* 【v1147】端の斜めのふたを張るための材料。最初と最後の断面ぶん。 */
@@ -38827,7 +38837,7 @@ function drawPhoto(ctx,s){
                   const terrainElevation=elevationAtXY(eastM,northM);
                   const deckElevation=lerp(startElevation,endElevation,t)+Math.sin(Math.PI*t)*camberM;
                   const displayHalfWidth=Math.max(halfWidth,minBridgeHalfMetresAt(distanceM));
-                  const displayThicknessM=Math.max(thicknessM,minBridgeThicknessMetresAt(distanceM));
+                  const displayThicknessM=Math.max(thicknessM,minBridgeThicknessMetresAt(distanceM))*thicknessScaleAt(travelM);
                   const current=bridgeSectionAt(eastM,northM,perpEast,perpNorth,displayHalfWidth,deckElevation,terrainElevation,displayThicknessM);
                   if(!current){previous=null;continue;}
                   /* 【v1147】端の斜めのふた用に、この断面の材料をそのまま控える。 */
@@ -38872,19 +38882,14 @@ function drawPhoto(ctx,s){
                   previous=current;
                 }
               }
-              /* 【v1147】橋の端を**斜めにカット**する。
-                 上の2点（橋面の左右）はそのまま、**下の2点だけ橋の内側へずらして**ふたを張る。
-                 ずらす距離＝桁の厚み×`BRIDGE_END_CHAMFER_RATIO`。1.0 で 45°。
-                 手前へ向かって桁が薄くなっていくので、線路との段差が目に付きにくくなる。
-                 最初の断面は進む向きへ、最後の断面は戻る向きへずらす（どちらも橋の内側）。 */
-              for(const [cap,sign] of [[firstCap,1],[lastCap,-1]]){
-                if(!cap)continue;
-                const back=cap.thick*BRIDGE_END_CHAMFER_RATIO*sign;
-                const bxE=cap.eastM+cap.dirEast*back, bxN=cap.northM+cap.dirNorth*back;
+              /* 【v1148】端のふた。v1147 の斜めはやめた（桁そのものが端で薄くなるので要らない）。
+                 残った薄い切り口だけ、まっすぐ塞いでおく。 */
+              for(const cap of [firstCap,lastCap]){
+                if(!cap||!cap.left||!cap.right)continue;
                 const bottomElev=cap.deck-cap.thick;
-                const bl=groundVec(bxE+cap.perpEast*cap.halfWidth,bxN+cap.perpNorth*cap.halfWidth,bottomElev);
-                const br=groundVec(bxE-cap.perpEast*cap.halfWidth,bxN-cap.perpNorth*cap.halfWidth,bottomElev);
-                if(!bl||!br||!cap.left||!cap.right)continue;
+                const bl=groundVec(cap.eastM+cap.perpEast*cap.halfWidth,cap.northM+cap.perpNorth*cap.halfWidth,bottomElev);
+                const br=groundVec(cap.eastM-cap.perpEast*cap.halfWidth,cap.northM-cap.perpNorth*cap.halfWidth,bottomElev);
+                if(!bl||!br)continue;
                 const bucket=bridgeBucketOf(cap.distanceM);
                 fillGroundPolygon(bridgeSidePaths[bucket],[cap.left,cap.right,br,bl]);
                 strokeGroundSegment(bridgeEdgePaths[bucket],cap.left,cap.right);
