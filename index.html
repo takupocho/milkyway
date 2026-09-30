@@ -6175,6 +6175,14 @@
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="objectStudioTitle">
                   <div class="plan-modal-header"><h3 id="objectStudioTitle" class="plan-modal-title">オブジェクト作成</h3><button id="objectStudioCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
                   <p class="plan-modal-help">寸法を入れるだけで簡単な形を作れます。<b>上の寸法を 0</b> にすると先のとがった形（角錐・円錐）、<b>上と下を同じ</b>にするとまっすぐな柱になります。鉄塔・煙突・タンク・仮設の建物などの当たりを付けるのに使えます。</p>
+                    <!-- 【v1132】パーツの並び -->
+                  <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <button id="objectPartAddBtn" type="button" style="flex:1 1 0;min-width:0;margin:0;padding:8px 4px;font-size:13px;">＋パーツ</button>
+                    <button id="objectPartCopyBtn" type="button" style="flex:1 1 0;min-width:0;margin:0;padding:8px 4px;font-size:13px;">複製</button>
+                    <button id="objectPartDelBtn" type="button" style="flex:1 1 0;min-width:0;margin:0;padding:8px 4px;font-size:13px;color:#ff9a9a;">削除</button>
+                  </div>
+                  <div id="objectPartList" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;max-height:156px;overflow-y:auto;"></div>
+                    <p class="map-hint" style="margin:0 0 8px;">パーツを足して積み上げると、塔のような形も作れます。いま選んでいるパーツの寸法が下の欄に出ます。</p>
                   <div class="object-shape-row" role="group" aria-label="形">
                     <button id="objectShapeBoxBtn" type="button">⬛ 角柱・角錐</button>
                     <button id="objectShapeCylinderBtn" type="button">⚫ 円柱・円錐</button>
@@ -6186,6 +6194,12 @@
                     <label id="objectBottomDRow"><span>下の奥行 D</span><input id="objectBottomD" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="8"><span class="unit">m</span></label>
                     <label class="full"><span>高さ H</span><input id="objectHeight" type="number" min="0" max="2000" step="0.1" inputmode="decimal" value="30"><span class="unit">m</span></label>
                   </div>
+                    <div class="ls-grid" style="margin-bottom:8px;">
+                      <label><span>積み上げ（下端の高さ m）</span><span class="ls-stepper" data-step="5"><button type="button" data-dir="-1" aria-label="5m 下げる">−</button><input id="objectPartZ" type="number" step="5"><button type="button" data-dir="1" aria-label="5m 上げる">＋</button></span></label>
+                      <label><span>そのパーツの向き（°）</span><span class="ls-stepper" data-step="5"><button type="button" data-dir="-1" aria-label="5度 左へ">−</button><input id="objectPartRot" type="number" step="5"><button type="button" data-dir="1" aria-label="5度 右へ">＋</button></span></label>
+                      <label><span>左右のずれ（m）</span><span class="ls-stepper" data-step="1"><button type="button" data-dir="-1" aria-label="1m 左へ">−</button><input id="objectPartX" type="number" step="1"><button type="button" data-dir="1" aria-label="1m 右へ">＋</button></span></label>
+                      <label><span>前後のずれ（m）</span><span class="ls-stepper" data-step="1"><button type="button" data-dir="-1" aria-label="1m 手前へ">−</button><input id="objectPartY" type="number" step="1"><button type="button" data-dir="1" aria-label="1m 奥へ">＋</button></span></label>
+                    </div>
                   <canvas id="objectPreview" class="object-preview"></canvas>
                   <p id="objectStudioSummary" class="object-summary"></p>
                   <input id="objectName" class="plan-save-name" type="text" maxlength="30" placeholder="オブジェクト名（例：送電鉄塔 60m）">
@@ -6789,7 +6803,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1131-object-edit";
+const APP_VERSION="1132-object-parts";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8195,6 +8209,9 @@ const el={
   kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"), kmzBuildingPlacement:$("kmzBuildingPlacement"),
   kmzBuildingRePlaceBtn:$("kmzBuildingRePlaceBtn"),   /* 【v1130】 */
   kmzBuildingEditShapeBtn:$("kmzBuildingEditShapeBtn"), objectApplyBtn:$("objectApplyBtn"),   /* 【v1131】 */
+  objectPartAddBtn:$("objectPartAddBtn"), objectPartCopyBtn:$("objectPartCopyBtn"), objectPartDelBtn:$("objectPartDelBtn"),
+  objectPartList:$("objectPartList"), objectPartZ:$("objectPartZ"), objectPartRot:$("objectPartRot"),
+  objectPartX:$("objectPartX"), objectPartY:$("objectPartY"),   /* 【v1132】 */
   kmzMoveOnBtn:$("kmzMoveOnBtn"), kmzMoveOnState:$("kmzMoveOnState"),
   kmzMoveFromH:$("kmzMoveFromH"), kmzMoveFromM:$("kmzMoveFromM"), kmzMoveFromS:$("kmzMoveFromS"),
   kmzMoveToH:$("kmzMoveToH"), kmzMoveToM:$("kmzMoveToM"), kmzMoveToS:$("kmzMoveToS"),
@@ -8828,7 +8845,9 @@ const OBJECT_SHAPES={box:{label:"角柱・角錐",icon:"⬛"},cylinder:{label:"�
 const OBJECT_MAX_M=2000;      /* 打ち込める最大（m）。桁の打ち間違いで地形が壊れないように */
 const OBJECT_CYLINDER_SIDES=48;
 /* 中身を検査して、正しければ整えた形を返す。正しくなければ null。 */
-function objectSpecOf(value){
+/* 【v1132】パーツ1個ぶんの検査。offset（x,y,z）と rot はここだけで扱う。 */
+const OBJECT_MAX_PARTS=12;
+function objectPartOf(value){
   if(!value||typeof value!=="object")return null;
   const shape=value.shape==="cylinder"?"cylinder":(value.shape==="box"?"box":null);
   if(!shape)return null;
@@ -8838,6 +8857,12 @@ function objectSpecOf(value){
     if(!allowZero&&!(n>0))return null;
     return Math.round(n*1000)/1000;
   };
+  /* ずれは負にもなる（基準点より手前・左・下）。 */
+  const shift=(v)=>{
+    const n=typeof v==="number"?v:(typeof v==="string"&&v.trim()!==""?Number(v):0);
+    if(!Number.isFinite(n)||Math.abs(n)>OBJECT_MAX_M)return 0;
+    return Math.round(n*1000)/1000;
+  };
   const height=size(value.height,{allowZero:false});
   if(height===null)return null;
   let topW=size(value.topW),topD=size(value.topD),bottomW=size(value.bottomW),bottomD=size(value.bottomD);
@@ -8845,12 +8870,40 @@ function objectSpecOf(value){
   if(shape==="cylinder"){topD=topW;bottomD=bottomW;}   /* 丸は直径ひとつ */
   /* 上下とも 0 では線にしかならない。 */
   if(!(topW>0||bottomW>0)||!(topD>0||bottomD>0))return null;
+  let rot=Number(value.rot);
+  rot=Number.isFinite(rot)?((Math.round(rot*10)/10)%360+360)%360:0;
+  return {shape,topW,topD,bottomW,bottomD,height,x:shift(value.x),y:shift(value.y),z:shift(value.z),rot};
+}
+function objectSpecOf(value){
+  if(!value||typeof value!=="object")return null;
   const name=String(value.name||"").trim().slice(0,30);
-  return {name,shape,topW,topD,bottomW,bottomD,height};
+  /* 【v1132】パーツの並びがあればそれを使う。無ければ**平らな欄を1個のパーツとして包む**
+     （v1131 までに作ったオブジェクト・保存した撮影計画はこちらを通る）。 */
+  const raw=Array.isArray(value.parts)&&value.parts.length?value.parts:[value];
+  const parts=[];
+  for(const item of raw.slice(0,OBJECT_MAX_PARTS)){
+    const part=objectPartOf(item);
+    if(part)parts.push(part);
+  }
+  if(!parts.length)return null;
+  /* 1個目を平らな欄にも写す。古い読み手（要約・保存など）が壊れないように。 */
+  const head=parts[0];
+  return {name,parts,
+    shape:head.shape,topW:head.topW,topD:head.topD,bottomW:head.bottomW,bottomD:head.bottomD,height:head.height};
+}
+/* 【v1132】模型ぜんたいの高さ（いちばん高いパーツの天面）。 */
+function objectSpecTotalHeight(spec){
+  if(!spec||!Array.isArray(spec.parts))return 0;
+  let top=0;
+  for(const part of spec.parts)if(part.z+part.height>top)top=part.z+part.height;
+  return Math.round(top*1000)/1000;
 }
 /* 見出し用の短い説明（「3×3×10m の角錐」など）。 */
 function objectSpecSummary(spec){
   if(!spec)return "";
+  /* 【v1132】パーツが2個以上なら、個数と全高でまとめる。 */
+  if(Array.isArray(spec.parts)&&spec.parts.length>1)
+    return `パーツ${spec.parts.length}個／全高${Math.round(objectSpecTotalHeight(spec)*100)/100}m`;
   const n=v=>(Math.round(v*100)/100).toString();
   if(spec.shape==="cylinder"){
     const shapeName=spec.topW<=0?"円錐":(Math.abs(spec.topW-spec.bottomW)<1e-6?"円柱":"円錐台");
@@ -8865,6 +8918,9 @@ function objectSpecSummary(spec){
 function buildObjectModel(rawSpec){
   const spec=objectSpecOf(rawSpec);
   if(!spec)return null;
+  /* 【v1132】パーツごとに置き場所（x,y,z）と向き（rot）へ動かしてから足す。
+     陰影は面の向きから出すので、**動かしたあとの座標**で三角形を作る必要がある。 */
+  let partPlace=(p)=>p;
   const triangles=[],triangleColors=[],triangleAlphas=[];
   const BASE=[206,210,220];   /* 建物らしい明るい灰色。陰影は面の向きから付ける */
   const LIGHT=(()=>{const v=[.42,-.30,.86],l=Math.hypot(...v);return v.map(x=>x/l);})();
@@ -8877,27 +8933,35 @@ function buildObjectModel(rawSpec){
     const k=.52+.48*dot;
     return BASE.map(c0=>Math.round(clamp(c0*k,0,255)));
   };
+  /* 【v1132】パーツの置き場所と向きを掛けてから三角形にする。
+     陰影は面の向きから出すので、**動かしたあとの座標**で作らないと明るさがおかしくなる。 */
   const push=(a,b,c)=>{
-    const colour=shadeOf(a,b,c);
+    const A=partPlace(a),B=partPlace(b),C=partPlace(c);
+    const colour=shadeOf(A,B,C);
     if(!colour)return;
-    triangles.push([a,b,c]);triangleColors.push(colour);triangleAlphas.push(1);
+    triangles.push([A,B,C]);triangleColors.push(colour);triangleAlphas.push(1);
   };
   const quad=(a,b,c,d)=>{push(a,b,c);push(a,c,d);};
-  const h=spec.height;
-  if(spec.shape==="box"){
-    const bw=spec.bottomW/2,bd=spec.bottomD/2,tw=spec.topW/2,td=spec.topD/2;
-    const bottom=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]];
-    const top=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]];
-    for(let i=0;i<4;i++){const j=(i+1)%4;quad(bottom[i],bottom[j],top[j],top[i]);}
-    quad(bottom[3],bottom[2],bottom[1],bottom[0]);   /* 底（裏から見ても出るように） */
-    quad(top[0],top[1],top[2],top[3]);               /* 天 */
-  }else{
-    const rb=spec.bottomW/2,rt=spec.topW/2,n=OBJECT_CYLINDER_SIDES;
-    const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return [Math.cos(a)*r,Math.sin(a)*r,z];});
-    const bottom=ring(rb,0),top=ring(rt,h);
-    for(let i=0;i<n;i++){const j=(i+1)%n;quad(bottom[i],bottom[j],top[j],top[i]);}
-    if(rb>0)for(let i=1;i+1<n;i++)push(bottom[0],bottom[i+1],bottom[i]);
-    if(rt>0)for(let i=1;i+1<n;i++)push(top[0],top[i],top[i+1]);
+  for(const part of spec.parts){
+    /* このパーツの置き場所（x=東・y=北・z=下端の高さ）と、そのパーツだけの向き。 */
+    const pa=part.rot*D2R,pcos=Math.cos(pa),psin=Math.sin(pa);
+    partPlace=(p)=>[part.x+(p[0]*pcos-p[1]*psin),part.y+(p[0]*psin+p[1]*pcos),part.z+p[2]];
+    const h=part.height;
+    if(part.shape==="box"){
+      const bw=part.bottomW/2,bd=part.bottomD/2,tw=part.topW/2,td=part.topD/2;
+      const bottom=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]];
+      const top=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]];
+      for(let i=0;i<4;i++){const j=(i+1)%4;quad(bottom[i],bottom[j],top[j],top[i]);}
+      quad(bottom[3],bottom[2],bottom[1],bottom[0]);   /* 底（裏から見ても出るように） */
+      quad(top[0],top[1],top[2],top[3]);               /* 天 */
+    }else{
+      const rb=part.bottomW/2,rt=part.topW/2,n=OBJECT_CYLINDER_SIDES;
+      const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return [Math.cos(a)*r,Math.sin(a)*r,z];});
+      const bottom=ring(rb,0),top=ring(rt,h);
+      for(let i=0;i<n;i++){const j=(i+1)%n;quad(bottom[i],bottom[j],top[j],top[i]);}
+      if(rb>0)for(let i=1;i+1<n;i++)push(bottom[0],bottom[i+1],bottom[i]);
+      if(rt>0)for(let i=1;i+1<n;i++)push(top[0],top[i],top[i+1]);
+    }
   }
   if(!triangles.length)return null;
   const all=triangles.flat();
@@ -10357,18 +10421,91 @@ async function setLaunchSiteStudioOpen(open,slot){
 let objectStudioShape="box";
 function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
 /* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
+/* 【v1132】編集中のパーツの並びと、いま選んでいる番号。
+   入力欄には「選んでいるパーツ」だけが出る。残りはここに持っておく。 */
+let objectStudioParts=[],objectStudioPartIndex=0;
+function objectStudioPartDefault(){
+  return {shape:"box",topW:10,topD:10,bottomW:10,bottomD:10,height:10,x:0,y:0,z:0,rot:0};
+}
+/* 入力欄の中身を、いま選んでいるパーツへ書き戻す。 */
+function objectStudioCommitPart(){
+  if(!objectStudioParts.length)return;
+  const num=(node,fallback)=>{
+    const raw=node?String(node.value).trim():"";
+    if(raw==="")return fallback;
+    const n=Number(raw);
+    return Number.isFinite(n)?n:fallback;
+  };
+  const cylinder=objectStudioShape==="cylinder";
+  const topW=num(el.objectTopW,NaN),bottomW=num(el.objectBottomW,NaN);
+  const draft={
+    shape:objectStudioShape,
+    topW,topD:cylinder?topW:num(el.objectTopD,NaN),
+    bottomW,bottomD:cylinder?bottomW:num(el.objectBottomD,NaN),
+    height:num(el.objectHeight,NaN),
+    x:num(el.objectPartX,0),y:num(el.objectPartY,0),z:num(el.objectPartZ,0),rot:num(el.objectPartRot,0)
+  };
+  const checked=objectPartOf(draft);
+  /* 寸法が途中で不正になっても、置き場所と形だけは覚えておく（打ち込み中に消えないように）。 */
+  const at=objectStudioParts[objectStudioPartIndex];
+  if(checked)objectStudioParts[objectStudioPartIndex]=checked;
+  else if(at){at.shape=draft.shape;at.x=draft.x;at.y=draft.y;at.z=draft.z;at.rot=draft.rot;}
+}
+/* 選んでいるパーツを入力欄へ出す。 */
+function objectStudioShowPart(){
+  const part=objectStudioParts[objectStudioPartIndex];
+  if(!part)return;
+  objectStudioShape=part.shape==="cylinder"?"cylinder":"box";
+  if(el.objectTopW)el.objectTopW.value=String(part.topW);
+  if(el.objectTopD)el.objectTopD.value=String(part.topD);
+  if(el.objectBottomW)el.objectBottomW.value=String(part.bottomW);
+  if(el.objectBottomD)el.objectBottomD.value=String(part.bottomD);
+  if(el.objectHeight)el.objectHeight.value=String(part.height);
+  if(el.objectPartX)el.objectPartX.value=String(part.x);
+  if(el.objectPartY)el.objectPartY.value=String(part.y);
+  if(el.objectPartZ)el.objectPartZ.value=String(part.z);
+  if(el.objectPartRot)el.objectPartRot.value=String(part.rot);
+}
+/* パーツの一覧（番号・形・高さ）。押すとそのパーツに切り替わる。 */
+function objectStudioRenderParts(){
+  const list=el.objectPartList;if(!list)return;
+  list.textContent="";
+  objectStudioParts.forEach((part,index)=>{
+    const row=document.createElement("div");
+    const on=index===objectStudioPartIndex;
+    /* 借り物のクラスは別の並びを前提にしていて潰れるので、ここは自前で指定する。 */
+    row.style.cssText="padding:7px 10px;border-radius:8px;font:500 12px/1.35 system-ui,sans-serif;"
+      +"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;"
+      +(on?"background:rgba(255,190,110,.18);border:1px solid rgba(255,190,110,.55);color:#ffd9a8;"
+          :"background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);color:var(--dim-1,#cfd6e4);");
+    const round=v=>Math.round(v*10)/10;
+    row.textContent=`${index+1}. ${part.shape==="cylinder"?"丸":"四角"}　`
+      +`${round(part.bottomW)}→${round(part.topW)}m・高さ${round(part.height)}m`
+      +(part.z?`　積み上げ${round(part.z)}m`:"")
+      +(part.x||part.y?`　ずれ${round(part.x)},${round(part.y)}m`:"")
+      +(part.rot?`　向き${round(part.rot)}°`:"");
+    row.addEventListener("click",()=>{
+      objectStudioCommitPart();
+      objectStudioPartIndex=index;
+      objectStudioShowPart();
+      objectStudioRefresh();
+    });
+    list.appendChild(row);
+  });
+  if(el.objectPartDelBtn)el.objectPartDelBtn.disabled=objectStudioParts.length<2;
+  if(el.objectPartAddBtn)el.objectPartAddBtn.disabled=objectStudioParts.length>=OBJECT_MAX_PARTS;
+  if(el.objectPartCopyBtn)el.objectPartCopyBtn.disabled=objectStudioParts.length>=OBJECT_MAX_PARTS;
+}
 /* 【v1131】スタジオの入力欄へ寸法を入れる。**入口はここ1つ**。
    ライブラリの「読み込む」も、置いてある模型の「形を編集する」も、同じここを通す。
    別々に書くと、片方だけ直したときにズレる（v1099 の作法）。 */
 function objectStudioLoadSpec(rawSpec){
   const spec=objectSpecOf(rawSpec);
   if(!spec)return null;
-  objectStudioShape=spec.shape==="cylinder"?"cylinder":"box";
-  if(el.objectTopW)el.objectTopW.value=String(spec.topW);
-  if(el.objectTopD)el.objectTopD.value=String(spec.topD);
-  if(el.objectBottomW)el.objectBottomW.value=String(spec.bottomW);
-  if(el.objectBottomD)el.objectBottomD.value=String(spec.bottomD);
-  if(el.objectHeight)el.objectHeight.value=String(spec.height);
+  /* 【v1132】パーツの並びごと持ち込む。 */
+  objectStudioParts=spec.parts.map(part=>({...part}));
+  objectStudioPartIndex=0;
+  objectStudioShowPart();
   if(el.objectName)el.objectName.value=spec.name||"";
   objectStudioRefresh();
   return spec;
@@ -10412,21 +10549,10 @@ function objectStudioApplyToSlot(){
   return true;
 }
 function objectStudioReadSpec(){
-  const num=node=>{
-    const raw=node?String(node.value).trim():"";
-    if(raw==="")return NaN;
-    const n=Number(raw);
-    return Number.isFinite(n)?n:NaN;
-  };
-  const topW=num(el.objectTopW),bottomW=num(el.objectBottomW),height=num(el.objectHeight);
-  const cylinder=objectStudioShape==="cylinder";
-  return objectSpecOf({
-    name:el.objectName?el.objectName.value:"",
-    shape:objectStudioShape,
-    topW,topD:cylinder?topW:num(el.objectTopD),
-    bottomW,bottomD:cylinder?bottomW:num(el.objectBottomD),
-    height
-  });
+  /* 【v1132】入力欄の中身をいま選んでいるパーツへ書き戻してから、並びぜんたいを仕様にする。 */
+  if(!objectStudioParts.length)objectStudioParts=[objectStudioPartDefault()];
+  objectStudioCommitPart();
+  return objectSpecOf({name:el.objectName?el.objectName.value:"",parts:objectStudioParts});
 }
 /* 形に合わせて入力欄の見出しを変える（丸は直径ひとつ）。 */
 function objectStudioSyncShape(){
@@ -10460,27 +10586,42 @@ function objectStudioDrawPreview(){
   /* 斜め上から見た投影。x が東、y が北、z が上。 */
   const COS=Math.cos(Math.PI/6),SIN=Math.sin(Math.PI/6);
   const project=p=>[(p[0]-p[1])*COS,(p[0]+p[1])*SIN-p[2]];
-  const edges=[],labels=[];
-  if(spec.shape==="box"){
-    const bw=spec.bottomW/2,bd=spec.bottomD/2,tw=spec.topW/2,td=spec.topD/2,h=spec.height;
-    const b=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]];
-    const tp=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]];
-    for(let i=0;i<4;i++){const j=(i+1)%4;edges.push([b[i],b[j]]);edges.push([tp[i],tp[j]]);edges.push([b[i],tp[i]]);}
-    labels.push({text:"W",a:b[0],b:b[1],push:[0,18]});
-    labels.push({text:"D",a:b[1],b:b[2],push:[18,10]});
-    labels.push({text:"H",a:b[3],b:tp[3],push:[-15,0]});
-  }else{
-    const rb=spec.bottomW/2,rt=spec.topW/2,h=spec.height,n=48;
-    const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return [Math.cos(a)*r,Math.sin(a)*r,z];});
-    const b=ring(rb,0),tp=ring(rt,h);
-    for(let i=0;i<n;i++){const j=(i+1)%n;if(rb>0)edges.push([b[i],b[j]]);if(rt>0)edges.push([tp[i],tp[j]]);}
-    /* 輪郭の縦線は、投影して左右の端に来る 2 本だけ引く。 */
-    let left=0,right=0;
-    b.forEach((p,i)=>{const x=project(p)[0];if(x<project(b[left])[0])left=i;if(x>project(b[right])[0])right=i;});
-    edges.push([b[left],tp[rt>0?left:0]]);edges.push([b[right],tp[rt>0?right:0]]);
-    labels.push({text:"直径",a:b[Math.round(n*.625)%n],b:b[Math.round(n*.875)%n],push:[0,24]});
-    labels.push({text:"H",a:b[left],b:tp[rt>0?left:0],push:[-16,0]});
-  }
+  /* 【v1132】パーツごとに辺を作って重ねる。寸法の文字は**いま選んでいるパーツ**にだけ添える。 */
+  const edges=[],labels=[],dimEdges=[];
+  spec.parts.forEach((part,index)=>{
+    const sel=index===objectStudioPartIndex;
+    const pa=part.rot*D2R,pc=Math.cos(pa),ps=Math.sin(pa);
+    const at=(p)=>[part.x+(p[0]*pc-p[1]*ps),part.y+(p[0]*ps+p[1]*pc),part.z+p[2]];
+    const bag=sel?dimEdges:edges;
+    if(part.shape==="box"){
+      const bw=part.bottomW/2,bd=part.bottomD/2,tw=part.topW/2,td=part.topD/2,h=part.height;
+      const b=[[-bw,-bd,0],[bw,-bd,0],[bw,bd,0],[-bw,bd,0]].map(at);
+      const tp=[[-tw,-td,h],[tw,-td,h],[tw,td,h],[-tw,td,h]].map(at);
+      for(let i=0;i<4;i++){const j=(i+1)%4;bag.push([b[i],b[j]]);bag.push([tp[i],tp[j]]);bag.push([b[i],tp[i]]);}
+      if(sel){
+        labels.push({text:"W",a:b[0],b:b[1],push:[0,18]});
+        labels.push({text:"D",a:b[1],b:b[2],push:[18,10]});
+        labels.push({text:"H",a:b[3],b:tp[3],push:[-15,0]});
+      }
+    }else{
+      const rb=part.bottomW/2,rt=part.topW/2,h=part.height,n=48;
+      const ring=(r,z)=>Array.from({length:n},(_,i)=>{const a=i*2*Math.PI/n;return at([Math.cos(a)*r,Math.sin(a)*r,z]);});
+      const b=ring(rb,0),tp=ring(rt,h);
+      for(let i=0;i<n;i++){const j=(i+1)%n;if(rb>0)bag.push([b[i],b[j]]);if(rt>0)bag.push([tp[i],tp[j]]);}
+      /* 輪郭の縦線は、投影して左右の端に来る 2 本だけ引く。 */
+      let left=0,right=0;
+      b.forEach((p,i)=>{const x=project(p)[0];if(x<project(b[left])[0])left=i;if(x>project(b[right])[0])right=i;});
+      bag.push([b[left],tp[rt>0?left:0]]);bag.push([b[right],tp[rt>0?right:0]]);
+      if(sel){
+        labels.push({text:"直径",a:b[Math.round(n*.625)%n],b:b[Math.round(n*.875)%n],push:[0,24]});
+        labels.push({text:"H",a:b[left],b:tp[rt>0?left:0],push:[-16,0]});
+      }
+    }
+  });
+  /* 【v1132】選んでいるパーツは別に貯めてあるので、描く前に合流させる。
+     分けたまま `edges` だけ描いていたため、選んでいるパーツが見取り図から消えていた（実測）。 */
+  const selCount=dimEdges.length;
+  for(const e of dimEdges)edges.push(e);
   const pts=edges.flat().map(project);
   const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
   const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
@@ -10503,6 +10644,10 @@ function objectStudioDrawPreview(){
   }
 }
 function objectStudioRefresh(){
+  /* 【v1132】一覧を描く前に、入力欄の中身をパーツへ書き戻す。
+     順番が逆だと一覧が**1手ぶん古い値**になる（実測：積み上げ101mと表示されるのに全高は125m）。 */
+  if(typeof objectStudioCommitPart==="function"&&objectStudioParts.length)objectStudioCommitPart();
+  if(typeof objectStudioRenderParts==="function")objectStudioRenderParts();
   objectStudioSyncShape();
   objectStudioDrawPreview();
   const spec=objectStudioReadSpec();
@@ -10575,6 +10720,52 @@ if(el.objectStudioOverlay){
   for(const node of [el.objectTopW,el.objectTopD,el.objectBottomW,el.objectBottomD,el.objectHeight]){
     if(node)node.addEventListener("input",objectStudioRefresh);
   }
+  /* 【v1132】パーツの足す・複製・削除。 */
+  if(el.objectPartAddBtn)el.objectPartAddBtn.addEventListener("click",()=>{
+    objectStudioCommitPart();
+    if(objectStudioParts.length>=OBJECT_MAX_PARTS)return;
+    /* 新しいパーツは、いちばん高い天面の上に置く（積み上げが自然になるように）。 */
+    let top=0;for(const p of objectStudioParts)if(p.z+p.height>top)top=p.z+p.height;
+    objectStudioParts.push({...objectStudioPartDefault(),z:Math.round(top*1000)/1000});
+    objectStudioPartIndex=objectStudioParts.length-1;
+    objectStudioShowPart();objectStudioRefresh();
+    objectStudioSay(`パーツ${objectStudioParts.length}を足しました（${Math.round(top*10)/10}m の上に置いています）。`);
+  });
+  if(el.objectPartCopyBtn)el.objectPartCopyBtn.addEventListener("click",()=>{
+    objectStudioCommitPart();
+    if(objectStudioParts.length>=OBJECT_MAX_PARTS)return;
+    const now=objectStudioParts[objectStudioPartIndex];
+    if(!now)return;
+    objectStudioParts.splice(objectStudioPartIndex+1,0,{...now,z:Math.round((now.z+now.height)*1000)/1000});
+    objectStudioPartIndex++;
+    objectStudioShowPart();objectStudioRefresh();
+    objectStudioSay("複製しました（すぐ上に置いています）。");
+  });
+  if(el.objectPartDelBtn)el.objectPartDelBtn.addEventListener("click",()=>{
+    if(objectStudioParts.length<2)return;
+    objectStudioParts.splice(objectStudioPartIndex,1);
+    objectStudioPartIndex=Math.max(0,Math.min(objectStudioPartIndex,objectStudioParts.length-1));
+    objectStudioShowPart();objectStudioRefresh();
+    objectStudioSay("パーツを削除しました。");
+  });
+  for(const node of [el.objectPartX,el.objectPartY,el.objectPartZ,el.objectPartRot]){
+    if(node)node.addEventListener("input",objectStudioRefresh);
+  }
+  /* 【v1118】と同じ −／＋ を、あとから足した欄にも効かせる。 */
+  for(const stepper of el.objectStudioOverlay.querySelectorAll(".ls-stepper")){
+    const input=stepper.querySelector("input");
+    if(!input)continue;
+    const amount=Math.abs(parseFloat(stepper.dataset.step))||1;
+    for(const button of stepper.querySelectorAll("button")){
+      button.addEventListener("click",()=>{
+        if(input.disabled)return;
+        const now=savedNumber(input.value);
+        const next=(now===null?0:now)+(+button.dataset.dir<0?-1:1)*amount;
+        input.value=String(Math.round(next*1000)/1000);
+        input.dispatchEvent(new Event("input",{bubbles:true}));
+      });
+    }
+  }
   el.objectSaveBtn.addEventListener("click",()=>objectStudioSave());
   /* 【v1131】 */
   if(el.objectApplyBtn)el.objectApplyBtn.addEventListener("click",()=>objectStudioApplyToSlot());
@@ -10590,6 +10781,10 @@ function syncFireworkSlotPanel(){
   if(el.kmzEditLaunchSiteBtn){
     const site=kmzActiveSlot();
     el.kmzEditLaunchSiteBtn.hidden=!(site&&site.launchSite);
+    /* 【v1132】形の編集はオブジェクトのときだけ、置き直しは地図で置けるものだけ出す。 */
+    if(el.kmzBuildingEditShapeBtn)el.kmzBuildingEditShapeBtn.hidden=!(site&&objectSpecOf(site.object)!==null);
+    if(el.kmzBuildingRePlaceBtn)el.kmzBuildingRePlaceBtn.hidden=!(site&&(launchSiteSpecOf(site.launchSite)!==null
+      ||objectSpecOf(site.object)!==null||fireworkGoOf(site.firework)!==null));
   }
   const panel=el.fireworkSlotPanel;if(!panel)return;
   const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
