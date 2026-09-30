@@ -6817,7 +6817,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1136-ls-ruler";
+const APP_VERSION="1137-mirror-base";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8744,7 +8744,20 @@ function buildLaunchSiteModel(rawSpec){
      ② 無ければ全方位の水の**中央値**（湖ひとつなら安定して同じ値になる）
      ③ どこにも水が無ければ 0（＝海とみなす。これまでと同じ） */
 let waterMirrorCache={grid:null,value:0};
-function waterMirrorElevationM(azimuthDeg){
+/* 【v1137】`baseAltitudeM` は模型の足元の標高（置いたときに DEM から取った値）。
+
+   **水は、そこに浮かんでいるものより高い所にはない。**
+
+   近距離グリッドは 1km 以内しか持っていないので、山の上から遠くの湖を撮ると
+   「近くにある別の水」を拾ってしまう（夢見が丘で 352.3m。正しくは 84.6m＝びわ湖）。
+   鏡像は 2*mirrorZ − 高さ なので、352.3 だと湖面より 200m 上に浮き、
+   水域マスクで抜かれるか水面に紛れて見えなかった。
+   候補が足元より高ければ足元を採る、という一行でそこを塞ぐ。 */
+function waterMirrorElevationM(azimuthDeg,baseAltitudeM){
+  const found=waterMirrorCandidateM(azimuthDeg);
+  return Number.isFinite(baseAltitudeM)?Math.min(found,baseAltitudeM):found;
+}
+function waterMirrorCandidateM(azimuthDeg){
   const grid=realTerrainState&&realTerrainState.nearSurfaceGrid;
   if(!grid)return 0;
   if(Number.isFinite(azimuthDeg)){
@@ -8778,8 +8791,9 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
   const heading=cfg.heading*D2R,scale=cfg.scale;
   const baseBearing=base.bearing*D2R,baseDistance=base.distanceKm*1000;
   const originEast=Math.sin(baseBearing)*baseDistance,originNorth=Math.cos(baseBearing)*baseDistance;
-  /* 【v1121】鏡の面。模型ごとに1回だけ出す。 */
-  const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing):0;
+  /* 【v1121】鏡の面。模型ごとに1回だけ出す。【v1137】模型の足元も渡す。 */
+  const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing,cfg.altitude):0;
+  if(reflectionPass)kmzMirrorDiag(slot,base.bearing,cfg.altitude,mirrorZ);
   /* 【v1122】手前の地形で隠す。面の模型（drawKmzOneBuilding）と同じ仕組みをここにも入れる。
 
      稜線を作る範囲は「模型のいちばん手前」まで（v877 と同じ考え方）。
@@ -26498,9 +26512,13 @@ try{
       /* 【v1122】直前に線の模型（花火・筒場）を描いたときの、手前の地形の稜線の様子。 */
       lineSkyline:()=>drawKmzLineModel._diag||null,
       /* 【v1121】いまの鏡の面の標高と、方位ごとの拾えぐあい。 */
-      waterMirror:(az)=>({
-        方位指定:Number.isFinite(+az)?waterMirrorElevationM(+az):null,
-        全体の中央値:waterMirrorElevationM(NaN),
+      /* 【v1137】直前のコマで、模型ごとにどの鏡の面を使ったか。 */
+      mirrorLog:()=>{const out=kmzMirrorLog.slice();kmzMirrorLog=[];return out;},
+      waterMirror:(az,base)=>({
+        方位指定:Number.isFinite(+az)?waterMirrorElevationM(+az,Number.isFinite(+base)?+base:undefined):null,
+        候補のみ:Number.isFinite(+az)?waterMirrorCandidateM(+az):null,
+        模型の足元:Number.isFinite(+base)?+base:null,
+        全体の中央値:waterMirrorCandidateM(NaN),
         観測地の地面:realTerrainState.observerElevation,
         近距離グリッド:!!(realTerrainState&&realTerrainState.nearSurfaceGrid),
         水のある方位:(()=>{const g=realTerrainState&&realTerrainState.nearSurfaceGrid;if(!g)return 0;
@@ -30747,6 +30765,13 @@ async function buildKmzDetailGrid(signature){
    利用者が実写と見比べながら2度下げた。
    明石海峡大橋のような大きな構造物だと、少し映るくらいが実写に近い。 */
 const KMZ_REFLECTION_ALPHA=.10;
+/* 【v1137】映り込みの鏡の面を模型ごとに控える。数値を足すだけなので描画の重さは変わらない。 */
+let kmzMirrorLog=[];
+function kmzMirrorDiag(slot,bearing,baseAltitudeM,mirrorZ){
+  if(kmzMirrorLog.length>=24)kmzMirrorLog=[];
+  kmzMirrorLog.push({名:slot&&slot.fileName,方位:Math.round(bearing),
+    模型の足元:baseAltitudeM,候補:waterMirrorCandidateM(bearing),採った鏡の面:mirrorZ});
+}
 /* 【v880】ここは**全スロットを回す入口**。1つ描く中身は drawKmzOneBuilding。
    分けただけで、描き方そのものは変えていない。 */
 /* 【v903】模型の面の前後を「1画素ごと」に決めて描く。
@@ -30941,8 +30966,9 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
-  /* 【v1121】鏡の面。模型ごとに1回だけ出す。 */
-  const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing):0;
+  /* 【v1121】鏡の面。模型ごとに1回だけ出す。【v1137】模型の足元も渡す。 */
+  const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing,cfg.altitude):0;
+  if(reflectionPass)kmzMirrorDiag(slot,base.bearing,cfg.altitude,mirrorZ);
   const cameraForward=toVec(s.facingAz,s.facingAlt);   // 【v903】奥行きを測る向き
   /* 【v851】シルエットで描かないときは、面の向きから明るさを出す。
      そのために投影のついでに、東・北・上の実寸座標も控えておく。 */
