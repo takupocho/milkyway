@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1143-rail-bridge-join";
+const APP_VERSION="1144-bridge-opaque";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -38849,9 +38849,15 @@ function drawPhoto(ctx,s){
                   current.travel=travelM;
                   if(previous){
                     const bucket=bridgeBucketOf(current.distanceM);
-                    /* 【v1143】鉄道橋の橋面はバラストの茶で塗る（地面の線路とつながって見えるように）。
-                       側面・橋脚・縁は橋の色のままなので、橋だとも分かる。 */
-                    fillGroundPolygon(way.kind==="rail"?bridgeRailDeckPaths[bucket]:bridgePaths[bucket],ribbonQuad(previous,current,1));
+                    /* 【v1144】**橋面は必ず `bridgePaths` にも入れる。**
+                       v1143 は鉄道橋のぶんをここから「移して」しまったので、
+                       上に重ねる塗りが乗らないコマでは**面が一度も塗られず透けた**
+                       （利用者報告：上から見ると橋が透明）。
+                       下地は常に橋の色で不透明に塗り、鉄道橋はそのうえからバラストの色を重ねる。
+                       外れる方向は「茶色にならない」だけで、透けることはない。 */
+                    const deckQuad=ribbonQuad(previous,current,1);
+                    fillGroundPolygon(bridgePaths[bucket],deckQuad);
+                    if(way.kind==="rail"&&bridgeRailDeckPaths)fillGroundPolygon(bridgeRailDeckPaths[bucket],deckQuad);
                     fillGroundPolygon(bridgeSidePaths[bucket],[previous.left,current.left,current.bottomLeft,previous.bottomLeft]);
                     fillGroundPolygon(bridgeSidePaths[bucket],[previous.right,current.right,current.bottomRight,previous.bottomRight]);
                     strokeGroundSegment(bridgeEdgePaths[bucket],previous.left,current.left);
@@ -39103,8 +39109,10 @@ function drawPhoto(ctx,s){
           const pierEdgeRGB=bridgePalette.pierEdge,edgeRGB=bridgePalette.edge;
           const markRGB=bridgePalette.mark;
           const bridgeSurfaceBaseAlpha=bridgePalette.baseAlpha;
-          /* 【v1143】鉄道橋の橋面に使うバラストの色。地面の線路とまったく同じ色を引く。 */
+          /* 【v1143】鉄道橋の橋面に使うバラストの色。地面の線路とまったく同じ色を引く。
+             【v1144】濃さも地面の線路と同じ式にする（橋の濃さを使うと、橋の上だけ色が浮く）。 */
           const bridgeBallastRGB=overlayPartRGB("rail","main",terrainDayFactor);
+          const bridgeBallastAlpha=lerp(.66,.88,terrainDayFactor)*overlayAlphaScale("rail",terrainDayFactor);
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=bridgeFadeOfBucket(i);
             if(fade<=0) continue;
@@ -39117,7 +39125,7 @@ function drawPhoto(ctx,s){
             tctx.fillStyle=`rgba(${deckRGB.join(",")},${alpha.toFixed(3)})`;tctx.fill(bridgePaths[i]);
             /* 【v1143】鉄道橋の橋面はバラストの茶。地面の線路と同じ色なので、橋の上を線路が渡って見える。 */
             if(bridgeRailDeckPaths){
-              tctx.fillStyle=`rgba(${bridgeBallastRGB.join(",")},${alpha.toFixed(3)})`;
+              tctx.fillStyle=`rgba(${bridgeBallastRGB.join(",")},${(bridgeBallastAlpha*fade).toFixed(3)})`;
               tctx.fill(bridgeRailDeckPaths[i]);
             }
             tctx.strokeStyle=`rgba(${edgeRGB.join(",")},${(alpha*.82).toFixed(3)})`;
