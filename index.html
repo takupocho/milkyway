@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1149-bridge-dedupe";
+const APP_VERSION="1150-train-grade";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9281,7 +9281,9 @@ function trainSpecOf(value){
     if(!Number.isFinite(x)||!Number.isFinite(y))continue;
     const last=path[path.length-1];
     if(last&&Math.hypot(last[0]-x,last[1]-y)<.05)continue;   /* 同じ点は捨てる */
-    path.push([Math.round(x*100)/100,Math.round(y*100)/100]);
+    /* 【v1150】3つ目は「足元からの高さ（m）」。2つしか無い古い記録は 0＝水平として読む。 */
+    const z=Number.isFinite(+p[2])?+p[2]:0;
+    path.push([Math.round(x*100)/100,Math.round(y*100)/100,Math.round(z*100)/100]);
   }
   return {name:String(value.name||"").trim().slice(0,30)||`${cars}両編成`,
           cars,path:path.length>=2?path:[],reverse:value.reverse===true};
@@ -9301,7 +9303,7 @@ function trainLayout(spec){
     /* 線路が見つからなかったときは真北へ一直線。あとから回転で直せる。 */
     for(let i=0;i<spec.cars;i++){
       const s=(i-half)*TRAIN_PITCH_M*dir;
-      out.push({x:0,y:s,bearing:dir>0?0:180});
+      out.push({x:0,y:s,z:0,pitch:0,bearing:dir>0?0:180});
     }
     return out;
   }
@@ -9348,15 +9350,21 @@ function trainLayout(spec){
     }
     let i=0;while(i+1<cum.length-1&&cum[i+1]<=s)i++;
     const u=seg[i]>1e-6?(s-cum[i])/seg[i]:0;
+    /* 【v1150】高さも線形どおりに混ぜ、その区間の勾配を車両の傾き（ピッチ）にする。
+       ここを1つの値で済ませていたため、4.8% の坂の鉄橋で前後の車両が
+       0.45m 沈み／0.51m 浮いていた（利用者報告）。 */
+    const z0=path[i][2]||0,z1=path[i+1][2]||0;
+    const grade=seg[i]>1e-6?Math.atan2(z1-z0,seg[i])*R2D:0;
     /* 置き場所は線形の上のまま。滑らかにするのは向きだけ。 */
     return {x:path[i][0]+(path[i+1][0]-path[i][0])*u,
-            y:path[i][1]+(path[i+1][1]-path[i][1])*u,bearing:smoothBearing(i,u)};
+            y:path[i][1]+(path[i+1][1]-path[i][1])*u,
+            z:z0+(z1-z0)*u,pitch:grade,bearing:smoothBearing(i,u)};
   };
   /* 反転のときは、置き場所を逆へ送るだけでなく**車両の向きも 180° 回す**。
      こうしておくと、どちらの向きでも `cars-1` 番目が必ず先頭になる。 */
   for(let i=0;i<spec.cars;i++){
     const car=at(s0+dir*((i-half)*TRAIN_PITCH_M));
-    if(dir<0)car.bearing=norm360(car.bearing+180);
+    if(dir<0){car.bearing=norm360(car.bearing+180);car.pitch=-car.pitch;}   /* 【v1150】逆向きは勾配も逆 */
     out.push(car);
   }
   return out;
@@ -9394,8 +9402,15 @@ function buildTrainModel(rawSpec){
   const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
   for(const car of trainLayout(spec)){
     const r=car.bearing*D2R,cs=Math.cos(r),sn=Math.sin(r);
-    /* 車両の中の座標：u=右・v=前・w=上。前が方位 bearing を向くように東・北へ移す。 */
-    place=(p)=>[car.x+p[0]*cs+p[1]*sn,car.y-p[0]*sn+p[1]*cs,p[2]];
+    /* 【v1150】その場所の勾配ぶん、車両を前後に傾ける。 */
+    const pr=(car.pitch||0)*D2R,cp=Math.cos(pr),sp=Math.sin(pr);
+    const cz=car.z||0;
+    /* 車両の中の座標：u=右・v=前・w=上。
+       先に前後の傾きを掛けてから、前が方位 bearing を向くように東・北へ移す。 */
+    place=(p)=>{
+      const u=p[0],v=p[1]*cp-p[2]*sp,w=p[1]*sp+p[2]*cp;
+      return [car.x+u*cs+v*sn,car.y-u*sn+v*cs,w+cz];
+    };
     box(-hw+.3,hw-.3,-hl,hl,TRAIN_UNDER_M,.95,COL.under);              /* 床下・台車 */
     box(-hw,hw,-hl,hl,.95,3.75,COL.body);                              /* 車体 */
     box(-hw+.25,hw-.25,-hl+.15,hl-.15,3.75,TRAIN_ROOF_M,COL.roof);     /* 屋根 */
@@ -9553,6 +9568,31 @@ async function trainBridgeDeckElevationM(lat,lon){
     中央の地面:Number.isFinite(middleGround)?+middleGround.toFixed(1):null,
     橋面:+deck.toFixed(2)};
   return Number.isFinite(deck)?deck:null;
+}
+/* 【v1150】その場所の「線路の面」の標高。橋の上なら橋面、それ以外は地面。 */
+async function trainRailElevationM(lat,lon){
+  const ground=await fireworkGroundElevation(lat,lon);
+  let deck=null;
+  try{deck=await trainBridgeDeckElevationM(lat,lon);}catch(e){deck=null;}
+  if(Number.isFinite(deck)&&(!Number.isFinite(ground)||deck>ground+.3))return deck;
+  return Number.isFinite(ground)?ground:null;
+}
+/* 【v1150】線形の点ごとに高さを入れる。高さは**足元（置いた点）からの相対**。
+   こうしておくと、撮影計画に入れても小さいままで、読み直すときに引き直さなくて済む。 */
+async function trainFillPathElevations(snap){
+  if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return snap;
+  const mLat=111320,mLon=111320*Math.cos(snap.lat*D2R);
+  const baseZ=await trainRailElevationM(snap.lat,snap.lon);
+  if(!Number.isFinite(baseZ))return snap;
+  const filled=[];
+  for(const p of snap.path){
+    const la=snap.lat+p[1]/mLat,lo=snap.lon+p[0]/mLon;
+    const z=await trainRailElevationM(la,lo);
+    filled.push([p[0],p[1],Number.isFinite(z)?z-baseZ:0]);
+  }
+  snap.path=filled;
+  snap.baseElevationM=baseZ;
+  return snap;
 }
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
 function trainCreateSlot(rawSpec,lat,lon,altitude){
@@ -9821,7 +9861,7 @@ function trainMapClick(e){
   trainDrawPreview();
   trainUpdatePlaceText();
   const token=++trainSnapToken;
-  trainRailSnap(lat,lon,trainPlacing.spec.cars).then(snap=>{
+  trainRailSnap(lat,lon,trainPlacing.spec.cars).then(snap=>snap?trainFillPathElevations(snap):snap).then(snap=>{
     if(token!==trainSnapToken||!trainPlacing)return;   /* 待っている間にやめた・置き直した */
     trainPlacing.busy=false;
     if(snap){
@@ -27179,6 +27219,12 @@ try{
         model:(v)=>{const m=buildTrainModel(v);return m?{三角形:m.triangles.length,幅:+m.width.toFixed(2),奥行:+m.depth.toFixed(2),高さ:+m.height.toFixed(2)}:null;},
         layout:(v)=>{const s=trainSpecOf(v);return s?trainLayout(s).map(c=>({東:+c.x.toFixed(2),北:+c.y.toFixed(2),方位:+c.bearing.toFixed(2)})):null;},
         snap:(lat,lon,cars)=>trainRailSnap(+lat,+lon,+cars||2),
+        /* 【v1150】高さ入りの線形。置くときと同じ手順。 */
+        snapZ:async(lat,lon,cars)=>{
+          const s=await trainRailSnap(+lat,+lon,+cars||2);
+          return s?trainFillPathElevations(s):null;
+        },
+        railElevation:(lat,lon)=>trainRailElevationM(+lat,+lon),
         place:(cars,lat,lon,alt,path,reverse)=>trainCreateSlot({name:`${cars}両編成`,cars:+cars,path:path||[],reverse:!!reverse},+lat,+lon,+alt),
         deck:(lat,lon)=>trainBridgeDeckElevationM(+lat,+lon).then(v=>({橋面:v,内訳:trainBridgeDeckElevationM._diag||null})),
         placing:()=>trainPlacing?{名:trainPlacing.spec.name,両数:trainPlacing.spec.cars,
