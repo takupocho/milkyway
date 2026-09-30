@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1148-bridge-taper";
+const APP_VERSION="1149-bridge-dedupe";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -27059,6 +27059,27 @@ try{
       /* 【v1121】いまの鏡の面の標高と、方位ごとの拾えぐあい。 */
       /* 【v1137】直前のコマで、模型ごとにどの鏡の面を使ったか。 */
       mirrorLog:()=>{const out=kmzMirrorLog.slice();kmzMirrorLog=[];return out;},
+      /* 【v1149】橋の2重落とし。直前の取り込みで何本が何本になったか。 */
+      bridgeDedupe:()=>dedupeBridgeWays._last||null,
+      bridgesNear:async(lat,lon,radiusKm,limitM)=>{
+        const ways=await fetchStaticBridgeWays(+lat,+lon,+radiusKm||.4);
+        const mLat=111320,mLon=111320*Math.cos(+lat*D2R),lim=+limitM||200,rows=[];
+        for(const w of ways){
+          const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLon,(p[0]-lat)*mLat]);
+          if(pts.length<2)continue;
+          let near=Infinity,len=0;
+          for(let i=0;i<pts.length;i++){
+            const d=Math.hypot(pts[i][0],pts[i][1]);if(d<near)near=d;
+            if(i+1<pts.length)len+=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);
+          }
+          if(near>lim)continue;
+          rows.push({id:w.id,種類:w.kind,長さm:Math.round(len),最短m:Math.round(near),
+            始:[+w.points[0][0].toFixed(6),+w.points[0][1].toFixed(6)],
+            終:[+w.points[w.points.length-1][0].toFixed(6),+w.points[w.points.length-1][1].toFixed(6)]});
+        }
+        rows.sort((x,y)=>x.最短m-y.最短m);
+        return rows;
+      },
       waterMirror:(az,base)=>({
         方位指定:Number.isFinite(+az)?waterMirrorElevationM(+az,Number.isFinite(+base)?+base:undefined):null,
         候補のみ:Number.isFinite(+az)?waterMirrorCandidateM(+az):null,
@@ -28876,6 +28897,61 @@ async function fetchStaticRailWays(lat,lon,radiusKm){
   });
   return ways;
 }
+/* 【v1149】タイルののりしろで同じ橋が2本入るのを落とす。
+   「別の橋にすっぽり含まれている橋」を消し、長いほうだけ残す。
+   高さ（両端の標高・反り・端の細り）は橋1本の長さから計算するので、
+   同じ橋でも切り出しが違うと別々のプロファイルになり、2枚重なって見える。 */
+const BRIDGE_DUP_NEAR_M=4;
+function dedupeBridgeWays(ways,lat){
+  if(!Array.isArray(ways)||ways.length<2)return ways;
+  const mLat=111320,mLon=111320*Math.cos(lat*D2R);
+  const info=ways.map(way=>{
+    const xy=(way.points||[]).map(p=>[(p[1])*mLon,(p[0])*mLat]);
+    let len=0,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    for(let i=0;i<xy.length;i++){
+      if(xy[i][0]<x0)x0=xy[i][0];if(xy[i][0]>x1)x1=xy[i][0];
+      if(xy[i][1]<y0)y0=xy[i][1];if(xy[i][1]>y1)y1=xy[i][1];
+      if(i+1<xy.length)len+=Math.hypot(xy[i+1][0]-xy[i][0],xy[i+1][1]-xy[i][1]);
+    }
+    return {xy,len,x0:x0-BRIDGE_DUP_NEAR_M,y0:y0-BRIDGE_DUP_NEAR_M,
+            x1:x1+BRIDGE_DUP_NEAR_M,y1:y1+BRIDGE_DUP_NEAR_M};
+  });
+  /* a の点が全部 b の線から 4m 以内なら、a は b に含まれている。 */
+  const NEAR2=BRIDGE_DUP_NEAR_M*BRIDGE_DUP_NEAR_M;
+  const insideOf=(a,b)=>{
+    if(a.xy.length<2||b.xy.length<2)return false;
+    if(a.x0<b.x0||a.x1>b.x1||a.y0<b.y0||a.y1>b.y1)return false;   /* 外接箱で先に弾く */
+    for(const p of a.xy){
+      let best=Infinity;
+      for(let i=0;i+1<b.xy.length;i++){
+        const ax=b.xy[i][0]-p[0],ay=b.xy[i][1]-p[1];
+        const bx=b.xy[i+1][0]-p[0],by=b.xy[i+1][1]-p[1];
+        const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+        let u=len2>1e-6?(-ax*dx-ay*dy)/len2:0;
+        u=u<0?0:(u>1?1:u);
+        const px=ax+dx*u,py=ay+dy*u,d=px*px+py*py;
+        if(d<best){best=d;if(best<=NEAR2)break;}
+      }
+      if(best>NEAR2)return false;
+    }
+    return true;
+  };
+  const drop=new Array(ways.length).fill(false);
+  for(let i=0;i<ways.length;i++){
+    if(drop[i])continue;
+    for(let j=0;j<ways.length;j++){
+      if(i===j||drop[j])continue;
+      if(ways[i].kind!==ways[j].kind)continue;
+      /* 短いほうを落とす。同じ長さなら番号の大きいほうを落とす。 */
+      const shorter=(info[i].len<info[j].len)||(info[i].len===info[j].len&&i>j);
+      if(!shorter)continue;
+      if(insideOf(info[i],info[j])){drop[i]=true;break;}
+    }
+  }
+  const kept=ways.filter((_,i)=>!drop[i]);
+  dedupeBridgeWays._last={もと:ways.length,残り:kept.length};   /* 確認用 */
+  return kept;
+}
 async function fetchStaticBridgeWays(lat,lon,radiusKm){
   const tiles=await loadStaticVectorArea(lat,lon,radiusKm),ways=[];let serial=0;
   tiles.forEach(tile=>{
@@ -28889,7 +28965,7 @@ async function fetchStaticBridgeWays(lat,lon,radiusKm){
       });
     });
   });
-  return ways;
+  return dedupeBridgeWays(ways,lat);   /* 【v1149】タイルののりしろで入った同じ橋を落とす */
 }
 let lastWaterFetchFailure="";
 function waterFetchFailureLabel(){
@@ -29758,13 +29834,13 @@ function fetchOsmBridgeWays(lat,lon,radiusKm=OSM_BRIDGE_RADIUS_KM){
   const key=`${lat.toFixed(2)},${lon.toFixed(2)},${radiusKm}`;
   if(osmBridgeCache.has(key)) return osmBridgeCache.get(key);
   const promise=(async()=>{
-    const saved=await externalGeoCacheGet(`bridges-static-v2:${key}`);
+    const saved=await externalGeoCacheGet(`bridges-static-v3:${key}`);   /* 【v1149】2重を落としたので版を上げる */
     if(Array.isArray(saved)){lastBridgeFailure="";osmBridgeCacheSources.set(key,"persistent");return saved;}
     try{
       const ways=await fetchOsmBridgeWaysNetwork(lat,lon,radiusKm);
       lastBridgeFailure="";
       osmBridgeCacheSources.set(key,"static-vector");
-      externalGeoCacheSet(`bridges-static-v2:${key}`,ways);
+      externalGeoCacheSet(`bridges-static-v3:${key}`,ways);
       return ways;
     }catch(error){
       lastBridgeFailure=bridgeFailureLabel(error);
