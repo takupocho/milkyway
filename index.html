@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1155-train-along";
+const APP_VERSION="1156-train-onrail";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9365,13 +9365,11 @@ function trainLayout(spec,runOffsetM){
   }
   const total=cum[cum.length-1];
   const at=(s)=>{
-    if(s<=0){
-      const b=bearingOf(0),r=b*D2R;
-      return {x:path[0][0]+Math.sin(r)*s,y:path[0][1]+Math.cos(r)*s,bearing:b};
-    }
+    /* 【v1156】端を越えても**直線で延長しない**。端で止める。 */
+    if(s<=0)return {x:path[0][0],y:path[0][1],z:path[0][2]||0,pitch:0,bearing:bearingOf(0)};
     if(s>=total){
-      const i=seg.length-1,b=bearingOf(i),r=b*D2R,over=s-total;
-      return {x:path[i+1][0]+Math.sin(r)*over,y:path[i+1][1]+Math.cos(r)*over,bearing:b};
+      const i=seg.length-1;
+      return {x:path[i+1][0],y:path[i+1][1],z:path[i+1][2]||0,pitch:0,bearing:bearingOf(i)};
     }
     let i=0;while(i+1<cum.length-1&&cum[i+1]<=s)i++;
     const u=seg[i]>1e-6?(s-cum[i])/seg[i]:0;
@@ -9385,10 +9383,15 @@ function trainLayout(spec,runOffsetM){
             y:path[i][1]+(path[i+1][1]-path[i][1])*u,
             z:z0+(z1-z0)*u,pitch:grade,bearing:smoothBearing(i,u)};
   };
+  /* 【v1156】編成が案内線からはみ出さないように、真ん中の位置を丸める。
+     丸めないと端を越えたぶんが直線で延長され、線路の無い所へ出ていく（利用者報告）。 */
+  const carsHalfM=half*TRAIN_PITCH_M+TRAIN_CAR_LEN_M/2;
+  const margin=Math.min(carsHalfM,total/2);
+  const centre=clamp(s0+dir*runM,margin,Math.max(margin,total-margin));
   /* 反転のときは、置き場所を逆へ送るだけでなく**車両の向きも 180° 回す**。
      こうしておくと、どちらの向きでも `cars-1` 番目が必ず先頭になる。 */
   for(let i=0;i<spec.cars;i++){
-    const car=at(s0+dir*((i-half)*TRAIN_PITCH_M+runM));   /* 【v1155】走った距離ぶんずらす */
+    const car=at(centre+dir*((i-half)*TRAIN_PITCH_M));
     if(dir<0){car.bearing=norm360(car.bearing+180);car.pitch=-car.pitch;}   /* 【v1150】逆向きは勾配も逆 */
     out.push(car);
   }
@@ -9463,7 +9466,7 @@ function buildTrainModel(rawSpec,runOffsetM){
 async function trainRailSnap(lat,lon,carCount,reachM){
   /* 【v1155】走らせるときは、走る距離ぶんの案内線が要るので広く取る。 */
   const wantM=Number.isFinite(reachM)?clamp(reachM,100,6000):0;
-  const radiusKm=clamp(wantM/1000+.6,.6,6.5);
+  const radiusKm=clamp(wantM/1000+.6,.6,5);
   let ways=null;
   try{ways=await fetchStaticRailWays(lat,lon,radiusKm);}catch(e){return null;}
   if(!Array.isArray(ways)||!ways.length)return null;
@@ -9487,10 +9490,20 @@ async function trainRailSnap(lat,lon,carCount,reachM){
      分岐では**いちばん曲がらない側**を選ぶ（本線をたどりたいので）。 */
   {
     const used=new Set([best.wayIndex]);
-    const JOIN_M=2,MIN_DOT=.7;   /* 端の重なり 2m 以内・曲がりは 45°まで */
+    /* 【v1156】断片どうしは端で接しておらず、**間が空いている**。
+       2m しか許さないと断片1本ぶん（実測1,420m）しか取れず、
+       その先は直線で延長されて「線路なき道」へ出ていた（利用者報告）。
+       隙間を200mまで許すと4,659mまで伸びる。400m・800mに広げても同じ長さなので、
+       実際に使っている隙間は200m以内。
+       そのかわり**角度を22°までに締める**ので、分岐で別の線へ逸れない。 */
+    const JOIN_M=200,MIN_DOT=.93;
+    /* 橋渡しの向きは、本線の角度より**ゆるく**見る。
+       断片の端は少し横へずれていることがあり、同じ 22° だと隙間をまたげない
+       （実測：4,659m まで伸びるはずが 1,420m で止まっていた）。 */
+    const BRIDGE_DOT=.80;
     const unit=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy);return l>1e-6?[dx/l,dy/l]:null;};
     const grow=(atEnd)=>{
-      for(let guard=0;guard<24;guard++){
+      for(let guard=0;guard<60;guard++){   /* 【v1156】長くつなげるので回数も増やす */
         const poly=best.pts;
         const tip=atEnd?poly[poly.length-1]:poly[0];
         const inDir=atEnd?unit(poly[poly.length-2],tip):unit(poly[1],tip);
@@ -9508,7 +9521,17 @@ async function trainRailSnap(lat,lon,carCount,reachM){
           if(!out)return;
           const dot=inDir[0]*out[0]+inDir[1]*out[1];
           if(dot<MIN_DOT)return;
-          if(!pick||dot>pick.dot)pick={index,seq,dot};
+          /* 【v1156】隙間があるときは、そこへ向かう向きも線に沿っていること。
+             これが無いと、横にある別の線へ飛び移れてしまう。 */
+          const gap=Math.min(head,tail);
+          if(gap>1){
+            const bridge=unit(tip,seq[0]);
+            if(!bridge)return;
+            if(inDir[0]*bridge[0]+inDir[1]*bridge[1]<BRIDGE_DOT)return;
+          }
+          /* 隙間の小さいものを優先し、同じくらいなら曲がらない側。 */
+          const score=gap-dot*50;
+          if(!pick||score<pick.score)pick={index,seq,dot,score};
         });
         if(!pick)return;
         used.add(pick.index);
@@ -9518,7 +9541,9 @@ async function trainRailSnap(lat,lon,carCount,reachM){
         let acc=0;
         if(atEnd){for(let k=best.i+1;k+1<best.pts.length;k++)acc+=Math.hypot(best.pts[k+1][0]-best.pts[k][0],best.pts[k+1][1]-best.pts[k][1]);}
         else{for(let k=0;k<best.i;k++)acc+=Math.hypot(best.pts[k+1][0]-best.pts[k][0],best.pts[k+1][1]-best.pts[k][1]);}
-        if(acc>=TRAIN_MAX_CARS*TRAIN_PITCH_M/2+80)return;
+        /* 【v1156】ここが 164m 固定のままだったので、案内線が伸びなかった。
+           走らせたい距離（wantM）まで伸ばす。 */
+        if(acc>=Math.max(TRAIN_MAX_CARS*TRAIN_PITCH_M/2+80,wantM))return;
       }
     };
     grow(true);grow(false);
@@ -9890,7 +9915,8 @@ function trainMapClick(e){
   trainUpdatePlaceText();
   const token=++trainSnapToken;
   const runSpec=trainPlacing.spec.run;
-  const wantReach=runSpec?clamp(runSpec.speedKmh*1000/60*12,800,6000):0;   /* 【v1155】12分ぶん */
+  /* 【v1156】8分ぶん・最大4km。半径は +0.6km で最大5km（タイルの取りすぎを避ける）。 */
+  const wantReach=runSpec?clamp(runSpec.speedKmh*1000/60*8,800,4000):0;
   trainRailSnap(lat,lon,trainPlacing.spec.cars,wantReach).then(snap=>snap?trainFillPathElevations(snap):snap).then(snap=>{
     if(token!==trainSnapToken||!trainPlacing)return;   /* 待っている間にやめた・置き直した */
     trainPlacing.busy=false;
@@ -10194,6 +10220,9 @@ document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
 function trainSyncRun(slot){
   const spec=trainSpecOf(slot&&slot.train);
   if(!spec||!spec.run)return;
+  /* 【v1156】案内線が無い（線路が見つからなかった）ときは動かさない。
+     動かすと真北へ直進してしまう。 */
+  if(spec.path.length<2)return;
   const offsetM=(kmzTimelineMinutes()-spec.run.atMin)*spec.run.speedKmh*1000/60;
   if(!Number.isFinite(offsetM))return;
   if(Number.isFinite(slot._runOffsetM)&&Math.abs(slot._runOffsetM-offsetM)<1)return;
