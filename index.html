@@ -5005,6 +5005,17 @@
                 <div id="objectPickGrid" class="object-pick-grid"></div>
                 <button id="objectStudioOpenBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 新しく作る・編集する</span><span>›</span></button>
               </div>
+              <!-- 【v1138】列車 -->
+              <button id="kmzAddTrainBtn" type="button" class="toggle-btn"><span>🚃 列車を追加</span><span>›</span></button>
+              <div id="trainPanel" hidden>
+                <p class="map-hint" style="margin:2px 0 0;">地図をタップすると、<b>150m 以内でいちばん近い線路へ自動で寄せて、角度も線路に合わせます</b>。カーブでは1両ずつ線形に沿います。</p>
+                <div class="field" style="margin-top:6px;">
+                  <label class="top">両数</label>
+                  <span class="ls-stepper" data-step="1"><button type="button" data-dir="-1" aria-label="1両 減らす">−</button><input id="trainCars" type="number" min="1" max="8" step="1" inputmode="numeric" value="2"><button type="button" data-dir="1" aria-label="1両 増やす">＋</button></span>
+                </div>
+                <p class="map-hint" id="trainSizeHint" style="margin-top:4px;"></p>
+                <button id="trainPlaceBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>📍 地図で置く</span><span>›</span></button>
+              </div>
               <!-- 【v1120】まわりの建物 -->
               <button id="kmzAddTownBtn" type="button" class="toggle-btn"><span>🏙 まわりの建物を取り込む</span><span>›</span></button>
               <div id="townPanel" hidden>
@@ -5038,6 +5049,7 @@
             <button id="kmzBuildingRePlaceBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📍 地図で置き直す（場所・向き）</span><span>›</span></button>
             <!-- 【v1131】置いてあるオブジェクトの形を直す -->
             <button id="kmzBuildingEditShapeBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 形を編集する（オブジェクト）</span><span>›</span></button>
+            <button id="kmzTrainReverseBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>🔁 列車の向きを反転（上り↔下り）</span><span>›</span></button>
             <p class="map-hint" style="margin-top:4px;">選んでいる花火・筒場・オブジェクトを、置いたときと同じ地図の画面でやり直します。筒場は回転のハンドルも使えます。中身（花火の並びや寸法）はそのまま残ります。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
@@ -6817,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1137-mirror-base";
+const APP_VERSION="1138-train";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8215,6 +8227,8 @@ const el={
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
+  kmzAddTrainBtn:$("kmzAddTrainBtn"), trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
+  trainSizeHint:$("trainSizeHint"), trainPlaceBtn:$("trainPlaceBtn"), kmzTrainReverseBtn:$("kmzTrainReverseBtn"),
   kmzAddTownBtn:$("kmzAddTownBtn"), townPanel:$("townPanel"), townRadius:$("townRadius"),
   townRadiusVal:$("townRadiusVal"), townImportBtn:$("townImportBtn"),   /* 【v1120】 */
   kmzBuildingNudgeVal:$("kmzBuildingNudgeVal"), kmzBuildingNudgeStepBtn:$("kmzBuildingNudgeStepBtn"),
@@ -9226,6 +9240,290 @@ function launchSiteApplySlot(slot){
   slot.launchSite=spec;slot.model=model;slot.fileName=`🎇 ${spec.name||"筒場"}`;
   return true;
 }
+
+/* ═════ 【v1138】列車 ═════════════════════════════════════════════
+
+   ★ 寸法と色は、いただいた「列車2両編成（JR加古川線）.kmz」の実測から取った
+     長さ 40.52m ÷ 2両 = 20.5m/両 ／ 幅 3.65m ／ 高さ 4.45m（床下 -0.35 〜 屋根 4.10）
+     車体 #EEE9D8 ／ 帯 #008C78（加古川線の緑）／ 窓 #8CC3D2 ／ 屋根 #C3C5C5
+
+   ★ なぜ模型を焼き込まず、その場で作るのか
+     いただいたモデルは**方位 11° が模型そのものに焼き込まれていた**。
+     あの場所のあの線路専用で、両数も2両で固定。
+     1両ぶんの形だけ持って、**線路の線形に沿って N 両並べる**方が、
+     両数も自由で、カーブの途中でも1両ずつ自然に曲がる。
+
+   ★ 線形の持ち方
+     `path` は「置いた点を原点とする 東m・北m の列」。
+     緯度経度ではなく原点からの実寸で持つので、
+     ・並べる計算がそのまま使える
+     ・撮影計画に入れても小さい（8両でも点20個ほど）
+     ・読み直すときに**線路を取りに行かなくて済む**（町と同じ考え方）
+*/
+const TRAIN_CAR_LEN_M=20.5;    /* 実測 40.52m ÷ 2両 */
+const TRAIN_CAR_GAP_M=.6;      /* 連結面のすき間 */
+const TRAIN_CAR_W_M=3.65;      /* 実測 3.43〜3.75 の平均 */
+const TRAIN_ROOF_M=4.10;       /* 実測 z の上端 */
+const TRAIN_UNDER_M=-.35;      /* 実測 z の下端（レール面より下＝台車） */
+const TRAIN_MAX_CARS=8;
+const TRAIN_SNAP_LIMIT_M=150;  /* これより遠いと線路に吸い付かない */
+const TRAIN_PITCH_M=TRAIN_CAR_LEN_M+TRAIN_CAR_GAP_M;
+
+/* 【v1099】と同じ作法で、入口をひとつにする。ここを通った形だけが本物。 */
+function trainSpecOf(value){
+  if(!value||typeof value!=="object")return null;
+  const cars=Math.round(+value.cars);
+  if(!(cars>=1&&cars<=TRAIN_MAX_CARS))return null;
+  const path=[];
+  if(Array.isArray(value.path))for(const p of value.path){
+    if(!Array.isArray(p))continue;
+    const x=+p[0],y=+p[1];
+    if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+    const last=path[path.length-1];
+    if(last&&Math.hypot(last[0]-x,last[1]-y)<.05)continue;   /* 同じ点は捨てる */
+    path.push([Math.round(x*100)/100,Math.round(y*100)/100]);
+  }
+  return {name:String(value.name||"").trim().slice(0,30)||`${cars}両編成`,
+          cars,path:path.length>=2?path:[],reverse:value.reverse===true};
+}
+function trainSpecSummary(spec){
+  const s=trainSpecOf(spec);
+  if(!s)return "";
+  const len=Math.round(s.cars*TRAIN_PITCH_M-TRAIN_CAR_GAP_M);
+  return `${s.cars}両・全長${len}m${s.path.length>=2?"・線路に沿う":"・線路なし"}`;
+}
+/* 線形に沿って、1両ずつの置き場所（東m・北m）と向き（方位°）を出す。
+   置いた点を**編成の真ん中**にする（タップした所に列車が来るのがいちばん分かりやすい）。 */
+function trainLayout(spec){
+  const dir=spec.reverse?-1:1,half=(spec.cars-1)/2,out=[];
+  const path=spec.path;
+  if(path.length<2){
+    /* 線路が見つからなかったときは真北へ一直線。あとから回転で直せる。 */
+    for(let i=0;i<spec.cars;i++){
+      const s=(i-half)*TRAIN_PITCH_M*dir;
+      out.push({x:0,y:s,bearing:dir>0?0:180});
+    }
+    return out;
+  }
+  const seg=[],cum=[0];
+  for(let i=0;i+1<path.length;i++){
+    const len=Math.hypot(path[i+1][0]-path[i][0],path[i+1][1]-path[i][1]);
+    seg.push(len);cum.push(cum[i]+len);
+  }
+  const bearingOf=(i)=>Math.atan2(path[i+1][0]-path[i][0],path[i+1][1]-path[i][1])*R2D;
+  /* 【v1138】折れ点での向きは前後の線分の平均。線分の向きをそのまま使うと、
+     1か所の折れ点に曲がりが全部集まって編成が「く」の字に折れる（実測 5.76°）。 */
+  const dirOf=(i)=>{
+    const dx=path[i+1][0]-path[i][0],dy=path[i+1][1]-path[i][1],l=Math.hypot(dx,dy);
+    return l>1e-6?[dx/l,dy/l]:[0,1];
+  };
+  const vertexDir=(k)=>{
+    const a=k>0?dirOf(k-1):null,b=k<seg.length?dirOf(k):null;
+    if(a&&b){const x=a[0]+b[0],y=a[1]+b[1],l=Math.hypot(x,y);return l>1e-6?[x/l,y/l]:b;}
+    return a||b||[0,1];
+  };
+  const smoothBearing=(i,u)=>{
+    const d0=vertexDir(i),d1=vertexDir(i+1);
+    return norm360(Math.atan2(d0[0]+(d1[0]-d0[0])*u,d0[1]+(d1[1]-d0[1])*u)*R2D);
+  };
+  /* 原点（＝置いた点）が線形のどこにあたるか。スナップしていれば 0 に近い所に乗る。 */
+  let s0=0,bestD=Infinity;
+  for(let i=0;i<seg.length;i++){
+    if(!(seg[i]>1e-6))continue;
+    const ax=path[i][0],ay=path[i][1],dx=path[i+1][0]-ax,dy=path[i+1][1]-ay;
+    let u=(-ax*dx-ay*dy)/(dx*dx+dy*dy);
+    u=Math.max(0,Math.min(1,u));
+    const d=Math.hypot(ax+dx*u,ay+dy*u);
+    if(d<bestD){bestD=d;s0=cum[i]+seg[i]*u;}
+  }
+  const total=cum[cum.length-1];
+  const at=(s)=>{
+    if(s<=0){
+      const b=bearingOf(0),r=b*D2R;
+      return {x:path[0][0]+Math.sin(r)*s,y:path[0][1]+Math.cos(r)*s,bearing:b};
+    }
+    if(s>=total){
+      const i=seg.length-1,b=bearingOf(i),r=b*D2R,over=s-total;
+      return {x:path[i+1][0]+Math.sin(r)*over,y:path[i+1][1]+Math.cos(r)*over,bearing:b};
+    }
+    let i=0;while(i+1<cum.length-1&&cum[i+1]<=s)i++;
+    const u=seg[i]>1e-6?(s-cum[i])/seg[i]:0;
+    /* 置き場所は線形の上のまま。滑らかにするのは向きだけ。 */
+    return {x:path[i][0]+(path[i+1][0]-path[i][0])*u,
+            y:path[i][1]+(path[i+1][1]-path[i][1])*u,bearing:smoothBearing(i,u)};
+  };
+  /* 反転のときは、置き場所を逆へ送るだけでなく**車両の向きも 180° 回す**。
+     こうしておくと、どちらの向きでも `cars-1` 番目が必ず先頭になる。 */
+  for(let i=0;i<spec.cars;i++){
+    const car=at(s0+dir*((i-half)*TRAIN_PITCH_M));
+    if(dir<0)car.bearing=norm360(car.bearing+180);
+    out.push(car);
+  }
+  return out;
+}
+/* 1両ぶんの形を作り、線形に沿って並べる。
+   模型の座標は x=東・y=北・z=上（drawKmzOneBuilding がそう読む）。 */
+function buildTrainModel(rawSpec){
+  const spec=trainSpecOf(rawSpec);
+  if(!spec)return null;
+  const triangles=[],triangleColors=[],triangleAlphas=[];
+  const LIGHT=(()=>{const v=[.42,-.30,.86],l=Math.hypot(...v);return v.map(x=>x/l);})();
+  let place=(p)=>p;
+  /* 陰影は面の向きから。オブジェクト（v1107）と同じ考え方だが、色を面ごとに渡せるようにした。 */
+  const push=(a,b,c,rgb)=>{
+    const A=place(a),B=place(b),C=place(c);
+    const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];
+    const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    const len=Math.hypot(n[0],n[1],n[2]);
+    if(!(len>1e-9))return;   /* つぶれた三角形は捨てる */
+    const k=.52+.48*Math.abs((n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2])/len);
+    triangles.push([A,B,C]);
+    triangleColors.push(rgb.map(c0=>Math.round(clamp(c0*k,0,255))));
+    triangleAlphas.push(1);
+  };
+  const quad=(a,b,c,d,rgb)=>{push(a,b,c,rgb);push(a,c,d,rgb);};
+  const box=(u0,u1,v0,v1,w0,w1,rgb)=>{
+    const B=[[u0,v0,w0],[u1,v0,w0],[u1,v1,w0],[u0,v1,w0]];
+    const T=[[u0,v0,w1],[u1,v0,w1],[u1,v1,w1],[u0,v1,w1]];
+    for(let i=0;i<4;i++){const j=(i+1)%4;quad(B[i],B[j],T[j],T[i],rgb);}
+    quad(B[3],B[2],B[1],B[0],rgb);quad(T[0],T[1],T[2],T[3],rgb);
+  };
+  /* いただいたKMZの diffuse をそのまま 0〜255 にしたもの。 */
+  const COL={body:[238,233,216],band:[0,140,120],window:[140,195,210],
+             under:[50,50,50],roof:[195,197,197]};
+  const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
+  for(const car of trainLayout(spec)){
+    const r=car.bearing*D2R,cs=Math.cos(r),sn=Math.sin(r);
+    /* 車両の中の座標：u=右・v=前・w=上。前が方位 bearing を向くように東・北へ移す。 */
+    place=(p)=>[car.x+p[0]*cs+p[1]*sn,car.y-p[0]*sn+p[1]*cs,p[2]];
+    box(-hw+.3,hw-.3,-hl,hl,TRAIN_UNDER_M,.95,COL.under);              /* 床下・台車 */
+    box(-hw,hw,-hl,hl,.95,3.75,COL.body);                              /* 車体 */
+    box(-hw+.25,hw-.25,-hl+.15,hl-.15,3.75,TRAIN_ROOF_M,COL.roof);     /* 屋根 */
+    /* 帯と窓は側面のすぐ外（15mm）に薄く貼る。面がぴったり重なるとちらつくため。 */
+    for(const s of [-1,1]){
+      const u=s*(hw+.015);
+      quad([u,-hl+.2,1.35],[u,hl-.2,1.35],[u,hl-.2,1.85],[u,-hl+.2,1.85],COL.band);
+      quad([u,-hl+1.2,2.25],[u,hl-1.2,2.25],[u,hl-1.2,3.25],[u,-hl+1.2,3.25],COL.window);
+    }
+    for(const s of [-1,1]){   /* 前後の窓 */
+      const v=s*(hl+.015);
+      quad([-hw+.55,v,2.25],[hw-.55,v,2.25],[hw-.55,v,3.35],[-hw+.55,v,3.35],COL.window);
+    }
+  }
+  if(!triangles.length)return null;
+  const all=triangles.flat();
+  const xs=all.map(v=>v[0]),ys=all.map(v=>v[1]),zs=all.map(v=>v[2]);
+  return {triangles,triangleColors,triangleAlphas,coloredCount:triangles.length,
+    width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),
+    height:Math.max(...zs)-Math.min(...zs),vertexCount:all.length,train:spec};
+}
+/* いちばん近い線路へ寄せる。見つからなければ null（そのままの場所に置く）。
+   半径600m ぶんの線路を取ってから、150m 以内のいちばん近い線分を選ぶ。
+   タイルは端末内に残るので、2回目からは通信しない。 */
+async function trainRailSnap(lat,lon,carCount){
+  let ways=null;
+  try{ways=await fetchStaticRailWays(lat,lon,.6);}catch(e){return null;}
+  if(!Array.isArray(ways)||!ways.length)return null;
+  const mLat=111320,mLon=111320*Math.cos(lat*D2R);
+  const polys=ways.map(way=>(way.points||[]).map(p=>[(p[1]-lon)*mLon,(p[0]-lat)*mLat]))   /* [東m,北m] */
+                  .filter(p=>p.length>=2);
+  let best=null;
+  polys.forEach((pts,wayIndex)=>{
+    for(let i=0;i+1<pts.length;i++){
+      const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay,len2=dx*dx+dy*dy;
+      if(!(len2>1e-6))return;
+      let u=(-ax*dx-ay*dy)/len2;u=Math.max(0,Math.min(1,u));
+      const fx=ax+dx*u,fy=ay+dy*u,d=Math.hypot(fx,fy);
+      if(!best||d<best.d)best={d,pts,i,fx,fy,wayIndex,bearing:Math.atan2(dx,dy)*R2D};
+    }
+  });
+  if(!best||best.d>TRAIN_SNAP_LIMIT_M)return null;
+  /* 【v1138】タイルの境目で線が切れているので、端どうしが重なる線をつなぐ。
+     つながないと、河口あたりのように 46m しか拾えず、
+     編成がはみ出したぶんが直線になってカーブを無視してしまう。
+     分岐では**いちばん曲がらない側**を選ぶ（本線をたどりたいので）。 */
+  {
+    const used=new Set([best.wayIndex]);
+    const JOIN_M=2,MIN_DOT=.7;   /* 端の重なり 2m 以内・曲がりは 45°まで */
+    const unit=(a,b)=>{const dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy);return l>1e-6?[dx/l,dy/l]:null;};
+    const grow=(atEnd)=>{
+      for(let guard=0;guard<24;guard++){
+        const poly=best.pts;
+        const tip=atEnd?poly[poly.length-1]:poly[0];
+        const inDir=atEnd?unit(poly[poly.length-2],tip):unit(poly[1],tip);
+        if(!inDir)return;
+        let pick=null;
+        polys.forEach((p,index)=>{
+          if(used.has(index)||p.length<2)return;
+          const head=Math.hypot(p[0][0]-tip[0],p[0][1]-tip[1]);
+          const tail=Math.hypot(p[p.length-1][0]-tip[0],p[p.length-1][1]-tip[1]);
+          let seq=null;
+          if(head<=JOIN_M)seq=p;
+          else if(tail<=JOIN_M)seq=p.slice().reverse();
+          else return;
+          const out=unit(seq[0],seq[1]);
+          if(!out)return;
+          const dot=inDir[0]*out[0]+inDir[1]*out[1];
+          if(dot<MIN_DOT)return;
+          if(!pick||dot>pick.dot)pick={index,seq,dot};
+        });
+        if(!pick)return;
+        used.add(pick.index);
+        const rest=pick.seq.slice(1);
+        best.pts=atEnd?poly.concat(rest):rest.slice().reverse().concat(poly);
+        if(!atEnd)best.i+=rest.length;   /* 前に足したぶん、足のある区間の番号がずれる */
+        let acc=0;
+        if(atEnd){for(let k=best.i+1;k+1<best.pts.length;k++)acc+=Math.hypot(best.pts[k+1][0]-best.pts[k][0],best.pts[k+1][1]-best.pts[k][1]);}
+        else{for(let k=0;k<best.i;k++)acc+=Math.hypot(best.pts[k+1][0]-best.pts[k][0],best.pts[k+1][1]-best.pts[k][1]);}
+        if(acc>=TRAIN_MAX_CARS*TRAIN_PITCH_M/2+80)return;
+      }
+    };
+    grow(true);grow(false);
+  }
+  /* 垂線の足を線形に差し込んでから、必要な長さぶんだけ前後へ切り出す。 */
+  const foot=[best.fx,best.fy];
+  const near=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1])<.05;
+  const full=[];
+  best.pts.slice(0,best.i+1).forEach(p=>full.push(p));
+  if(!full.length||!near(full[full.length-1],foot))full.push(foot);
+  let footIndex=full.length-1;
+  if(near(full[footIndex],foot))full[footIndex]=foot;
+  best.pts.slice(best.i+1).forEach(p=>{if(!near(p,foot))full.push(p);});
+  const cars=Math.max(1,Math.min(TRAIN_MAX_CARS,Math.round(+carCount)||1));
+  const reach=cars*TRAIN_PITCH_M/2+40;
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  let lo=footIndex,acc=0;
+  while(lo>0&&acc<reach){acc+=dist(full[lo-1],full[lo]);lo--;}
+  let hi=footIndex;acc=0;
+  while(hi+1<full.length&&acc<reach){acc+=dist(full[hi],full[hi+1]);hi++;}
+  const path=full.slice(lo,hi+1).map(p=>[p[0]-best.fx,p[1]-best.fy]);
+  let pathLength=0;
+  for(let k=0;k+1<path.length;k++)pathLength+=Math.hypot(path[k+1][0]-path[k][0],path[k+1][1]-path[k][1]);
+  return {lat:lat+best.fy/mLat,lon:lon+best.fx/mLon,
+          movedM:best.d,bearing:norm360(best.bearing),path,points:path.length,
+          lengthM:Math.round(pathLength)};
+}
+/* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
+function trainCreateSlot(rawSpec,lat,lon,altitude){
+  const spec=trainSpecOf(rawSpec);
+  if(!spec)return null;
+  const model=buildTrainModel(spec);
+  if(!model)return null;
+  const slot={id:++kmzSlotSeq,lat:+lat,lon:+lon,altitude:Number.isFinite(+altitude)?+altitude:0,heading:0,scale:1,opacity:1,
+    visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0,move:{on:false,from:null,to:null},
+    train:spec,model,fileName:`🚃 ${spec.name}`,kmlLocation:null,sourceDataUrl:""};
+  kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
+  return slot;
+}
+/* 中身を変えたあとに模型と名前を作り直す（向きの反転はこれを呼ぶ）。 */
+function trainApplySlot(slot){
+  const spec=trainSpecOf(slot&&slot.train);
+  if(!spec)return false;
+  const model=buildTrainModel(spec);
+  if(!model)return false;
+  slot.train=spec;slot.model=model;slot.fileName=`🚃 ${spec.name}`;
+  return true;
+}
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
 function objectCreateSlot(rawSpec,lat,lon,altitude){
   const spec=objectSpecOf(rawSpec);
@@ -9338,10 +9636,12 @@ function kmzBeginReplace(){
   const slot=kmzActiveSlot();
   if(!slot){setKmzBuildingStatus("置き直す模型を一覧から選んでください。","error");return false;}
   const site=launchSiteSpecOf(slot.launchSite),obj=objectSpecOf(slot.object),go=fireworkGoOf(slot.firework);
+  const train=trainSpecOf(slot.train);   /* 【v1138】 */
   const lat=+slot.lat,lon=+slot.lon;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)){setKmzBuildingStatus("いまの場所が分からないので置き直せません。","error");return false;}
   kmzReplaceSlotId=slot.id;
-  if(site!==null)launchSiteBeginPlacement(site);
+  if(train!==null)trainBeginPlacement(train);
+  else if(site!==null)launchSiteBeginPlacement(site);
   else if(obj!==null)objectBeginPlacement(obj);
   else if(go!==null)fireworkBeginPlacement(go);
   else{
@@ -9354,6 +9654,7 @@ function kmzBeginReplace(){
   const put=()=>{
     if(!osmMapInstance)return false;
     try{osmMapInstance.setView([lat,lon],Math.max(osmMapInstance.getZoom()||15,15));}catch(e){}
+    if(train!==null)return trainMapClick(seed);   /* 【v1138】ここで線路へ寄せ直す */
     if(site!==null)return launchSiteMapClick(seed);
     if(obj!==null)return objectMapClick(seed);
     return fireworkMapClick(seed);
@@ -9385,6 +9686,108 @@ function kmzApplyReplace(newSlot){
   kmzSlots.splice(Math.min(oldIndex,kmzSlots.length),0,newSlot);
   kmzActiveId=newSlot.id;
   kmzLoadEditor();
+}
+
+/* ═════ 【v1138】列車の配置。オブジェクト・筒場と同じ帯（mapPlaceBar）を使う。 ═════
+   ほかと違うのは、タップしたあとに**線路を取りに行って寄せる**ところ。
+   通信を待つので、いったん仮のピンを置いてから、返ってきた時点で置き直す。 */
+let trainPlacing=null,trainPlaceMarker=null,trainPreviewLayer=null,trainSnapToken=0;
+function trainBeginPlacement(spec){
+  const checked=trainSpecOf(spec);
+  if(!checked)return;
+  trainPlacing={spec:checked,lat:null,lon:null,path:[],reverse:false,snap:null,busy:false};
+  fireworkPlacing=null;objectPlacing=null;launchSitePlacing=null;   /* 同じ帯を使うので譲る */
+  document.getElementById("kmzAddChooser").hidden=true;
+  if(el.trainPanel)el.trainPanel.hidden=true;
+  if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
+  if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
+  document.getElementById("mapPlaceText").textContent=`🚃 ${checked.name} どこに置きますか？ 線路の近くを地図でタップ`;
+  document.getElementById("mapPlaceOkBtn").disabled=true;
+  if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}
+  document.getElementById("mapPlaceBar").hidden=false;
+  document.body.classList.add("map-place");
+}
+function trainClearPreview(){
+  if(trainPreviewLayer&&osmMapInstance){try{osmMapInstance.removeLayer(trainPreviewLayer);}catch(e){}}
+  trainPreviewLayer=null;
+}
+function trainEndPlacement(note){
+  trainPlacing=null;trainSnapToken++;
+  if(trainPlaceMarker&&osmMapInstance){try{osmMapInstance.removeLayer(trainPlaceMarker);}catch(e){}}
+  trainPlaceMarker=null;
+  trainClearPreview();
+  document.body.classList.remove("map-place");
+  const bar=document.getElementById("mapPlaceBar");
+  if(note){
+    document.getElementById("mapPlaceText").textContent=note;
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    bar.hidden=false;
+    fireworkPlaceNoteTimer=setTimeout(()=>{bar.hidden=true;fireworkPlaceNoteTimer=0;},3500);
+  }else bar.hidden=true;
+}
+/* いまの置き方で、地図に車両の外形を描く。先頭だけ橙にして向きが分かるようにする。 */
+function trainDrawPreview(){
+  trainClearPreview();
+  if(!trainPlacing||!osmMapInstance||!Number.isFinite(trainPlacing.lat))return;
+  const spec=trainSpecOf({...trainPlacing.spec,path:trainPlacing.path,reverse:trainPlacing.reverse});
+  if(!spec)return;
+  const lat=trainPlacing.lat,lon=trainPlacing.lon;
+  const mLat=111320,mLon=111320*Math.cos(lat*D2R);
+  const toLL=(x,y)=>[lat+y/mLat,lon+x/mLon];
+  const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
+  const cars=trainLayout(spec),layers=[];
+  cars.forEach((car,index)=>{
+    const r=car.bearing*D2R,cs=Math.cos(r),sn=Math.sin(r);
+    const corners=[[-hw,-hl],[hw,-hl],[hw,hl],[-hw,hl]]
+      .map(([u,v])=>toLL(car.x+u*cs+v*sn,car.y-u*sn+v*cs));
+    const head=index===cars.length-1;
+    layers.push(L.polygon(corners,{pane:"overlayPane",interactive:false,
+      color:head?"#ffb347":"#7fd4ff",weight:2,opacity:.95,
+      fillColor:head?"#ffb347":"#7fd4ff",fillOpacity:.3}));
+  });
+  trainPreviewLayer=L.layerGroup(layers).addTo(osmMapInstance);
+}
+function trainUpdatePlaceText(){
+  if(!trainPlacing)return;
+  const snap=trainPlacing.snap;
+  const where=`（${trainPlacing.lat.toFixed(5)}, ${trainPlacing.lon.toFixed(5)}）`;
+  const head=`🚃 ${trainPlacing.spec.name}`;
+  if(trainPlacing.busy){document.getElementById("mapPlaceText").textContent=`${head} 線路を探しています…`;return;}
+  document.getElementById("mapPlaceText").textContent=snap
+    ? `${head} 線路に合わせました（${Math.round(snap.movedM)}m 動かして、向き ${Math.round(snap.bearing)}°）。ここに置きますか？${where}`
+    : `${head} 近くに線路が見つかりません（${TRAIN_SNAP_LIMIT_M}m 以内）。このまま置くと真北を向きます。${where}`;
+}
+/* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
+function trainMapClick(e){
+  if(!trainPlacing||!osmMapInstance)return false;
+  const lat=e.latlng.lat,lon=e.latlng.lng;
+  trainPlacing.lat=lat;trainPlacing.lon=lon;
+  trainPlacing.path=[];trainPlacing.snap=null;trainPlacing.busy=true;
+  const icon=L.divIcon({className:"",html:'<div class="map-place-pin">🚃</div>',iconSize:[0,0],iconAnchor:[0,0]});
+  if(!trainPlaceMarker)trainPlaceMarker=L.marker(e.latlng,{pane:"markerPane",interactive:false,icon}).addTo(osmMapInstance);
+  else trainPlaceMarker.setLatLng(e.latlng);
+  document.getElementById("mapPlaceOkBtn").disabled=true;
+  trainDrawPreview();
+  trainUpdatePlaceText();
+  const token=++trainSnapToken;
+  trainRailSnap(lat,lon,trainPlacing.spec.cars).then(snap=>{
+    if(token!==trainSnapToken||!trainPlacing)return;   /* 待っている間にやめた・置き直した */
+    trainPlacing.busy=false;
+    if(snap){
+      trainPlacing.lat=snap.lat;trainPlacing.lon=snap.lon;
+      trainPlacing.path=snap.path;trainPlacing.snap=snap;
+      if(trainPlaceMarker)trainPlaceMarker.setLatLng([snap.lat,snap.lon]);
+    }
+    document.getElementById("mapPlaceOkBtn").disabled=false;
+    trainDrawPreview();
+    trainUpdatePlaceText();
+  }).catch(()=>{
+    if(token!==trainSnapToken||!trainPlacing)return;
+    trainPlacing.busy=false;
+    document.getElementById("mapPlaceOkBtn").disabled=false;
+    trainUpdatePlaceText();
+  });
+  return true;
 }
 let objectPlacing=null,objectPlaceMarker=null;
 function objectBeginPlacement(spec){
@@ -9575,6 +9978,29 @@ function fireworkMapClick(e){
   return true;
 }
 document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
+  /* 【v1138】列車の配置中ならこちら。線路に寄せた結果（線形）も一緒に入れる。 */
+  if(trainPlacing&&Number.isFinite(trainPlacing.lat)&&!trainPlacing.busy){
+    const {lat,lon}=trainPlacing;
+    const spec=trainSpecOf({...trainPlacing.spec,path:trainPlacing.path,reverse:trainPlacing.reverse});
+    document.getElementById("mapPlaceOkBtn").disabled=true;
+    document.getElementById("mapPlaceText").textContent="標高を調べています…";
+    const ground=await fireworkGroundElevation(lat,lon);
+    if(!trainPlacing||trainPlacing.lat!==lat)return;   /* 待っている間にやめた */
+    const replacing=!!kmzReplaceSlotId;
+    const slot=trainCreateSlot(spec,lat,lon,ground===null?0:ground);
+    kmzApplyReplace(slot);
+    if(slot)slot.heading=0;   /* 向きは線形に入っているので、模型の回転は 0 のまま */
+    renderKmzList();refreshKmzBuildingControls(false);
+    const snapNote=trainPlacing&&trainPlacing.snap
+      ?`線路へ ${Math.round(trainPlacing.snap.movedM)}m 寄せ、向きを ${Math.round(trainPlacing.snap.bearing)}° に合わせました。`
+      :"近くに線路が無かったので、真北を向いています。";
+    setKmzBuildingStatus(slot
+      ?`🚃 ${spec.name} を${replacing?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、レール面の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。${snapNote}`
+      :"列車を作れませんでした。",slot?"ready":"error");
+    drawPhoto._terrainRenderKey=null;update();
+    trainEndPlacement(slot?`🚃 ${spec.name} を置きました`:"置けませんでした");
+    return;
+  }
   /* 【v1111】筒場の配置中ならこちら。 */
   if(launchSitePlacing&&Number.isFinite(launchSitePlacing.lat)){
     const {spec,lat,lon}=launchSitePlacing;
@@ -9629,7 +10055,8 @@ document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>la
 document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(5));
 document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
   kmzReplaceSlotId=null;   /* 【v1130】置き直しをやめた */
-  if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
+  if(trainPlacing)trainEndPlacement(null);   /* 【v1138】 */
+  else if(launchSitePlacing)launchSiteEndPlacement(null);   /* 【v1111】 */
   else if(objectPlacing)objectEndPlacement(null);   /* 【v1107】 */
   else if(fireworkPlacing)fireworkEndPlacement(null);
   else{document.getElementById("mapPlaceBar").hidden=true;if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}}
@@ -10980,7 +11407,9 @@ function syncFireworkSlotPanel(){
     /* 【v1132】形の編集はオブジェクトのときだけ、置き直しは地図で置けるものだけ出す。 */
     if(el.kmzBuildingEditShapeBtn)el.kmzBuildingEditShapeBtn.hidden=!(site&&objectSpecOf(site.object)!==null);
     if(el.kmzBuildingRePlaceBtn)el.kmzBuildingRePlaceBtn.hidden=!(site&&(launchSiteSpecOf(site.launchSite)!==null
-      ||objectSpecOf(site.object)!==null||fireworkGoOf(site.firework)!==null));
+      ||objectSpecOf(site.object)!==null||fireworkGoOf(site.firework)!==null||trainSpecOf(site.train)!==null));
+    /* 【v1138】向きの反転は列車のときだけ。 */
+    if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.hidden=!(site&&trainSpecOf(site.train)!==null);
   }
   const panel=el.fireworkSlotPanel;if(!panel)return;
   const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
@@ -11093,6 +11522,58 @@ document.getElementById("kmzAddObjectBtn").addEventListener("click",async()=>{
   panel.hidden=!panel.hidden;
   document.getElementById("fireworkSizePicker").hidden=true;
   if(!panel.hidden)await renderObjectPickGrid();
+});
+/* 【v1138】列車 */
+(()=>{
+  if(!el.kmzAddTrainBtn)return;
+  const cars=()=>clamp(Math.round(+el.trainCars.value)||2,1,TRAIN_MAX_CARS);
+  const refresh=()=>{
+    if(!el.trainSizeHint)return;
+    const n=cars(),len=Math.round(n*TRAIN_PITCH_M-TRAIN_CAR_GAP_M);
+    el.trainSizeHint.textContent=`1両 ${TRAIN_CAR_LEN_M}m・幅 ${TRAIN_CAR_W_M}m・高さ ${(TRAIN_ROOF_M-TRAIN_UNDER_M).toFixed(2)}m。${n}両で全長 ${len}m。`;
+  };
+  el.kmzAddTrainBtn.addEventListener("click",()=>{
+    el.trainPanel.hidden=!el.trainPanel.hidden;
+    document.getElementById("fireworkSizePicker").hidden=true;
+    document.getElementById("objectPickPanel").hidden=true;
+    if(el.townPanel)el.townPanel.hidden=true;
+    refresh();
+  });
+  /* 筒場・オブジェクトと同じ −／＋ の作法。 */
+  for(const stepper of el.trainPanel.querySelectorAll(".ls-stepper")){
+    const input=stepper.querySelector("input");
+    if(!input)continue;
+    const amount=Math.abs(parseFloat(stepper.dataset.step))||1;
+    for(const button of stepper.querySelectorAll("button")){
+      button.addEventListener("click",()=>{
+        const dir=+button.dataset.dir<0?-1:1;
+        const low=savedNumber(input.min),high=savedNumber(input.max);
+        let next=(savedNumber(input.value)||0)+dir*amount;
+        if(low!==null)next=Math.max(low,next);
+        if(high!==null)next=Math.min(high,next);
+        input.value=String(Math.round(next));
+        input.dispatchEvent(new Event("change",{bubbles:true}));
+      });
+    }
+  }
+  el.trainCars.addEventListener("change",refresh);
+  el.trainCars.addEventListener("input",refresh);
+  el.trainPlaceBtn.addEventListener("click",()=>{
+    const n=cars();
+    trainBeginPlacement({name:`${n}両編成`,cars:n,path:[],reverse:false});
+  });
+  refresh();
+})();
+/* 【v1138】向きの反転。線形はそのままで、並べ直すだけ。 */
+if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.addEventListener("click",()=>{
+  const slot=kmzActiveSlot();
+  const spec=trainSpecOf(slot&&slot.train);
+  if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return;}
+  slot.train={...spec,reverse:!spec.reverse};
+  if(!trainApplySlot(slot)){setKmzBuildingStatus("向きを変えられませんでした。","error");return;}
+  renderKmzList();refreshKmzBuildingControls(false);
+  setKmzBuildingStatus(`🚃 ${slot.train.name} の向きを反転しました（いまは${slot.train.reverse?"逆向き":"もとの向き"}）。`,"ready");
+  drawPhoto._terrainRenderKey=null;update();
 });
 document.getElementById("kmzAddLaunchSiteBtn").addEventListener("click",()=>{   /* 【v1111】 */
   document.getElementById("kmzAddChooser").hidden=true;
@@ -13207,6 +13688,7 @@ function initOsmMap(){
     if(typeof fireworkMapClick==="function"&&fireworkMapClick(e))return;   /* 【v1070】花火の配置中 */
     if(typeof objectMapClick==="function"&&objectMapClick(e))return;       /* 【v1107】オブジェクトの配置中 */
     if(typeof launchSiteMapClick==="function"&&launchSiteMapClick(e))return; /* 【v1111】筒場の配置中 */
+    if(typeof trainMapClick==="function"&&trainMapClick(e))return;         /* 【v1138】列車の配置中 */
     if(mapMeasureOn) return;   // 測定中は地点選択を受け付けない
     setOsmCandidate(e.latlng.lat,e.latlng.lng,false);
   });
@@ -22865,7 +23347,7 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null||townSpecOf(slot.town)!==null))   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
+    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null||townSpecOf(slot.town)!==null||trainSpecOf(slot.train)!==null))   /* 【v1138】列車も */   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
       /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
@@ -22878,6 +23360,8 @@ function captureKmzBuildingForPlan(){
       ...(launchSiteSpecOf(slot.launchSite)!==null?{launchSite:launchSiteSpecOf(slot.launchSite)}:{}),
       /* 【v1120】取り込んだ町のときだけ中身を書く。取り直さなくて済むように丸ごと入れる。 */
       ...(townSpecOf(slot.town)!==null?{town:townSpecOf(slot.town)}:{}),
+      /* 【v1138】列車のときだけ中身を書く。線形も入れるので、読み直すときに線路を取りに行かなくて済む。 */
+      ...(trainSpecOf(slot.train)!==null?{train:trainSpecOf(slot.train)}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -22893,7 +23377,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null||townSpecOf(item.town)!==null));   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
+    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null||townSpecOf(item.town)!==null||trainSpecOf(item.train)!==null))   /* 【v1138】列車も */;   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -22914,7 +23398,11 @@ async function restoreKmzBuildingFromPlan(saved){
       const siteSpec=(hasFile||fireworkGo!==null||objectSpec!==null)?null:launchSiteSpecOf(item.launchSite);
       /* 【v1120】順番は ファイル → 花火 → オブジェクト → 筒場 → 町。 */
       const townSpec=(hasFile||fireworkGo!==null||objectSpec!==null||siteSpec!==null)?null:townSpecOf(item.town);
-      if(townSpec!==null){
+      /* 【v1138】順番は ファイル → 花火 → オブジェクト → 筒場 → 町 → 列車。 */
+      const trainSpec=(hasFile||fireworkGo!==null||objectSpec!==null||siteSpec!==null||townSpec!==null)?null:trainSpecOf(item.train);
+      if(trainSpec!==null){
+        trainCreateSlot(trainSpec,+item.lat,+item.lon,+item.altitude||0);
+      }else if(townSpec!==null){
         townCreateSlot(townSpec);
       }else if(siteSpec!==null){
         launchSiteCreateSlot(siteSpec,+item.lat,+item.lon,+item.altitude||0);
@@ -26607,6 +27095,18 @@ try{
       objectLibrary:()=>objectLibrary.slice(),
       objectStudio:(on)=>setObjectStudioOpen(on!==false),
       objectPlace:(name,lat,lon,alt)=>objectCreateSlot(objectLibraryFindByName(name),lat,lon,alt),
+      /* 【v1138】列車。 */
+      train:{
+        spec:(v)=>trainSpecOf(v),
+        model:(v)=>{const m=buildTrainModel(v);return m?{三角形:m.triangles.length,幅:+m.width.toFixed(2),奥行:+m.depth.toFixed(2),高さ:+m.height.toFixed(2)}:null;},
+        layout:(v)=>{const s=trainSpecOf(v);return s?trainLayout(s).map(c=>({東:+c.x.toFixed(2),北:+c.y.toFixed(2),方位:+c.bearing.toFixed(2)})):null;},
+        snap:(lat,lon,cars)=>trainRailSnap(+lat,+lon,+cars||2),
+        place:(cars,lat,lon,alt,path,reverse)=>trainCreateSlot({name:`${cars}両編成`,cars:+cars,path:path||[],reverse:!!reverse},+lat,+lon,+alt),
+        placing:()=>trainPlacing?{名:trainPlacing.spec.name,両数:trainPlacing.spec.cars,
+          座標:[trainPlacing.lat,trainPlacing.lon],線形の点:trainPlacing.path.length,
+          寄せたm:trainPlacing.snap?+trainPlacing.snap.movedM.toFixed(2):null,
+          方位:trainPlacing.snap?+trainPlacing.snap.bearing.toFixed(2):null,待ち:trainPlacing.busy}:null
+      },
       /* 【v1120】取り込んだ町。 */
       town:()=>{
         const slot=kmzSlots.find(s=>townSpecOf(s.town)!==null);
