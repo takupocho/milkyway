@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1141-rail-bridge";
+const APP_VERSION="1142-rail-on-bridge";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -38581,6 +38581,7 @@ function drawPhoto(ctx,s){
           const buildRibbon=(ways,fillPaths,markPaths,markKind,opts)=>{
           const bucketFor=(opts&&opts.bucketOf)||roadBucketOf;
           const rangeLimitM=(opts&&opts.rangeM)||roadRangeM;
+          const skipHere=(opts&&opts.skipHere)||null;   /* 【v1142】 */
           for(const way of ways){
             const halfWidth=way.widthM/2;
             const points=way.points;
@@ -38609,6 +38610,10 @@ function drawPhoto(ctx,s){
                 const here=travelM+segmentM*f;
                 // 【v863】画角の外は作らない。どうせ最後に捨てていたもの。
                 if(outsideView(eastM,northM,halfWidth)){previous=null;continue;}
+                /* 【v1142】橋に乗っている区間は地面に描かない（橋のほうが描く）。
+                   ここで `previous=null` にすると、その区間だけリボンが切れて
+                   前後のアプローチはそのまま残る。 */
+                if(skipHere&&skipHere(eastM,northM)){previous=null;continue;}
                 const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth);
                 if(!current){previous=null;continue;}
                 if(previous){
@@ -38871,6 +38876,40 @@ function drawPhoto(ctx,s){
           }
           if(railPaths){
             let ways=activeBridgeSignatures?osmRailState.ways.filter(way=>!activeBridgeSignatures.has(`rail:${bridgeEndpointSignature(way.points)}`)):osmRailState.ways;
+            /* 【v1142】表示している鉄道橋の線を、観測地点を原点とする東m・北mで持っておく。
+               1本ごとに外接箱も持ち、遠い線は距離計算の前に弾く。 */
+            let railBridgeSegments=null;
+            if(activeBridgeSignatures&&bridgeWaysForDisplay.length){
+              const lines=[];
+              for(const way of bridgeWaysForDisplay){
+                if(way.kind!=="rail"||!Array.isArray(way.points)||way.points.length<2)continue;
+                const xy=way.points.map(p=>[(p[1]-originLon)*metrePerDegLon,(p[0]-originLat)*111320]);
+                let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+                for(const p of xy){
+                  if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];
+                  if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];
+                }
+                lines.push({xy,x0:x0-20,y0:y0-20,x1:x1+20,y1:y1+20});
+              }
+              if(lines.length)railBridgeSegments=lines;
+            }
+            const RAIL_ON_BRIDGE_M=15,RAIL_ON_BRIDGE_M2=15*15;
+            const railSkipHere=railBridgeSegments?((eastM,northM)=>{
+              for(const line of railBridgeSegments){
+                if(eastM<line.x0||eastM>line.x1||northM<line.y0||northM>line.y1)continue;
+                const xy=line.xy;
+                for(let i=0;i+1<xy.length;i++){
+                  const ax2=xy[i][0]-eastM,ay2=xy[i][1]-northM;
+                  const bx2=xy[i+1][0]-eastM,by2=xy[i+1][1]-northM;
+                  const dx=bx2-ax2,dy=by2-ay2,len2=dx*dx+dy*dy;
+                  let u=len2>1e-6?(-ax2*dx-ay2*dy)/len2:0;
+                  u=u<0?0:(u>1?1:u);
+                  const px=ax2+dx*u,py=ay2+dy*u;
+                  if(px*px+py*py<=RAIL_ON_BRIDGE_M2)return true;
+                }
+              }
+              return false;
+            }):null;
             /* 【v1141】端の座標の一致だけでは足りない。
                線路は半径1.2km、橋は半径5kmで**別々に取っている**ので、
                読み込むタイルの組が違い、同じ鉄橋でも切れ目が変わって端の座標が合わない。
@@ -38878,38 +38917,15 @@ function drawPhoto(ctx,s){
                残りは地面（DEMの高さ）と橋（橋面の高さ。加古川橋梁で3.4m上）の両方に出て、
                見る位置を変えるとズレ方が変わる（視差）。
                そこで「線に重なっているか」でも除く。点の8割以上が橋の線から15m以内なら橋のぶん。 */
-            if(activeBridgeSignatures&&bridgeWaysForDisplay.length){
-              const bridgeLines=bridgeWaysForDisplay
-                .filter(way=>way.kind==="rail"&&Array.isArray(way.points)&&way.points.length>=2)
-                .map(way=>way.points);
-              if(bridgeLines.length){
-                const NEAR_M=15,HIT_RATIO=.8;
-                const onBridgeLine=(points)=>{
-                  if(!Array.isArray(points)||points.length<2)return false;
-                  const mLat=111320,mLon=111320*Math.cos((+points[0][0])*D2R);
-                  let hit=0;
-                  for(const p of points){
-                    let best=Infinity;
-                    for(const line of bridgeLines){
-                      for(let i=0;i+1<line.length;i++){
-                        const ax=(line[i][1]-p[1])*mLon,ay=(line[i][0]-p[0])*mLat;
-                        const bx=(line[i+1][1]-p[1])*mLon,by=(line[i+1][0]-p[0])*mLat;
-                        const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
-                        let u=len2>1e-6?(-ax*dx-ay*dy)/len2:0;
-                        u=Math.max(0,Math.min(1,u));
-                        const d=Math.hypot(ax+dx*u,ay+dy*u);
-                        if(d<best){best=d;if(best<=NEAR_M)break;}
-                      }
-                      if(best<=NEAR_M)break;
-                    }
-                    if(best<=NEAR_M)hit++;
-                  }
-                  return hit/points.length>=HIT_RATIO;
-                };
-                ways=ways.filter(way=>!onBridgeLine(way.points));
-              }
-            }
-            buildRibbon(ways,railPaths,railTiePaths,"ties");
+            /* 【v1142】**まるごと消すのをやめた。**
+               線路の1本は「橋の区間＋前後のアプローチ」をまとめて持っている。
+               加古川橋梁は340mだが線路のほうは1km近くあるので、重なるのは3〜4割。
+               v1141 の「8割以上なら消す」では届かず、まるごと残っていた。
+               残ったぶんは DEM の高さ（川の上では水面16.3m）で描かれ、
+               橋面19.7m と **3.4m 違うものが二重に出て、視差で左右にズレて見えていた**
+               （利用者報告：移動すると橋が右へ行ったり左へ行ったりする）。
+               区間だけ切るので、前後のアプローチは途切れない。 */
+            buildRibbon(ways,railPaths,railTiePaths,"ties",{skipHere:railSkipHere});
           }
           if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
             const ways=osmTrailState.ways.filter(way=>trailIncludeTrack||!way.track);
