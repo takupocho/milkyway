@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1139-train-fix";
+const APP_VERSION="1140-train-near";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -31340,6 +31340,10 @@ async function buildKmzDetailGrid(signature){
    v871 で 0.72 から下げたのは明石海峡大橋で水面が埋まったためなので、
    その半分以下に留めている。 */
 const KMZ_REFLECTION_ALPHA=.34;
+/* 【v1140】列車だけさらに濃く。最後の重ね 0.6 と合わせて実質 47%。
+   列車は水辺の鉄橋で撮ることが多く、主役なのではっきり映ってほしい（利用者要望）。
+   橋・建物・花火は 0.34 のまま（明石海峡大橋で水面が埋まるのを避けるため）。 */
+const KMZ_TRAIN_REFLECTION_ALPHA=.78;
 /* 【v1137】映り込みの鏡の面を模型ごとに控える。数値を足すだけなので描画の重さは変わらない。 */
 let kmzMirrorLog=[];
 function kmzMirrorDiag(slot,bearing,baseAltitudeM,mirrorZ){
@@ -31539,20 +31543,28 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   /* 【v1120】町は稜線で切らない。基準点が足元なので skylineLimitKm が 50m まで縮み、
      半径500mぶんの建物を半径50mの地形の稜線で切ってしまう（足元が丸ごと消える）。
      町は地形のあとに 1 回だけ描く。 */
-  let nearSky=(reflectionPass||isTown||!(skylineLimitKm>.005))
+  /* 【v1140】模型のいちばん手前が目の前（または自分が模型をまたいでいる）なら、
+     あいだに地形は無い。切らないし、**地形のあとに描く**。 */
+  const noTerrainInFront=!(skylineLimitKm>.005);
+  let nearSky=(reflectionPass||isTown||noTerrainInFront)
     ?null:kmzNearTerrainSkyline(s,toXY,W,H,skylineLimitKm);
   /* 【v1139】あいだの地形の**標高**が模型の足元より低ければ、その地形は模型を隠せない。
      角度で比べると平らな地面でも近いほうが高く見えるので、
      線路の上の列車のように地面に接している模型が丸ごと消えていた（実測：96面すべて）。
      ここで切るのをやめても、**奥の地形に隠れる判定（"after" の段）は今までどおり効く**。 */
-  let skylineSkipped=false;
+  let skylineSkipped=noTerrainInFront;
   if(nearSky&&Number.isFinite(cfg.altitude)&&Number.isFinite(nearSky.maxElevationM)
      &&nearSky.maxElevationM<=cfg.altitude){
     skylineSkipped=true;
   }
   if(!reflectionPass){
     if(isTown){ if(phase!=="after")return; }
-    /* 手前に地形が無い／隠せないと分かっているときも、地形のあとに描く（"before" だと地形に塗り潰される）。 */
+    /* 【v1140】切らないと決めたときは **"after"（地形のあと）** に描く。
+       ここを元の判定に任せると、nearSky が null なので "before"（地形の前）に回り、
+       あとから地形に塗り潰されて模型が丸ごと消える
+       （利用者報告：列車の半分が画面外に出た瞬間に消える。2両＝半径21mに寄ったとき）。
+       "before" へ落とすのは「稜線そのものが作れなかった」ときだけ＝元からの保険。 */
+    else if(skylineSkipped){ if(phase!=="after")return; }
     else if(phase==="before"?!!nearSky:!nearSky) return;
   }
   if(skylineSkipped)nearSky=null;
@@ -35483,7 +35495,7 @@ function drawPhoto(ctx,s){
           if(slot.glow)ctx.globalCompositeOperation="lighter";
           /* 【v871】映り込みの濃さ。0.72だと明石海峡大橋のような大きな構造物で
              水面が埋まってしまうため下げた。 */
-          ctx.globalAlpha=KMZ_REFLECTION_ALPHA;
+          ctx.globalAlpha=(trainSpecOf(slot.train)!==null)?KMZ_TRAIN_REFLECTION_ALPHA:KMZ_REFLECTION_ALPHA;
           /* 【v1110】折り返さない。反射用の段が既に「水面の反対側」を描いているので、そのまま重ねる。
              このあとの水域マスクで抜かれるため、**反射点が陸地なら自動的に映らない**。 */
           ctx.drawImage(kmzReflection,0,0);
