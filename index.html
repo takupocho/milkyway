@@ -6829,7 +6829,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1142-rail-on-bridge";
+const APP_VERSION="1143-rail-bridge-join";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -29834,6 +29834,9 @@ function bridgeEndpointSignature(points){
 /* v781: Shortbreadのbridge属性には、河川橋だけでなく道路・谷・線路をまたぐ
    小さな陸橋も含まれる。撮影画面では水面上の橋を主役にし、高速道路系だけは
    高架橋として水域外でも残す。水域が未取得なら誤消去を避けてnullを返す。 */
+/* 【v1143】鉄道橋は線路より少し幅広に。トラスが軌道の外側に立つため（利用者の指定）。
+   4.2m → 5.67m。軌道の両外側に 75cm ずつ出る。 */
+const BRIDGE_RAIL_WIDTH_RATIO=1.35;
 const BRIDGE_ALWAYS_VISIBLE_HIGHWAYS=new Set(["motorway","motorway_link","trunk","trunk_link"]);
 function bridgeIsAlwaysVisibleHighway(way){
   return way?.kind==="road"&&BRIDGE_ALWAYS_VISIBLE_HIGHWAYS.has(String(way.highwayClass||""));
@@ -38198,7 +38201,7 @@ function drawPhoto(ctx,s){
         let trailPaths;   /* 【v1101】登山道 */
         let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
-            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,bridgeRailDeckPaths;
         let bridgeWaysForDisplay=[],activeBridgeSignatures=null;
         if(overlayCache){
           gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
@@ -38210,6 +38213,7 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=overlayCache.bridgePierShadePaths;
           bridgePierEdgePaths=overlayCache.bridgePierEdgePaths;
           bridgeRailMarkPaths=overlayCache.bridgeRailMarkPaths;
+          bridgeRailDeckPaths=overlayCache.bridgeRailDeckPaths;   /* 【v1143】 */
         }else{
           gridPaths=worldGridVisible?newPaths():null;
           contourPaths=contourLinesVisible?newPaths():null;
@@ -38226,6 +38230,7 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=bridgePaths?newPaths():null;
           bridgePierEdgePaths=bridgePaths?newPaths():null;
           bridgeRailMarkPaths=bridgePaths?newPaths():null;
+          bridgeRailDeckPaths=bridgePaths?newPaths():null;   /* 【v1143】鉄道橋の橋面（バラストの茶） */
           activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
         }
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
@@ -38805,9 +38810,19 @@ function drawPhoto(ctx,s){
               const camberM=structuralCamberM+clearanceCamberM;
               /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
               const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
-              const halfWidth=Math.max(1,(way.widthM||5)/2);
+              /* 【v1143】鉄道橋は線路より少し幅広に（トラスが軌道の外側に立つため。利用者の指定 1.35倍）。
+                 4.2m → 5.67m。軌道の両外側に 75cm ずつ出る。 */
+              const halfWidth=Math.max(1,(way.widthM||5)/2)*(way.kind==="rail"?BRIDGE_RAIL_WIDTH_RATIO:1);
+              /* 【v1143】「画面上で最低3.2px」の下限を**標本ごとに**掛けると、
+                 手前は実寸・奥は水増しになり、橋が奥へ向かって広がる楔になる。
+                 地面の線路にはこの下限が無いので、橋だけ太って幅が合わない。
+                 橋1本につき1つの値（中ほどの距離で決める）にして、途中で太さを変えない。 */
+              const midXY=xy[Math.floor(xy.length/2)];
+              const repDistanceM=midXY?Math.hypot(midXY.east,midXY.north):1;
+              const uniformHalfWidth=Math.max(halfWidth,minBridgeHalfMetresAt(repDistanceM));
+              const uniformThicknessM=Math.max(thicknessM,minBridgeThicknessMetresAt(repDistanceM));
               const pierIntervalM=clamp(totalM/Math.max(1,Math.round(totalM/38)),24,48);
-              let previous=null;
+              let previous=null,firstSection=null,lastSection=null;   /* 【v1143】端のふた用 */
               for(let i=0;i<xy.length-1;i++){
                 const a=xy[i],b=xy[i+1],segmentM=segmentLengths[i];
                 if(segmentM<.01){previous=null;continue;}
@@ -38824,17 +38839,19 @@ function drawPhoto(ctx,s){
                   /* 【v863】画角の外は作らない。橋は幅の下限を距離で広げている
                      （minBridgeHalfMetresAt）ので、その広げたあとの幅で余裕を測る。
                      ここで捨てると、この下の標高照会・水域判定も丸ごと省ける。 */
-                  if(outsideView(eastM,northM,Math.max(halfWidth,minBridgeHalfMetresAt(distanceM)))){previous=null;continue;}
+                  if(outsideView(eastM,northM,uniformHalfWidth)){previous=null;continue;}
                   const terrainElevation=elevationAtXY(eastM,northM);
                   const deckElevation=lerp(startElevation,endElevation,t)+Math.sin(Math.PI*t)*camberM;
-                  const displayHalfWidth=Math.max(halfWidth,minBridgeHalfMetresAt(distanceM));
-                  const displayThicknessM=Math.max(thicknessM,minBridgeThicknessMetresAt(distanceM));
+                  const displayHalfWidth=uniformHalfWidth;         /* 【v1143】橋1本で一定 */
+                  const displayThicknessM=uniformThicknessM;
                   const current=bridgeSectionAt(eastM,northM,perpEast,perpNorth,displayHalfWidth,deckElevation,terrainElevation,displayThicknessM);
                   if(!current){previous=null;continue;}
                   current.travel=travelM;
                   if(previous){
                     const bucket=bridgeBucketOf(current.distanceM);
-                    fillGroundPolygon(bridgePaths[bucket],ribbonQuad(previous,current,1));
+                    /* 【v1143】鉄道橋の橋面はバラストの茶で塗る（地面の線路とつながって見えるように）。
+                       側面・橋脚・縁は橋の色のままなので、橋だとも分かる。 */
+                    fillGroundPolygon(way.kind==="rail"?bridgeRailDeckPaths[bucket]:bridgePaths[bucket],ribbonQuad(previous,current,1));
                     fillGroundPolygon(bridgeSidePaths[bucket],[previous.left,current.left,current.bottomLeft,previous.bottomLeft]);
                     fillGroundPolygon(bridgeSidePaths[bucket],[previous.right,current.right,current.bottomRight,previous.bottomRight]);
                     strokeGroundSegment(bridgeEdgePaths[bucket],previous.left,current.left);
@@ -38864,8 +38881,18 @@ function drawPhoto(ctx,s){
                       );
                     }
                   }
+                  if(!firstSection)firstSection=current;
+                  lastSection=current;
                   previous=current;
                 }
+              }
+              /* 【v1143】橋の端にふたをする。無いと開いた箱の中が見えて、斜めからは三角に痩せて見える
+                 （利用者の指摘：橋の端のデザイン変更）。橋面から桁下までを四角で塞ぐ。 */
+              for(const cap of [firstSection,lastSection]){
+                if(!cap)continue;
+                const bucket=bridgeBucketOf(cap.distanceM);
+                fillGroundPolygon(bridgeSidePaths[bucket],[cap.left,cap.right,cap.bottomRight,cap.bottomLeft]);
+                strokeGroundSegment(bridgeEdgePaths[bucket],cap.left,cap.right);
               }
             }
           };
@@ -38893,7 +38920,11 @@ function drawPhoto(ctx,s){
               }
               if(lines.length)railBridgeSegments=lines;
             }
-            const RAIL_ON_BRIDGE_M=15,RAIL_ON_BRIDGE_M2=15*15;
+            /* 【v1143】**橋の区間の内側だけ**切る。
+               v1142 は垂線の足を 0〜1 に丸めていたので、橋の端に半径15mの円ができ、
+               **橋の手前15mぶんの線路まで消えて**いた（利用者報告：線路と橋がつながらない）。
+               丸めをやめて「足が線分の内側にあるときだけ」にすると、切れ目が橋の端でぴたりと止まる。 */
+            const RAIL_ON_BRIDGE_M2=10*10;
             const railSkipHere=railBridgeSegments?((eastM,northM)=>{
               for(const line of railBridgeSegments){
                 if(eastM<line.x0||eastM>line.x1||northM<line.y0||northM>line.y1)continue;
@@ -38902,8 +38933,9 @@ function drawPhoto(ctx,s){
                   const ax2=xy[i][0]-eastM,ay2=xy[i][1]-northM;
                   const bx2=xy[i+1][0]-eastM,by2=xy[i+1][1]-northM;
                   const dx=bx2-ax2,dy=by2-ay2,len2=dx*dx+dy*dy;
-                  let u=len2>1e-6?(-ax2*dx-ay2*dy)/len2:0;
-                  u=u<0?0:(u>1?1:u);
+                  if(!(len2>1e-6))continue;
+                  const u=(-ax2*dx-ay2*dy)/len2;
+                  if(u<0||u>1)continue;   /* 橋の外は切らない */
                   const px=ax2+dx*u,py=ay2+dy*u;
                   if(px*px+py*py<=RAIL_ON_BRIDGE_M2)return true;
                 }
@@ -38939,7 +38971,7 @@ function drawPhoto(ctx,s){
             key:terrainGeometryKey,
             gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
-            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,bridgeRailDeckPaths
           };
         }
 
@@ -39071,6 +39103,8 @@ function drawPhoto(ctx,s){
           const pierEdgeRGB=bridgePalette.pierEdge,edgeRGB=bridgePalette.edge;
           const markRGB=bridgePalette.mark;
           const bridgeSurfaceBaseAlpha=bridgePalette.baseAlpha;
+          /* 【v1143】鉄道橋の橋面に使うバラストの色。地面の線路とまったく同じ色を引く。 */
+          const bridgeBallastRGB=overlayPartRGB("rail","main",terrainDayFactor);
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=bridgeFadeOfBucket(i);
             if(fade<=0) continue;
@@ -39081,6 +39115,11 @@ function drawPhoto(ctx,s){
             tctx.lineWidth=Math.max(.7,1.05*fade);tctx.stroke(bridgePierEdgePaths[i]);
             tctx.fillStyle=`rgba(${sideRGB.join(",")},${(alpha*.96).toFixed(3)})`;tctx.fill(bridgeSidePaths[i]);
             tctx.fillStyle=`rgba(${deckRGB.join(",")},${alpha.toFixed(3)})`;tctx.fill(bridgePaths[i]);
+            /* 【v1143】鉄道橋の橋面はバラストの茶。地面の線路と同じ色なので、橋の上を線路が渡って見える。 */
+            if(bridgeRailDeckPaths){
+              tctx.fillStyle=`rgba(${bridgeBallastRGB.join(",")},${alpha.toFixed(3)})`;
+              tctx.fill(bridgeRailDeckPaths[i]);
+            }
             tctx.strokeStyle=`rgba(${edgeRGB.join(",")},${(alpha*.82).toFixed(3)})`;
             tctx.lineWidth=Math.max(1.2,1.8*fade);tctx.stroke(bridgeEdgePaths[i]);
             tctx.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;
