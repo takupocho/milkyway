@@ -5025,6 +5025,8 @@
             <p class="map-hint" style="margin-top:6px;">「自ら光る」をONにすると、昼夜の暗転も太陽の陰影も掛けずに、そのままの色で加算合成します。夜でも明るいままです。強さは下の「建物の濃さ」で調整します。</p>
             <!-- 【v1130】地図で置き直す（花火・筒場・オブジェクト） -->
             <button id="kmzBuildingRePlaceBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>📍 地図で置き直す（場所・向き）</span><span>›</span></button>
+            <!-- 【v1131】置いてあるオブジェクトの形を直す -->
+            <button id="kmzBuildingEditShapeBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 形を編集する（オブジェクト）</span><span>›</span></button>
             <p class="map-hint" style="margin-top:4px;">選んでいる花火・筒場・オブジェクトを、置いたときと同じ地図の画面でやり直します。筒場は回転のハンドルも使えます。中身（花火の並びや寸法）はそのまま残ります。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
@@ -6188,6 +6190,7 @@
                   <p id="objectStudioSummary" class="object-summary"></p>
                   <input id="objectName" class="plan-save-name" type="text" maxlength="30" placeholder="オブジェクト名（例：送電鉄塔 60m）">
                   <div class="object-studio-buttons">
+                    <button id="objectApplyBtn" type="button" class="toggle-btn" style="margin-bottom:6px;" hidden><span>✅ この模型に反映</span><span>›</span></button>
                     <button id="objectSaveBtn" type="button" class="primary">保存</button>
                     <button id="objectLoadBtn" type="button">読込</button>
                   </div>
@@ -6786,7 +6789,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1130-replace-place";
+const APP_VERSION="1131-object-edit";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8191,6 +8194,7 @@ const el={
   kmzBuildingNudgeLeftBtn:$("kmzBuildingNudgeLeftBtn"), kmzBuildingNudgeRightBtn:$("kmzBuildingNudgeRightBtn"),
   kmzBuildingNudgeResetBtn:$("kmzBuildingNudgeResetBtn"), kmzBuildingPlacement:$("kmzBuildingPlacement"),
   kmzBuildingRePlaceBtn:$("kmzBuildingRePlaceBtn"),   /* 【v1130】 */
+  kmzBuildingEditShapeBtn:$("kmzBuildingEditShapeBtn"), objectApplyBtn:$("objectApplyBtn"),   /* 【v1131】 */
   kmzMoveOnBtn:$("kmzMoveOnBtn"), kmzMoveOnState:$("kmzMoveOnState"),
   kmzMoveFromH:$("kmzMoveFromH"), kmzMoveFromM:$("kmzMoveFromM"), kmzMoveFromS:$("kmzMoveFromS"),
   kmzMoveToH:$("kmzMoveToH"), kmzMoveToM:$("kmzMoveToM"), kmzMoveToS:$("kmzMoveToS"),
@@ -10353,6 +10357,60 @@ async function setLaunchSiteStudioOpen(open,slot){
 let objectStudioShape="box";
 function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
 /* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
+/* 【v1131】スタジオの入力欄へ寸法を入れる。**入口はここ1つ**。
+   ライブラリの「読み込む」も、置いてある模型の「形を編集する」も、同じここを通す。
+   別々に書くと、片方だけ直したときにズレる（v1099 の作法）。 */
+function objectStudioLoadSpec(rawSpec){
+  const spec=objectSpecOf(rawSpec);
+  if(!spec)return null;
+  objectStudioShape=spec.shape==="cylinder"?"cylinder":"box";
+  if(el.objectTopW)el.objectTopW.value=String(spec.topW);
+  if(el.objectTopD)el.objectTopD.value=String(spec.topD);
+  if(el.objectBottomW)el.objectBottomW.value=String(spec.bottomW);
+  if(el.objectBottomD)el.objectBottomD.value=String(spec.bottomD);
+  if(el.objectHeight)el.objectHeight.value=String(spec.height);
+  if(el.objectName)el.objectName.value=spec.name||"";
+  objectStudioRefresh();
+  return spec;
+}
+/* 【v1131】いま形を直している「置いてある模型」の id。null なら普通のスタジオ。 */
+let objectStudioSlotId=null;
+function objectStudioSyncSlotButton(){
+  if(!el.objectApplyBtn)return;
+  const slot=objectStudioSlotId?kmzSlots.find(s=>s.id===objectStudioSlotId):null;
+  el.objectApplyBtn.hidden=!slot;
+  if(slot)el.objectApplyBtn.querySelector("span").textContent=`✅ この模型に反映（${slot.fileName||"オブジェクト"}）`;
+}
+/* 置いてある模型の形をスタジオへ持ち込む。 */
+function objectStudioEditSlot(){
+  const slot=kmzActiveSlot();
+  const spec=slot?objectSpecOf(slot.object):null;
+  if(!spec){setKmzBuildingStatus("形を編集できるのは、オブジェクト作成で作った模型だけです。一覧から選んでください。","error");return false;}
+  objectStudioSlotId=slot.id;
+  setObjectStudioOpen(true).then(()=>{
+    objectStudioLoadSpec(spec);
+    objectStudioSyncSlotButton();
+    objectStudioSay(`置いてある「${spec.name||"オブジェクト"}」を読み込みました。直したら「この模型に反映」。場所と向きはそのままです。`);
+  });
+  return true;
+}
+/* 直した寸法を、置いてある模型へ反映する。場所・向き・見た目の設定は触らない。 */
+function objectStudioApplyToSlot(){
+  const spec=objectStudioReadSpec();
+  if(!spec){objectStudioSay("寸法を正しく入れてください（高さは 0 より大きく、上下のどちらかに大きさが要ります）。");return false;}
+  const slot=objectStudioSlotId?kmzSlots.find(s=>s.id===objectStudioSlotId):null;
+  if(!slot){objectStudioSay("反映する模型が見つかりません。もう一度「形を編集する」から選んでください。");return false;}
+  const model=buildObjectModel(spec);
+  if(!model){objectStudioSay("その寸法では形を組み立てられませんでした。");return false;}
+  slot.object=spec;slot.model=model;
+  slot.fileName=`🧱 ${spec.name||"オブジェクト"}`;
+  kmzLoadEditor();renderKmzList();refreshKmzBuildingControls();
+  drawPhoto._terrainRenderKey=null;update();
+  objectStudioSyncSlotButton();
+  objectStudioSay(`反映しました（${objectSpecSummary(spec)}）。場所と向きはそのままです。ライブラリへ残すなら「保存」も押してください。`);
+  setKmzBuildingStatus(`🧱 ${spec.name||"オブジェクト"} の形を直しました（${objectSpecSummary(spec)}）。`,"ready");
+  return true;
+}
 function objectStudioReadSpec(){
   const num=node=>{
     const raw=node?String(node.value).trim():"";
@@ -10464,12 +10522,10 @@ function renderObjectLibrary(){
     main.innerHTML=`${escapeHtml(item.name||"（名前なし）")}<span class="o-sub">${escapeHtml(objectSpecSummary(item))}</span>`;
     const load=document.createElement("button");load.type="button";load.textContent="読み込む";
     load.addEventListener("click",()=>{
-      objectStudioShape=item.shape;
-      el.objectTopW.value=String(item.topW);el.objectTopD.value=String(item.topD);
-      el.objectBottomW.value=String(item.bottomW);el.objectBottomD.value=String(item.bottomD);
-      el.objectHeight.value=String(item.height);el.objectName.value=item.name||"";
-      objectStudioRefresh();
-      objectStudioSay(`「${item.name}」を読み込みました。直してから保存すると上書き、名前を変えて保存すると別のオブジェクトになります。`);
+      /* 【v1131】入れる処理は objectStudioLoadSpec に一本化した。 */
+      objectStudioLoadSpec(item);
+      objectStudioSay(`「${item.name}」を読み込みました。直してから保存すると上書き、名前を変えて保存すると別のオブジェクトになります。`
+        +(objectStudioSlotId?"　※「この模型に反映」を押すと、置いてある模型の形もこれに変わります。":""));
     });
     const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="削除";
     del.addEventListener("click",async()=>{
@@ -10506,6 +10562,8 @@ async function setObjectStudioOpen(open){
     renderObjectLibrary();
     objectStudioRefresh();
   }
+  if(!open)objectStudioSlotId=null;   /* 【v1131】閉じたら「置いてある模型」の対象を外す */
+  if(typeof objectStudioSyncSlotButton==="function")objectStudioSyncSlotButton();
   el.objectStudioOverlay.classList.toggle("show",!!open);
   el.objectStudioOverlay.setAttribute("aria-hidden",open?"false":"true");
   if(open)requestAnimationFrame(objectStudioDrawPreview);   /* 幅が決まってから描き直す */
@@ -10518,6 +10576,8 @@ if(el.objectStudioOverlay){
     if(node)node.addEventListener("input",objectStudioRefresh);
   }
   el.objectSaveBtn.addEventListener("click",()=>objectStudioSave());
+  /* 【v1131】 */
+  if(el.objectApplyBtn)el.objectApplyBtn.addEventListener("click",()=>objectStudioApplyToSlot());
   el.objectLoadBtn.addEventListener("click",()=>{
     el.objectLibraryPanel.hidden=!el.objectLibraryPanel.hidden;
     if(!el.objectLibraryPanel.hidden)renderObjectLibrary();
@@ -10748,6 +10808,8 @@ el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuilding
 el.kmzBuildingDepthBtn.addEventListener("click",()=>{kmzDepthBuffer=!kmzDepthBuffer;refreshKmzBuildingControls();});
 /* 【v1130】 */
 if(el.kmzBuildingRePlaceBtn)el.kmzBuildingRePlaceBtn.addEventListener("click",()=>kmzBeginReplace());
+/* 【v1131】 */
+if(el.kmzBuildingEditShapeBtn)el.kmzBuildingEditShapeBtn.addEventListener("click",()=>objectStudioEditSlot());
 /* 【v1119】並べ替えを切り替えたら、地形の作り直しは要らないが描き直しは要る。 */
 el.kmzBuildingOrderBtn.addEventListener("click",()=>{kmzSlotDepthSort=!kmzSlotDepthSort;refreshKmzBuildingControls();update();});
 
@@ -26081,6 +26143,17 @@ try{
       /* 【v1115】いまの画面の方位の窓・層の数を見る。 */
       lookRing:()=>drawPhoto._lookFullCircle||null,   /* 【v1116】 */
       nadirCap:()=>glTerrainBuildMesh._nadir||null,   /* 【v1129】足元のリングの閉じ方 */
+      /* 【v1131】置いてある模型の形の編集。 */
+      objectEdit:()=>objectStudioEditSlot(),
+      objectApply:()=>objectStudioApplyToSlot(),
+      objectEditState:()=>{
+        const slot=objectStudioSlotId?kmzSlots.find(s=>s.id===objectStudioSlotId):null;
+        return {編集中のid:objectStudioSlotId,対象:slot?{名:slot.fileName,寸法:objectSpecSummary(slot.object),
+          三角形:slot.model&&slot.model.triangles.length,lat:slot.lat,lon:slot.lon,heading:slot.heading}:null,
+          スタジオ表示:!!(el.objectStudioOverlay&&el.objectStudioOverlay.classList.contains("show")),
+          反映ボタン:!!(el.objectApplyBtn&&!el.objectApplyBtn.hidden),
+          いまの入力:(()=>{const s=objectStudioReadSpec();return s?objectSpecSummary(s):null;})()};
+      },
       /* 【v1130】置き直し。 */
       rePlace:()=>kmzBeginReplace(),
       rePlaceState:()=>({置き直し中のid:kmzReplaceSlotId,
