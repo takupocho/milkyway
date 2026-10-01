@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1160-water-probe";
+const APP_VERSION="1161-water-shore";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8796,7 +8796,88 @@ function waterMirrorSharedPlaneM(){
   if(!grid)return null;
   const value=waterMirrorCandidateM(NaN);
   if(waterMirrorCache.grid!==grid||!(waterMirrorCache.rows>0))return null;
-  return value;
+  return waterMirrorShoreAdjustM(value);   /* 【v1161】 */
+}
+/* 【v1161】**鏡の面（水面）を、5mメッシュの「水際」の高さから決める。**
+
+   原因：10mメッシュ(dem_png)は川の部分を周囲でならして平らに埋めるため、
+   水面が実際より数m高く出る（岸の5m値との差：加古川 +2.6 / 円山川 +3.6 / 多摩川 +4.3 / 揖保川 +3.0m）。
+   v782 は橋脚を水面より 5〜10m 下まで伸ばしてこの不足を埋め合わせていた（§219）。
+   5mメッシュ(dem5a/5b/5c)は水の部分が「データなし」になるので、
+   そのふちの陸の画素（水際）の高さが水面の上限の目安になる。
+
+   ・5a/5b/5c だけを直接取って穴を残す（loadLocalDetailDemTile は dem_png で穴を埋めてしまうので使わない）。
+   ・**下げるだけ**。水際のほうが高いときは何もしない。
+   ・5mメッシュが無い場所・水が小さい場所・差が大きすぎる場所（8m超＝別の水を拾った）は今のまま。
+   ・観測地ごとに1回だけ取る。届いたら描き直す。 */
+let waterShoreOn=true;
+let waterShoreState={key:"",pending:false,est:null};
+const WATER_SHORE_HALF_M=700,WATER_SHORE_STEP_M=10;
+const WATER_SHORE_MIN_HOLES=200,WATER_SHORE_MIN_SHORE=40,WATER_SHORE_MAX_DROP_M=8,WATER_SHORE_MIN_DROP_M=.3;
+async function waterShoreLevel(lat,lon,halfM,step){
+  halfM=+halfM||WATER_SHORE_HALF_M;step=+step||WATER_SHORE_STEP_M;
+  const mLat=111320,mLon=Math.max(1,111320*Math.cos(lat*D2R));
+  const n=Math.floor(2*halfM/step)+1,tiles=new Map();
+  const tileOf=async(x,y)=>{
+    const key=`${x}/${y}`;if(tiles.has(key))return tiles.get(key);
+    const layers=[];
+    for(const layer of ["dem5a_png","dem5b_png","dem5c_png"]){
+      const px=await fetchLocalDetailDemPixels(layer,{z:15,x,y});
+      if(px)layers.push(px);
+    }
+    const out=layers.length?new Float32Array(65536).fill(NaN):null;
+    if(out)for(const d of layers)for(let i=0,q=0;i<65536;i++,q+=4){
+      if(Number.isFinite(out[i])||d[q+3]===0)continue;
+      const v=d[q]*65536+d[q+1]*256+d[q+2];
+      if(v===8388608)continue;
+      out[i]=(v<8388608?v:v-16777216)*.01;
+    }
+    tiles.set(key,out);return out;
+  };
+  const grid=[];let covered=0;
+  for(let j=0;j<n;j++){
+    const row=new Float32Array(n).fill(-9999);   /* -9999 = 5mメッシュのタイルが無い */
+    for(let i=0;i<n;i++){
+      const p=terrainTilePoint(lat+(halfM-j*step)/mLat,lon+(-halfM+i*step)/mLon,15);
+      const t=await tileOf(p.x,p.y);
+      if(!t)continue;
+      covered++;
+      const v=t[Math.floor(p.pixelY)*256+Math.floor(p.pixelX)];
+      row[i]=Number.isFinite(v)?v:NaN;
+    }
+    grid.push(row);
+  }
+  const shore=[];let holes=0;
+  for(let j=1;j<n-1;j++)for(let i=1;i<n-1;i++){
+    const v=grid[j][i];
+    if(v===-9999)continue;
+    if(Number.isNaN(v)){holes++;continue;}
+    if([[0,1],[0,-1],[1,0],[-1,0]].some(([dj,di])=>Number.isNaN(grid[j+dj][i+di])))shore.push(v);
+  }
+  shore.sort((a,b)=>a-b);
+  const q=f=>shore.length?+shore[Math.min(shore.length-1,Math.floor(shore.length*f))].toFixed(2):null;
+  return {lat,lon,halfM,step,covered,holes,shoreCount:shore.length,q25:q(.25),q50:q(.5),q75:q(.75)};
+}
+function waterShoreUsable(est,value){
+  return !!est&&est.holes>=WATER_SHORE_MIN_HOLES&&est.shoreCount>=WATER_SHORE_MIN_SHORE
+    &&Number.isFinite(est.q50)&&value-est.q50>=WATER_SHORE_MIN_DROP_M&&value-est.q50<=WATER_SHORE_MAX_DROP_M;
+}
+function waterMirrorShoreAdjustM(value){
+  if(!waterShoreOn||!(value>.5))return value;   /* 海(0)・水なしは触らない */
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return value;
+  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if(waterShoreState.key!==key){
+    const state={key,pending:true,est:null};
+    waterShoreState=state;
+    waterShoreLevel(lat,lon).then(est=>{
+      if(waterShoreState!==state)return;
+      state.pending=false;state.est=est;
+      if(waterShoreUsable(est,waterMirrorCache.value)){drawPhoto._terrainRenderKey=null;if(typeof update==="function")update();}
+    }).catch(()=>{if(waterShoreState===state)state.pending=false;});
+    return value;
+  }
+  return waterShoreUsable(waterShoreState.est,value)?waterShoreState.est.q50:value;
 }
 function waterMirrorElevationM(azimuthDeg,baseAltitudeM){
   const shared=waterMirrorSharedPlaneM();
@@ -27213,63 +27294,21 @@ try{
       mirrorLog:()=>{const out=kmzMirrorLog.slice();kmzMirrorLog=[];return out;},
       /* 【v1149】橋の2重落とし。直前の取り込みで何本が何本になったか。 */
       bridgeDedupe:()=>dedupeBridgeWays._last||null,
-      /* 【v1160】水面の高さを、5mメッシュの「水際」から推定して今の鏡の面と並べる。測るだけ。
-         背景：10mメッシュ(dem_png)は川の部分を平らに埋めるため、水面が岸より数m高く出る
-         （加古川 +2.6 / 円山川 +3.6 / 多摩川 +4.3 / 揖保川 +3.0m。岸の5m値との差）。
-         5mメッシュ(dem5a/5b/5c)は水の部分が「データなし」になるので、
-         そのふちの陸の画素（＝水際）の高さが水面の上限の目安になる。
-         ※ loadLocalDetailDemTile は最後に dem_png で穴を埋めてしまうので使わず、
-           5a/5b/5c だけを直接取って穴（NaN）を残す。 */
+      /* 【v1160→v1161】水際の高さを今の鏡の面と並べる。測るだけ（lat/lon は任意の地点）。 */
       waterLevelProbe:async(lat,lon,halfM,step)=>{
-        lat=+lat;lon=+lon;halfM=+halfM||700;step=+step||10;
-        const mLat=111320,mLon=111320*Math.cos(lat*D2R);
-        const n=Math.floor(2*halfM/step)+1,tiles=new Map();
-        const tileOf=async(x,y)=>{
-          const key=`${x}/${y}`;if(tiles.has(key))return tiles.get(key);
-          const layers=[];
-          for(const layer of ["dem5a_png","dem5b_png","dem5c_png"]){
-            const px=await fetchLocalDetailDemPixels(layer,{z:15,x,y});
-            if(px)layers.push(px);
-          }
-          const out=layers.length?new Float32Array(65536).fill(NaN):null;
-          if(out)for(const d of layers)for(let i=0,q=0;i<65536;i++,q+=4){
-            if(Number.isFinite(out[i])||d[q+3]===0)continue;
-            const v=d[q]*65536+d[q+1]*256+d[q+2];
-            if(v===8388608)continue;
-            out[i]=(v<8388608?v:v-16777216)*.01;
-          }
-          tiles.set(key,out);return out;
-        };
-        const grid=[];let covered=0;
-        for(let j=0;j<n;j++){
-          const row=new Float32Array(n).fill(-9999);   /* -9999 = 5mメッシュのタイルが無い */
-          for(let i=0;i<n;i++){
-            const p=terrainTilePoint(lat+(halfM-j*step)/mLat,lon+(-halfM+i*step)/mLon,15);
-            const t=await tileOf(p.x,p.y);
-            if(!t)continue;
-            covered++;
-            const v=t[Math.floor(p.pixelY)*256+Math.floor(p.pixelX)];
-            row[i]=Number.isFinite(v)?v:NaN;
-          }
-          grid.push(row);
-        }
-        const shore=[];let holes=0;
-        for(let j=1;j<n-1;j++)for(let i=1;i<n-1;i++){
-          const v=grid[j][i];
-          if(v===-9999)continue;
-          if(Number.isNaN(v)){holes++;continue;}
-          if([[0,1],[0,-1],[1,0],[-1,0]].some(([dj,di])=>Number.isNaN(grid[j+dj][i+di])))shore.push(v);
-        }
-        shore.sort((a,b)=>a-b);
-        const q=f=>shore.length?+shore[Math.min(shore.length-1,Math.floor(shore.length*f))].toFixed(2):null;
-        const mirror=waterMirrorCandidateM(NaN);
-        return {
-          場所:[lat,lon],範囲m:halfM*2,刻みm:step,
-          五mのある画素:covered,水の穴画素:holes,水際画素:shore.length,
-          水際_下位25:q(.25),水際_中央:q(.5),水際_上位75:q(.75),
-          いまの鏡の面:mirror,
-          差_鏡の面_引く_水際中央:(shore.length&&mirror)?+(mirror-q(.5)).toFixed(2):null
-        };
+        const e=await waterShoreLevel(+lat,+lon,halfM,step);
+        const raw=waterMirrorCandidateM(NaN);
+        return {場所:[e.lat,e.lon],範囲m:e.halfM*2,刻みm:e.step,五mのある画素:e.covered,水の穴画素:e.holes,水際画素:e.shoreCount,
+          水際_下位25:e.q25,水際_中央:e.q50,水際_上位75:e.q75,
+          生の鏡の面:raw,差_生_引く_水際中央:(e.shoreCount&&raw)?+(raw-e.q50).toFixed(2):null};
+      },
+      /* 【v1161】いまの鏡の面：生の値（10m）／水際推定／実際に使っている値。waterShore(false) で v1160 までの挙動に戻る。 */
+      waterShore:(on)=>{
+        if(typeof on==="boolean"){waterShoreOn=on;drawPhoto._terrainRenderKey=null;update();}
+        const raw=waterMirrorCandidateM(NaN),est=waterShoreState.est;
+        return {有効:waterShoreOn,取得中:waterShoreState.pending,鍵:waterShoreState.key,
+          生の鏡の面:raw,水際推定:est?{中央:est.q50,下位25:est.q25,上位75:est.q75,穴画素:est.holes,水際画素:est.shoreCount}:null,
+          採用できる:waterShoreUsable(est,raw),使っている鏡の面:waterMirrorSharedPlaneM()};
       },
       bridgesNear:async(lat,lon,radiusKm,limitM)=>{
         const ways=await fetchStaticBridgeWays(+lat,+lon,+radiusKm||.4);
