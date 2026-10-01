@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1161-water-shore";
+const APP_VERSION="1162-water-steady";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8862,26 +8862,40 @@ function waterShoreUsable(est,value){
   return !!est&&est.holes>=WATER_SHORE_MIN_HOLES&&est.shoreCount>=WATER_SHORE_MIN_SHORE
     &&Number.isFinite(est.q50)&&value-est.q50>=WATER_SHORE_MIN_DROP_M&&value-est.q50<=WATER_SHORE_MAX_DROP_M;
 }
+/* 【v1162】**移動しても鏡の面が行き来しない**ようにする（利用者報告：歩くと列車の映り込みが
+   ずれたり戻ったりする）。v1161 は観測地が約11m動くたびに鍵が変わって取り直しを始め、
+   届くまで**生の値(16.7m)へ戻して**いた＝歩くたびに 14.4m↔16.7m を往復していた。
+   さらに、地形の組み直し中は方位ごとの生の値へ落ちる経路もあった。
+   直し：
+     ① 推定は取った地点(中心)を覚え、そこから WATER_SHORE_REFRESH_M(400m) 以内なら**取り直さない**。
+     ② 取り直しの最中も**前の推定を使い続ける**（届いたら入れ替える）。生へは戻さない。
+     ③ 前の推定は WATER_SHORE_KEEP_M(1200m) まで有効（窓は±700m）。それ以上離れたら生の値。
+     ④ 失敗・水なしのときも「取った地点」を残す（残さないと毎コマ取り直しに行く）。 */
+const WATER_SHORE_REFRESH_M=400,WATER_SHORE_KEEP_M=1200;
+function waterShoreDistM(est,lat,lon){
+  return Math.hypot((lat-est.lat)*111320,(lon-est.lon)*111320*Math.cos(lat*D2R));
+}
 function waterMirrorShoreAdjustM(value){
   if(!waterShoreOn||!(value>.5))return value;   /* 海(0)・水なしは触らない */
   const lat=+el.lat.value,lon=+el.lon.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon))return value;
-  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if(waterShoreState.key!==key){
-    const state={key,pending:true,est:null};
-    waterShoreState=state;
+  const st=waterShoreState;
+  const dist=st.est?waterShoreDistM(st.est,lat,lon):Infinity;
+  if(!st.pending&&dist>WATER_SHORE_REFRESH_M){
+    st.pending=true;st.key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+    const empty={lat,lon,halfM:0,step:0,covered:0,holes:0,shoreCount:0,q25:null,q50:null,q75:null};
     waterShoreLevel(lat,lon).then(est=>{
-      if(waterShoreState!==state)return;
-      state.pending=false;state.est=est;
-      if(waterShoreUsable(est,waterMirrorCache.value)){drawPhoto._terrainRenderKey=null;if(typeof update==="function")update();}
-    }).catch(()=>{if(waterShoreState===state)state.pending=false;});
-    return value;
+      const had=waterShoreUsable(st.est,waterMirrorCache.value);
+      st.pending=false;st.est=est;
+      if(had||waterShoreUsable(est,waterMirrorCache.value)){drawPhoto._terrainRenderKey=null;if(typeof update==="function")update();}
+    }).catch(()=>{st.pending=false;if(!st.est)st.est=empty;else st.est=Object.assign({},st.est,{lat,lon});});
   }
-  return waterShoreUsable(waterShoreState.est,value)?waterShoreState.est.q50:value;
+  const est=st.est;
+  return (est&&dist<=WATER_SHORE_KEEP_M&&waterShoreUsable(est,value))?est.q50:value;
 }
 function waterMirrorElevationM(azimuthDeg,baseAltitudeM){
   const shared=waterMirrorSharedPlaneM();
-  const found=(shared===null)?waterMirrorCandidateM(azimuthDeg):shared;
+  const found=(shared===null)?waterMirrorShoreAdjustM(waterMirrorCandidateM(azimuthDeg)):shared;   /* 【v1162】組み直し中も生へ落とさない */
   /* 【v1137】水は、そこに浮かんでいるものより高い所にはない。
      近くの別の水を拾ってしまったときの保険（夢見が丘で 352.3m→84.6m）。
      橋の上の模型は足元が水面より高いので、ここは効かない＝1枚のまま。 */
@@ -27306,7 +27320,7 @@ try{
       waterShore:(on)=>{
         if(typeof on==="boolean"){waterShoreOn=on;drawPhoto._terrainRenderKey=null;update();}
         const raw=waterMirrorCandidateM(NaN),est=waterShoreState.est;
-        return {有効:waterShoreOn,取得中:waterShoreState.pending,鍵:waterShoreState.key,
+        return {有効:waterShoreOn,取得中:waterShoreState.pending,鍵:waterShoreState.key,中心からの距離m:(waterShoreState.est&&Number.isFinite(+el.lat.value))?Math.round(waterShoreDistM(waterShoreState.est,+el.lat.value,+el.lon.value)):null,
           生の鏡の面:raw,水際推定:est?{中央:est.q50,下位25:est.q25,上位75:est.q75,穴画素:est.holes,水際画素:est.shoreCount}:null,
           採用できる:waterShoreUsable(est,raw),使っている鏡の面:waterMirrorSharedPlaneM()};
       },
