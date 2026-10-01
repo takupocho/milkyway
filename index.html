@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1164-rail-mark-mirror";
+const APP_VERSION="1165-bridge-opaque";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8815,6 +8815,8 @@ let waterShoreOn=true;
 let bridgePierWaterlineOn=true;
 /* 【v1164】橋の上の線路（枕木・中央線の目印）の映り込みを正しい位置へ（false で v1163 まで）。 */
 let bridgeMarkMirrorFixOn=true;
+/* 【v1165】橋を不透明に／橋の映り込みは1枚の絵にしてから薄くする（false で v1164 まで）。 */
+let bridgeOpaqueOn=true;
 let bridgePierDiag={builds:0,onWater:0,cut:0,fallback:0,samples:[]};
 let waterShoreState={key:"",pending:false,est:null};
 const WATER_SHORE_HALF_M=700,WATER_SHORE_STEP_M=10;
@@ -19246,7 +19248,10 @@ function overlayBridgePalette(dayFactor){
     pierEdge:overlayPartRGB("bridge","pierEdge",dayFactor),
     edge:overlayPartRGB("bridge","edge",dayFactor),
     mark:overlayPartRGB("bridge","mark",dayFactor),
-    baseAlpha:lerp(.82,.97,dayFactor)*overlayAlphaScale("bridge",dayFactor)
+    /* 【v1165】橋は不透明にする。以前は夜.82・昼.97 の固定の薄さを掛けていたので、
+       橋脚・側面・橋面が重なる所で互いに透け、線路の目印も透けて見えた（利用者報告・夜の加古川鉄橋）。
+       設定の「橋の濃さ」スライダー(overlayAlphaScale。既定100%)はそのまま掛かる。 */
+    baseAlpha:(bridgeOpaqueOn?1:lerp(.82,.97,dayFactor))*overlayAlphaScale("bridge",dayFactor)
   };
 }
 function readOverlayStyleControls(){
@@ -27321,6 +27326,11 @@ try{
           水際_下位25:e.q25,水際_中央:e.q50,水際_上位75:e.q75,
           生の鏡の面:raw,差_生_引く_水際中央:(e.shoreCount&&raw)?+(raw-e.q50).toFixed(2):null};
       },
+      /* 【v1165】橋を不透明に／映り込みは1枚の絵にしてから薄く（false で v1164 まで）。 */
+      bridgeOpaque:(on)=>{
+        if(typeof on==="boolean"){bridgeOpaqueOn=on;drawPhoto._mountainReflectionRenderKey=null;drawPhoto._terrainRenderKey=null;update();}
+        return {有効:bridgeOpaqueOn,反射の濃さ:bridgeOpaqueOn?BRIDGE_REFLECTION_OPAQUE_ALPHA:BRIDGE_REFLECTION_ALPHA};
+      },
       /* 【v1164】橋の目印の映り込みを正しい位置へ（false で v1163 まで）。 */
       bridgeMarkMirror:(on)=>{
         if(typeof on==="boolean"){bridgeMarkMirrorFixOn=on;drawPhoto._mountainReflectionRenderKey=null;drawPhoto._terrainRenderKey=null;update();}
@@ -31723,6 +31733,8 @@ const KMZ_TRAIN_REFLECTION_ALPHA=.78;
 /* 【v1158】橋の映り込み。KMZ の建物と同じ 0.34 から始める
    （明石海峡大橋のような大きな橋で水面が埋まらない濃さ）。 */
 const BRIDGE_REFLECTION_ALPHA=.34;
+/* 【v1165】1枚の絵にしてから重ねるときの濃さ。部品の透けが無いので .34 より濃くして、橋の映り込みを実体に近づける。 */
+const BRIDGE_REFLECTION_OPAQUE_ALPHA=.6;
 /* 【v1137】映り込みの鏡の面を模型ごとに控える。数値を足すだけなので描画の重さは変わらない。 */
 let kmzMirrorLog=[];
 function kmzMirrorDiag(slot,bearing,baseAltitudeM,mirrorZ){
@@ -35785,7 +35797,7 @@ function drawPhoto(ctx,s){
         if(mountainReflectionCanvas.width!==W||mountainReflectionCanvas.height!==H){
           mountainReflectionCanvas.width=W;mountainReflectionCanvas.height=H;mountainReflectionResized=true;
         }
-        const mountainReflectionRenderKey=`${reflectionGeometryKey}|${terrainDisplayAlpha}|${dayFactor}|bm${bridgeMarkMirrorFixOn?1:0}${bridgeLinesVisible?1:0}`;   /* 【v1164】 */
+        const mountainReflectionRenderKey=`${reflectionGeometryKey}|${terrainDisplayAlpha}|${dayFactor}|bm${bridgeMarkMirrorFixOn?1:0}${bridgeLinesVisible?1:0}${bridgeOpaqueOn?1:0}`;   /* 【v1164】 */
         if(mountainReflectionResized||drawPhoto._mountainReflectionRenderKey!==mountainReflectionRenderKey){
           const mountainCtx=mountainReflectionCanvas.getContext("2d");mountainCtx.clearRect(0,0,W,H);
           mountainCtx.save();mountainCtx.translate(0,mirrorHorizonY*2);mountainCtx.scale(1,-1);
@@ -35806,15 +35818,20 @@ function drawPhoto(ctx,s){
             const fov=drawPhoto._bridgeForegroundOverlay;
             if(bridgeLinesVisible&&fov&&fov.key===terrainGeometryKey&&!cameraPano.playing){
               mountainCtx.globalAlpha=1;mountainCtx.globalCompositeOperation="destination-out";
-              mountainCtx.strokeStyle="#000";mountainCtx.lineJoin="round";mountainCtx.lineCap="round";
+              mountainCtx.fillStyle="#000";mountainCtx.strokeStyle="#000";mountainCtx.lineJoin="round";mountainCtx.lineCap="round";
               for(let i=0;i<fov.buckets;i++){
                 const fade=bridgeDistanceFade(i,fov.buckets);
                 if(fade<=0)continue;
-                mountainCtx.lineWidth=Math.max(1.05,1.45*fade)+1.5;
-                mountainCtx.stroke(fov.mark[i]);
-                /* 橋の縁の線も同じ理由で複製が真下に出る。 */
-                mountainCtx.lineWidth=Math.max(1.2,1.8*fade)+1.5;
-                mountainCtx.stroke(fov.edge[i]);
+                /* 【v1165】橋を不透明にしたので、反転した複製も**濃い帯**になって橋の真下に残る。
+                   線だけでなく、橋の面（橋脚・側面・橋面）も複製ごと消す。
+                   消した所には、本物の映り込み（v1158・鏡の面で折り返した橋）が正しい位置に出る。 */
+                for(const key of ["pierShade","pier","side","deck"]){
+                  mountainCtx.fill(fov[key][i]);
+                  mountainCtx.lineWidth=2;mountainCtx.stroke(fov[key][i]);
+                }
+                mountainCtx.lineWidth=Math.max(1.05,1.45*fade)+1.5;mountainCtx.stroke(fov.mark[i]);
+                mountainCtx.lineWidth=Math.max(1.2,1.8*fade)+1.5;mountainCtx.stroke(fov.edge[i]);
+                mountainCtx.lineWidth=Math.max(.7,1.05*fade)+1.5;mountainCtx.stroke(fov.pierEdge[i]);
               }
               mountainCtx.globalCompositeOperation="source-over";
             }
@@ -35903,24 +35920,30 @@ function drawPhoto(ctx,s){
         {const mv=drawPhoto._bridgeMirrorOverlay;
           if(bridgeLinesVisible&&mv&&mv.key===terrainGeometryKey&&!cameraPano.playing){
             const bp=overlayBridgePalette(mv.dayFactor);
-            ctx.save();ctx.globalAlpha=BRIDGE_REFLECTION_ALPHA;
-            ctx.lineJoin="round";ctx.lineCap="round";
+            /* 【v1165】**橋の映り込みも、部品どうしが透けないようにする。**
+               以前は部品ごとに薄くして直接重ねていたので、橋脚・側面・橋面が重なる所で互いに透け、
+               半透明の橋の上の線路まで見えていた。
+               まず別の絵へ**不透明に**描き（遠くは距離の薄れだけ）、全体を1回だけ薄くして水面へ重ねる。
+               線路の目印（枕木・中央線）は映さない（利用者の指定。v1164 で足した分もやめた）。 */
+            const layer=drawPhoto._bridgeMirrorLayer||(drawPhoto._bridgeMirrorLayer=document.createElement("canvas"));
+            if(layer.width!==W||layer.height!==H){layer.width=W;layer.height=H;}
+            const lc=layer.getContext("2d");
+            lc.setTransform(1,0,0,1,0,0);lc.globalCompositeOperation="source-over";lc.globalAlpha=1;lc.clearRect(0,0,W,H);
+            lc.lineJoin="round";lc.lineCap="round";
+            const opaque=bridgeOpaqueOn;
             for(let i=0;i<mv.buckets;i++){
               const fade=mv.fade[i];
               if(fade<=0)continue;
-              const a=bp.baseAlpha*fade;
-              ctx.fillStyle=`rgba(${bp.pierShade.join(",")},${(a*.92).toFixed(3)})`;ctx.fill(mv.pierShade[i]);
-              ctx.fillStyle=`rgba(${bp.pier.join(",")},${(a*.96).toFixed(3)})`;ctx.fill(mv.pier[i]);
-              ctx.fillStyle=`rgba(${bp.side.join(",")},${(a*.96).toFixed(3)})`;ctx.fill(mv.side[i]);
-              ctx.fillStyle=`rgba(${bp.deck.join(",")},${a.toFixed(3)})`;ctx.fill(mv.deck[i]);
-              ctx.strokeStyle=`rgba(${bp.edge.join(",")},${(a*.82).toFixed(3)})`;
-              ctx.lineWidth=Math.max(1.2,1.8*fade);ctx.stroke(mv.edge[i]);
-              /* 【v1164】枕木・中央線の目印も、鏡の面で折り返した位置に描く（桁の映り込みの底側＝橋面の鏡像）。 */
-              if(bridgeMarkMirrorFixOn&&mv.mark){
-                ctx.strokeStyle=`rgba(${bp.mark.join(",")},${(a*.75).toFixed(3)})`;
-                ctx.lineWidth=Math.max(1.05,1.45*fade);ctx.stroke(mv.mark[i]);
-              }
+              const a=opaque?Math.min(1,fade*bp.baseAlpha):bp.baseAlpha*fade;
+              lc.fillStyle=`rgba(${bp.pierShade.join(",")},${(a*.92).toFixed(3)})`;lc.fill(mv.pierShade[i]);
+              lc.fillStyle=`rgba(${bp.pier.join(",")},${(a*.96).toFixed(3)})`;lc.fill(mv.pier[i]);
+              lc.fillStyle=`rgba(${bp.side.join(",")},${(a*.96).toFixed(3)})`;lc.fill(mv.side[i]);
+              lc.fillStyle=`rgba(${bp.deck.join(",")},${a.toFixed(3)})`;lc.fill(mv.deck[i]);
+              lc.strokeStyle=`rgba(${bp.edge.join(",")},${(a*.82).toFixed(3)})`;
+              lc.lineWidth=Math.max(1.2,1.8*fade);lc.stroke(mv.edge[i]);
             }
+            ctx.save();ctx.globalAlpha=opaque?BRIDGE_REFLECTION_OPAQUE_ALPHA:BRIDGE_REFLECTION_ALPHA;
+            ctx.drawImage(layer,0,0);
             ctx.restore();
           }}
         /* 【v880】模型ごとに映す。**発光は模型ごとの設定**なので、
