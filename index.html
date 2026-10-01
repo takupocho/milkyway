@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1158-bridge-mirror";
+const APP_VERSION="1159-pier-waterline";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -27366,6 +27366,7 @@ try{
       /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
       kmzOrder:()=>drawPhoto._kmzOrder||null,
       kmzGate:()=>drawKmzOneBuilding._gate||null,   /* 【v1157】 */
+      pierFoot:()=>{const a=drawPhoto._pierFootDiag||[];drawPhoto._pierFootDiag=[];return a;},   /* 【v1159】 */
       /* 【v1158】橋の映り込み。鏡の面・形が出来ているか。 */
       bridgeMirror:()=>{const m=drawPhoto._bridgeMirrorOverlay;
         return {共有の鏡の面:waterMirrorSharedPlaneM(),水のあった方位:waterMirrorCache.rows,
@@ -39015,7 +39016,24 @@ function drawPhoto(ctx,s){
              遠景だけは1.5px相当を下限にして、v776の遠距離視認性も維持する。 */
           const fillBridgePierPrism=(bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,deckBottomElevation,terrainElevation,bridgeHalfWidth,bridgeWidthM,distanceM)=>{
             if(!Number.isFinite(deckBottomElevation)||!Number.isFinite(terrainElevation)) return false;
-            const bottomElevation=Math.min(terrainElevation,deckBottomElevation-.35);
+            let bottomElevation=Math.min(terrainElevation,deckBottomElevation-.35);
+            /* 【v1159】**水に浸かっている所は見えない。橋脚を水面で切る。**
+
+               `terrainElevation` は生のDEM＝川底で、画面に見えている水面ではない。
+               実測（加古川・108〜130m先の橋脚4本）：
+                 桁の下 18.43〜18.60m ／ 足 7.24〜8.85m ／ 水面 16.71m
+                 → 水面より **8.5m 下**（画面で 60画素ぶん）まで描いていた。
+               目には「橋脚の足＝水際」に見えるので、
+               水面から始まる映り込みが宙に浮いて見えていた（利用者報告）。
+
+               切るのは次の2つがそろったときだけ：
+                 ① 橋脚の下の地面が水面より下＝水に浸かっている
+                 ② 水面が桁の下より下＝切っても橋脚が消えない
+               陸の上の橋（地面が水面より上）は1画素も変わらない。 */
+            if(Number.isFinite(bridgeMirrorPlane)
+               &&terrainElevation<bridgeMirrorPlane
+               &&bridgeMirrorPlane<deckBottomElevation-.35)
+              bottomElevation=bridgeMirrorPlane;
             if(deckBottomElevation-bottomElevation<.35) return false;
             const minPierHalfM=.75*Math.max(1,distanceM)/Math.max(1e-6,pixelsPerDegree*R2D);
             const alongHalf=Math.max(clamp((1.2+bridgeWidthM*.12)/2,.75,2.1),minPierHalfM);
@@ -39025,6 +39043,12 @@ function drawPhoto(ctx,s){
               northM+dirNorth*along+perpNorth*across,
               elevation
             );
+            if(overlayMirrorZ===null){
+              if(!Array.isArray(drawPhoto._pierFootDiag)||drawPhoto._pierFootDiag.length>60)drawPhoto._pierFootDiag=[];
+              drawPhoto._pierFootDiag.push({距離m:Math.round(distanceM),地面:+terrainElevation.toFixed(2),
+                桁の下:+deckBottomElevation.toFixed(2),足:+bottomElevation.toFixed(2),
+                水面:Number.isFinite(bridgeMirrorPlane)?+bridgeMirrorPlane.toFixed(2):null});
+            }
             const top00=vertex(-alongHalf,-acrossHalf,deckBottomElevation);
             const top10=vertex( alongHalf,-acrossHalf,deckBottomElevation);
             const top11=vertex( alongHalf, acrossHalf,deckBottomElevation);
