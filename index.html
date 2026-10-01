@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1157-train-keep";
+const APP_VERSION="1158-bridge-mirror";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8774,7 +8774,7 @@ function buildLaunchSiteModel(rawSpec){
      ① その方位に水があればその標高
      ② 無ければ全方位の水の**中央値**（湖ひとつなら安定して同じ値になる）
      ③ どこにも水が無ければ 0（＝海とみなす。これまでと同じ） */
-let waterMirrorCache={grid:null,value:0};
+let waterMirrorCache={grid:null,value:0,rows:0};
 /* 【v1137】`baseAltitudeM` は模型の足元の標高（置いたときに DEM から取った値）。
 
    **水は、そこに浮かんでいるものより高い所にはない。**
@@ -8784,8 +8784,26 @@ let waterMirrorCache={grid:null,value:0};
    鏡像は 2*mirrorZ − 高さ なので、352.3 だと湖面より 200m 上に浮き、
    水域マスクで抜かれるか水面に紛れて見えなかった。
    候補が足元より高ければ足元を採る、という一行でそこを塞ぐ。 */
+/* 【v1158】**鏡の面は画面に1枚**。全方位の中央値を使い、方位では変えない。
+
+   方位ごとに拾うと、同じ川でも 16.94〜17.11m とばらついた（実測・加古川）。
+   幅は 0.17m しかないが、橋は何百 m も伸びるので、
+   点ごとに別の鏡の面で映すと**映り込みがうねる**。
+   置いた KMZ/KML もこの1枚を使うので、
+   **橋の映り込みと、橋の上の列車・模型の映り込みが必ずそろう**。 */
+function waterMirrorSharedPlaneM(){
+  const grid=realTerrainState&&realTerrainState.nearSurfaceGrid;
+  if(!grid)return null;
+  const value=waterMirrorCandidateM(NaN);
+  if(waterMirrorCache.grid!==grid||!(waterMirrorCache.rows>0))return null;
+  return value;
+}
 function waterMirrorElevationM(azimuthDeg,baseAltitudeM){
-  const found=waterMirrorCandidateM(azimuthDeg);
+  const shared=waterMirrorSharedPlaneM();
+  const found=(shared===null)?waterMirrorCandidateM(azimuthDeg):shared;
+  /* 【v1137】水は、そこに浮かんでいるものより高い所にはない。
+     近くの別の水を拾ってしまったときの保険（夢見が丘で 352.3m→84.6m）。
+     橋の上の模型は足元が水面より高いので、ここは効かない＝1枚のまま。 */
   return Number.isFinite(baseAltitudeM)?Math.min(found,baseAltitudeM):found;
 }
 function waterMirrorCandidateM(azimuthDeg){
@@ -8806,7 +8824,7 @@ function waterMirrorCandidateM(azimuthDeg){
   }
   found.sort((a,b)=>a-b);
   const value=found.length?found[Math.floor(found.length/2)]:0;
-  waterMirrorCache={grid,value};
+  waterMirrorCache={grid,value,rows:found.length};   /* 【v1158】水のあった方位の数も控える */
   return value;
 }
 function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
@@ -8852,7 +8870,8 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
     const curvature=distance*distance/(2*earthRadius);
     const heightAboveSea=cfg.altitude+p[2]*scale;
     /* 【v1121】水面 mirrorZ を挟んだ反対側＝2·mirrorZ − h。海（0m）では従来と同じ式になる。 */
-    const rise=(reflectionPass?(2*mirrorZ-heightAboveSea):heightAboveSea)-eye-curvature;
+    /* 【v1158】水に浸かっている所は映らない（面の模型と同じ規則）。 */
+    const rise=(reflectionPass?(2*mirrorZ-Math.max(heightAboveSea,mirrorZ)):heightAboveSea)-eye-curvature;
     const point=toXY(norm360(Math.atan2(east,north)*R2D),Math.atan2(rise,distance)*R2D);
     if(!point||!Number.isFinite(point[0])||!Number.isFinite(point[1]))return null;
     if(Math.abs(point[0])>W*8||Math.abs(point[1])>H*8)return null;
@@ -27347,6 +27366,10 @@ try{
       /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
       kmzOrder:()=>drawPhoto._kmzOrder||null,
       kmzGate:()=>drawKmzOneBuilding._gate||null,   /* 【v1157】 */
+      /* 【v1158】橋の映り込み。鏡の面・形が出来ているか。 */
+      bridgeMirror:()=>{const m=drawPhoto._bridgeMirrorOverlay;
+        return {共有の鏡の面:waterMirrorSharedPlaneM(),水のあった方位:waterMirrorCache.rows,
+                形:m?"作れた":"なし",鏡の面:m?m.鏡の面:null,段数:m?m.buckets:null};},
       kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
       /* 【v1100】登録地点と撮影計画の対応を手元で確かめる入口。 */
       favPlaces:()=>({list:()=>favPlaces.map(p=>({name:p.name,kind:p.kind,planId:p.planId||null})),
@@ -31571,6 +31594,9 @@ const KMZ_REFLECTION_ALPHA=.34;
    列車は水辺の鉄橋で撮ることが多く、主役なのではっきり映ってほしい（利用者要望）。
    橋・建物・花火は 0.34 のまま（明石海峡大橋で水面が埋まるのを避けるため）。 */
 const KMZ_TRAIN_REFLECTION_ALPHA=.78;
+/* 【v1158】橋の映り込み。KMZ の建物と同じ 0.34 から始める
+   （明石海峡大橋のような大きな橋で水面が埋まらない濃さ）。 */
+const BRIDGE_REFLECTION_ALPHA=.34;
 /* 【v1137】映り込みの鏡の面を模型ごとに控える。数値を足すだけなので描画の重さは変わらない。 */
 let kmzMirrorLog=[];
 function kmzMirrorDiag(slot,bearing,baseAltitudeM,mirrorZ){
@@ -31869,7 +31895,9 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
          【v1121】その水面を **0m に決め打ちしていた**のを、実際の水面標高 mirrorZ にした。
          鏡像は 2·mirrorZ − h。海（0m）ではこれまでと同じ式になる。 */
       const heightAboveSea=cfg.altitude+vertex[2]*cfg.scale;
-      const rise=(reflectionPass?(2*mirrorZ-heightAboveSea):heightAboveSea)-eye-curvature;
+      /* 【v1158】水に浸かっている所は映らない。折り返す前に水面で止める。
+         足元が水面より上の模型（列車・建物・花火）は1点も変わらない。 */
+      const rise=(reflectionPass?(2*mirrorZ-Math.max(heightAboveSea,mirrorZ)):heightAboveSea)-eye-curvature;
       const bearingRad=ray.bearing*D2R,vec=[Math.sin(bearingRad)*distanceM,Math.cos(bearingRad)*distanceM,rise];
       vecs.push(vec);depth+=distanceM;
       /* 陰影に使う向きも、鏡像では上下が入れ替わる。 */
@@ -35718,6 +35746,28 @@ function drawPhoto(ctx,s){
            ここでは反転せずそのまま重ねるだけでよい。
            このあとの「水域マスクで抜く」がそのまま効くので、
            岸や陸地へ映り込みが漏れることはない。 */
+        /* 【v1158】**橋を水面へ映す。**
+           KMZ と同じ1枚の鏡の面で折り返した形を、そのまま重ねるだけ。
+           このあとの水域マスクで抜かれるので、陸に乗った区間は映らない。
+           KMZ より先に描く（橋の上の列車の映り込みが手前に来る）。 */
+        {const mv=drawPhoto._bridgeMirrorOverlay;
+          if(bridgeLinesVisible&&mv&&mv.key===terrainGeometryKey&&!cameraPano.playing){
+            const bp=overlayBridgePalette(mv.dayFactor);
+            ctx.save();ctx.globalAlpha=BRIDGE_REFLECTION_ALPHA;
+            ctx.lineJoin="round";ctx.lineCap="round";
+            for(let i=0;i<mv.buckets;i++){
+              const fade=mv.fade[i];
+              if(fade<=0)continue;
+              const a=bp.baseAlpha*fade;
+              ctx.fillStyle=`rgba(${bp.pierShade.join(",")},${(a*.92).toFixed(3)})`;ctx.fill(mv.pierShade[i]);
+              ctx.fillStyle=`rgba(${bp.pier.join(",")},${(a*.96).toFixed(3)})`;ctx.fill(mv.pier[i]);
+              ctx.fillStyle=`rgba(${bp.side.join(",")},${(a*.96).toFixed(3)})`;ctx.fill(mv.side[i]);
+              ctx.fillStyle=`rgba(${bp.deck.join(",")},${a.toFixed(3)})`;ctx.fill(mv.deck[i]);
+              ctx.strokeStyle=`rgba(${bp.edge.join(",")},${(a*.82).toFixed(3)})`;
+              ctx.lineWidth=Math.max(1.2,1.8*fade);ctx.stroke(mv.edge[i]);
+            }
+            ctx.restore();
+          }}
         /* 【v880】模型ごとに映す。**発光は模型ごとの設定**なので、
            まとめて1枚に描いてしまうと合成のしかたを切り替えられない
            （花火は加算、城はふつうに重ねる、が同時に成り立たない）。
@@ -38332,7 +38382,7 @@ function drawPhoto(ctx,s){
          手前の地形に隠れる部分には出ない。
          --------------------------------------------------------- */
       function drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount){
-        if(!(bridgeLinesVisible&&osmBridgeState.ways)) drawPhoto._bridgeForegroundOverlay=null;
+        if(!(bridgeLinesVisible&&osmBridgeState.ways)){drawPhoto._bridgeForegroundOverlay=null;drawPhoto._bridgeMirrorOverlay=null;}
         if(!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)) drawPhoto._roadForegroundOverlay=null;   /* 【v1043】 */
         if(!worldGridVisible&&!contourLinesVisible&&!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&osmRailState.ways)&&!(bridgeLinesVisible&&osmBridgeState.ways)) return;
         const rangeM=groundOverlayRangeM();
@@ -38443,6 +38493,10 @@ function drawPhoto(ctx,s){
         let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
+        /* 【v1158】同じ形を、鏡の面の反対側へもう一組。 */
+        let bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
+            bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths;
+        const bridgeMirrorPlane=bridgeLinesVisible?waterMirrorSharedPlaneM():null;
         let bridgeWaysForDisplay=[],activeBridgeSignatures=null;
         if(overlayCache){
           gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
@@ -38454,6 +38508,11 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=overlayCache.bridgePierShadePaths;
           bridgePierEdgePaths=overlayCache.bridgePierEdgePaths;
           bridgeRailMarkPaths=overlayCache.bridgeRailMarkPaths;
+          bridgeMirrorPaths=overlayCache.bridgeMirrorPaths;bridgeMirrorSidePaths=overlayCache.bridgeMirrorSidePaths;
+          bridgeMirrorEdgePaths=overlayCache.bridgeMirrorEdgePaths;bridgeMirrorPierPaths=overlayCache.bridgeMirrorPierPaths;
+          bridgeMirrorPierShadePaths=overlayCache.bridgeMirrorPierShadePaths;
+          bridgeMirrorPierEdgePaths=overlayCache.bridgeMirrorPierEdgePaths;
+          bridgeMirrorMarkPaths=overlayCache.bridgeMirrorMarkPaths;
         }else{
           gridPaths=worldGridVisible?newPaths():null;
           contourPaths=contourLinesVisible?newPaths():null;
@@ -38470,6 +38529,15 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=bridgePaths?newPaths():null;
           bridgePierEdgePaths=bridgePaths?newPaths():null;
           bridgeRailMarkPaths=bridgePaths?newPaths():null;
+          /* 【v1158】水が見つかっているときだけ、映り込み用の形も用意する。 */
+          const wantMirror=!!bridgePaths&&Number.isFinite(bridgeMirrorPlane);
+          bridgeMirrorPaths=wantMirror?newPaths():null;
+          bridgeMirrorSidePaths=wantMirror?newPaths():null;
+          bridgeMirrorEdgePaths=wantMirror?newPaths():null;
+          bridgeMirrorPierPaths=wantMirror?newPaths():null;
+          bridgeMirrorPierShadePaths=wantMirror?newPaths():null;
+          bridgeMirrorPierEdgePaths=wantMirror?newPaths():null;
+          bridgeMirrorMarkPaths=wantMirror?newPaths():null;
           activeBridgeSignatures=bridgePaths?new Set(bridgeWaysForDisplay.map(way=>`${way.kind}:${bridgeEndpointSignature(way.points)}`)):null;
         }
         // 道路の薄れ方は等高線より緩く。手前〜中距離ははっきり残す。
@@ -38619,10 +38687,15 @@ function drawPhoto(ctx,s){
           /* 地面の点(東,北,標高)を、目の位置を原点とした3次元ベクトルにする。
              このベクトルの向きは従来の az/alt と完全に一致し、長さは実距離になる。
              実距離を持っているので、2点の間を直線で内分できる(=切れる)。 */
-          const groundVec=(eastM,northM,elevation)=>[
-            eastM,northM,
-            elevation-eyeElevationNow-(eastM*eastM+northM*northM)/EARTH_DROP
-          ];
+          /* 【v1158】橋の映り込みを作るときだけ、高さを水面の反対側へ折り返す。
+             null のときは今までどおり（道路・線路・登山道はいつも null）。 */
+          let overlayMirrorZ=null;
+          const groundVec=(eastM,northM,elevation)=>{
+            /* 水に浸かっている所は映らない。折り返す前に水面で止める。 */
+            const z=(overlayMirrorZ===null)?elevation
+                   :(2*overlayMirrorZ-Math.max(elevation,overlayMirrorZ));
+            return [eastM,northM,z-eyeElevationNow-(eastM*eastM+northM*northM)/EARTH_DROP];
+          };
           const NEAR_Z_M=.25;   // 目の前これより手前は写せない
           const CLIP_MARGIN=1.3; // 画面の外側に少し余裕を残して切る
           const clipHalfX=(W/2)/scale*CLIP_MARGIN, clipHalfY=(H/2)/scale*CLIP_MARGIN;
@@ -39187,6 +39260,21 @@ function drawPhoto(ctx,s){
             buildRibbon(ways,trailPaths,null,null,{bucketOf:trailBucketOf,rangeM:trailRangeM});
           }
           if(bridgePaths) buildBridgeRibbons(bridgeWaysForDisplay);
+          /* 【v1158】同じ作り手を、高さだけ折り返してもう一度通す。
+             こうしておくと桁の先細り（v1148）も橋脚も、形がそのまま映る。 */
+          if(bridgePaths&&bridgeMirrorPaths){
+            const keep=[bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
+                        bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths];
+            bridgePaths=bridgeMirrorPaths;bridgeSidePaths=bridgeMirrorSidePaths;
+            bridgeEdgePaths=bridgeMirrorEdgePaths;bridgePierPaths=bridgeMirrorPierPaths;
+            bridgePierShadePaths=bridgeMirrorPierShadePaths;bridgePierEdgePaths=bridgeMirrorPierEdgePaths;
+            bridgeRailMarkPaths=bridgeMirrorMarkPaths;
+            overlayMirrorZ=bridgeMirrorPlane;
+            buildBridgeRibbons(bridgeWaysForDisplay);
+            overlayMirrorZ=null;
+            bridgePaths=keep[0];bridgeSidePaths=keep[1];bridgeEdgePaths=keep[2];bridgePierPaths=keep[3];
+            bridgePierShadePaths=keep[4];bridgePierEdgePaths=keep[5];bridgeRailMarkPaths=keep[6];
+          }
         }
         /* 【v844】昼用のために形を預ける。色は預けない（昼夜で変わるのは色だけ）。 */
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
@@ -39194,7 +39282,9 @@ function drawPhoto(ctx,s){
             key:terrainGeometryKey,
             gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
-            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,
+            bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
+            bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths
           };
         }
 
@@ -39312,6 +39402,15 @@ function drawPhoto(ctx,s){
             pier:bridgePierPaths,pierShade:bridgePierShadePaths,pierEdge:bridgePierEdgePaths,
             mark:bridgeRailMarkPaths
           };
+          /* 【v1158】映り込み用。濃さは映り込みの段で決めるので、形と薄れ方だけ預ける。 */
+          drawPhoto._bridgeMirrorOverlay=bridgeMirrorPaths?{
+            key:terrainGeometryKey,buckets:FADE_BUCKETS,鏡の面:bridgeMirrorPlane,
+            dayFactor:terrainDayFactor,
+            fade:Array.from({length:FADE_BUCKETS},(_,i)=>bridgeFadeOfBucket(i)),
+            deck:bridgeMirrorPaths,side:bridgeMirrorSidePaths,edge:bridgeMirrorEdgePaths,
+            pier:bridgeMirrorPierPaths,pierShade:bridgeMirrorPierShadePaths,
+            pierEdge:bridgeMirrorPierEdgePaths,mark:bridgeMirrorMarkPaths
+          }:null;
           /* 橋脚→側面→橋面の順に重ねる。橋面を最後に置くことで、川底へ垂れた
              旧道路リボンがキャッシュに残っていても視線上では橋が主役になる。
 
