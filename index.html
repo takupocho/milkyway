@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1156-train-onrail";
+const APP_VERSION="1157-train-keep";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8834,9 +8834,10 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
   const lineHalfSpanKm=(Math.hypot(model.width||0,model.depth||0)/2)*scale/1000;
   const lineSkylineLimitKm=Math.max(.05,base.distanceKm-lineHalfSpanKm);
   const nearSky=reflectionPass?null:kmzNearTerrainSkyline(s,toXY,W,H,lineSkylineLimitKm);
-  /* 稜線が作れたら地形のあとに描く（奥の山に丸ごと消されない）。
-     作れないときだけ、従来どおり地形の前に描いて全部に隠させる。 */
-  if(!reflectionPass&&(phase==="before"?!!nearSky:!nearSky)) return;
+  /* 【v1157】面の模型と同じ直し。稜線が作れなくても **"after"（地形のあと）** で描く。
+     「作れないときは地形の前に描いて全部に隠させる」は、
+     そのあとの重ね描きに塗り潰されて**必ず消える**ので保険になっていなかった。 */
+  if(!reflectionPass&&phase!=="after") return;
   /* 【v1122】確かめる用。 */
   if(!reflectionPass)drawKmzLineModel._diag={名:slot.fileName,段:phase,距離km:+base.distanceKm.toFixed(3),
     稜線を作る範囲km:+lineSkylineLimitKm.toFixed(3),稜線:nearSky?nearSky.length:null,
@@ -27345,6 +27346,7 @@ try{
       townPlace:(spec)=>townCreateSlot(spec),
       /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
       kmzOrder:()=>drawPhoto._kmzOrder||null,
+      kmzGate:()=>drawKmzOneBuilding._gate||null,   /* 【v1157】 */
       kmzPlan:()=>({capture:captureKmzBuildingForPlan,restore:restoreKmzBuildingFromPlan,slots:()=>kmzSlots.map(s=>({name:s.fileName,fw:s.firework,src:(s.sourceDataUrl||"").slice(0,24),tri:s.model&&s.model.triangles.length}))}),
       /* 【v1100】登録地点と撮影計画の対応を手元で確かめる入口。 */
       favPlaces:()=>({list:()=>favPlaces.map(p=>({name:p.name,kind:p.kind,planId:p.planId||null})),
@@ -31789,10 +31791,27 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
        あとから地形に塗り潰されて模型が丸ごと消える
        （利用者報告：列車の半分が画面外に出た瞬間に消える。2両＝半径21mに寄ったとき）。
        "before" へ落とすのは「稜線そのものが作れなかった」ときだけ＝元からの保険。 */
-    else if(skylineSkipped){ if(phase!=="after")return; }
-    else if(phase==="before"?!!nearSky:!nearSky) return;
+    /* 【v1157】**どの場合でも "after"（地形のあと）で描く。**
+
+       v1156 までは、稜線が作れなかったとき（nearSky が null）だけ
+       `phase==="before" ? !!nearSky : !nearSky` に落ちて **"before"（地形の前）** に回り、
+       そのあとの地形と重ね描き（道路・線路・橋）に塗り潰されていた。
+       映り込みは別の段で描くので残り、**本体だけ消える**。
+       実測（加古川・上空76m・-33°・40mm・2両）：
+         通常 36,842画素 → 稜線が作れない 17,233画素（＝映り込みだけ）。
+       利用者報告の「角度を少し変えると列車が消える。映り込みは動いている」と一致。
+
+       稜線が作れないのは「手前に地形の点がほとんど無い」ときなので、
+       隠すべき地形も無い。切らずに後ろで描くのが正しい。 */
+    else if(phase!=="after")return;
   }
   if(skylineSkipped)nearSky=null;
+  /* 【v1157】確かめる用。`__hd.kmzGate()` で最後の1回が読める。 */
+  if(!reflectionPass)drawKmzOneBuilding._gate={名:slot.fileName,段:phase,
+    距離km:+base.distanceKm.toFixed(3),稜線の範囲km:+skylineLimitKm.toFixed(4),
+    稜線:nearSky?"作れた":(skylineSkipped?"切らない":"作れない"),
+    模型の足元標高:Number.isFinite(cfg.altitude)?+cfg.altitude.toFixed(1):null,
+    範囲の最高標高:(nearSky&&Number.isFinite(nearSky.maxElevationM))?+nearSky.maxElevationM.toFixed(1):null};
   /* 視点の高さは三脚＋上昇量。1.6m固定だと、上昇しても建物だけが地上から見た角度のまま残り、
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
