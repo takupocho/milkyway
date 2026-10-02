@@ -5079,9 +5079,21 @@
             <div id="kmzTrainRunEditRow" hidden style="margin-top:6px;">
               <label style="display:flex;align-items:center;font-size:12.5px;"><input id="kmzTrainRunEditOn" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 🚃 走らせる（OFFで止めて置く）</label>
               <div id="kmzTrainRunEditBody" hidden>
+                <label style="display:flex;align-items:center;font-size:12.5px;margin-top:6px;"><input id="kmzTrainTblOn" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 🕒 時刻表で走る（発車・到着の時刻から自動）</label>
+                <div id="kmzTrainTblBody" hidden>
+                  <p class="map-hint" style="margin-top:4px;">置いた場所が発車駅です。進行方向へ「走る距離」ぶん進んだ所が到着駅です。発車・到着の時刻にぴったり合わせ、出発は加速・到着前は減速します。</p>
+                  <div class="field" style="margin-top:6px;"><label class="top">発車時刻（置いた場所）</label><input id="kmzTrainTblDep" type="time" step="1"></div>
+                  <div class="field" style="margin-top:6px;"><label class="top">到着時刻</label><input id="kmzTrainTblArr" type="time" step="1"></div>
+                  <div class="field" style="margin-top:6px;"><label class="top">走る距離（m・進行方向）</label><input id="kmzTrainTblDist" type="number" min="50" max="30000" step="50" inputmode="numeric" value="1000"></div>
+                  <div class="field" style="margin-top:6px;"><label class="top">加速（km/h/秒）</label><input id="kmzTrainTblAcc" type="number" min="0.5" max="8" step="0.1" inputmode="decimal" value="2.5"></div>
+                  <div class="field" style="margin-top:6px;"><label class="top">減速（km/h/秒）</label><input id="kmzTrainTblDec" type="number" min="0.5" max="8" step="0.1" inputmode="decimal" value="3.5"></div>
+                  <p class="map-hint" id="kmzTrainTblHint" style="margin-top:4px;"></p>
+                </div>
+                <div id="kmzTrainRunPlain">
                 <div class="field" style="margin-top:6px;"><label class="top">置いた場所を通る時刻</label><input id="kmzTrainRunEditTime" type="time" step="60"></div>
                 <div class="field" style="margin-top:6px;"><label class="top">速度（km/h）</label><input id="kmzTrainRunEditSpeed" type="number" min="5" max="300" step="5" inputmode="numeric" value="60"></div>
                 <button id="kmzTrainRunNowBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>⏱ いまの時刻にここを通る</span><span>›</span></button>
+                </div>
               </div>
             </div>
             <div id="kmzTrainDirRow" hidden style="margin-top:6px;">
@@ -6872,7 +6884,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1180-train-shinkansen";
+const APP_VERSION="1181-train-timetable";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8274,7 +8286,8 @@ const el={
   kmzAddTrainBtn:$("kmzAddTrainBtn"), trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
   trainSizeHint:$("trainSizeHint"), trainPlaceBtn:$("trainPlaceBtn"), kmzTrainReverseBtn:$("kmzTrainReverseBtn"),
   kmzTrainDirRow:$("kmzTrainDirRow"), kmzTrainDirVal:$("kmzTrainDirVal"), kmzTrainDirABtn:$("kmzTrainDirABtn"), kmzTrainDirBBtn:$("kmzTrainDirBBtn"), mapPlaceFlipBtn:$("mapPlaceFlipBtn"),
-  kmzTrainRunEditRow:$("kmzTrainRunEditRow"), kmzTrainRunEditOn:$("kmzTrainRunEditOn"), kmzTrainRunEditBody:$("kmzTrainRunEditBody"), kmzTrainRunEditTime:$("kmzTrainRunEditTime"), kmzTrainRunEditSpeed:$("kmzTrainRunEditSpeed"), kmzTrainRunNowBtn:$("kmzTrainRunNowBtn"),   /* 【v1177】 */   /* 【v1176】 */
+  kmzTrainRunEditRow:$("kmzTrainRunEditRow"), kmzTrainRunEditOn:$("kmzTrainRunEditOn"), kmzTrainRunEditBody:$("kmzTrainRunEditBody"), kmzTrainRunEditTime:$("kmzTrainRunEditTime"), kmzTrainRunEditSpeed:$("kmzTrainRunEditSpeed"), kmzTrainRunNowBtn:$("kmzTrainRunNowBtn"),
+  kmzTrainTblOn:$("kmzTrainTblOn"), kmzTrainTblBody:$("kmzTrainTblBody"), kmzTrainTblDep:$("kmzTrainTblDep"), kmzTrainTblArr:$("kmzTrainTblArr"), kmzTrainTblDist:$("kmzTrainTblDist"), kmzTrainTblAcc:$("kmzTrainTblAcc"), kmzTrainTblDec:$("kmzTrainTblDec"), kmzTrainTblHint:$("kmzTrainTblHint"), kmzTrainRunPlain:$("kmzTrainRunPlain"),   /* 【v1181】 */   /* 【v1177】 */   /* 【v1176】 */
   trainRunOn:$("trainRunOn"), trainRunRow:$("trainRunRow"), trainRunTime:$("trainRunTime"),   /* 【v1155】 */
   trainRunSpeed:$("trainRunSpeed"), trainRunHint:$("trainRunHint"),
   kmzAddTownBtn:$("kmzAddTownBtn"), townPanel:$("townPanel"), townRadius:$("townRadius"),
@@ -9491,9 +9504,77 @@ function trainSpecOf(value){
   if(value.run&&typeof value.run==="object"){
     const atMin=savedNumber(value.run.atMin),speedKmh=savedNumber(value.run.speedKmh);
     if(atMin!==null&&speedKmh!==null&&speedKmh>0)run={atMin,speedKmh:clamp(speedKmh,1,300)};
+    /* 【v1181】時刻表モード：停車位置と到着・発車の時刻（分・小数）。 */
+    const tb=value.run.table;
+    if(run&&tb&&Array.isArray(tb.stops)){
+      const st=tb.stops.map(p=>p?({s:savedNumber(p.s),arr:savedNumber(p.arr),dep:savedNumber(p.dep)}):null)
+                       .filter(p=>p&&p.s!==null&&p.arr!==null&&p.dep!==null);
+      if(st.length>=2&&st.every((p,i)=>i===0||(p.arr>=st[i-1].dep&&p.dep>=p.arr))){
+        const acc=savedNumber(tb.acc),dec=savedNumber(tb.dec);
+        run.table={stops:st,acc:clamp(acc!==null?acc:TRAIN_TABLE_DEFAULT_ACC_KMHS/3.6,.1,3),dec:clamp(dec!==null?dec:TRAIN_TABLE_DEFAULT_DEC_KMHS/3.6,.1,3)};
+      }
+    }
   }
   return {name:String(value.name||"").trim().slice(0,30)||`${cars}両編成`,
           cars,path:path.length>=2?path:[],reverse:value.reverse===true,run};
+}
+/* 【v1181】**時刻表モード：発車・到着の時刻から、加速・巡航・減速で走らせる。**
+   駅（停車位置）の並びと、それぞれの到着・発車の時刻だけを与える。区間ごとに
+     距離 D と所要時間 T から、加速 a・減速 b で走り切れる**巡航速度 v を割り出し**、
+     停車 →（a で加速）→ v で巡航 →（b で減速）→ 停車 の速度の動きにする。
+       D = v·T − v²/2·(1/a+1/b)  を v について解く。
+   加減速が弱すぎて T で走り切れない区間は、間に合うところまで加減速を強める（boosted）。
+   位置 s は「置いた点からの進行方向への距離(m)」。置いた点＝最初の停車位置。 */
+const TRAIN_TABLE_DEFAULT_ACC_KMHS=2.5,TRAIN_TABLE_DEFAULT_DEC_KMHS=3.5;
+function trainTableLeg(D,T,a,b){
+  const leg={D,T,a,b,v:0,ta:0,td:0,boosted:false};
+  if(!(D>0)||!(T>0))return leg;
+  let k=1/a+1/b;
+  if(T*T<=2*D*k){   /* 加減速が弱くて間に合わない：間に合うところまで強める */
+    const kk=T*T/(2*D)*.98,scale=k/kk;
+    leg.a=a*scale;leg.b=b*scale;k=kk;leg.boosted=true;
+  }
+  leg.v=(T-Math.sqrt(Math.max(0,T*T-2*D*k)))/k;
+  leg.ta=leg.v/leg.a;leg.td=leg.v/leg.b;
+  return leg;
+}
+function trainLegDistance(leg,t){   /* 発車から t 秒後に走った距離(m) */
+  if(t<=0)return 0;
+  if(t>=leg.T)return leg.D;
+  const {v,ta,td,T,a,b}=leg;
+  if(t<ta)return .5*a*t*t;
+  const sa=.5*a*ta*ta;
+  if(t<T-td)return sa+v*(t-ta);
+  const u=t-(T-td);
+  return sa+v*(T-td-ta)+v*u-.5*b*u*u;
+}
+/* 時刻 tMin（0時からの分）の位置 s(m) と、そのときの速度(m/s)。 */
+function trainTableState(table,tMin){
+  const st=table.stops,t=tMin*60,a=table.acc,b=table.dec;
+  if(t<=st[0].dep*60)return {s:st[0].s,v:0,leg:-1};
+  for(let i=0;i+1<st.length;i++){
+    const t0=st[i].dep*60,t1=st[i+1].arr*60;
+    if(t<=t1){
+      const leg=trainTableLeg(Math.abs(st[i+1].s-st[i].s),t1-t0,a,b);
+      const sign=st[i+1].s>=st[i].s?1:-1,x=t-t0;
+      const d=trainLegDistance(leg,x);
+      let v=0;
+      if(x>0&&x<leg.T)v=x<leg.ta?leg.a*x:(x<leg.T-leg.td?leg.v:leg.v-leg.b*(x-(leg.T-leg.td)));
+      return {s:st[i].s+sign*d,v,leg:i};
+    }
+    if(t<st[i+1].dep*60)return {s:st[i+1].s,v:0,leg:i+1};   /* 駅で停車中 */
+  }
+  return {s:st[st.length-1].s,v:0,leg:st.length-1};
+}
+function trainTableSummary(table){
+  const out=[];
+  for(let i=0;i+1<table.stops.length;i++){
+    const A=table.stops[i],B=table.stops[i+1];
+    const leg=trainTableLeg(Math.abs(B.s-A.s),(B.arr-A.dep)*60,table.acc,table.dec);
+    out.push({区間:i+1,距離m:Math.round(leg.D),所要秒:Math.round(leg.T),巡航kmh:+(leg.v*3.6).toFixed(1),
+              加速kmhs:+(leg.a*3.6).toFixed(2),減速kmhs:+(leg.b*3.6).toFixed(2),加減速を強めた:leg.boosted});
+  }
+  return out;
 }
 function trainSpecSummary(spec){
   const s=trainSpecOf(spec);
@@ -9699,10 +9780,11 @@ function buildTrainModel(rawSpec,runOffsetM){
 /* いちばん近い線路へ寄せる。見つからなければ null（そのままの場所に置く）。
    半径600m ぶんの線路を取ってから、150m 以内のいちばん近い線分を選ぶ。
    タイルは端末内に残るので、2回目からは通信しない。 */
+const TRAIN_GUIDE_MAX_M=20000;
 async function trainRailSnap(lat,lon,carCount,reachM){
   /* 【v1155】走らせるときは、走る距離ぶんの案内線が要るので広く取る。 */
-  const wantM=Number.isFinite(reachM)?clamp(reachM,100,6000):0;
-  const radiusKm=clamp(wantM/1000+.6,.6,5);
+  const wantM=Number.isFinite(reachM)?clamp(reachM,100,TRAIN_GUIDE_MAX_M):0;   /* 【v1181】時刻表モードは十数km */
+  const radiusKm=clamp(wantM/1000+.6,.6,TRAIN_GUIDE_MAX_M/1000+.6);
   let ways=null;
   try{ways=await fetchStaticRailWays(lat,lon,radiusKm);}catch(e){return null;}
   if(!Array.isArray(ways)||!ways.length)return null;
@@ -10264,6 +10346,18 @@ function syncTrainRunRow(site){
     const m=Math.round(((spec.run.atMin%1440)+1440)%1440);
     el.kmzTrainRunEditTime.value=`${pad2(Math.floor(m/60))}:${pad2(m%60)}`;
     el.kmzTrainRunEditSpeed.value=String(Math.round(spec.run.speedKmh));
+    /* 【v1181】時刻表モード */
+    const tb=spec.run.table;
+    el.kmzTrainTblOn.checked=!!tb;
+    el.kmzTrainTblBody.hidden=!tb;
+    el.kmzTrainRunPlain.hidden=!!tb;
+    if(tb){
+      const a=tb.stops[0],z=tb.stops[tb.stops.length-1];
+      el.kmzTrainTblDep.value=trainClockText(a.dep);el.kmzTrainTblArr.value=trainClockText(z.arr);
+      el.kmzTrainTblDist.value=String(Math.round(Math.abs(z.s)));
+      el.kmzTrainTblAcc.value=(tb.acc*3.6).toFixed(1);el.kmzTrainTblDec.value=(tb.dec*3.6).toFixed(1);
+      el.kmzTrainTblHint.textContent=trainTableHint(tb);
+    }
   }
 }
 /* 【v1179】**走らせる設定を変えたら、案内線を取り直す。**
@@ -10274,10 +10368,10 @@ function syncTrainRunRow(site){
    直し：走らせる設定を変えるたびに、置いた場所から前後へ最大 TRAIN_RUN_REACH_M(6km) の線路をたどって案内線を作り直す。
    取れなければ（通信失敗・線路なし）元の案内線のまま。 */
 const TRAIN_RUN_REACH_M=6000;
-async function trainRebuildGuide(slot){
+async function trainRebuildGuide(slot,reachM){
   const spec=trainSpecOf(slot&&slot.train);
   if(!spec)return null;
-  const snap0=await trainRailSnap(slot.lat,slot.lon,spec.cars,TRAIN_RUN_REACH_M);
+  const snap0=await trainRailSnap(slot.lat,slot.lon,spec.cars,Number.isFinite(reachM)?reachM:TRAIN_RUN_REACH_M);
   if(!snap0)return null;
   const snap=await trainFillPathElevations(snap0);
   if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return null;
@@ -10293,7 +10387,9 @@ async function trainSetRun(slot,run){
   const token=(slot._guideToken=(slot._guideToken||0)+1);
   setKmzBuildingStatus("🚃 線路をたどり直しています…","ready");
   let g=null;
-  try{g=await trainRebuildGuide(slot);}catch(e){g=null;}
+  const tbl=slot.train.run&&slot.train.run.table;
+  const wantReach=tbl?clamp(Math.max(...tbl.stops.map(p=>Math.abs(p.s)))+800,TRAIN_RUN_REACH_M,TRAIN_GUIDE_MAX_M):TRAIN_RUN_REACH_M;
+  try{g=await trainRebuildGuide(slot,wantReach);}catch(e){g=null;}
   if(token!==slot._guideToken||!kmzSlots.includes(slot)||!slot.train||!slot.train.run)return ok;
   if(g&&g.path.length>=2){
     slot.train={...slot.train,path:g.path};
@@ -10317,7 +10413,34 @@ function trainSetRunNow(slot,run){
   drawPhoto._terrainRenderKey=null;update();
   return true;
 }
+/* 【v1181】"HH:MM" か "HH:MM:SS" → 0時からの分（小数）。 */
+function trainClockMinutes(text){
+  const m=/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(text||""));
+  return m?(+m[1])*60+(+m[2])+(m[3]?(+m[3])/60:0):null;
+}
+function trainClockText(min){
+  const t=Math.round(min*60),h=Math.floor(t/3600)%24,m=Math.floor(t/60)%60,sec=t%60;
+  return `${pad2(h)}:${pad2(m)}:${pad2(sec)}`;
+}
+function trainTableHint(table){
+  if(!table)return "";
+  const r=trainTableSummary(table)[0];
+  if(!r)return "";
+  return `巡航 約${r.巡航kmh}km/h（所要 ${Math.floor(r.所要秒/60)}分${r.所要秒%60}秒・${(r.距離m/1000).toFixed(2)}km）`
+    +(r.加減速を強めた?`。時間に対して加減速が弱いので、加速${r.加速kmhs}・減速${r.減速kmhs} km/h/秒 に強めています。`:`。`);
+}
 function trainRunFromEditor(){
+  if(el.kmzTrainTblOn&&el.kmzTrainTblOn.checked){
+    const dep=trainClockMinutes(el.kmzTrainTblDep.value),arr0=trainClockMinutes(el.kmzTrainTblArr.value);
+    const dist=clamp(+el.kmzTrainTblDist.value||1000,50,30000);
+    const depM=dep!==null?dep:Math.round(kmzTimelineMinutes());
+    let arrM=arr0!==null?arr0:depM+2;
+    if(arrM<=depM)arrM+=1440;   /* 日をまたぐ */
+    const table={stops:[{s:0,arr:depM,dep:depM},{s:dist,arr:arrM,dep:arrM}],
+      acc:clamp((+el.kmzTrainTblAcc.value||TRAIN_TABLE_DEFAULT_ACC_KMHS)/3.6,.1,3),
+      dec:clamp((+el.kmzTrainTblDec.value||TRAIN_TABLE_DEFAULT_DEC_KMHS)/3.6,.1,3)};
+    return {atMin:depM,speedKmh:60,table};
+  }
   const m=/^(\d{1,2}):(\d{2})$/.exec(String(el.kmzTrainRunEditTime.value||""));
   const atMin=m?(+m[1])*60+(+m[2]):Math.round(kmzTimelineMinutes());
   return {atMin,speedKmh:clamp(+el.kmzTrainRunEditSpeed.value||60,5,300)};
@@ -10329,6 +10452,18 @@ if(el.kmzTrainRunEditOn)el.kmzTrainRunEditOn.addEventListener("change",()=>{
     if(!prev.run){el.kmzTrainRunEditTime.value=(()=>{const m=Math.round(kmzTimelineMinutes());return `${pad2(Math.floor(m/60)%24)}:${pad2(m%60)}`;})();}
     trainSetRun(slot,trainRunFromEditor());
   }else trainSetRun(slot,null);
+});
+if(el.kmzTrainTblOn)el.kmzTrainTblOn.addEventListener("change",()=>{
+  const slot=kmzActiveSlot();if(!slot||!el.kmzTrainRunEditOn.checked)return;
+  if(el.kmzTrainTblOn.checked){   /* 現在の時刻から2分後を到着の初期値に */
+    const m=Math.round(kmzTimelineMinutes());
+    if(!el.kmzTrainTblDep.value)el.kmzTrainTblDep.value=trainClockText(m);
+    if(!el.kmzTrainTblArr.value)el.kmzTrainTblArr.value=trainClockText(m+2);
+  }
+  trainSetRun(slot,trainRunFromEditor());
+});
+for(const k of ["kmzTrainTblDep","kmzTrainTblArr","kmzTrainTblDist","kmzTrainTblAcc","kmzTrainTblDec"])if(el[k])el[k].addEventListener("change",()=>{
+  const slot=kmzActiveSlot();if(slot&&el.kmzTrainRunEditOn.checked&&el.kmzTrainTblOn.checked)trainSetRun(slot,trainRunFromEditor());
 });
 for(const k of ["kmzTrainRunEditTime","kmzTrainRunEditSpeed"])if(el[k])el[k].addEventListener("change",()=>{
   const slot=kmzActiveSlot();if(slot&&el.kmzTrainRunEditOn.checked)trainSetRun(slot,trainRunFromEditor());
@@ -10938,7 +11073,8 @@ function trainSyncRun(slot){
   /* 【v1156】案内線が無い（線路が見つからなかった）ときは動かさない。
      動かすと真北へ直進してしまう。 */
   if(spec.path.length<2)return;
-  const offsetM=(kmzTimelineMinutes()-spec.run.atMin)*spec.run.speedKmh*1000/60;
+  const offsetM=spec.run.table?trainTableState(spec.run.table,kmzTimelineMinutes()).s
+    :(kmzTimelineMinutes()-spec.run.atMin)*spec.run.speedKmh*1000/60;
   if(!Number.isFinite(offsetM))return;
   if(Number.isFinite(slot._runOffsetM)&&Math.abs(slot._runOffsetM-offsetM)<1)return;
   const model=buildTrainModel(spec,offsetM);
@@ -28194,6 +28330,9 @@ try{
         /* 【v1179】線路の生データ（断片の端の位置）を見る。案内線が途切れる原因の診断用。 */
         ways:async(lat,lon,km)=>{const ws=await fetchStaticRailWays(+lat,+lon,+km||3);const mLa=111320,mLo=111320*Math.cos(+lat*D2R);
           return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
+        /* 【v1181】時刻表モードの計算を確かめる。stops=[{s,arr,dep}](分・小数)。 */
+        table:(stops,accKmhs,decKmhs)=>{const t={stops,acc:(accKmhs||2.5)/3.6,dec:(decKmhs||3.5)/3.6};
+          return {区間:trainTableSummary(t),at:(min)=>trainTableState(t,min)};},
         guide:async(lat,lon,cars,reachM)=>{
           const s=await trainRailSnap(+lat,+lon,+cars||2,+reachM||2000);
           return s?trainFillPathElevations(s):null;
