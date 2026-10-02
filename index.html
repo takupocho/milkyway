@@ -5074,6 +5074,14 @@
             <!-- 【v1131】置いてあるオブジェクトの形を直す -->
             <button id="kmzBuildingEditShapeBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 形を編集する（オブジェクト）</span><span>›</span></button>
             <button id="kmzTrainReverseBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>🔁 列車の向きを反転（上り↔下り）</span><span>›</span></button>
+            <!-- 【v1176】進行方向を方位名で選ぶ。選んでいる列車だけ。ライトは進行方向の前がヘッドライト、後ろが尾灯。 -->
+            <div id="kmzTrainDirRow" hidden style="margin-top:6px;">
+              <label class="top">進行方向 <span class="val mono" id="kmzTrainDirVal">—</span></label>
+              <div style="display:flex;gap:6px;">
+                <button id="kmzTrainDirABtn" type="button" class="toggle-btn" style="flex:1;margin:0;">—</button>
+                <button id="kmzTrainDirBBtn" type="button" class="toggle-btn" style="flex:1;margin:0;">—</button>
+              </div>
+            </div>
             <p class="map-hint" style="margin-top:4px;">選んでいる花火・筒場・オブジェクトを、置いたときと同じ地図の画面でやり直します。筒場は回転のハンドルも使えます。中身（花火の並びや寸法）はそのまま残ります。</p>
             <div class="field" style="margin-top:8px;">
               <label class="top">Googleマップから経度・緯度を貼り付け</label>
@@ -6074,6 +6082,7 @@
                 <!-- 【v1070】花火の配置モード -->
                 <div id="mapPlaceBar" class="map-place-bar" hidden>
                   <span id="mapPlaceText">どこに配置しますか？ 地図をタップ</span>
+                  <button id="mapPlaceFlipBtn" type="button" class="ghost" hidden title="進行方向を反対にします（先頭が橙で描かれます）">🔁 向き</button>
                   <button id="mapPlaceRotateLeftBtn" type="button" class="ghost" hidden title="反時計回りに15度">↺</button>
                   <button id="mapPlaceRotateRightBtn" type="button" class="ghost" hidden title="時計回りに15度">↻</button>
                   <button id="mapPlaceOkBtn" type="button" class="primary" disabled>決定</button>
@@ -6853,7 +6862,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1175-train-lights";
+const APP_VERSION="1176-train-ends";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8254,6 +8263,7 @@ const el={
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
   kmzAddTrainBtn:$("kmzAddTrainBtn"), trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
   trainSizeHint:$("trainSizeHint"), trainPlaceBtn:$("trainPlaceBtn"), kmzTrainReverseBtn:$("kmzTrainReverseBtn"),
+  kmzTrainDirRow:$("kmzTrainDirRow"), kmzTrainDirVal:$("kmzTrainDirVal"), kmzTrainDirABtn:$("kmzTrainDirABtn"), kmzTrainDirBBtn:$("kmzTrainDirBBtn"), mapPlaceFlipBtn:$("mapPlaceFlipBtn"),   /* 【v1176】 */
   trainRunOn:$("trainRunOn"), trainRunRow:$("trainRunRow"), trainRunTime:$("trainRunTime"),   /* 【v1155】 */
   trainRunSpeed:$("trainRunSpeed"), trainRunHint:$("trainRunHint"),
   kmzAddTownBtn:$("kmzAddTownBtn"), townPanel:$("townPanel"), townRadius:$("townRadius"),
@@ -9616,7 +9626,8 @@ function buildTrainModel(rawSpec,runOffsetM){
   /* いただいたKMZの diffuse をそのまま 0〜255 にしたもの。 */
   const COL={body:[238,233,216],band:[0,140,120],window:[140,195,210],
              under:[50,50,50],roof:[195,197,197],
-             face:[38,46,66],rearGlass:[72,96,112]};   /* 【v1175】先頭・最後尾の顔（濃紺）と、後ろの窓 */
+             face:[38,46,66],rearGlass:[72,96,112],
+             headOff:[150,148,138],tailOff:[96,22,22]};   /* 【v1175】先頭・最後尾の顔（濃紺）と後ろの窓／【v1176】消灯したライト */
   const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
   const layout=trainLayout(spec,runOffsetM);
   layout.forEach((car,carIndex)=>{
@@ -9644,23 +9655,28 @@ function buildTrainModel(rawSpec,runOffsetM){
         quad([u,v0,2.25],[u,v1,2.25],[u,v1,3.25],[u,v0,3.25],COL.window,1);
       }
     }
-    /* 【v1175】先頭車（cars-1 番目＝進行方向の前）の前面：濃紺の顔・大きな前面ガラス・丸いヘッドライト2つ。
-       中間の連結面は窓なし。 */
-    if(carIndex===layout.length-1){
-      const v=hl+.012;
+    /* 【v1176】**両端とも、ヘッドライトと尾灯の両方を付ける。**
+       利用者の指摘：進行方向によってヘッドライトと尾灯は入れ替わるので、どちらの端にも両方のデザインが要る。
+       先頭車（cars-1 番目＝進行方向の前＝+v）と最後尾車（0番目＝後ろ＝−v）は、同じ顔（濃紺・大きな窓・丸いライト2つ・赤い尾灯2つ）にして、
+         前の端：ヘッドライト点灯（常時）／尾灯は消灯（暗い赤）／前面ガラスは窓明かりと同じ点灯
+         後ろの端：尾灯点灯（常時・赤）／ヘッドライトは消灯（くすんだ色）／窓は暗いまま
+       向きを反対にすると、車両の並びと向きが180°入れ替わる(trainLayout)ので、点く側も自動で入れ替わる。
+       1両編成は、同じ車両の前と後ろに付く。 */
+    const endFace=(sign,front)=>{
+      const v=sign*(hl+.012),vo=sign*.004;
       quad([-1.7,v,1.05],[1.7,v,1.05],[1.7,v,3.62],[-1.7,v,3.62],COL.face);
-      quad([-1.32,v+.004,1.95],[1.32,v+.004,1.95],[1.32,v+.004,3.45],[-1.32,v+.004,3.45],COL.window,1);
-      lamp(-1.05,v+.008,1.30,.26,TRAIN_LIGHT_COLORS.head,2);
-      lamp(1.05,v+.008,1.30,.26,TRAIN_LIGHT_COLORS.head,2);
-    }
-    /* 最後尾車（0番目）の後ろ：濃紺の顔・暗い後ろの窓・赤い尾灯2つ。 */
-    if(carIndex===0){
-      const v=-(hl+.012);
-      quad([-1.7,v,1.05],[1.7,v,1.05],[1.7,v,3.62],[-1.7,v,3.62],COL.face);
-      quad([-1.32,v-.004,1.95],[1.32,v-.004,1.95],[1.32,v-.004,3.45],[-1.32,v-.004,3.45],COL.rearGlass);
-      quad([-1.25,v-.008,1.2],[-.9,v-.008,1.2],[-.9,v-.008,1.45],[-1.25,v-.008,1.45],TRAIN_LIGHT_COLORS.tail,3);
-      quad([.9,v-.008,1.2],[1.25,v-.008,1.2],[1.25,v-.008,1.45],[.9,v-.008,1.45],TRAIN_LIGHT_COLORS.tail,3);
-    }
+      if(front)quad([-1.32,v+vo,1.95],[1.32,v+vo,1.95],[1.32,v+vo,3.45],[-1.32,v+vo,3.45],COL.window,1);
+      else quad([-1.32,v+vo,1.95],[1.32,v+vo,1.95],[1.32,v+vo,3.45],[-1.32,v+vo,3.45],COL.rearGlass);
+      /* ヘッドライト：丸い2つ（内側）。消灯のときはくすんだ色。 */
+      lamp(-1.05,v+sign*.008,1.30,.26,front?TRAIN_LIGHT_COLORS.head:COL.headOff,front?2:0);
+      lamp(1.05,v+sign*.008,1.30,.26,front?TRAIN_LIGHT_COLORS.head:COL.headOff,front?2:0);
+      /* 尾灯：赤い小さな四角2つ（外側）。消灯のときは暗い赤。 */
+      const tail=front?COL.tailOff:TRAIN_LIGHT_COLORS.tail,tg=front?0:3,vt=v+sign*.008;
+      quad([-1.62,vt,1.18],[-1.38,vt,1.18],[-1.38,vt,1.48],[-1.62,vt,1.48],tail,tg);
+      quad([1.38,vt,1.18],[1.62,vt,1.18],[1.62,vt,1.48],[1.38,vt,1.48],tail,tg);
+    };
+    if(carIndex===layout.length-1)endFace(1,true);    /* 先頭車の前 */
+    if(carIndex===0)endFace(-1,false);                /* 最後尾車の後ろ */
   });
   if(!triangles.length)return null;
   const all=triangles.flat();
@@ -10206,6 +10222,36 @@ function trainCreateSlot(rawSpec,lat,lon,altitude){
   kmzSlots.push(slot);kmzActiveId=slot.id;kmzLoadEditor();
   return slot;
 }
+/* 【v1176】進行方向。先頭車(cars-1)が向いている方位を、向きを「もとの向き」にしたとき(forward)と「反対」にしたとき(backward)で出す。
+   方位名は花火の風向きと同じ16方位（fwWindCompassName）。線形が曲がっている線路では、置いた場所での向き。 */
+function trainHeadBearings(spec){
+  const a=trainLayout({...spec,reverse:false}),b=trainLayout({...spec,reverse:true});
+  return {forward:a[a.length-1].bearing,backward:b[b.length-1].bearing};
+}
+function trainDirectionLabel(deg){return `${fwWindCompassName(deg)}（${Math.round(norm360(deg))}°）`;}
+function syncTrainDirectionRow(site){
+  if(!el.kmzTrainDirRow)return;
+  const spec=site?trainSpecOf(site.train):null;
+  el.kmzTrainDirRow.hidden=!spec;
+  if(!spec)return;
+  const d=trainHeadBearings(spec);
+  el.kmzTrainDirABtn.textContent=`→ ${trainDirectionLabel(d.forward)}へ`;
+  el.kmzTrainDirBBtn.textContent=`→ ${trainDirectionLabel(d.backward)}へ`;
+  el.kmzTrainDirABtn.classList.toggle("active",!spec.reverse);
+  el.kmzTrainDirBBtn.classList.toggle("active",!!spec.reverse);
+  el.kmzTrainDirVal.textContent=`${trainDirectionLabel(spec.reverse?d.backward:d.forward)}へ`;
+}
+function trainSetReverse(slot,reverse){
+  const spec=trainSpecOf(slot&&slot.train);
+  if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return false;}
+  slot.train={...spec,reverse:!!reverse};
+  if(!trainApplySlot(slot)){setKmzBuildingStatus("向きを変えられませんでした。","error");return false;}
+  renderKmzList();refreshKmzBuildingControls(false);
+  const d=trainHeadBearings(slot.train);
+  setKmzBuildingStatus(`🚃 ${slot.train.name} の進行方向を ${trainDirectionLabel(reverse?d.backward:d.forward)} へ向けました（前がヘッドライト・後ろが尾灯）。`,"ready");
+  drawPhoto._terrainRenderKey=null;update();
+  return true;
+}
 /* 中身を変えたあとに模型と名前を作り直す（向きの反転はこれを呼ぶ）。 */
 function trainApplySlot(slot){
   const spec=trainSpecOf(slot&&slot.train);
@@ -10393,6 +10439,7 @@ function trainBeginPlacement(spec){
   if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen)setMobileSettingsOpen(false);
   if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
   document.getElementById("mapPlaceText").textContent=`🚃 ${checked.name} どこに置きますか？ 線路の近くを地図でタップ`;
+  if(el.mapPlaceFlipBtn)el.mapPlaceFlipBtn.hidden=false;   /* 【v1176】進行方向を反対にするボタン */
   document.getElementById("mapPlaceOkBtn").disabled=true;
   if(fireworkPlaceNoteTimer){clearTimeout(fireworkPlaceNoteTimer);fireworkPlaceNoteTimer=0;}
   document.getElementById("mapPlaceBar").hidden=false;
@@ -10404,6 +10451,7 @@ function trainClearPreview(){
 }
 function trainEndPlacement(note){
   trainPlacing=null;trainSnapToken++;
+  if(el.mapPlaceFlipBtn)el.mapPlaceFlipBtn.hidden=true;   /* 【v1176】 */
   if(trainPlaceMarker&&osmMapInstance){try{osmMapInstance.removeLayer(trainPlaceMarker);}catch(e){}}
   trainPlaceMarker=null;
   trainClearPreview();
@@ -10444,9 +10492,13 @@ function trainUpdatePlaceText(){
   const where=`（${trainPlacing.lat.toFixed(5)}, ${trainPlacing.lon.toFixed(5)}）`;
   const head=`🚃 ${trainPlacing.spec.name}`;
   if(trainPlacing.busy){document.getElementById("mapPlaceText").textContent=`${head} 線路を探しています…`;return;}
+  /* 【v1176】進行方向を方位名で出す（先頭は地図の外形で橙）。「🔁 向き」で反対にできる。 */
+  const dirSpec=trainSpecOf({...trainPlacing.spec,path:trainPlacing.path,reverse:trainPlacing.reverse});
+  const dir=dirSpec?trainHeadBearings(dirSpec)[trainPlacing.reverse?"backward":"forward"]:null;
+  const dirText=dir===null?"":` 進行方向は ${trainDirectionLabel(dir)} へ（先頭は橙。🔁 向き で反対に）。`;
   document.getElementById("mapPlaceText").textContent=snap
-    ? `${head} 線路に合わせました（${Math.round(snap.movedM)}m 動かして、向き ${Math.round(snap.bearing)}°）。ここに置きますか？${where}`
-    : `${head} 近くに線路が見つかりません（${TRAIN_SNAP_LIMIT_M}m 以内）。このまま置くと真北を向きます。${where}`;
+    ? `${head} 線路に合わせました（${Math.round(snap.movedM)}m 動かして）。${dirText}ここに置きますか？${where}`
+    : `${head} 近くに線路が見つかりません（${TRAIN_SNAP_LIMIT_M}m 以内）。このまま置くと真北を向きます。${dirText}${where}`;
 }
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
 function trainMapClick(e){
@@ -10750,6 +10802,11 @@ document.getElementById("mapPlaceOkBtn").addEventListener("click",async()=>{
   setKmzBuildingStatus(`🎆 花火 ${go}号 を${replacingFw?"置き直しました":"置きました"}（${lat.toFixed(5)}, ${lon.toFixed(5)}、基部の標高 ${ground===null?"不明→0":ground.toFixed(1)} m）。`,"ready");
   drawPhoto._terrainRenderKey=null;update();
   fireworkEndPlacement(`🎆 ${go}号 を置きました（標高 ${ground===null?"不明→0":ground.toFixed(1)} m）`);
+});
+if(el.mapPlaceFlipBtn)el.mapPlaceFlipBtn.addEventListener("click",()=>{   /* 【v1176】置くときに進行方向を反対にする */
+  if(!trainPlacing)return;
+  trainPlacing.reverse=!trainPlacing.reverse;
+  trainDrawPreview();trainUpdatePlaceText();
 });
 document.getElementById("mapPlaceRotateLeftBtn").addEventListener("click",()=>launchSiteRotate(-5));   /* 【v1113】5°ずつ */
 document.getElementById("mapPlaceRotateRightBtn").addEventListener("click",()=>launchSiteRotate(5));
@@ -12135,6 +12192,7 @@ function syncFireworkSlotPanel(){
       ||objectSpecOf(site.object)!==null||fireworkGoOf(site.firework)!==null||trainSpecOf(site.train)!==null));
     /* 【v1138】向きの反転は列車のときだけ。 */
     if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.hidden=!(site&&trainSpecOf(site.train)!==null);
+    syncTrainDirectionRow(site);   /* 【v1176】 */
   }
   const panel=el.fireworkSlotPanel;if(!panel)return;
   const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
@@ -12313,12 +12371,11 @@ if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.addEventListener("click",()=>{
   const slot=kmzActiveSlot();
   const spec=trainSpecOf(slot&&slot.train);
   if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return;}
-  slot.train={...spec,reverse:!spec.reverse};
-  if(!trainApplySlot(slot)){setKmzBuildingStatus("向きを変えられませんでした。","error");return;}
-  renderKmzList();refreshKmzBuildingControls(false);
-  setKmzBuildingStatus(`🚃 ${slot.train.name} の向きを反転しました（いまは${slot.train.reverse?"逆向き":"もとの向き"}）。`,"ready");
-  drawPhoto._terrainRenderKey=null;update();
+  trainSetReverse(slot,!spec.reverse);
 });
+/* 【v1176】進行方向を方位名で指定する（A＝もとの向き・B＝反対）。 */
+if(el.kmzTrainDirABtn)el.kmzTrainDirABtn.addEventListener("click",()=>{const slot=kmzActiveSlot();if(slot)trainSetReverse(slot,false);});
+if(el.kmzTrainDirBBtn)el.kmzTrainDirBBtn.addEventListener("click",()=>{const slot=kmzActiveSlot();if(slot)trainSetReverse(slot,true);});
 document.getElementById("kmzAddLaunchSiteBtn").addEventListener("click",()=>{   /* 【v1111】 */
   document.getElementById("kmzAddChooser").hidden=true;
   setLaunchSiteStudioOpen(true,null);
@@ -27969,6 +28026,10 @@ try{
         bogie:(on)=>{if(typeof on==="boolean")trainBogieSmoothOn=on;return {有効:trainBogieSmoothOn,台車の半間隔m:TRAIN_BOGIE_HALF_M};},
         /* 【v1171】列車を地形(DEM)−0.3mより低くしないか。false で v1170 まで。 */
         floor:(on)=>{if(typeof on==="boolean")trainFloorOn=on;return {有効:trainFloorOn,下限m:TRAIN_FLOOR_BELOW_M};},
+        /* 【v1176】選んでいる列車の進行方向（方位）。reverse=true/false で向きを指定。 */
+        direction:(reverse)=>{const slot=kmzActiveSlot();const spec=trainSpecOf(slot&&slot.train);if(!spec)return null;
+          if(typeof reverse==="boolean")trainSetReverse(slot,reverse);const sp=trainSpecOf(slot.train),d=trainHeadBearings(sp);
+          return {reverse:sp.reverse,進行方向:trainDirectionLabel(sp.reverse?d.backward:d.forward),もとの向き:trainDirectionLabel(d.forward),反対:trainDirectionLabel(d.backward)};},
         profile:(on)=>{if(typeof on==="boolean")trainProfileOn=on;return {有効:trainProfileOn,直前:trainProfileInfo,最大勾配:TRAIN_MAX_GRADE};},
         /* 【v1155】長い案内線。走る距離ぶん伸ばす。 */
         guide:async(lat,lon,cars,reachM)=>{
