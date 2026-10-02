@@ -5036,6 +5036,9 @@
                   <p class="map-hint" id="trainRunHint" style="margin-top:4px;"></p>
                 </div>
                 <button id="trainPlaceBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>📍 地図で置く</span><span>›</span></button>
+                <!-- 【v1182】鉄道シミュレーションモード -->
+                <button id="railSimHojoBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>🚉 北条鉄道を時刻表どおりに走らせる（平日／土日祝）</span><span>›</span></button>
+                <p class="map-hint" id="railSimHint" style="margin-top:4px;">時刻表（令和7年3月改正）の全列車を、発車・到着の時刻どおりに走らせます。撮影日が平日なら平日ダイヤ、土・日・祝日なら土日祝ダイヤに自動で切り替わります。1両編成。上り・下りの2編成が、走る時間だけ現れます。</p>
               </div>
               <!-- 【v1120】まわりの建物 -->
               <button id="kmzAddTownBtn" type="button" class="toggle-btn"><span>🏙 まわりの建物を取り込む</span><span>›</span></button>
@@ -6884,7 +6887,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1181-train-timetable";
+const APP_VERSION="1183-rail-holiday";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8283,7 +8286,7 @@ const el={
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
-  kmzAddTrainBtn:$("kmzAddTrainBtn"), trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
+  kmzAddTrainBtn:$("kmzAddTrainBtn"), railSimHojoBtn:$("railSimHojoBtn"), railSimHint:$("railSimHint"),   /* 【v1182】 */ trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
   trainSizeHint:$("trainSizeHint"), trainPlaceBtn:$("trainPlaceBtn"), kmzTrainReverseBtn:$("kmzTrainReverseBtn"),
   kmzTrainDirRow:$("kmzTrainDirRow"), kmzTrainDirVal:$("kmzTrainDirVal"), kmzTrainDirABtn:$("kmzTrainDirABtn"), kmzTrainDirBBtn:$("kmzTrainDirBBtn"), mapPlaceFlipBtn:$("mapPlaceFlipBtn"),
   kmzTrainRunEditRow:$("kmzTrainRunEditRow"), kmzTrainRunEditOn:$("kmzTrainRunEditOn"), kmzTrainRunEditBody:$("kmzTrainRunEditBody"), kmzTrainRunEditTime:$("kmzTrainRunEditTime"), kmzTrainRunEditSpeed:$("kmzTrainRunEditSpeed"), kmzTrainRunNowBtn:$("kmzTrainRunNowBtn"),
@@ -9504,6 +9507,10 @@ function trainSpecOf(value){
   if(value.run&&typeof value.run==="object"){
     const atMin=savedNumber(value.run.atMin),speedKmh=savedNumber(value.run.speedKmh);
     if(atMin!==null&&speedKmh!==null&&speedKmh>0)run={atMin,speedKmh:clamp(speedKmh,1,300)};
+    /* 【v1182】鉄道シミュレーション：路線・方向・粟生からの駅の距離（8個）。 */
+    const sm=value.run.sim;
+    if(run&&sm&&(sm.dir==="down"||sm.dir==="up")&&Array.isArray(sm.dist)&&sm.dist.length===8&&sm.dist.every(v=>Number.isFinite(+v)))
+      run.sim={route:"hojo",dir:sm.dir,dist:sm.dist.map(Number)};
     /* 【v1181】時刻表モード：停車位置と到着・発車の時刻（分・小数）。 */
     const tb=value.run.table;
     if(run&&tb&&Array.isArray(tb.stops)){
@@ -9576,6 +9583,77 @@ function trainTableSummary(table){
   }
   return out;
 }
+/* 【v1182】**鉄道シミュレーションモード（北条鉄道）。** 時刻表PDF（令和7年3月15日改正・平日ダイヤ）から読み取った全列車。
+   駅の位置はOSM（静的ベクタータイルの駅の点）。時刻は各駅の「発車」（始発駅は発車・終着駅は到着）で、分単位。
+   中間駅は発車の 20秒前に着くものとして、そこで停車→発車の加減速をさせる。
+   down＝粟生→北条町、up＝北条町→粟生。数字は 0時からの分。 */
+const RAIL_SIM_HOJO={
+  name:"北条鉄道",
+  stations:[
+    {name:"粟生",lat:34.85725,lon:134.90949},{name:"網引",lat:34.86210,lon:134.87793},
+    {name:"田原",lat:34.86559,lon:134.86667},{name:"法華口",lat:34.87551,lon:134.85622},
+    {name:"播磨下里",lat:34.88648,lon:134.84015},{name:"長",lat:34.89659,lon:134.82558},
+    {name:"播磨横田",lat:34.91019,lon:134.82512},{name:"北条町",lat:34.92946,lon:134.83231}],
+  weekday:{"down":[[369,373,376,379,383,386,389,392],[400,404,407,410,414,417,420,423],[434,438,441,444,448,451,454,457],[466,470,473,476,480,483,486,489],[507,511,514,517,521,524,527,530],[532,536,539,542,546,549,552,555],[609,613,616,619,623,626,629,632],[669,673,676,679,683,686,689,692],[729,733,736,739,743,746,749,752],[789,793,796,799,803,806,809,812],[849,853,856,859,863,866,869,872],[909,913,916,919,923,926,929,932],[969,973,976,979,983,986,989,992],[1029,1033,1036,1039,1043,1046,1049,1052],[1095,1099,1102,1105,1109,1112,1115,1118],[1135,1139,1142,1145,1149,1152,1155,1158],[1161,1165,1168,1171,1175,1178,1181,1184],[1218,1222,1225,1228,1232,1235,1238,1241],[1275,1279,1282,1285,1289,1292,1295,1298],[1331,1335,1338,1341,1345,1348,1351,1354],[1394,1398,1401,1404,1408,1411,1414,1417]],"up":[[341,344,347,350,354,356,359,364],[367,370,373,376,380,382,385,390],[398,401,404,407,411,413,416,421],[432,435,438,441,445,447,450,455],[463,466,469,472,476,478,481,486],[504,507,510,513,517,519,522,527],[579,582,585,588,592,594,597,602],[639,642,645,648,652,654,657,662],[699,702,705,708,712,714,717,722],[759,762,765,768,772,774,777,782],[819,822,825,828,832,834,837,842],[879,882,885,888,892,894,897,902],[939,942,945,948,952,954,957,962],[999,1002,1005,1008,1012,1014,1017,1022],[1063,1066,1069,1072,1076,1078,1081,1086],[1093,1096,1099,1102,1106,1108,1111,1116],[1132,1135,1138,1141,1145,1147,1150,1155],[1190,1193,1196,1199,1203,1205,1208,1213],[1248,1251,1254,1257,1261,1263,1266,1271],[1303,1306,1309,1312,1316,1318,1321,1326],[1367,1370,1373,1376,1380,1382,1385,1390]]},
+  /* 【v1183】土曜・日曜・祝日（時刻表 jikokuhyou-donichi20250225.pdf・令和7年3月15日改正） */
+  holiday:{"down":[[368,372,375,378,382,385,388,391],[441,445,448,451,455,458,461,464],[526,530,533,536,540,543,546,549],[606,610,613,616,620,623,626,629],[669,673,676,679,683,686,689,692],[729,733,736,739,743,746,749,752],[789,793,796,799,803,806,809,812],[849,853,856,859,863,866,869,872],[909,913,916,919,923,926,929,932],[969,973,976,979,983,986,989,992],[1029,1033,1036,1039,1043,1046,1049,1052],[1095,1099,1102,1105,1109,1112,1115,1118],[1161,1165,1168,1171,1175,1178,1181,1184],[1222,1226,1229,1232,1236,1239,1242,1245],[1277,1281,1284,1287,1291,1294,1297,1300],[1331,1335,1338,1341,1345,1348,1351,1354],[1394,1398,1401,1404,1408,1411,1414,1417]],"up":[[339,342,345,348,352,354,357,362],[411,414,417,420,424,426,429,434],[468,471,474,477,481,483,486,491],[574,577,580,583,587,589,592,597],[639,642,645,648,652,654,657,662],[699,702,705,708,712,714,717,722],[759,762,765,768,772,774,777,782],[819,822,825,828,832,834,837,842],[879,882,885,888,892,894,897,902],[939,942,945,948,952,954,957,962],[999,1002,1005,1008,1012,1014,1017,1022],[1065,1068,1071,1074,1078,1080,1083,1088],[1130,1133,1136,1139,1143,1145,1148,1153],[1192,1195,1198,1201,1205,1207,1210,1215],[1249,1252,1255,1258,1262,1264,1267,1272],[1304,1307,1310,1313,1317,1319,1322,1327],[1367,1370,1373,1376,1380,1382,1385,1390]]}
+};
+const RAIL_SIM_DWELL_MIN=20/60,RAIL_SIM_SHOW_MARGIN_MIN=1;
+/* 時刻 tMin に、方向 dir の列車がどこにいるか。走っている列車が無ければ visible=false。
+   dist[i]＝置いた点（案内線の原点）から駅 i までの、粟生→北条町の向きの距離(m)（原点より粟生側は −）。下りは +dist、上りは −dist を進行方向の位置にする。 */
+/* 【v1183】日本の祝日（1980〜2099年の範囲で、国民の祝日に関する法律どおり）。
+   固定の日・ハッピーマンデー・春分/秋分・振替休日・国民の休日を含む。 */
+const _rsHolidayCache=new Map();
+function jpHolidaysOfYear(y){
+  if(_rsHolidayCache.has(y))return _rsHolidayCache.get(y);
+  const set=new Set(),key=(m,d)=>m*100+d;
+  const nthMon=(m,n)=>{const first=new Date(y,m-1,1).getDay();return 1+((8-first)%7)+(n-1)*7;};
+  const add=(m,d)=>set.add(key(m,d));
+  add(1,1);add(2,11);add(2,23);add(4,29);add(5,3);add(5,4);add(5,5);add(8,11);add(11,3);add(11,23);
+  add(1,nthMon(1,2));   /* 成人の日 */
+  add(7,nthMon(7,3));add(9,nthMon(9,3));add(10,nthMon(10,2));
+  const k=y-1980,spring=Math.floor(20.8431+.242194*k-Math.floor(k/4)),autumn=Math.floor(23.2488+.242194*k-Math.floor(k/4));
+  add(3,spring);add(9,autumn);
+  /* 振替休日：日曜が祝日なら、次の「祝日でない日」。 */
+  for(const kk of [...set].sort((a,b)=>a-b)){
+    const m=Math.floor(kk/100),d=kk%100;
+    if(new Date(y,m-1,d).getDay()===0){let dd=d+1;while(set.has(key(m,dd)))dd++;set.add(key(m,dd));}
+  }
+  /* 国民の休日：前日と翌日がどちらも祝日の平日（敬老の日と秋分の日のあいだ）。 */
+  for(let d=1;d<=30;d++){if(set.has(key(9,d-1))&&set.has(key(9,d+1))&&!set.has(key(9,d))&&new Date(y,8,d).getDay()!==0)set.add(key(9,d));}
+  _rsHolidayCache.set(y,set);return set;
+}
+/* いまの日付（撮影日）が、平日ダイヤか土日祝ダイヤか。 */
+function railSimDayType(dateText){
+  const t=String(dateText||(el.dateInput&&el.dateInput.value)||"");
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if(!m)return "weekday";
+  const y=+m[1],mo=+m[2],d=+m[3],dow=new Date(y,mo-1,d).getDay();
+  if(dow===0||dow===6)return "holiday";
+  return jpHolidaysOfYear(y).has(mo*100+d)?"holiday":"weekday";
+}
+function railSimState(sim,tMin){
+  const rows=RAIL_SIM_HOJO[railSimDayType()][sim.dir];
+  if(!rows||!Array.isArray(sim.dist)||sim.dist.length!==8)return {visible:false,s:0};
+  for(let ti=0;ti<rows.length;ti++){
+    const row=rows[ti];
+    if(tMin<row[0]-RAIL_SIM_SHOW_MARGIN_MIN||tMin>row[7]+RAIL_SIM_SHOW_MARGIN_MIN)continue;
+    const stops=row.map((t,i)=>{
+      const k=sim.dir==="down"?i:7-i,s=sim.dir==="down"?sim.dist[k]:-sim.dist[k];
+      return {s,dep:t,arr:(i===0||i===7)?t:t-RAIL_SIM_DWELL_MIN};
+    });
+    const st=trainTableState({stops,acc:TRAIN_TABLE_DEFAULT_ACC_KMHS/3.6,dec:TRAIN_TABLE_DEFAULT_DEC_KMHS/3.6},tMin);
+    return {visible:true,s:st.s,v:st.v,trip:ti,from:row[0],to:row[7]};
+  }
+  return {visible:false,s:0,v:0,trip:-1};
+}
+function railSimSyncSlot(slot){
+  const sim=slot&&slot.train&&slot.train.run&&slot.train.run.sim;
+  if(!sim)return;
+  const st=railSimState(sim,kmzTimelineMinutes());
+  if(slot.visible!==st.visible)slot.visible=st.visible;
+}
+function railSimTick(){for(const sl of kmzSlots)railSimSyncSlot(sl);}   /* 毎回の更新・再生のコマで、走っていない時間の列車を隠す */
 function trainSpecSummary(spec){
   const s=trainSpecOf(spec);
   if(!s)return "";
@@ -11073,7 +11151,8 @@ function trainSyncRun(slot){
   /* 【v1156】案内線が無い（線路が見つからなかった）ときは動かさない。
      動かすと真北へ直進してしまう。 */
   if(spec.path.length<2)return;
-  const offsetM=spec.run.table?trainTableState(spec.run.table,kmzTimelineMinutes()).s
+  const offsetM=spec.run.sim?railSimState(spec.run.sim,kmzTimelineMinutes()).s   /* 【v1182】 */
+    :spec.run.table?trainTableState(spec.run.table,kmzTimelineMinutes()).s
     :(kmzTimelineMinutes()-spec.run.atMin)*spec.run.speedKmh*1000/60;
   if(!Number.isFinite(offsetM))return;
   if(Number.isFinite(slot._runOffsetM)&&Math.abs(slot._runOffsetM-offsetM)<1)return;
@@ -12614,6 +12693,62 @@ document.getElementById("kmzAddObjectBtn").addEventListener("click",async()=>{
   });
   refresh();refreshRun();
 })();
+/* 【v1182】北条鉄道をセットする：粟生の駅から線路をたどって案内線を作り、各駅の位置を線路上の距離にして、
+   下り・上りの2編成を置く。再実行すると、前のシミュレーション列車を入れ替える。 */
+async function railSimSetupHojo(){
+  const line=RAIL_SIM_HOJO,ao=line.stations[3];   /* 法華口（路線の真ん中あたり）から前後へたどる。粟生は JR 加古川線との分岐で、そこから始めると加古川線へ入ってしまう（実測） */
+  const note=(t,kind)=>{if(el.railSimHint)el.railSimHint.textContent=t;setKmzBuildingStatus(t,kind||"ready");};
+  note("🚉 北条鉄道の線路をたどっています…（初回は地図の読み込みで数秒かかります）");
+  const snap0=await trainRailSnap(ao.lat,ao.lon,1,TRAIN_GUIDE_MAX_M);
+  if(!snap0){note("法華口駅の近くに線路が見つかりませんでした。","error");return null;}
+  const snap=await trainFillPathElevations(snap0);
+  const path=snap.path;
+  if(!Array.isArray(path)||path.length<2){note("線路をたどれませんでした。","error");return null;}
+  /* 各駅を、案内線の上へ垂直に落とした位置（線路上の距離）にする。 */
+  const mLat=111320,mLon=111320*Math.cos(snap.lat*D2R);
+  const cum=[0];for(let i=0;i+1<path.length;i++)cum.push(cum[i]+Math.hypot(path[i+1][0]-path[i][0],path[i+1][1]-path[i][1]));
+  const proj=(lat,lon)=>{
+    const px=(lon-snap.lon)*mLon,py=(lat-snap.lat)*mLat;let best=null;
+    for(let i=0;i+1<path.length;i++){
+      const ax=path[i][0],ay=path[i][1],dx=path[i+1][0]-ax,dy=path[i+1][1]-ay,l2=dx*dx+dy*dy;
+      if(!(l2>1e-6))continue;
+      const u=clamp(((px-ax)*dx+(py-ay)*dy)/l2,0,1),d=Math.hypot(ax+dx*u-px,ay+dy*u-py);
+      if(!best||d<best.d)best={d,along:cum[i]+Math.sqrt(l2)*u};
+    }
+    return best;
+  };
+  /* 置いた点（案内線の原点＝法華口の線路上の点）は、案内線の上で原点に最も近い所。 */
+  const origin=proj(snap.lat,snap.lon);
+  const ps=line.stations.map(st=>({st,...proj(st.lat,st.lon)}));
+  const far=ps.filter(p=>!p||p.d>150);
+  if(far.length){note(`線路から離れすぎている駅があります（${far.map(p=>p.st.name).join("・")}）。線路が途中で切れている可能性があります。`,"error");return null;}
+  const sign=ps[7].along>=ps[0].along?1:-1;
+  const dist=ps.map(p=>sign*(p.along-origin.along));
+  if(!dist.every((v,i)=>i===0||v>dist[i-1]+100)){note("駅の並びが線路上で正しい順になりませんでした。","error");return null;}
+  /* 古いシミュレーション列車を消す。 */
+  for(let i=kmzSlots.length-1;i>=0;i--){const t=kmzSlots[i].train;if(t&&t.run&&t.run.sim)kmzSlots.splice(i,1);}
+  const ground=await fireworkGroundElevation(snap.lat,snap.lon);
+  const deck=await trainBridgeDeckElevationM(snap.lat,snap.lon);
+  const onBridge=Number.isFinite(deck)&&(!Number.isFinite(ground)||deck>ground+.3);
+  const baseM=onBridge?deck:(ground===null?0:ground);
+  const make=(dir)=>{
+    /* 進行方向：下り＝粟生→北条町。案内線の正の向きが北条町側(sign=+1)なら、下りは反転なし。 */
+    const reverse=dir==="down"?(sign<0):(sign>0);
+    const slot=trainCreateSlot({name:`${line.name} ${dir==="down"?"下り":"上り"}`,cars:1,path,reverse,
+      run:{atMin:0,speedKmh:60,sim:{route:"hojo",dir,dist}}},snap.lat,snap.lon,baseM);
+    if(slot){slot.heading=0;slot.visible=false;}
+    return slot;
+  };
+  const down=make("down"),up=make("up");
+  renderKmzList();refreshKmzBuildingControls(false);
+  drawPhoto._terrainRenderKey=null;update();
+  const total=Math.round(dist[7]-dist[0]);
+  const dayType=railSimDayType(),dayRows=RAIL_SIM_HOJO[dayType];
+  note(`🚉 北条鉄道をセットしました：粟生〜北条町 ${(total/1000).toFixed(2)}km・8駅。いまの撮影日は${dayType==="holiday"?"土日祝":"平日"}ダイヤ（下り${dayRows.down.length}本／上り${dayRows.up.length}本）。`
+    +`タイムバーを動かすと、走っている時間だけ列車が現れます。`);
+  return {dist,sign,total,down:!!down,up:!!up};
+}
+if(el.railSimHojoBtn)el.railSimHojoBtn.addEventListener("click",()=>{railSimSetupHojo().catch(e=>{console.error(e);setKmzBuildingStatus("鉄道シミュレーションをセットできませんでした。","error");});});
 /* 【v1138】向きの反転。線形はそのままで、並べ直すだけ。 */
 if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.addEventListener("click",()=>{
   const slot=kmzActiveSlot();
@@ -21353,6 +21488,7 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
      さらに、尾の向きは「その時刻の太陽」と「古い彗星の位置」から
      求まってしまうため、動かないまま尾だけが回って見えていた。 */
   state.comets=visibleComets(jdPreview,state.lat,state.lon,sun);
+  railSimTick();   /* 【v1182】再生中のコマごとに、走っている列車だけ見せる */
   if(lockAzToGc){
     state.facingAz=newAz;
     el.facingAz.value=newAz;
@@ -28330,6 +28466,9 @@ try{
         /* 【v1179】線路の生データ（断片の端の位置）を見る。案内線が途切れる原因の診断用。 */
         ways:async(lat,lon,km)=>{const ws=await fetchStaticRailWays(+lat,+lon,+km||3);const mLa=111320,mLo=111320*Math.cos(+lat*D2R);
           return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
+        /* 【v1182】鉄道シミュレーション。setup()でセット、at(分)で全列車の位置。 */
+        railSim:{setup:()=>railSimSetupHojo(),data:()=>RAIL_SIM_HOJO,dayType:(date)=>railSimDayType(date),holidays:(y)=>[...jpHolidaysOfYear(+y)].sort((a,b)=>a-b),
+          at:(min)=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>({名:sl.train.name,...railSimState(sl.train.run.sim,+min),可視:sl.visible}))},
         /* 【v1181】時刻表モードの計算を確かめる。stops=[{s,arr,dep}](分・小数)。 */
         table:(stops,accKmhs,decKmhs)=>{const t={stops,acc:(accKmhs||2.5)/3.6,dec:(decKmhs||3.5)/3.6};
           return {区間:trainTableSummary(t),at:(min)=>trainTableState(t,min)};},
@@ -32787,6 +32926,7 @@ function kmzModelNearestKm(model,cfg,base){
   return Number.isFinite(best)?best/1000:NaN;
 }
 function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
+  railSimSyncSlot(slot);   /* 【v1182】時刻表どおり走っていない間は隠す */
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   /* 【v1120】町は観測地点を囲んでいるので、中心までの距離（＝0）で切ってはいけない。 */
@@ -43897,6 +44037,7 @@ function update(){
   el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション(透明な実inputと見た目のspan)を常に最新の日付と同期させる
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
+  railSimTick();   /* 【v1182】 */
   trainLockApply();   /* 【v1178】列車を中心に固定 */
   state=computeState();
   /* 【v888】水域レイ診断。診断したい方位（画面中央）をここで入れる。
