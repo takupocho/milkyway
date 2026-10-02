@@ -5890,6 +5890,7 @@
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
                 <button id="popupLockMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">月中心に固定</button>
+                <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を中心に固定</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
                 <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
@@ -6871,7 +6872,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1177-train-rerun";
+const APP_VERSION="1178-train-lock";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8332,7 +8333,7 @@ const el={
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
   shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaDownBtn:$("cloudSeaDownBtn"), cloudSeaUpBtn:$("cloudSeaUpBtn"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -10083,6 +10084,7 @@ let trainProfileInfo=null;
 /* 【v1171】勾配の上限を 3.5% → 8% に緩めた。橋の取り付けが低すぎたのを、鉄道橋の持ち上げ(bridgeDeckLift)で直したので、
    列車を急な勾配で縛る理由が薄れた。列車は線路のリボン（地形の面）に沿うほうが、リボンの上に載って見える。
    8% は崖のような所（DEM が 30〜99% で登る）だけを抑える値。 */
+const TRAIN_CAR_HEIGHT_FOR_AIM_M=2.2;   /* 【v1178】列車の真ん中の高さ（レールの上 約2m）を狙う */
 const TRAIN_MAX_GRADE=.08,TRAIN_PROFILE_STEP_M=10,TRAIN_PROFILE_TOL_M=.05;
 /* 橋1本ぶんの両端・反り。橋の描画(bridgeDeckProfile)と同じ式。必要な点を先に取ってから通す。 */
 async function trainBridgeProfileFor(way){
@@ -15238,12 +15240,46 @@ let playbackLastRenderTime=0;
 let lockAzToGc=false;
 let lockAzToSun=false;
 let lockAzToMoon=false;
+/* 【v1178】列車を中心に固定。選んでいる列車（無ければ最初の列車）の真ん中を、方位も仰角も追いかけて画面の中央に置く。 */
+let lockAzToTrain=false;
+function trainLockTarget(){
+  const isTrain=(sl)=>sl&&sl.train&&sl.visible!==false&&trainSpecOf(sl.train);
+  const a=kmzActiveSlot();
+  return isTrain(a)?a:(kmzSlots.find(isTrain)||null);
+}
+/* 列車の真ん中（全車両の平均）が、観測地点から見て何度・どの高さかを出す。 */
+function trainLockAim(){
+  const slot=trainLockTarget();
+  if(!slot||!state)return null;
+  const cfg=kmzSlotSettings(slot);   /* 走らせていれば、いまの時刻の位置へ作り直す */
+  const spec=trainSpecOf(slot.train);
+  const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
+  if(!lay.length||!Number.isFinite(cfg.lat))return null;
+  let x=0,y=0,z=0;for(const c of lay){x+=c.x;y+=c.y;z+=(c.z||0);}
+  x/=lay.length;y/=lay.length;z/=lay.length;
+  const lat=cfg.lat+y*(cfg.scale||1)/111320,lon=cfg.lon+x*(cfg.scale||1)/(111320*Math.cos(cfg.lat*D2R));
+  const base=terrainDistanceAndBearing(state.lat,state.lon,lat,lon);
+  const eye=observerEyeElevationM();
+  const dM=Math.max(1,base.distanceKm*1000);
+  const dz=(cfg.altitude+z+TRAIN_CAR_HEIGHT_FOR_AIM_M)-(Number.isFinite(eye)?eye:cfg.altitude);
+  return {az:base.bearing,alt:clamp(Math.atan2(dz,dM)*R2D,-30,85),distanceM:dM,slot};
+}
+/* update() の頭で呼ぶ。固定がONなら、画面の向きを列車に合わせてから描く。 */
+function trainLockApply(){
+  if(!lockAzToTrain)return;
+  const t=trainLockAim();
+  if(!t)return;
+  el.facingAz.value=Math.round(t.az*10)/10;
+  el.facingAlt.value=Math.round(t.alt*10)/10;
+}
 // 天の川中心・太陽中心・月中心の固定は同時には使えないため、共通の処理でON/OFFと排他制御をまとめる。
 function setAzLockTarget(target){
   // target: "gc" | "sun" | "moon" | null(すべてOFF)
   lockAzToGc = target==="gc";
   lockAzToSun = target==="sun";
   lockAzToMoon = target==="moon";
+  lockAzToTrain = target==="train";
+  if(lockAzToTrain&&!trainLockTarget()){lockAzToTrain=false;setKmzBuildingStatus("列車がありません。先に列車を置いてください。","error");}
   el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
   el.lockAzToGcState.textContent = lockAzToGc ? "ON" : "OFF";
   el.lockAzToSunBtn.classList.toggle("active",lockAzToSun);
@@ -15255,6 +15291,7 @@ function setAzLockTarget(target){
     if(lockAzToGc && state.gcAltAz && state.gcAltAz.alt>-90) az=state.gcAltAz.az;
     else if(lockAzToSun && state.sunAltAz){az=state.sunAltAz.az;alt=state.sunAltAz.alt;}
     else if(lockAzToMoon && state.moonAltAz){az=state.moonAltAz.az;alt=state.moonAltAz.alt;}
+    else if(lockAzToTrain){const t=trainLockAim();if(t){az=t.az;alt=t.alt;}}
     if(az!==null){
       el.facingAz.value=Math.round(norm360(az));
       /* 太陽・月の「中心固定」は方位だけでなく仰角も追う。
@@ -20749,6 +20786,7 @@ function syncDisplayPopupControls(){
   el.popupLockGcBtn.classList.toggle("active",lockAzToGc);
   el.popupLockSunBtn.classList.toggle("active",lockAzToSun);
   el.popupLockMoonBtn.classList.toggle("active",lockAzToMoon);
+  el.popupLockTrainBtn.classList.toggle("active",lockAzToTrain);   /* 【v1178】 */
   el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
@@ -21017,6 +21055,7 @@ el.popupHorizonLineBtn.addEventListener("click",()=>el.showHorizonLineBtn.click(
 el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
 el.popupLockSunBtn.addEventListener("click",()=>el.lockAzToSunBtn.click());
 el.popupLockMoonBtn.addEventListener("click",()=>el.lockAzToMoonBtn.click());
+el.popupLockTrainBtn.addEventListener("click",()=>setAzLockTarget(lockAzToTrain?null:"train"));   /* 【v1178】 */
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
 el.popupTrailTaperBtn.addEventListener("click",()=>el.starTrailTaperBtn.click());
 el.popupSouth50Btn.addEventListener("click",()=>{
@@ -21144,6 +21183,14 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     el.facingAlt.value=sunAlt;
     el.azVal.textContent=`${Math.round(sunAz)}°`;
     el.altValLabel.textContent=`${formatAimDeg(sunAlt)}°`;
+  }else if(lockAzToTrain){
+    const t=trainLockAim();
+    if(t){
+      state.facingAz=t.az;state.facingAlt=t.alt;
+      el.facingAz.value=t.az;el.facingAlt.value=t.alt;
+      el.azVal.textContent=`${Math.round(t.az)}°`;
+      el.altValLabel.textContent=`${formatAimDeg(t.alt)}°`;
+    }
   }else if(lockAzToMoon){
     const moonAz=norm360(state.moonAltAz.az);
     const moonAlt=clamp(state.moonAltAz.alt,-30,85);
@@ -23077,6 +23124,7 @@ function collectPersistedSettings(){
     lockAzToGc:lockAzToGc,
     lockAzToSun:lockAzToSun,
     lockAzToMoon:lockAzToMoon,
+    lockAzToTrain:lockAzToTrain,   // 【v1178】
     starTrailMode:starTrailMode,
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
@@ -23621,6 +23669,7 @@ async function applyPersistedSettingsText(stored){
     lockAzToGc=!!s.lockAzToGc;
     lockAzToSun=!!(s.lockAzToSun&&!lockAzToGc); // 万一両方保存されていても、天の川固定を優先し同時ONにはしない
     lockAzToMoon=!!(s.lockAzToMoon&&!lockAzToGc&&!lockAzToSun); // 3つのうち1つだけがONになるようにする
+    lockAzToTrain=!!(s.lockAzToTrain&&!lockAzToGc&&!lockAzToSun&&!lockAzToMoon);   // 【v1178】
     starTrailMode=!!s.starTrailMode;
     starTrailTaper=!!s.starTrailTaper;
     starTrailGrowProgress=starTrailMode?1:0;
@@ -43659,6 +43708,7 @@ function update(){
   el.mobileDateInputVisible.value = el.dateInput.value; // スマホの日付ナビゲーション(透明な実inputと見た目のspan)を常に最新の日付と同期させる
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
+  trainLockApply();   /* 【v1178】列車を中心に固定 */
   state=computeState();
   /* 【v888】水域レイ診断。診断したい方位（画面中央）をここで入れる。
 
