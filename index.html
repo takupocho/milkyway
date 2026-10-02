@@ -5910,6 +5910,8 @@
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
                 <button id="popupLockMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">月中心に固定</button>
                 <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を中心に固定</button>
+                <button id="popupChaseTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を追跡</button>
+                <button id="popupLiveBtn" type="button" class="constellation-toggle-btn display-control-btn">LIVE</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
                 <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
@@ -6891,7 +6893,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1185-rail-vehicles";
+const APP_VERSION="1186-train-chase";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8353,7 +8355,7 @@ const el={
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
   shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaDownBtn:$("cloudSeaDownBtn"), cloudSeaUpBtn:$("cloudSeaUpBtn"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupChaseTrainBtn:$("popupChaseTrainBtn"), popupLiveBtn:$("popupLiveBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -15710,6 +15712,106 @@ function trainLockTarget(){
   const a=kmzActiveSlot();
   return isTrain(a)?a:(kmzSlots.find(isTrain)||null);
 }
+/* 【v1186】**列車を追跡**（後ろから追うカメラ）。ボタンを押すたびに 1台目 → 2台目 → …… → 終了。
+   観測地点（カメラ）を、列車の進む向きの**後ろ TRAIN_CHASE_BACK_M** に置き、レールの **TRAIN_CHASE_HEIGHT_M 上**から
+   列車の方を向く。毎回の更新で列車の位置に合わせ直すので、再生中も、時刻を動かしても追いかける。
+   始める前の観測地点・高さ・向きは覚えておき、終わったら戻す。 */
+const TRAIN_CHASE_BACK_M=38,TRAIN_CHASE_HEIGHT_M=15;
+let trainChaseIndex=-1,trainChaseSaved=null;
+function trainChaseSlots(){
+  return kmzSlots.filter(sl=>sl&&sl.train&&sl.visible!==false&&trainSpecOf(sl.train)).sort((a,b)=>a.id-b.id);
+}
+function trainChaseLabel(){
+  return trainChaseIndex<0?"列車を追跡":`列車を追跡：${trainChaseIndex+1}台目`;
+}
+function trainChaseSet(index){
+  const list=trainChaseSlots();
+  if(index>=0&&index<list.length){
+    if(trainChaseIndex<0){   /* 始めるとき、元の視点を覚える */
+      trainChaseSaved={lat:el.lat.value,lon:el.lon.value,tz:el.tz.value,rise:cameraRiseM,az:el.facingAz.value,alt:el.facingAlt.value,hold:droneHoldElevation};
+    }
+    trainChaseIndex=index;
+  }else{
+    if(trainChaseIndex>=0&&trainChaseSaved){
+      el.lat.value=trainChaseSaved.lat;el.lon.value=trainChaseSaved.lon;el.tz.value=trainChaseSaved.tz;
+      el.facingAz.value=trainChaseSaved.az;el.facingAlt.value=trainChaseSaved.alt;
+      cameraRiseM=trainChaseSaved.rise;droneHoldElevation=trainChaseSaved.hold;
+      syncTripodHeightControl();
+      drawPhoto._terrainRenderKey=null;
+    }
+    trainChaseIndex=-1;trainChaseSaved=null;
+  }
+  syncDisplayPopupControls();
+  update();
+}
+/* 追跡ボタン：1回目＝1台目、2回目＝2台目、……、最後の次＝終了。列車が無ければ知らせる。 */
+function trainChaseCycle(){
+  const n=trainChaseSlots().length;
+  if(!n){setKmzBuildingStatus("追跡する列車がありません。先に列車を置くか、鉄道シミュレーションをセットしてください。","error");showSkySearchPopup("列車がありません");return;}
+  trainChaseSet(trainChaseIndex+1<n?trainChaseIndex+1:-1);
+}
+/* update() の頭で呼ぶ。追跡中なら、観測地点と向きを列車の後ろへ置き直す。 */
+function trainChaseApply(){
+  if(trainChaseIndex<0)return;
+  const list=trainChaseSlots(),slot=list[trainChaseIndex];
+  if(!slot){trainChaseSet(-1);return;}
+  const cfg=kmzSlotSettings(slot),spec=trainSpecOf(slot.train);
+  if(!spec||!Number.isFinite(cfg.lat))return;
+  const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
+  if(!lay.length)return;
+  const bearing=lay[lay.length-1].bearing;   /* 先頭車が向いている方位＝進行方向 */
+  const os=slot.model&&slot.model.originShift;
+  let z=cfg.altitude;
+  if(!os){let sz=0;for(const c of lay)sz+=(c.z||0);z+=sz/lay.length;}
+  const back=kmzDestinationPoint(cfg.lat,cfg.lon,norm360(bearing+180),TRAIN_CHASE_BACK_M/1000);
+  el.lat.value=back.lat.toFixed(6);el.lon.value=back.lon.toFixed(6);
+  if(el.citySelect)el.citySelect.value=0;
+  /* 高さ：レールの上 TRAIN_CHASE_HEIGHT_M に目が来るよう、ドローンの上昇量で合わせる（地面の標高は直前の位置のもの）。 */
+  const ground=groundElevationM();
+  if(ground!==null){
+    const rise=clamp(z+TRAIN_CHASE_HEIGHT_M-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
+    if(Math.abs(rise-cameraRiseM)>.05){cameraRiseM=rise;droneHoldElevation=null;syncTripodHeightControl();drawPhoto._terrainRenderKey=null;}
+  }
+  /* 向き：進行方向へ、列車の中ほどを見下ろす角度。 */
+  el.facingAz.value=Math.round(norm360(bearing)*10)/10;
+  el.facingAlt.value=Math.round(clamp(-Math.atan2(TRAIN_CHASE_HEIGHT_M-2,TRAIN_CHASE_BACK_M)*R2D,-30,85)*10)/10;
+}
+/* 【v1186】**LIVE**：現在時刻で、再生ボタンを押さなくてもリアルタイムに進める（実時間＝1倍速の再生）。
+   時刻バーを触る・再生を止めると終わる。地図を開いていても、列車の位置が毎秒動く。 */
+let liveOn=false,liveTimer=0,liveInternalStop=false,livePrevSpeed=null;
+function liveNowMinutes(){const n=new Date();return n.getHours()*60+n.getMinutes()+n.getSeconds()/60+n.getMilliseconds()/60000;}
+function liveDateText(){const n=new Date();return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}-${String(n.getDate()).padStart(2,"0")}`;}
+function setLive(on){
+  on=!!on;
+  if(on===liveOn)return;
+  if(on){
+    if(playbackTimer){liveInternalStop=true;stopPlayback(true);liveInternalStop=false;}
+    liveOn=true;livePrevSpeed=el.animationSpeedSelect.value;
+    el.dateInput.value=liveDateText();
+    el.tz.value=-(new Date().getTimezoneOffset()/60);
+    el.timeSlider.step=(1/60).toFixed(6);
+    el.timeSlider.value=liveNowMinutes();
+    update();
+    el.animationSpeedSelect.value="1";   /* 実時間 */
+    startPlayback();
+    playbackVisualMinutes=liveNowMinutes();
+    liveTimer=setInterval(liveTick,1000);
+  }else{
+    liveOn=false;clearInterval(liveTimer);liveTimer=0;
+    if(livePrevSpeed!==null)el.animationSpeedSelect.value=livePrevSpeed;
+    if(playbackTimer){liveInternalStop=true;stopPlayback(true);liveInternalStop=false;}
+  }
+  syncDisplayPopupControls();
+}
+/* 毎秒：実際の時刻とずれていれば合わせ直す（裏に回っていた間のずれ・日付の切り替わり）。地図を開いていれば列車の位置も更新。 */
+function liveTick(){
+  if(!liveOn)return;
+  const day=liveDateText();
+  if(el.dateInput.value!==day){el.dateInput.value=day;playbackVisualMinutes=liveNowMinutes();update();}
+  const n=liveNowMinutes();
+  if(playbackTimer&&Math.abs(playbackVisualMinutes-n)>.03)playbackVisualMinutes=n;
+  if(osmMapScreenOpen&&typeof updateOsmKmzMarkers==="function")updateOsmKmzMarkers();
+}
 /* 列車の真ん中（全車両の平均）が、観測地点から見て何度・どの高さかを出す。 */
 function trainLockAim(){
   const slot=trainLockTarget();
@@ -21250,6 +21352,9 @@ function syncDisplayPopupControls(){
   el.popupLockSunBtn.classList.toggle("active",lockAzToSun);
   el.popupLockMoonBtn.classList.toggle("active",lockAzToMoon);
   el.popupLockTrainBtn.classList.toggle("active",lockAzToTrain);   /* 【v1178】 */
+  el.popupChaseTrainBtn.classList.toggle("active",trainChaseIndex>=0);   /* 【v1186】 */
+  if(el.popupChaseTrainBtn.textContent!==trainChaseLabel())el.popupChaseTrainBtn.textContent=trainChaseLabel();
+  el.popupLiveBtn.classList.toggle("active",liveOn);
   el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
   el.popupTrailTaperBtn.classList.toggle("active",starTrailTaper);
 }
@@ -21519,6 +21624,8 @@ el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
 el.popupLockSunBtn.addEventListener("click",()=>el.lockAzToSunBtn.click());
 el.popupLockMoonBtn.addEventListener("click",()=>el.lockAzToMoonBtn.click());
 el.popupLockTrainBtn.addEventListener("click",()=>setAzLockTarget(lockAzToTrain?null:"train"));   /* 【v1178】 */
+el.popupChaseTrainBtn.addEventListener("click",trainChaseCycle);   /* 【v1186】 */
+el.popupLiveBtn.addEventListener("click",()=>setLive(!liveOn));
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
 el.popupTrailTaperBtn.addEventListener("click",()=>el.starTrailTaperBtn.click());
 el.popupSouth50Btn.addEventListener("click",()=>{
@@ -21761,7 +21868,7 @@ function playbackTick(now){
   /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
      必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
      再生中に周期的な負荷の山ができるため、その1回を省く。 */
-  const playbackUiUpdateDue=now-playbackLastUiTime>=250 || finished;
+  const playbackUiUpdateDue=now-playbackLastUiTime>=250 || finished || trainChaseIndex>=0;   /* 【v1186】追跡中は毎コマ */
   if(!playbackUiUpdateDue&&now-playbackLastRenderTime>=targetFrameMs-1){
     playbackLastRenderTime=now;
     const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
@@ -21796,6 +21903,7 @@ function playbackTick(now){
   requestAnimationFrame(playbackTick);
 }
 function stopPlayback(commit=true){
+  if(liveOn&&!liveInternalStop){liveOn=false;clearInterval(liveTimer);liveTimer=0;if(livePrevSpeed!==null)el.animationSpeedSelect.value=livePrevSpeed;syncDisplayPopupControls();}   /* 【v1186】 */
   playbackTimer=null;
   el.playPauseBtn.textContent="▶";
   el.playPauseBtn.setAttribute("aria-label","再生");
@@ -28612,6 +28720,9 @@ try{
         ways:async(lat,lon,km)=>{const ws=await fetchStaticRailWays(+lat,+lon,+km||3);const mLa=111320,mLo=111320*Math.cos(+lat*D2R);
           return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
         /* 【v1182】鉄道シミュレーション。setup()でセット、at(分)で全列車の位置。 */
+        /* 【v1186】追跡・LIVE。chase(番号) で追跡（-1で終了）、live(true/false) で切り替え。 */
+        chase:(i)=>{if(typeof i==="number")trainChaseSet(i);return {index:trainChaseIndex,台数:trainChaseSlots().length,label:trainChaseLabel()};},
+        live:(on)=>{if(typeof on==="boolean")setLive(on);return {on:liveOn,speed:el.animationSpeedSelect.value,playing:!!playbackTimer,minutes:+playbackVisualMinutes.toFixed(3)};},
         railSim:{pos:()=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>{const c=kmzSlotSettings(sl);return {名:sl.train.name,lat:c.lat,lon:c.lon,alt:c.altitude,可視:sl.visible};}),
           setup:()=>railSimSetupHojo(),data:()=>RAIL_SIM_HOJO,dayType:(date)=>railSimDayType(date),holidays:(y)=>[...jpHolidaysOfYear(+y)].sort((a,b)=>a-b),
           at:(min)=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>({名:sl.train.name,...railSimState(sl.train.run.sim,+min),可視:sl.visible})),
@@ -44186,6 +44297,7 @@ function update(){
   applyCanvasSize();
   railSimTick();   /* 【v1182】 */
   trainLockApply();   /* 【v1178】列車を中心に固定 */
+  trainChaseApply();   /* 【v1186】列車を追跡（観測地点ごと列車の後ろへ） */
   state=computeState();
   /* 【v888】水域レイ診断。診断したい方位（画面中央）をここで入れる。
 
