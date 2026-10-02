@@ -5059,6 +5059,9 @@
             <!-- 【v931】シルエットの濃さ。0%＝今までどおり、100%＝真っ黒。 -->
             <div class="field" style="margin-top:6px;"><label class="top">シルエットの濃さ <span class="val mono" id="kmzSilhouetteDarknessVal">0%</span></label><input type="range" id="kmzSilhouetteDarkness" min="0" max="100" step="1" value="0"></div>
             <p class="map-hint" style="margin-top:4px;">0%はこれまでと同じ濃さ（昼は少し明るい灰、夜はほぼ黒）。上げるほど暗くなり、100%で真っ黒になります。</p>
+            <!-- 【v1173】夜の明るさ。色付きで描く模型（列車・建物）の夜の見え方。0%＝今までどおり（ほぼ真っ黒）。 -->
+            <div class="field" style="margin-top:6px;"><label class="top">夜の明るさ <span class="val mono" id="kmzNightBrightnessVal">50%</span></label><input type="range" id="kmzNightBrightness" min="0" max="100" step="1" value="50"></div>
+            <p class="map-hint" style="margin-top:4px;">夜の模型（色付きで描くとき）の明るさ。0%はこれまでと同じ（夜はほぼ真っ黒）、上げるほど夜でも元の色が見えます。昼の見え方は変わりません。シルエットと自ら光るものには効きません。</p>
             <button id="kmzBuildingGlowBtn" type="button" class="toggle-btn" style="margin-top:8px;"><span>✨ 自ら光る（花火・イルミ）</span><span id="kmzBuildingGlowState" class="mono" style="color:var(--dim-2);font-size:11px;">OFF</span></button>
             <!-- 【v903】面の前後の決め方を切り替える。同じ画角で見比べるためのスイッチ。 -->
             <button id="kmzBuildingDepthBtn" type="button" class="toggle-btn active" style="margin-top:8px;"><span>🧊 面の前後を1画素ごとに決める</span><span id="kmzBuildingDepthState" class="mono" style="color:var(--dim-2);font-size:11px;">ON</span></button>
@@ -6850,7 +6853,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1172-bridge-keep";
+const APP_VERSION="1173-night-bright";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8245,6 +8248,7 @@ const el={
   kmzBuildingVisibleBtn:$("kmzBuildingVisibleBtn"), kmzBuildingVisibleState:$("kmzBuildingVisibleState"),
   kmzBuildingSilhouetteBtn:$("kmzBuildingSilhouetteBtn"), kmzBuildingSilhouetteState:$("kmzBuildingSilhouetteState"),
   kmzSilhouetteDarkness:$("kmzSilhouetteDarkness"), kmzSilhouetteDarknessVal:$("kmzSilhouetteDarknessVal"),
+  kmzNightBrightness:$("kmzNightBrightness"), kmzNightBrightnessVal:$("kmzNightBrightnessVal"),   /* 【v1173】 */
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
@@ -10767,6 +10771,9 @@ let kmzBuildingSilhouette=false;
 /* 【v931】シルエットの濃さ。0＝今までどおり、100＝真っ黒。
    模型ごとではなく**描き方**なので、面の前後の決め方と同じく全体で1つ持つ。 */
 let kmzSilhouetteDarkness=0;
+/* 【v1173】夜の明るさ(%)。色付きで描く模型の夜の色を、真っ黒から元の色（青寄りに沈めた色）へ寄せる。
+   0＝今までどおり。模型ごとではなく**描き方**なので全体で1つ（シルエットの濃さと同じ）。 */
+let kmzNightBrightness=50;
 /* 【v903】面の前後を1画素ごとに決めるか。
    模型ごとではなく**描き方そのもの**なので全体で1つ。
    OFFにすると v902 までとまったく同じ描き方（重心の距離で並べ替え）に戻る。 */
@@ -11055,6 +11062,11 @@ function refreshKmzBuildingControls(redraw=true){
     kmzSilhouetteDarkness=clamp(Math.round(+el.kmzSilhouetteDarkness.value||0),0,100);
     el.kmzSilhouetteDarknessVal.textContent=`${kmzSilhouetteDarkness}%`;
     el.kmzSilhouetteDarkness.parentElement.style.opacity=kmzBuildingSilhouette?"1":".45";
+  }
+  if(el.kmzNightBrightness){   /* 【v1173】 */
+    kmzNightBrightness=clamp(Math.round(+el.kmzNightBrightness.value||0),0,100);
+    el.kmzNightBrightnessVal.textContent=`${kmzNightBrightness}%`;
+    el.kmzNightBrightness.parentElement.style.opacity=(kmzBuildingSilhouette||kmzBuildingGlow)?".45":"1";
   }
   el.kmzBuildingGlowBtn.classList.toggle("active",kmzBuildingGlow);el.kmzBuildingGlowState.textContent=kmzBuildingGlow?"ON":"OFF";
   if(el.kmzBuildingDepthBtn){el.kmzBuildingDepthBtn.classList.toggle("active",kmzDepthBuffer);el.kmzBuildingDepthState.textContent=kmzDepthBuffer?"ON":"OFF";}
@@ -12352,6 +12364,7 @@ ${kmzFailureHint(file,sniffedBuffer)}`,"error");
 el.kmzBuildingVisibleBtn.addEventListener("click",()=>{kmzBuildingVisible=!kmzBuildingVisible;refreshKmzBuildingControls();});
 el.kmzBuildingSilhouetteBtn.addEventListener("click",()=>{kmzBuildingSilhouette=!kmzBuildingSilhouette;refreshKmzBuildingControls();});
 if(el.kmzSilhouetteDarkness)el.kmzSilhouetteDarkness.addEventListener("input",()=>{refreshKmzBuildingControls();scheduleSaveSettings();});
+if(el.kmzNightBrightness)el.kmzNightBrightness.addEventListener("input",()=>{refreshKmzBuildingControls();scheduleSaveSettings();});   /* 【v1173】 */
 el.kmzBuildingGlowBtn.addEventListener("click",()=>{kmzBuildingGlow=!kmzBuildingGlow;refreshKmzBuildingControls();});
 el.kmzBuildingDepthBtn.addEventListener("click",()=>{kmzDepthBuffer=!kmzDepthBuffer;refreshKmzBuildingControls();});
 /* 【v1130】 */
@@ -22865,6 +22878,7 @@ function collectPersistedSettings(){
     belowHorizonOpacity:el.belowHorizonOpacitySlider.value,
     photoToneOn:photoToneOn,
     kmzSilhouetteDarkness:kmzSilhouetteDarkness,   // 【v931】
+    kmzNightBrightness:kmzNightBrightness,   // 【v1173】
     overlayStyleRevision:OVERLAY_STYLE_REVISION,   // 【v961】
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
@@ -23325,6 +23339,10 @@ async function applyPersistedSettingsText(stored){
     if(Number.isFinite(+s.kmzSilhouetteDarkness)&&el.kmzSilhouetteDarkness){   // 【v931】
       el.kmzSilhouetteDarkness.value=clamp(Math.round(+s.kmzSilhouetteDarkness),0,100);
       kmzSilhouetteDarkness=+el.kmzSilhouetteDarkness.value;
+    }
+    if(Number.isFinite(+s.kmzNightBrightness)&&el.kmzNightBrightness){   // 【v1173】
+      el.kmzNightBrightness.value=clamp(Math.round(+s.kmzNightBrightness),0,100);
+      kmzNightBrightness=+el.kmzNightBrightness.value;
     }
     /* 【v961】道路・線路・橋の色。既定値を焼き直したら版番号を上げる。 */
     if(s.overlayStyle&&typeof s.overlayStyle==="object"&&s.overlayStyleRevision===OVERLAY_STYLE_REVISION){
@@ -32580,7 +32598,12 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
       if(!hit){
         const k=0.35+0.65*(step/15);   // 環境光0.35＋太陽ぶん
         const lit=color.map(c=>c*k);
-        hit=lit.map((c,i)=>Math.round(lerp(rgb[i],c,daylight)));
+        /* 【v1173】**夜の明るさ。** これまでは夜（daylight=0）に面の色が rgb(4,5,8)＝ほぼ黒へ寄り、
+           元の色がほとんど残らなかった（列車が夜に真っ黒）。夜の色を「元の色を夜の空気に合わせて青寄りに沈めた色」へ、
+           kmzNightBrightness(%) の分だけ寄せる。0% なら従来と同じ式。昼(daylight=1)は元の色のままで変わらない。 */
+        const nb=kmzNightBrightness/100;
+        const nightBase=nb>0?rgb.map((v,i)=>lerp(v,lit[i]*[.60,.66,.85][i],nb)):rgb;
+        hit=lit.map((c,i)=>Math.round(lerp(nightBase[i],c,daylight)));
         rgbCache.set(key,hit);
       }
       return hit;
