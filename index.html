@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1165-bridge-opaque";
+const APP_VERSION="1166-deck-dem";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9693,6 +9693,121 @@ async function trainRailSnap(lat,lon,carCount,reachM){
           movedM:best.d,bearing:norm360(best.bearing),path,points:path.length,
           lengthM:Math.round(pathLength)};
 }
+/* 【v1166】**橋面の高さを、視点に依存しない地形(DEM)から決める。橋と列車は同じ関数を通る。**
+
+   利用者報告：列車が、視点を動かすと橋に対してズレて見える（上空22m→地面→左右へ移動）。
+   測った結果、3D→画面の射影は橋と列車で 0.6画素以内に一致していた（ここは正しい）。
+   食い違っていたのは**橋の高さ**。橋の両端は「いま描いている地形の面」(drawnElevationAtXY)から読んでいて、
+   これは方位の刻みや視点で変わる。同じ橋でも、視点を変えると両端が最大 ±0.3m 動いた
+   （加古川の橋・列車は DEM から1回だけ決めるので動かない）。
+     上空22m  南端 −0.01 北端 −0.14 ／ 地面 +0.03 −0.01 ／ 西へ移動 +0.29 −0.33（列車との差 m）
+   直し：両端・中央の標高を**DEM(z14)から**読む。橋の描画と列車の置き場で、この関数を共有する。
+   純粋な計算にして、標高を読む手段(sample.ground)と水の判定(sample.overWater)を引数にした
+   （描画は同期で読める。列車は先にタイルを取ってから同じ計算を通す）。
+   DEMが読めないとき（タイル未取得）は null を返し、呼ぶ側は従来の式へ戻る。
+   式そのものは v1047・v777・v782 のまま：端の外側を採る条件・15%勾配・最低クリアランス・反り。 */
+let bridgeDeckDemOn=true;
+let bridgeDeckLog={};
+/* 【v1166】DEM の式を使う範囲。観測地から近い橋（400m以内）と、**列車が載っている橋**（距離によらない）。
+   遠い橋は従来の式のまま：地形の粗い光線(rayBaseElevationAt)で描く道路のリボンと端が揃うため
+   （全部DEMにすると、遠方の道路橋で従来との差が最大36mになり、道路と橋の端が食い違った）。 */
+const BRIDGE_DECK_DEM_RANGE_M=400;
+function bridgeCarriesTrain(way){
+  const pts=way&&way.points;
+  if(!Array.isArray(pts)||pts.length<2||!Array.isArray(kmzSlots))return false;
+  for(const slot of kmzSlots){
+    if(!slot||!slot.train||!Number.isFinite(slot.lat)||!Number.isFinite(slot.lon))continue;
+    const mLon=111320*Math.cos(slot.lat*D2R);
+    for(let i=0;i+1<pts.length;i++){
+      const ax=(pts[i][1]-slot.lon)*mLon,ay=(pts[i][0]-slot.lat)*111320,bx=(pts[i+1][1]-slot.lon)*mLon,by=(pts[i+1][0]-slot.lat)*111320;
+      const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+      const u=l2>1e-9?clamp(-(ax*dx+ay*dy)/l2,0,1):0;
+      if(Math.hypot(ax+dx*u,ay+dy*u)<=12)return true;
+    }
+  }
+  return false;
+}
+function bridgeDeckProfile(way,sample){
+  const pts=way&&way.points;
+  if(!Array.isArray(pts)||pts.length<2)return null;
+  const lat0=pts[0][0],lon0=pts[0][1],mLat=111320,mLon=111320*Math.cos(lat0*D2R);
+  const xy=pts.map(p=>({east:(p[1]-lon0)*mLon,north:(p[0]-lat0)*mLat}));
+  const lens=[];let total=0;
+  for(let i=0;i+1<xy.length;i++){const l=Math.hypot(xy[i+1].east-xy[i].east,xy[i+1].north-xy[i].north);lens.push(l);total+=l;}
+  if(total<1)return null;
+  const fl=Math.max(.01,lens[0]),ll=Math.max(.01,lens[lens.length-1]),n=xy.length;
+  const firstDir={east:(xy[1].east-xy[0].east)/fl,north:(xy[1].north-xy[0].north)/fl};
+  const lastDir={east:(xy[n-1].east-xy[n-2].east)/ll,north:(xy[n-1].north-xy[n-2].north)/ll};
+  const probeM=clamp((way.widthM||5)*1.5,8,20);
+  const ll2=(e,nn)=>[lat0+nn/mLat,lon0+e/mLon];
+  const g=(e,nn)=>{const p=ll2(e,nn);return sample.ground(p[0],p[1]);};
+  const endpoint=(pt,dir,side)=>{
+    const direct=g(pt.east,pt.north);
+    const outside=g(pt.east+dir.east*probeM*side,pt.north+dir.north*probeM*side);
+    if(Number.isFinite(direct)&&Number.isFinite(outside)){
+      const inside=g(pt.east-dir.east*probeM*side,pt.north-dir.north*probeM*side);
+      const p=ll2(pt.east,pt.north);
+      const overWater=sample.overWater(p[0],p[1]);
+      const valley=outside-direct>=1.5&&(!Number.isFinite(inside)||direct-inside<.5);
+      return (overWater||valley)?Math.max(direct,outside):direct;
+    }
+    return Number.isFinite(direct)?direct:(Number.isFinite(outside)?outside:NaN);
+  };
+  let start=endpoint(xy[0],firstDir,-1),end=endpoint(xy[n-1],lastDir,1);
+  if(!Number.isFinite(start)&&Number.isFinite(end))start=end;
+  if(!Number.isFinite(end)&&Number.isFinite(start))end=start;
+  if(!Number.isFinite(start)||!Number.isFinite(end))return null;
+  const maxDelta=Math.max(1,total*.15),delta=end-start;
+  if(Math.abs(delta)>maxDelta){const m=(start+end)/2;start=m-Math.sign(delta)*maxDelta/2;end=m+Math.sign(delta)*maxDelta/2;}
+  const mid=xy[Math.floor(n/2)],middleGround=g(mid.east,mid.north);
+  const lineMiddle=(start+end)/2;
+  const defaultClearance=clamp((way.kind==="rail"?3:2.5)+total*.01,2.8,6.5);
+  const layerClearance=way.layer>1?Math.min(8,3.5*(way.layer-1)):0;
+  const requested=Math.max(defaultClearance,layerClearance);
+  const missing=Number.isFinite(middleGround)?Math.max(0,requested-(lineMiddle-middleGround)):0;
+  const structural=clamp(total*.00055,.04,way.kind==="rail"?.18:.28);
+  const clearanceCamber=Math.min(missing,way.kind==="rail"?.28:.45);
+  return {start,end,camberM:structural+clearanceCamber,totalM:total,middleGround};
+}
+/* 描画は同期で標高を読みたい。列車(fireworkGroundElevation→elevationAtRefBilinear)と同じ地理院DEM z14 を、
+   解決済みのタイルだけ同期で引く。無ければ NaN を返して取りに行き（呼び出し側は従来の式へ戻る）、届いたら描き直す。
+   同じタイル・同じ補間(decodeGsiElevationBilinear)なので、列車と同じ値になる。 */
+const bridgeDemPixels=new Map();
+let bridgeDemRedrawTimer=0;
+function bridgeDemTile(ref){
+  const v=bridgeDemPixels.get(ref.key);
+  if(v!==undefined)return v==="loading"?null:v;
+  bridgeDemPixels.set(ref.key,"loading");
+  loadGsiDemTile(ref).then(px=>{
+    bridgeDemPixels.set(ref.key,px||null);
+    if(px&&!bridgeDemRedrawTimer)bridgeDemRedrawTimer=setTimeout(()=>{
+      bridgeDemRedrawTimer=0;drawPhoto._terrainRenderKey=null;
+      if(typeof update==="function")update();
+    },60);
+  }).catch(()=>bridgeDemPixels.set(ref.key,null));
+  return null;
+}
+function bridgeDemHeightAt(lat,lon){
+  const ref=terrainTilePoint(lat,lon,14),px=bridgeDemTile(ref);
+  if(!px)return NaN;
+  const nb=terrainTileNeighbourRefs(ref);
+  if(!nb.length)return decodeGsiElevationBilinear(px,ref.pixelX,ref.pixelY);
+  const map=new Map(nb.map(t=>[t.key,bridgeDemTile(t)]));
+  const v=decodeGsiElevationBilinear(px,ref.pixelX,ref.pixelY,(dx,dy)=>map.get(terrainTileNeighbourKey(ref,dx,dy))||null);
+  return Number.isFinite(v)?v:NaN;
+}
+/* 描画用の標高の読み手。水の判定は橋の脚と同じ。 */
+function bridgeDeckSampler(originLat,originLon){
+  const mLon=Math.max(1,111320*Math.cos(originLat*D2R));
+  return {
+    ground:(lat,lon)=>bridgeDemHeightAt(lat,lon),
+    overWater:(lat,lon)=>{
+      const rings=realTerrainState&&realTerrainState._osmWaterRings;
+      if(Array.isArray(rings)&&rings.length&&pointInWaterRings(lat,lon,rings))return true;
+      return worldMapWaterForDistance(lat,lon,Math.hypot((lon-originLon)*mLon,(lat-originLat)*111320))===true;
+    }
+  };
+}
 /* 【v1139】鉄橋の上なら、DEMではなく**橋面の高さ**に載せる。
    DEM に橋は無いので、川の上では水面の高さになり、桁のぶんだけ列車が沈む（利用者報告）。
    橋を描くときの式（v777／v782）をそのまま使う：
@@ -9724,6 +9839,24 @@ async function trainBridgeDeckElevationM(lat,lon){
   /* 橋の線からこれ以上離れていれば、橋の上ではない。 */
   if(!best||best.d>12||!(best.total>1))return null;
   const way=best.way,pts=way.points;
+  /* 【v1166】橋の描画と同じ関数(bridgeDeckProfile)で決める。視点に依存しない。 */
+  if(bridgeDeckDemOn){
+    const key=(la,lo)=>la.toFixed(7)+","+lo.toFixed(7);
+    const wanted=new Map();
+    bridgeDeckProfile(way,{ground:(la,lo)=>{wanted.set(key(la,lo),[la,lo]);return 0;},overWater:()=>false});
+    const values=new Map();
+    await Promise.all([...wanted.entries()].map(async([k,[la,lo]])=>{values.set(k,await fireworkGroundElevation(la,lo));}));
+    const prof=bridgeDeckProfile(way,{
+      ground:(la,lo)=>{const v=values.get(key(la,lo));return Number.isFinite(v)?v:NaN;},
+      overWater:(la,lo)=>bridgeDeckSampler(+el.lat.value,+el.lon.value).overWater(la,lo)});
+    if(prof){
+      const t2=clamp(best.travel/best.total,0,1);
+      const deck2=lerp(prof.start,prof.end,t2)+Math.sin(Math.PI*t2)*prof.camberM;
+      trainBridgeDeckElevationM._diag={橋の長さm:Math.round(prof.totalM),線からm:+best.d.toFixed(1),
+        両端の標高:[+prof.start.toFixed(2),+prof.end.toFixed(2)],反りm:+prof.camberM.toFixed(2),橋面:+deck2.toFixed(2),式:"v1166 共通"};
+      return Number.isFinite(deck2)?deck2:null;
+    }
+  }
   const startElevation=await fireworkGroundElevation(pts[0][0],pts[0][1]);
   const endElevation=await fireworkGroundElevation(pts[pts.length-1][0],pts[pts.length-1][1]);
   if(!Number.isFinite(startElevation)||!Number.isFinite(endElevation))return null;
@@ -27326,6 +27459,11 @@ try{
           水際_下位25:e.q25,水際_中央:e.q50,水際_上位75:e.q75,
           生の鏡の面:raw,差_生_引く_水際中央:(e.shoreCount&&raw)?+(raw-e.q50).toFixed(2):null};
       },
+      /* 【v1166】橋面の高さをDEMから決めるか。false で v1165 まで（描いた地形の面から）。 */
+      bridgeDeckDem:(on)=>{
+        if(typeof on==="boolean"){bridgeDeckDemOn=on;bridgeDeckLog={};drawPhoto._terrainRenderKey=null;update();}
+        return {有効:bridgeDeckDemOn,橋ごと:bridgeDeckLog};
+      },
       /* 【v1165】橋を不透明に／映り込みは1枚の絵にしてから薄く（false で v1164 まで）。 */
       bridgeOpaque:(on)=>{
         if(typeof on==="boolean"){bridgeOpaqueOn=on;drawPhoto._mountainReflectionRenderKey=null;drawPhoto._terrainRenderKey=null;update();}
@@ -39246,6 +39384,9 @@ function drawPhoto(ctx,s){
               const firstLength=Math.max(.01,segmentLengths[0]),lastLength=Math.max(.01,segmentLengths[segmentLengths.length-1]);
               const firstDir={east:(xy[1].east-xy[0].east)/firstLength,north:(xy[1].north-xy[0].north)/firstLength};
               const lastDir={east:(xy[xy.length-1].east-xy[xy.length-2].east)/lastLength,north:(xy[xy.length-1].north-xy[xy.length-2].north)/lastLength};
+              /* 【v1166】橋面の高さ（両端・反り）は、視点に依存しないDEMから。列車と同じ関数。
+                 DEMが読めないとき（タイル未取得）だけ、従来の「描いた地形の面から読む」式へ戻る。 */
+              const legacyDeck=()=>{
               const probeM=clamp((way.widthM||5)*1.5,8,20);
               /* 【v1047】端の高さは描いた地形の面から。外側（取り付け道路側）を採るのは、端が水面の上か、
                  端の地面が外側より 1.5m 以上低く、かつ橋の内側へ向かってそれ以上下がらない（谷の上）ときだけ。坂（内側へ下がり続ける）なら端のまま。
@@ -39266,7 +39407,7 @@ function drawPhoto(ctx,s){
               let endElevation=endpointElevation(xy[xy.length-1],lastDir,1);
               if(!Number.isFinite(startElevation)&&Number.isFinite(endElevation)) startElevation=endElevation;
               if(!Number.isFinite(endElevation)&&Number.isFinite(startElevation)) endElevation=startElevation;
-              if(!Number.isFinite(startElevation)||!Number.isFinite(endElevation)) continue;
+              if(!Number.isFinite(startElevation)||!Number.isFinite(endElevation)) return null;
               /* DEM誤差で片側だけ極端に跳ねた場合も、橋としてあり得る最大15%勾配へ収める。 */
               const maxDelta=Math.max(1,totalM*.15),delta=endElevation-startElevation;
               if(Math.abs(delta)>maxDelta){
@@ -39293,6 +39434,17 @@ function drawPhoto(ctx,s){
               const structuralCamberM=clamp(totalM*.00055,.04,way.kind==="rail"?.18:.28);
               const clearanceCamberM=Math.min(missingClearance,way.kind==="rail"?.28:.45);
               const camberM=structuralCamberM+clearanceCamberM;
+              return {start:startElevation,end:endElevation,camberM};
+              };
+              const nearestM=Math.min(...xy.map(p=>Math.hypot(p.east,p.north)),...xy.slice(1).map((p,i)=>Math.hypot((p.east+xy[i].east)/2,(p.north+xy[i].north)/2)));
+              const useDem=bridgeDeckDemOn&&(nearestM<=BRIDGE_DECK_DEM_RANGE_M||bridgeCarriesTrain(way));
+              const demDeck=useDem?bridgeDeckProfile(way,bridgeDeckSampler(originLat,originLon)):null;
+              const deckProfile=demDeck||legacyDeck();
+              if(!deckProfile) continue;
+              let startElevation=deckProfile.start,endElevation=deckProfile.end;
+              const camberM=deckProfile.camberM;
+              if(overlayMirrorZ===null)bridgeDeckLog[way.id||String(totalM)]={kind:way.kind,totalM:+totalM.toFixed(1),
+                start:+startElevation.toFixed(3),end:+endElevation.toFixed(3),camberM:+camberM.toFixed(3),近m:Math.round(nearestM),式:demDeck?"DEM":"従来"};
               /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
               const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
               /* 【v1148】両端に向かって桁を細くする。
