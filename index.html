@@ -3799,6 +3799,12 @@
     color:var(--dim);
   }
   .time-range-mode-btn:hover{color:var(--star-white);border-color:var(--violet);}
+  /* 【v1170】**PCで「微調整」が押せない・ホバーしないことがあった。**
+     この行の下にあるスライダーの行(#sliderTimelineRow)が、後ろに書いてあるぶん上に重なり、
+     マイナスの余白(-5px)と上の余白(10px)で**ボタンの下側(高さの約3割)を覆っていた**。
+     実測(PC 1280px)：ボタンの高さ23pxのうち、下の約16px以降でマウスの下にあるのはスライダーの行だった。
+     ボタンを手前に出して、全面でホバー・クリックできるようにする。 */
+  .time-range-mode-btn{position:relative;z-index:3;}
   .besttime-autojump-btn{margin-left:4px;}
   /* 【v689】時刻のつまみと再生ボタンだけを10px下げる。
      見出し・日時表示・目盛りの数字は元の位置のままにしたいので、
@@ -6558,7 +6564,7 @@
               </div>
             </div>
             <div class="dt-col">
-              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button><button type="button" id="fineTimeBtn" class="time-range-mode-btn fine-time-btn" aria-pressed="false" title="今の時刻を中心に1時間だけを細かく合わせます（押すたびに30分、15分へ切り替わります）">微調整</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
+              <label class="top dt-time-label"><span class="dt-time-label-left"><span class="dt-sub">時刻</span><button type="button" id="timeRangeModeBtn" class="time-range-mode-btn">30時間モード</button><button type="button" id="fineTimeBtn" class="time-range-mode-btn fine-time-btn" aria-pressed="false" title="今の時刻を中心に1時間だけを細かく合わせます（押すたびに30分、15分、5分へ切り替わります）">微調整</button></span><span class="val mono"><span id="timeDateLabel"></span> <span id="timeLabel">—</span></span></label>
               <div class="timeline-row" id="moonTimelineRow">
                 <span class="timeline-icon">🌙</span>
                 <canvas class="timeline-bar-canvas" id="moonTimelineBar" width="760" height="44"></canvas>
@@ -6844,7 +6850,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1169-train-skyline";
+const APP_VERSION="1170-fine-time";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -12506,9 +12512,9 @@ let fineTimeOn=false;      // 微調整は別のボタンで入り切りする
 let fineTimeCenter=null;   // 微調整に入ったときの中心時刻(分)
 /* 微調整の幅。ボタンを押すたびに
    微調整（切）→ 1時間（前後30分）→ 30分（前後15分）
-   → 15分（前後7分30秒）→ 切 と巡る（v765）。
+   → 15分（前後7分30秒）→ 5分（前後2分30秒）→ 切 と巡る（v765・v1170）。
    入るときは必ず1時間から始める。 */
-const FINE_TIME_HALVES=[30,15,7.5];
+const FINE_TIME_HALVES=[30,15,7.5,2.5];
 let fineTimeHalf=FINE_TIME_HALVES[0];
 /* 微調整モードで見る幅。望遠ほど狭くする。
    スライダーの横幅が約300画素だとして、
@@ -12543,6 +12549,7 @@ function timeStepMinutes(){
   if(focal>=300) return 1/600;   // 0.1秒
   if(focal>=100) return 1/60;    // 1秒
   if(fineTimeOn&&fineTimeHalfMin()===7.5) return .5; // 15分モードの前後7分30秒へ正確に合わせる
+  if(fineTimeOn&&fineTimeHalfMin()===2.5) return 1/6; // 【v1170】5分モードは10秒刻み（15分の30秒刻みと同じ30段）
   return 1;                      // 1分
 }
 function syncTimeSliderStep(){
@@ -12557,6 +12564,8 @@ function syncTimeSliderStep(){
 function fineTickLabelStepMin(){
   const narrow=(typeof window!=="undefined")&&window.innerWidth<=760;
   /* 幅が半分になれば、間隔も半分で同じ読みやすさになる。 */
+  /* 【v1170】5分モードは幅が5分しかないので、数字は1分ごと（スマホは2分ごと）。 */
+  if(fineTimeHalfMin()<=2.5) return narrow?2:1;
   return (narrow&&fineTimeHalfMin()>15)?10:5;
 }
 function renderTickRow(){
@@ -12620,7 +12629,7 @@ function updateRangeHint(){
   const endH=Math.floor(range.end/60)%24;
   if(fineTimeOn){
     const step=timeStepMinutes();
-    const unit=step>=1?"1分":(step>=.5?"30秒":(step>=1/60?"1秒":"0.1秒"));
+    const unit=step>=1?"1分":(step>=.5?"30秒":(step>=.16?"10秒":(step>=1/60?"1秒":"0.1秒")));
     const startText=formatFineRangeTime(range.start);
     const endText=formatFineRangeTime(range.end);
     el.rangeHint.textContent=`現在微調整　${startText} 〜 ${endText}（前後${fineTimeHalfMin()}分）を${unit}刻みで合わせられます`;
@@ -12657,7 +12666,7 @@ function applyTimeRangeMode(){
     const nextHalf=fineIndex>=0&&fineIndex<FINE_TIME_HALVES.length-1?FINE_TIME_HALVES[fineIndex+1]:null;
     el.fineTimeBtn.title=fineTimeOn
       ?`今は前後${fineTimeHalfMin()}分（合計${fineTimeSpanLabel()}）。押すと${nextHalf!==null?`${fineTimeSpanLabelForHalf(nextHalf)}に狭めます`:"微調整をやめます"}`
-      :"今の時刻を中心に1時間だけを細かく合わせます（押すたびに30分、15分へ切り替わります）";
+      :"今の時刻を中心に1時間だけを細かく合わせます（押すたびに30分、15分、5分へ切り替わります）";
   }
 }
 el.timeRangeModeBtn.addEventListener("click",()=>{
@@ -12683,6 +12692,32 @@ if(el.fineTimeBtn) el.fineTimeBtn.addEventListener("click",()=>{
   applyTimeRangeMode();
   update();
 });
+/* 【v1170】**<label> の中にボタンがあると、label が結びつける先は「最初のボタン」になる。**
+   HTML の決まりで、labelの結びつけ先(label.control)は for が無いとき、中の最初の操作部品。
+   そのため：
+     ・時刻の行（「30時間モード」「微調整」）…どこにマウスを乗せても、先頭の「30時間モード」にも :hover が付く
+       （利用者報告：微調整を触ると隣の30時間も一緒にフォーカスされる）。文字をクリックすると30時間が切り替わる。
+     ・花火・オブジェクトの「−／＋」の行(14か所)…**行の文字をクリックしただけで「−」が押され、値が下がる**
+       （実測：開花の高さ 100 → 95）。
+   直し：結びつけ先を、中の入力欄（あればその id）、無ければ「存在しない id」にする。
+   これで label の文字をクリックすると入力欄へ（無ければ何も起きない）。ボタン自体の動きは変わらない。 */
+function fixButtonLabelControls(root){
+  for(const lb of (root||document).querySelectorAll("label")){
+    if(lb.hasAttribute("for"))continue;
+    const control=lb.control;
+    if(!(control&&control.tagName==="BUTTON"&&lb.contains(control)))continue;
+    const input=lb.querySelector("input[id],select[id],textarea[id]");
+    lb.htmlFor=input?input.id:"label-without-control";
+  }
+}
+fixButtonLabelControls(document);
+new MutationObserver(records=>{
+  for(const record of records)for(const node of record.addedNodes){
+    if(node.nodeType!==1)continue;
+    if(node.tagName==="LABEL")fixButtonLabelControls(node.parentNode||document);
+    else if(node.querySelector&&node.querySelector("label"))fixButtonLabelControls(node);
+  }
+}).observe(document.body,{childList:true,subtree:true});
 /* 焦点距離を変えたら時刻の刻みも合わせ直す。 */
 if(el.focalLength) el.focalLength.addEventListener("input",()=>{ syncTimeSliderStep(); updateRangeHint(); });
 syncTimeSliderStep();
