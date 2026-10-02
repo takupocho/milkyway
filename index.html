@@ -6850,7 +6850,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1170-fine-time";
+const APP_VERSION="1171-rail-lift";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9739,17 +9739,43 @@ let bridgeDeckLog={};
    遠い橋は従来の式のまま：地形の粗い光線(rayBaseElevationAt)で描く道路のリボンと端が揃うため
    （全部DEMにすると、遠方の道路橋で従来との差が最大36mになり、道路と橋の端が食い違った）。 */
 const BRIDGE_DECK_DEM_RANGE_M=400;
+/* 【v1171】**鉄道橋の両端を、取り付け線路の高さまで持ち上げる。**
+   利用者報告（生野・低い視点）：列車が地形に埋もれる／線路から左右にズレる／方位を変えると列車が欠ける・消える。
+   測った原因：橋の両端の高さは「橋の端の地面(DEM)」＝川岸の低い所から取っていた。実際の鉄道橋は川岸より高い橋台の上にあり、
+   取り付け線路は川岸から急な坂（実測 7〜9%）で丘へ登る形になっていた。鉄道は3%台までなので、
+   v1167 の勾配制限は**列車だけを地形の下へ最大3.4m引き下げ**（北端から90m先：DEM 288.35m に対し列車 285.0m）、
+   線路のリボン(地形の面)との高さの差が視差のズレと埋もれになった。
+   直し：端から外側へ 15〜140m の地面の高さを測り、勾配 BRIDGE_APPROACH_GRADE(3.5%) で届く高さまで端を持ち上げる
+   （上限 BRIDGE_LIFT_MAX_M）。橋の描画と列車は同じ関数(bridgeDeckProfile)を通るので、橋面も列車もそろって上がる。
+   橋脚も長くなる。鉄道橋だけ（道路橋は触らない）。 */
+let bridgeDeckLiftOn=true;
+const BRIDGE_APPROACH_GRADE=.035,BRIDGE_LIFT_MAX_M=10,BRIDGE_APPROACH_PROBES_M=[15,30,50,75,100,140];
+/* 【v1171】列車は、橋以外の所では**地形(DEM)より低くしない**（-0.3mまで）。
+   線路のリボンは地形の面に沿うので、列車がそれより下に潜ると視差でズレ、手前の地形に隠れて欠ける。 */
+let trainFloorOn=true;
+const TRAIN_FLOOR_BELOW_M=.3;
+/* ただし持ち上げる量には上限(TRAIN_MAX_RAISE_M)を付ける。
+   崖や山の斜面（DEM が 99% で登る所：生野の橋の北 420m 先）まで「地面−0.3m」に固定すると、列車が崖を登る。
+   普通の取り付け部（地面との差 3m 程度）は地面に載り、崖や切通しの所は地形の下に入ったまま滑らかに進む。 */
+const TRAIN_MAX_RAISE_M=4,TRAIN_RAISE_GRADE=.04;
 function bridgeCarriesTrain(way){
   const pts=way&&way.points;
   if(!Array.isArray(pts)||pts.length<2||!Array.isArray(kmzSlots))return false;
   for(const slot of kmzSlots){
     if(!slot||!slot.train||!Number.isFinite(slot.lat)||!Number.isFinite(slot.lon))continue;
     const mLon=111320*Math.cos(slot.lat*D2R);
-    for(let i=0;i+1<pts.length;i++){
-      const ax=(pts[i][1]-slot.lon)*mLon,ay=(pts[i][0]-slot.lat)*111320,bx=(pts[i+1][1]-slot.lon)*mLon,by=(pts[i+1][0]-slot.lat)*111320;
-      const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
-      const u=l2>1e-9?clamp(-(ax*dx+ay*dy)/l2,0,1):0;
-      if(Math.hypot(ax+dx*u,ay+dy*u)<=12)return true;
+    /* 【v1171】置いた点だけでなく、**走る案内線が通る橋**も「列車が載っている橋」にする
+       （置いた点が橋から離れていても、走ってその橋を渡る。橋と列車の高さをそろえるため）。 */
+    const probes=[[0,0]];
+    if(Array.isArray(slot.train.path))for(const p of slot.train.path)if(Array.isArray(p)&&Number.isFinite(+p[0])&&Number.isFinite(+p[1]))probes.push([+p[0],+p[1]]);
+    for(const probe of probes){
+      for(let i=0;i+1<pts.length;i++){
+        const ax=(pts[i][1]-slot.lon)*mLon-probe[0],ay=(pts[i][0]-slot.lat)*111320-probe[1],
+              bx=(pts[i+1][1]-slot.lon)*mLon-probe[0],by=(pts[i+1][0]-slot.lat)*111320-probe[1];
+        const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;
+        const u=l2>1e-9?clamp(-(ax*dx+ay*dy)/l2,0,1):0;
+        if(Math.hypot(ax+dx*u,ay+dy*u)<=12)return true;
+      }
     }
   }
   return false;
@@ -9784,6 +9810,22 @@ function bridgeDeckProfile(way,sample){
   if(!Number.isFinite(start)&&Number.isFinite(end))start=end;
   if(!Number.isFinite(end)&&Number.isFinite(start))end=start;
   if(!Number.isFinite(start)||!Number.isFinite(end))return null;
+  /* 【v1171】鉄道橋：両端を、取り付け線路が届く高さまで持ち上げる（外側の地面の高さ − 勾配×距離 の最大）。 */
+  let liftS=0,liftE=0;
+  if(bridgeDeckLiftOn&&way.kind==="rail"){
+    const approachNeed=(pt,dir,side)=>{
+      let need=-Infinity;
+      for(const d of BRIDGE_APPROACH_PROBES_M){
+        const v=g(pt.east+dir.east*d*side,pt.north+dir.north*d*side);
+        if(Number.isFinite(v))need=Math.max(need,v-BRIDGE_APPROACH_GRADE*d);
+      }
+      return need;
+    };
+    const needS=approachNeed(xy[0],firstDir,-1),needE=approachNeed(xy[n-1],lastDir,1);
+    if(Number.isFinite(needS))liftS=clamp(needS-start,0,BRIDGE_LIFT_MAX_M);
+    if(Number.isFinite(needE))liftE=clamp(needE-end,0,BRIDGE_LIFT_MAX_M);
+    start+=liftS;end+=liftE;
+  }
   const maxDelta=Math.max(1,total*.15),delta=end-start;
   if(Math.abs(delta)>maxDelta){const m=(start+end)/2;start=m-Math.sign(delta)*maxDelta/2;end=m+Math.sign(delta)*maxDelta/2;}
   const mid=xy[Math.floor(n/2)],middleGround=g(mid.east,mid.north);
@@ -9794,7 +9836,7 @@ function bridgeDeckProfile(way,sample){
   const missing=Number.isFinite(middleGround)?Math.max(0,requested-(lineMiddle-middleGround)):0;
   const structural=clamp(total*.00055,.04,way.kind==="rail"?.18:.28);
   const clearanceCamber=Math.min(missing,way.kind==="rail"?.28:.45);
-  return {start,end,camberM:structural+clearanceCamber,totalM:total,middleGround};
+  return {start,end,camberM:structural+clearanceCamber,totalM:total,middleGround,liftS,liftE};
 }
 /* 描画は同期で標高を読みたい。列車(fireworkGroundElevation→elevationAtRefBilinear)と同じ地理院DEM z14 を、
    解決済みのタイルだけ同期で引く。無ければ NaN を返して取りに行き（呼び出し側は従来の式へ戻る）、届いたら描き直す。
@@ -9946,7 +9988,10 @@ async function trainFillPathElevationsLegacy(snap){
    列車は地形のあとに描くので隠れない。 */
 let trainProfileOn=true;
 let trainProfileInfo=null;
-const TRAIN_MAX_GRADE=.035,TRAIN_PROFILE_STEP_M=10,TRAIN_PROFILE_TOL_M=.05;
+/* 【v1171】勾配の上限を 3.5% → 8% に緩めた。橋の取り付けが低すぎたのを、鉄道橋の持ち上げ(bridgeDeckLift)で直したので、
+   列車を急な勾配で縛る理由が薄れた。列車は線路のリボン（地形の面）に沿うほうが、リボンの上に載って見える。
+   8% は崖のような所（DEM が 30〜99% で登る）だけを抑える値。 */
+const TRAIN_MAX_GRADE=.08,TRAIN_PROFILE_STEP_M=10,TRAIN_PROFILE_TOL_M=.05;
 /* 橋1本ぶんの両端・反り。橋の描画(bridgeDeckProfile)と同じ式。必要な点を先に取ってから通す。 */
 async function trainBridgeProfileFor(way){
   const key=(la,lo)=>la.toFixed(7)+","+lo.toFixed(7);
@@ -10039,6 +10084,23 @@ async function trainFillPathElevations(snap){
     for(let i=1;i<z.length;i++){if(fixed[i])continue;const lim=TRAIN_MAX_GRADE*(P[i].s-P[i-1].s);z[i]=clamp(z[i],z[i-1]-lim,z[i-1]+lim);}
     for(let i=z.length-2;i>=0;i--){if(fixed[i])continue;const lim=TRAIN_MAX_GRADE*(P[i+1].s-P[i].s);z[i]=clamp(z[i],z[i+1]-lim,z[i+1]+lim);}
   }
+  /* 【v1171】橋以外の点は、地形(DEM)−0.3m まで持ち上げる。ただし
+       ・持ち上げる量は最大 TRAIN_MAX_RAISE_M(4m)
+       ・**その場所の地面−0.3m を超えて持ち上げない**（4%で前へ広げる方式は、地面が平らになったあとも持ち上げが残り、
+         地面より最大 +1.4m 浮いた＝実測）。
+     勾配制限後の高さ zl に、持ち上げ量 r を足す（z = zl + r）。固定点（橋面）は動かさない。 */
+  let floored=0,maxRaise=0;
+  if(trainFloorOn){
+    const r=new Array(z.length).fill(0);
+    for(let i=0;i<z.length;i++){
+      if(fixed[i]||!Number.isFinite(ground[i]))continue;
+      r[i]=clamp(ground[i]-TRAIN_FLOOR_BELOW_M-z[i],0,TRAIN_MAX_RAISE_M);
+    }
+    for(let i=0;i<z.length;i++){
+      if(fixed[i]||!(r[i]>.01))continue;
+      z[i]+=r[i];floored++;if(r[i]>maxRaise)maxRaise=r[i];
+    }
+  }
   let limited=0,maxFix=0;
   for(let i=0;i<z.length;i++){const d=Math.abs(z[i]-raw[i]);if(d>.05)limited++;if(d>maxFix)maxFix=d;}
   /* ⑤ 平らな所の点は捨てる（元の頂点は残す）。 */
@@ -10059,7 +10121,7 @@ async function trainFillPathElevations(snap){
   let maxGrade=0;
   for(let i=1;i<z.length;i++){const ds=P[i].s-P[i-1].s;if(ds>1&&!(fixed[i]&&fixed[i-1]))maxGrade=Math.max(maxGrade,Math.abs(z[i]-z[i-1])/ds);}
   trainProfileInfo={もとの頂点:snap.path.length,刻んだ点:P.length,保存する点:filled.length,橋の上の点:onBridge,橋の数:decks.length,
-    勾配で抑えた点:limited,最大の補正m:+maxFix.toFixed(2),橋の外の最大勾配:+(maxGrade*100).toFixed(2)+"%"};
+    勾配で抑えた点:limited,地面まで上げた点:floored,最大の持ち上げm:+maxRaise.toFixed(2),最大の補正m:+maxFix.toFixed(2),橋の外の最大勾配:+(maxGrade*100).toFixed(2)+"%"};
   trainProfileInfo.橋の近く=P.map((p,i)=>({北:+p.n.toFixed(1),地面:Number.isFinite(ground[i])?+ground[i].toFixed(2):null,元:+raw[i].toFixed(2),後:+z[i].toFixed(2),固定:fixed[i],元の頂点:p.orig})).filter(r=>r.北>-70&&r.北<45);
   snap.path=filled;
   snap.baseElevationM=baseZ;
@@ -27653,6 +27715,11 @@ try{
           生の鏡の面:raw,差_生_引く_水際中央:(e.shoreCount&&raw)?+(raw-e.q50).toFixed(2):null};
       },
       /* 【v1166】橋面の高さをDEMから決めるか。false で v1165 まで（描いた地形の面から）。 */
+      /* 【v1171】鉄道橋の両端を取り付け線路の高さまで持ち上げるか。false で v1170 まで。 */
+      bridgeDeckLift:(on)=>{
+        if(typeof on==="boolean"){bridgeDeckLiftOn=on;bridgeDeckLog={};drawPhoto._terrainRenderKey=null;update();}
+        return {有効:bridgeDeckLiftOn,勾配:BRIDGE_APPROACH_GRADE,上限m:BRIDGE_LIFT_MAX_M};
+      },
       bridgeDeckDem:(on)=>{
         if(typeof on==="boolean"){bridgeDeckDemOn=on;bridgeDeckLog={};drawPhoto._terrainRenderKey=null;update();}
         return {有効:bridgeDeckDemOn,橋ごと:bridgeDeckLog};
@@ -27807,6 +27874,8 @@ try{
         /* 【v1167】走る案内線の高さを 10m おき＋勾配3.5%で測り直すか。false で v1166 まで（頂点だけ）。 */
         /* 【v1168】車両の高さ・傾きを前後の台車から決めるか。false で v1167 まで。 */
         bogie:(on)=>{if(typeof on==="boolean")trainBogieSmoothOn=on;return {有効:trainBogieSmoothOn,台車の半間隔m:TRAIN_BOGIE_HALF_M};},
+        /* 【v1171】列車を地形(DEM)−0.3mより低くしないか。false で v1170 まで。 */
+        floor:(on)=>{if(typeof on==="boolean")trainFloorOn=on;return {有効:trainFloorOn,下限m:TRAIN_FLOOR_BELOW_M};},
         profile:(on)=>{if(typeof on==="boolean")trainProfileOn=on;return {有効:trainProfileOn,直前:trainProfileInfo,最大勾配:TRAIN_MAX_GRADE};},
         /* 【v1155】長い案内線。走る距離ぶん伸ばす。 */
         guide:async(lat,lon,cars,reachM)=>{
@@ -39667,7 +39736,7 @@ function drawPhoto(ctx,s){
               let startElevation=deckProfile.start,endElevation=deckProfile.end;
               const camberM=deckProfile.camberM;
               if(overlayMirrorZ===null)bridgeDeckLog[way.id||String(totalM)]={kind:way.kind,totalM:+totalM.toFixed(1),
-                start:+startElevation.toFixed(3),end:+endElevation.toFixed(3),camberM:+camberM.toFixed(3),近m:Math.round(nearestM),式:demDeck?"DEM":"従来"};
+                start:+startElevation.toFixed(3),end:+endElevation.toFixed(3),camberM:+camberM.toFixed(3),近m:Math.round(nearestM),式:demDeck?"DEM":"従来",持ち上げm:demDeck?[+demDeck.liftS.toFixed(2),+demDeck.liftE.toFixed(2)]:null};
               /* 橋桁そのものも従来より厚くする。小さな橋で最低1.5m、広い橋は最大3.2m。 */
               const thicknessM=clamp(1.05+(way.widthM||5)*.09,1.5,3.2);
               /* 【v1148】両端に向かって桁を細くする。
