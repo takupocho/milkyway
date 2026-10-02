@@ -5075,6 +5075,15 @@
             <button id="kmzBuildingEditShapeBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 形を編集する（オブジェクト）</span><span>›</span></button>
             <button id="kmzTrainReverseBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>🔁 列車の向きを反転（上り↔下り）</span><span>›</span></button>
             <!-- 【v1176】進行方向を方位名で選ぶ。選んでいる列車だけ。ライトは進行方向の前がヘッドライト、後ろが尾灯。 -->
+            <!-- 【v1177】置いたあとでも、走らせる／止める・通過時刻・速度を変えられる。 -->
+            <div id="kmzTrainRunEditRow" hidden style="margin-top:6px;">
+              <label style="display:flex;align-items:center;font-size:12.5px;"><input id="kmzTrainRunEditOn" type="checkbox" style="width:auto;margin:0 6px 0 0;"> 🚃 走らせる（OFFで止めて置く）</label>
+              <div id="kmzTrainRunEditBody" hidden>
+                <div class="field" style="margin-top:6px;"><label class="top">置いた場所を通る時刻</label><input id="kmzTrainRunEditTime" type="time" step="60"></div>
+                <div class="field" style="margin-top:6px;"><label class="top">速度（km/h）</label><input id="kmzTrainRunEditSpeed" type="number" min="5" max="130" step="5" inputmode="numeric" value="60"></div>
+                <button id="kmzTrainRunNowBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>⏱ いまの時刻にここを通る</span><span>›</span></button>
+              </div>
+            </div>
             <div id="kmzTrainDirRow" hidden style="margin-top:6px;">
               <label class="top">進行方向 <span class="val mono" id="kmzTrainDirVal">—</span></label>
               <div style="display:flex;gap:6px;">
@@ -6862,7 +6871,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1176-train-ends";
+const APP_VERSION="1177-train-rerun";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8263,7 +8272,8 @@ const el={
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
   kmzAddTrainBtn:$("kmzAddTrainBtn"), trainPanel:$("trainPanel"), trainCars:$("trainCars"),   /* 【v1138】 */
   trainSizeHint:$("trainSizeHint"), trainPlaceBtn:$("trainPlaceBtn"), kmzTrainReverseBtn:$("kmzTrainReverseBtn"),
-  kmzTrainDirRow:$("kmzTrainDirRow"), kmzTrainDirVal:$("kmzTrainDirVal"), kmzTrainDirABtn:$("kmzTrainDirABtn"), kmzTrainDirBBtn:$("kmzTrainDirBBtn"), mapPlaceFlipBtn:$("mapPlaceFlipBtn"),   /* 【v1176】 */
+  kmzTrainDirRow:$("kmzTrainDirRow"), kmzTrainDirVal:$("kmzTrainDirVal"), kmzTrainDirABtn:$("kmzTrainDirABtn"), kmzTrainDirBBtn:$("kmzTrainDirBBtn"), mapPlaceFlipBtn:$("mapPlaceFlipBtn"),
+  kmzTrainRunEditRow:$("kmzTrainRunEditRow"), kmzTrainRunEditOn:$("kmzTrainRunEditOn"), kmzTrainRunEditBody:$("kmzTrainRunEditBody"), kmzTrainRunEditTime:$("kmzTrainRunEditTime"), kmzTrainRunEditSpeed:$("kmzTrainRunEditSpeed"), kmzTrainRunNowBtn:$("kmzTrainRunNowBtn"),   /* 【v1177】 */   /* 【v1176】 */
   trainRunOn:$("trainRunOn"), trainRunRow:$("trainRunRow"), trainRunTime:$("trainRunTime"),   /* 【v1155】 */
   trainRunSpeed:$("trainRunSpeed"), trainRunHint:$("trainRunHint"),
   kmzAddTownBtn:$("kmzAddTownBtn"), townPanel:$("townPanel"), townRadius:$("townRadius"),
@@ -10229,6 +10239,57 @@ function trainHeadBearings(spec){
   return {forward:a[a.length-1].bearing,backward:b[b.length-1].bearing};
 }
 function trainDirectionLabel(deg){return `${fwWindCompassName(deg)}（${Math.round(norm360(deg))}°）`;}
+/* 【v1177】運行の再編集。選んだ列車の run を書き換え、模型を作り直す（止めるときは静止モデルへ戻す）。 */
+const pad2=(n)=>String(n).padStart(2,"0");
+function syncTrainRunRow(site){
+  if(!el.kmzTrainRunEditRow)return;
+  const spec=site?trainSpecOf(site.train):null;
+  el.kmzTrainRunEditRow.hidden=!spec;
+  if(!spec)return;
+  const on=!!spec.run;
+  el.kmzTrainRunEditOn.checked=on;
+  el.kmzTrainRunEditBody.hidden=!on;
+  if(on){
+    const m=Math.round(((spec.run.atMin%1440)+1440)%1440);
+    el.kmzTrainRunEditTime.value=`${pad2(Math.floor(m/60))}:${pad2(m%60)}`;
+    el.kmzTrainRunEditSpeed.value=String(Math.round(spec.run.speedKmh));
+  }
+}
+function trainSetRun(slot,run){
+  const spec=trainSpecOf(slot&&slot.train);
+  if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return false;}
+  slot.train={...spec,run:run||null};
+  delete slot._runOffsetM;
+  if(!trainApplySlot(slot))return false;
+  if(slot.train.run)trainSyncRun(slot);
+  syncTrainRunRow(slot);
+  if(typeof scheduleSaveSettings==="function")scheduleSaveSettings();
+  setKmzBuildingStatus(run?`🚃 ${slot.train.name}：${pad2(Math.floor(run.atMin/60)%24)}:${pad2(Math.round(run.atMin)%60)} に置いた場所を通る・時速${run.speedKmh}km`:`🚃 ${slot.train.name} を止めて置きました。`,"ready");
+  drawPhoto._terrainRenderKey=null;update();
+  return true;
+}
+function trainRunFromEditor(){
+  const m=/^(\d{1,2}):(\d{2})$/.exec(String(el.kmzTrainRunEditTime.value||""));
+  const atMin=m?(+m[1])*60+(+m[2]):Math.round(kmzTimelineMinutes());
+  return {atMin,speedKmh:clamp(+el.kmzTrainRunEditSpeed.value||60,5,130)};
+}
+if(el.kmzTrainRunEditOn)el.kmzTrainRunEditOn.addEventListener("change",()=>{
+  const slot=kmzActiveSlot();if(!slot)return;
+  if(el.kmzTrainRunEditOn.checked){
+    const prev=trainSpecOf(slot.train);
+    if(!prev.run){el.kmzTrainRunEditTime.value=(()=>{const m=Math.round(kmzTimelineMinutes());return `${pad2(Math.floor(m/60)%24)}:${pad2(m%60)}`;})();}
+    trainSetRun(slot,trainRunFromEditor());
+  }else trainSetRun(slot,null);
+});
+for(const k of ["kmzTrainRunEditTime","kmzTrainRunEditSpeed"])if(el[k])el[k].addEventListener("change",()=>{
+  const slot=kmzActiveSlot();if(slot&&el.kmzTrainRunEditOn.checked)trainSetRun(slot,trainRunFromEditor());
+});
+if(el.kmzTrainRunNowBtn)el.kmzTrainRunNowBtn.addEventListener("click",()=>{
+  const slot=kmzActiveSlot();if(!slot)return;
+  const m=Math.round(kmzTimelineMinutes());
+  el.kmzTrainRunEditTime.value=`${pad2(Math.floor(m/60)%24)}:${pad2(m%60)}`;
+  trainSetRun(slot,trainRunFromEditor());
+});
 function syncTrainDirectionRow(site){
   if(!el.kmzTrainDirRow)return;
   const spec=site?trainSpecOf(site.train):null;
@@ -10245,6 +10306,7 @@ function trainSetReverse(slot,reverse){
   const spec=trainSpecOf(slot&&slot.train);
   if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return false;}
   slot.train={...spec,reverse:!!reverse};
+  delete slot._runOffsetM;
   if(!trainApplySlot(slot)){setKmzBuildingStatus("向きを変えられませんでした。","error");return false;}
   renderKmzList();refreshKmzBuildingControls(false);
   const d=trainHeadBearings(slot.train);
@@ -12193,6 +12255,7 @@ function syncFireworkSlotPanel(){
     /* 【v1138】向きの反転は列車のときだけ。 */
     if(el.kmzTrainReverseBtn)el.kmzTrainReverseBtn.hidden=!(site&&trainSpecOf(site.train)!==null);
     syncTrainDirectionRow(site);   /* 【v1176】 */
+    syncTrainRunRow(site);   /* 【v1177】 */
   }
   const panel=el.fireworkSlotPanel;if(!panel)return;
   const slot=kmzActiveSlot(),go=fireworkGoOf(slot&&slot.firework);
