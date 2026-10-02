@@ -6887,7 +6887,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1183-rail-holiday";
+const APP_VERSION="1184-rail-fix";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9653,6 +9653,19 @@ function railSimSyncSlot(slot){
   const st=railSimState(sim,kmzTimelineMinutes());
   if(slot.visible!==st.visible)slot.visible=st.visible;
 }
+/* 【v1184】駅の形（簡単なもの）：ホーム（長さ36m・幅3.2m・高さ0.9m）・屋根と柱・看板（高い棒の上の板）。
+   局所座標：x＝進行方向の右、y＝進行方向、z＝レールの高さから上。ホームの縁を車体（幅3.68m）から 0.25m 離す。 */
+function railSimStationSpec(name){
+  const box=(w,d,h,x,y,z)=>({shape:"box",bottomW:w,bottomD:d,topW:w,topD:d,height:h,x,y,z,rot:0});
+  return {name:`駅・${name}`,parts:[
+    box(3.2,36,.9, 3.75,0,0),            /* ホーム */
+    box(3.6,14,.25, 4.0,0,3.4),          /* 屋根 */
+    box(.25,.25,2.5, 5.3,-6,.9),box(.25,.25,2.5, 5.3,6,.9),   /* 屋根の柱 */
+    box(.25,.25,6.5, 5.3,-15,.9),        /* 看板の棒（遠くから見える高さ） */
+    box(.5,6,1.8, 5.3,-15,6.2),          /* 看板の板 */
+    box(1.6,6,2.4, 6.2,10,.9)            /* 待合室 */
+  ]};
+}
 function railSimTick(){for(const sl of kmzSlots)railSimSyncSlot(sl);}   /* 毎回の更新・再生のコマで、走っていない時間の列車を隠す */
 function trainSpecSummary(spec){
   const s=trainSpecOf(spec);
@@ -9799,7 +9812,16 @@ function buildTrainModel(rawSpec,runOffsetM){
              face:[38,46,66],rearGlass:[72,96,112],
              headOff:[150,148,138],tailOff:[96,22,22]};   /* 【v1175】先頭・最後尾の顔（濃紺）と後ろの窓／【v1176】消灯したライト */
   const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
-  const layout=trainLayout(spec,runOffsetM);
+  let layout=trainLayout(spec,runOffsetM);
+  /* 【v1184】鉄道シミュレーションの列車は、車両の真ん中を模型の原点にする。 */
+  let originShift=null;
+  if(spec.run&&spec.run.sim&&layout.length){
+    let sx=0,sy=0,sz=0;
+    for(const c of layout){sx+=c.x;sy+=c.y;sz+=(c.z||0);}
+    sx/=layout.length;sy/=layout.length;sz/=layout.length;
+    originShift={x:sx,y:sy,z:sz};
+    layout=layout.map(c=>({...c,x:c.x-sx,y:c.y-sy,z:(c.z||0)-sz}));
+  }
   layout.forEach((car,carIndex)=>{
     const r=car.bearing*D2R,cs=Math.cos(r),sn=Math.sin(r);
     /* 【v1150】その場所の勾配ぶん、車両を前後に傾ける。 */
@@ -9853,11 +9875,26 @@ function buildTrainModel(rawSpec,runOffsetM){
   const xs=all.map(v=>v[0]),ys=all.map(v=>v[1]),zs=all.map(v=>v[2]);
   return {triangles,triangleColors,triangleAlphas,triangleGlow,coloredCount:triangles.length,
     width:Math.max(...xs)-Math.min(...xs),depth:Math.max(...ys)-Math.min(...ys),
-    height:Math.max(...zs)-Math.min(...zs),vertexCount:all.length,train:spec};
+    height:Math.max(...zs)-Math.min(...zs),vertexCount:all.length,train:spec,originShift};
 }
 /* いちばん近い線路へ寄せる。見つからなければ null（そのままの場所に置く）。
    半径600m ぶんの線路を取ってから、150m 以内のいちばん近い線分を選ぶ。
    タイルは端末内に残るので、2回目からは通信しない。 */
+/* 【v1184】**案内線の「度 ⇄ メートル」の換算を、描画（球面・kmzDestinationPoint）と同じにする。**
+   利用者報告（鉄道シミュレーション）：列車が線路の右横（車両1つぶん）をずっと走る。
+   原因：案内線の座標を 111320 m/度 の平面で作っていたが、模型の描画は球面（地球半径 6371km＝111195 m/度）で
+   置き場所を決める。置いた点から遠いほど食い違い（6km で 約7m、13km で 約15m）、車両が線路から横へずれた。
+   短い案内線（数百m）では気づかなかった。ここを、描画と同じ球面の往復変換にした。 */
+function trainXY(lat0,lon0,lat,lon){
+  const r=terrainDistanceAndBearing(lat0,lon0,lat,lon),b=r.bearing*D2R,d=r.distanceKm*1000;
+  return [d*Math.sin(b),d*Math.cos(b)];
+}
+function trainLL(lat0,lon0,east,north){
+  const d=Math.hypot(east,north);
+  if(d<1e-9)return [lat0,lon0];
+  const p=kmzDestinationPoint(lat0,lon0,Math.atan2(east,north)*R2D,d/1000);
+  return [p.lat,p.lon];
+}
 const TRAIN_GUIDE_MAX_M=20000;
 async function trainRailSnap(lat,lon,carCount,reachM){
   /* 【v1155】走らせるときは、走る距離ぶんの案内線が要るので広く取る。 */
@@ -9867,7 +9904,7 @@ async function trainRailSnap(lat,lon,carCount,reachM){
   try{ways=await fetchStaticRailWays(lat,lon,radiusKm);}catch(e){return null;}
   if(!Array.isArray(ways)||!ways.length)return null;
   const mLat=111320,mLon=111320*Math.cos(lat*D2R);
-  const polys=ways.map(way=>(way.points||[]).map(p=>[(p[1]-lon)*mLon,(p[0]-lat)*mLat]))   /* [東m,北m] */
+  const polys=ways.map(way=>(way.points||[]).map(p=>trainXY(lat,lon,p[0],p[1])))   /* [東m,北m]（【v1184】描画と同じ球面） */
                   .filter(p=>p.length>=2);
   let best=null;
   polys.forEach((pts,wayIndex)=>{
@@ -9972,7 +10009,8 @@ async function trainRailSnap(lat,lon,carCount,reachM){
   const path=full.slice(lo,hi+1).map(p=>[p[0]-best.fx,p[1]-best.fy]);
   let pathLength=0;
   for(let k=0;k+1<path.length;k++)pathLength+=Math.hypot(path[k+1][0]-path[k][0],path[k+1][1]-path[k][1]);
-  return {lat:lat+best.fy/mLat,lon:lon+best.fx/mLon,
+  const footLL=trainLL(lat,lon,best.fx,best.fy);
+  return {lat:footLL[0],lon:footLL[1],
           movedM:best.d,bearing:norm360(best.bearing),path,points:path.length,
           lengthM:Math.round(pathLength)};
 }
@@ -10225,7 +10263,7 @@ async function trainFillPathElevationsLegacy(snap){
   if(!Number.isFinite(baseZ))return snap;
   const filled=[];
   for(const p of snap.path){
-    const la=snap.lat+p[1]/mLat,lo=snap.lon+p[0]/mLon;
+    const [la,lo]=trainLL(snap.lat,snap.lon,p[0],p[1]);
     const z=await trainRailElevationM(la,lo);
     filled.push([p[0],p[1],Number.isFinite(z)?z-baseZ:0]);
   }
@@ -10291,7 +10329,7 @@ async function trainFillPathElevations(snap){
   const decks=[];
   for(const way of (Array.isArray(ways)?ways:[])){
     if(way.kind!=="rail"||!Array.isArray(way.points)||way.points.length<2)continue;
-    const pts=way.points.map(p=>[(p[1]-snap.lon)*mLon,(p[0]-snap.lat)*mLat]);
+    const pts=way.points.map(p=>trainXY(snap.lat,snap.lon,p[0],p[1]));
     const lens=[],cum=[0];
     for(let i=0;i+1<pts.length;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);cum.push(cum[i]+l);}
     const total=cum[cum.length-1];
@@ -10321,7 +10359,7 @@ async function trainFillPathElevations(snap){
   /* ③ 各点の高さ：橋の上なら橋面、それ以外は地面（v1150 と同じ規則）。 */
   const ground=new Array(P.length);
   for(let i=0;i<P.length;i+=40){
-    await Promise.all(P.slice(i,i+40).map(async(p,j)=>{ground[i+j]=await fireworkGroundElevation(snap.lat+p.n/mLat,snap.lon+p.e/mLon);}));
+    await Promise.all(P.slice(i,i+40).map(async(p,j)=>{{const ll=trainLL(snap.lat,snap.lon,p.e,p.n);ground[i+j]=await fireworkGroundElevation(ll[0],ll[1]);}}));
   }
   const z=new Array(P.length),fixed=new Array(P.length).fill(false);
   let onBridge=0;
@@ -10454,8 +10492,7 @@ async function trainRebuildGuide(slot,reachM){
   const snap=await trainFillPathElevations(snap0);
   if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return null;
   /* 案内線は「垂線の足」が原点。置いた点（slot）が足から少しずれていても、ずらさずに原点を置いた点へ合わせる。 */
-  const mLat=111320,mLon=111320*Math.cos(slot.lat*D2R);
-  const ox=(snap.lon-slot.lon)*mLon,oy=(snap.lat-slot.lat)*mLat;
+  const [ox,oy]=trainXY(slot.lat,slot.lon,snap.lat,snap.lon);
   const path=snap.path.map(p=>[p[0]+ox,p[1]+oy,p[2]]);
   return {path,lengthM:snap.lengthM,movedM:snap.movedM};
 }
@@ -10796,7 +10833,7 @@ function trainDrawPreview(){
   if(!spec)return;
   const lat=trainPlacing.lat,lon=trainPlacing.lon;
   const mLat=111320,mLon=111320*Math.cos(lat*D2R);
-  const toLL=(x,y)=>[lat+y/mLat,lon+x/mLon];
+  const toLL=(x,y)=>trainLL(lat,lon,x,y);
   const hw=TRAIN_CAR_W_M/2,hl=TRAIN_CAR_LEN_M/2;
   const cars=trainLayout(spec),layers=[];
   cars.forEach((car,index)=>{
@@ -11166,8 +11203,16 @@ function kmzSlotSettings(slot){
      スロットのlat/lonは利用者が置いた位置そのものなので書き換えない。 */
   const moved=kmzMovedPosition(slot);
   /* 【v964】標高も記録してあれば混ぜた値を使う。古い記録は今までどおり。 */
-  return {lat:moved?moved.lat:slot.lat,lon:moved?moved.lon:slot.lon,
-          altitude:(moved&&Number.isFinite(moved.altitude))?moved.altitude:(slot.altitude||0),
+  let baseLat=moved?moved.lat:slot.lat,baseLon=moved?moved.lon:slot.lon;
+  let baseAlt=(moved&&Number.isFinite(moved.altitude))?moved.altitude:(slot.altitude||0);
+  /* 【v1184】基準点から遠くを走る列車は、列車の真ん中へ置き場所を動かす（模型は真ん中が原点）。 */
+  const os=slot&&slot.model&&slot.model.originShift;
+  if(os){
+    const sc=slot.scale||1,ll=trainLL(baseLat,baseLon,os.x*sc,os.y*sc);
+    baseLat=ll[0];baseLon=ll[1];baseAlt+=os.z*sc;
+  }
+  return {lat:baseLat,lon:baseLon,
+          altitude:baseAlt,
           heading:slot.heading||0,scale:slot.scale||1,
           opacity:Number.isFinite(slot.opacity)?slot.opacity:1};
 }
@@ -12708,7 +12753,7 @@ async function railSimSetupHojo(){
   const mLat=111320,mLon=111320*Math.cos(snap.lat*D2R);
   const cum=[0];for(let i=0;i+1<path.length;i++)cum.push(cum[i]+Math.hypot(path[i+1][0]-path[i][0],path[i+1][1]-path[i][1]));
   const proj=(lat,lon)=>{
-    const px=(lon-snap.lon)*mLon,py=(lat-snap.lat)*mLat;let best=null;
+    const [px,py]=trainXY(snap.lat,snap.lon,lat,lon);let best=null;
     for(let i=0;i+1<path.length;i++){
       const ax=path[i][0],ay=path[i][1],dx=path[i+1][0]-ax,dy=path[i+1][1]-ay,l2=dx*dx+dy*dy;
       if(!(l2>1e-6))continue;
@@ -12740,11 +12785,26 @@ async function railSimSetupHojo(){
     return slot;
   };
   const down=make("down"),up=make("up");
+  /* 【v1184】駅：線路の右がわ（粟生→北条町の向き）にホーム・屋根・看板を置く。「もうすぐ駅」と分かるように。 */
+  for(let i=kmzSlots.length-1;i>=0;i--){const o=kmzSlots[i].object;if(o&&String(o.name||"").startsWith("駅・"))kmzSlots.splice(i,1);}
+  let stationCount=0;
+  for(let i=0;i<ps.length;i++){
+    const along=ps[i].along;
+    let k=0;while(k+1<cum.length-1&&cum[k+1]<=along)k++;
+    const seg=cum[k+1]-cum[k]||1,u=clamp((along-cum[k])/seg,0,1);
+    const x=path[k][0]+(path[k+1][0]-path[k][0])*u,y=path[k][1]+(path[k+1][1]-path[k][1])*u;
+    const zz=(path[k][2]||0)+((path[k+1][2]||0)-(path[k][2]||0))*u;
+    const bearing=norm360(Math.atan2(path[k+1][0]-path[k][0],path[k+1][1]-path[k][1])*R2D+(sign>0?0:180));
+    const [la,lo]=trainLL(snap.lat,snap.lon,x,y);
+    const spec=railSimStationSpec(line.stations[i].name);
+    const slot=objectCreateSlot(spec,la,lo,baseM+zz);
+    if(slot){slot.heading=bearing;stationCount++;}
+  }
   renderKmzList();refreshKmzBuildingControls(false);
   drawPhoto._terrainRenderKey=null;update();
   const total=Math.round(dist[7]-dist[0]);
   const dayType=railSimDayType(),dayRows=RAIL_SIM_HOJO[dayType];
-  note(`🚉 北条鉄道をセットしました：粟生〜北条町 ${(total/1000).toFixed(2)}km・8駅。いまの撮影日は${dayType==="holiday"?"土日祝":"平日"}ダイヤ（下り${dayRows.down.length}本／上り${dayRows.up.length}本）。`
+  note(`🚉 北条鉄道をセットしました：粟生〜北条町 ${(total/1000).toFixed(2)}km・駅${stationCount}か所（ホーム・屋根・看板）。いまの撮影日は${dayType==="holiday"?"土日祝":"平日"}ダイヤ（下り${dayRows.down.length}本／上り${dayRows.up.length}本）。`
     +`タイムバーを動かすと、走っている時間だけ列車が現れます。`);
   return {dist,sign,total,down:!!down,up:!!up};
 }
@@ -15573,9 +15633,9 @@ function trainLockAim(){
   const spec=trainSpecOf(slot.train);
   const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
   if(!lay.length||!Number.isFinite(cfg.lat))return null;
-  let x=0,y=0,z=0;for(const c of lay){x+=c.x;y+=c.y;z+=(c.z||0);}
-  x/=lay.length;y/=lay.length;z/=lay.length;
-  const lat=cfg.lat+y*(cfg.scale||1)/111320,lon=cfg.lon+x*(cfg.scale||1)/(111320*Math.cos(cfg.lat*D2R));
+  let x=0,y=0,z=0;
+  if(!(slot.model&&slot.model.originShift)){for(const c of lay){x+=c.x;y+=c.y;z+=(c.z||0);}x/=lay.length;y/=lay.length;z/=lay.length;}   /* 【v1184】中心へ寄せた列車は cfg が既に列車の位置 */
+  const [lat,lon]=trainLL(cfg.lat,cfg.lon,x*(cfg.scale||1),y*(cfg.scale||1));
   const base=terrainDistanceAndBearing(state.lat,state.lon,lat,lon);
   const eye=observerEyeElevationM();
   const dM=Math.max(1,base.distanceKm*1000);
@@ -28467,7 +28527,8 @@ try{
         ways:async(lat,lon,km)=>{const ws=await fetchStaticRailWays(+lat,+lon,+km||3);const mLa=111320,mLo=111320*Math.cos(+lat*D2R);
           return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
         /* 【v1182】鉄道シミュレーション。setup()でセット、at(分)で全列車の位置。 */
-        railSim:{setup:()=>railSimSetupHojo(),data:()=>RAIL_SIM_HOJO,dayType:(date)=>railSimDayType(date),holidays:(y)=>[...jpHolidaysOfYear(+y)].sort((a,b)=>a-b),
+        railSim:{pos:()=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>{const c=kmzSlotSettings(sl);return {名:sl.train.name,lat:c.lat,lon:c.lon,alt:c.altitude,可視:sl.visible};}),
+          setup:()=>railSimSetupHojo(),data:()=>RAIL_SIM_HOJO,dayType:(date)=>railSimDayType(date),holidays:(y)=>[...jpHolidaysOfYear(+y)].sort((a,b)=>a-b),
           at:(min)=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>({名:sl.train.name,...railSimState(sl.train.run.sim,+min),可視:sl.visible}))},
         /* 【v1181】時刻表モードの計算を確かめる。stops=[{s,arr,dep}](分・小数)。 */
         table:(stops,accKmhs,decKmhs)=>{const t={stops,acc:(accKmhs||2.5)/3.6,dec:(decKmhs||3.5)/3.6};
