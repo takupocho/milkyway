@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1167-train-profile";
+const APP_VERSION="1168-train-smooth";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9407,6 +9407,9 @@ const TRAIN_UNDER_M=-.35;      /* 実測 z の下端（レール面より下＝�
 const TRAIN_MAX_CARS=8;
 const TRAIN_SNAP_LIMIT_M=150;  /* これより遠いと線路に吸い付かない */
 const TRAIN_PITCH_M=TRAIN_CAR_LEN_M+TRAIN_CAR_GAP_M;
+/* 【v1168】台車の間隔の半分。20m級の車両の台車中心間は約14m。 */
+const TRAIN_BOGIE_HALF_M=7;
+let trainBogieSmoothOn=true;
 
 /* 【v1099】と同じ作法で、入口をひとつにする。ここを通った形だけが本物。 */
 function trainSpecOf(value){
@@ -9512,8 +9515,26 @@ function trainLayout(spec,runOffsetM){
   const centre=clamp(s0+dir*runM,margin,Math.max(margin,total-margin));
   /* 反転のときは、置き場所を逆へ送るだけでなく**車両の向きも 180° 回す**。
      こうしておくと、どちらの向きでも `cars-1` 番目が必ず先頭になる。 */
+  /* 【v1168】**車両の高さと傾きは、前後の台車の位置の高さから決める。**
+     v1167 までは「車両の中心が乗っている短い区間(10m)の勾配」を傾きにしていたので、
+     勾配の変わり目で1両だけ急に傾き、隣の車両との間が**段差のように**見えた
+     （橋を渡り終えた所。利用者報告）。実車は前後の台車の間で傾くので、
+     台車の間隔 ±TRAIN_BOGIE_HALF_M の2点の高さの差から傾きを出し、中心の高さは2点の平均にする。 */
+  const zAtS=(sv)=>{
+    if(sv<=0)return path[0][2]||0;
+    if(sv>=total)return path[path.length-1][2]||0;
+    let k=0;while(k+1<cum.length-1&&cum[k+1]<=sv)k++;
+    const u=seg[k]>1e-6?(sv-cum[k])/seg[k]:0;
+    return (path[k][2]||0)+((path[k+1][2]||0)-(path[k][2]||0))*u;
+  };
   for(let i=0;i<spec.cars;i++){
-    const car=at(centre+dir*((i-half)*TRAIN_PITCH_M));
+    const sCar=centre+dir*((i-half)*TRAIN_PITCH_M);
+    const car=at(sCar);
+    if(trainBogieSmoothOn){
+      const d=TRAIN_BOGIE_HALF_M,z0=zAtS(sCar-d),z1=zAtS(sCar+d);
+      car.z=(z0+z1)/2;
+      car.pitch=Math.atan2(z1-z0,2*d)*R2D;
+    }
     if(dir<0){car.bearing=norm360(car.bearing+180);car.pitch=-car.pitch;}   /* 【v1150】逆向きは勾配も逆 */
     out.push(car);
   }
@@ -9967,7 +9988,7 @@ async function trainFillPathElevations(snap){
         const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay;
         let u=((e-ax)*dx+(n-ay)*dy)/(dx*dx+dy*dy);u=Math.max(0,Math.min(1,u));
         const dist=Math.hypot(ax+dx*u-e,ay+dy*u-n);
-        if(!best||dist<best.dist)best={dist,travel:cum[i]+lens[i]*u};
+        if(!best||dist<best.dist)best={dist,travel:cum[i]+lens[i]*u,clamped:(u<=0&&i===0)||(u>=1&&i===lens.length-1)};
       }
       return best;};
     if(!P.some(p=>{const h=near(p.e,p.n);return h&&h.dist<=12;}))continue;
@@ -9976,7 +9997,9 @@ async function trainFillPathElevations(snap){
   }
   const deckAt=(e,n)=>{
     let best=null;
-    for(const dk of decks){const h=dk.near(e,n);if(h&&h.dist<=12&&(!best||h.dist<best.h.dist))best={h,dk};}
+    /* 【v1168】橋の端の**外側**（線の延長上で1.5m以上先）は橋面で固定しない。v1167 は端から12m先まで橋面で固定していたので、
+       橋の勾配(約4.7%)から急に水平になり、その先で3.5%の坂が始まって、橋を渡り終えた所で傾きが急に変わった。 */
+    for(const dk of decks){const h=dk.near(e,n);if(h&&h.dist<=12&&!(h.clamped&&h.dist>1.5)&&(!best||h.dist<best.h.dist))best={h,dk};}
     if(!best)return NaN;
     const t=clamp(best.h.travel/best.dk.total,0,1);
     return lerp(best.dk.prof.start,best.dk.prof.end,t)+Math.sin(Math.PI*t)*best.dk.prof.camberM;
@@ -9996,8 +10019,10 @@ async function trainFillPathElevations(snap){
     z[i]=on?d:(Number.isFinite(g)?g:NaN);
     if(on){fixed[i]=true;onBridge++;}
   }
-  const originIdx=P.findIndex(p=>Math.abs(p.e)<.01&&Math.abs(p.n)<.01);
-  if(originIdx>=0){z[originIdx]=baseZ;fixed[originIdx]=true;}
+  /* 【v1168】置いた点は固定しない。v1167 は置いた点を baseZ(その場所の地面)に固定していたが、
+     橋の端から12m以内の点は橋面で固定されるので、**橋の端のすぐ先に置くと2つの固定点が食い違い**、
+     その間の数mで 1m 以上の段になった（北端の15m先：7.8mの間に1.2m＝局所勾配 15%）。
+     線形の高さは「足元(baseZ)からの相対」なので、置いた点の相対高さが 0 でなくてもよい。 */
   /* 高さが取れなかった点は、近い点で埋める。全部だめなら従来のまま。 */
   let last=NaN;for(let i=0;i<z.length;i++){if(Number.isFinite(z[i]))last=z[i];else if(Number.isFinite(last))z[i]=last;}
   last=NaN;for(let i=z.length-1;i>=0;i--){if(Number.isFinite(z[i]))last=z[i];else if(Number.isFinite(last))z[i]=last;}
@@ -27745,13 +27770,15 @@ try{
         },
         railElevation:(lat,lon)=>trainRailElevationM(+lat,+lon),
         /* 【v1167】走る案内線の高さを 10m おき＋勾配3.5%で測り直すか。false で v1166 まで（頂点だけ）。 */
+        /* 【v1168】車両の高さ・傾きを前後の台車から決めるか。false で v1167 まで。 */
+        bogie:(on)=>{if(typeof on==="boolean")trainBogieSmoothOn=on;return {有効:trainBogieSmoothOn,台車の半間隔m:TRAIN_BOGIE_HALF_M};},
         profile:(on)=>{if(typeof on==="boolean")trainProfileOn=on;return {有効:trainProfileOn,直前:trainProfileInfo,最大勾配:TRAIN_MAX_GRADE};},
         /* 【v1155】長い案内線。走る距離ぶん伸ばす。 */
         guide:async(lat,lon,cars,reachM)=>{
           const s=await trainRailSnap(+lat,+lon,+cars||2,+reachM||2000);
           return s?trainFillPathElevations(s):null;
         },
-        runAt:(v,offsetM)=>{const s=trainSpecOf(v);return s?trainLayout(s,+offsetM).map(c=>({東:+c.x.toFixed(1),北:+c.y.toFixed(1),高:+(c.z||0).toFixed(2),方位:+c.bearing.toFixed(1)})):null;},
+        runAt:(v,offsetM)=>{const s=trainSpecOf(v);return s?trainLayout(s,+offsetM).map(c=>({東:+c.x.toFixed(1),北:+c.y.toFixed(1),高:+(c.z||0).toFixed(2),傾き度:+(c.pitch||0).toFixed(2),方位:+c.bearing.toFixed(1)})):null;},
         place:(cars,lat,lon,alt,path,reverse)=>trainCreateSlot({name:`${cars}両編成`,cars:+cars,path:path||[],reverse:!!reverse},+lat,+lon,+alt),
         deck:(lat,lon)=>trainBridgeDeckElevationM(+lat,+lon).then(v=>({橋面:v,内訳:trainBridgeDeckElevationM._diag||null})),
         placing:()=>trainPlacing?{名:trainPlacing.spec.name,両数:trainPlacing.spec.cars,
