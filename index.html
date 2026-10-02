@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1166-deck-dem";
+const APP_VERSION="1167-train-profile";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9887,7 +9887,7 @@ async function trainRailElevationM(lat,lon){
 }
 /* 【v1150】線形の点ごとに高さを入れる。高さは**足元（置いた点）からの相対**。
    こうしておくと、撮影計画に入れても小さいままで、読み直すときに引き直さなくて済む。 */
-async function trainFillPathElevations(snap){
+async function trainFillPathElevationsLegacy(snap){
   if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return snap;
   const mLat=111320,mLon=111320*Math.cos(snap.lat*D2R);
   const baseZ=await trainRailElevationM(snap.lat,snap.lon);
@@ -9900,6 +9900,139 @@ async function trainFillPathElevations(snap){
   }
   snap.path=filled;
   snap.baseElevationM=baseZ;
+  return snap;
+}
+/* 【v1167】**走る案内線の高さを、10m おきに測り直し、橋面を固定して勾配を 3.5% までに収める。**
+
+   利用者報告：置いたときは線路の上だが、走らせると橋の上で列車が浮く。
+   測った結果（生野の鉄橋・案内線23点）：
+     ① 高さは案内線の**頂点**（25〜140m おき）でだけ測り、間を直線でつないでいた。
+        橋の上は頂点が両端と中央にあるので合う（差 6cm 以内）が、手前の取り付け部は最大 3.2m ずれる。
+     ② 橋の南端から 62m 手前の頂点は **283.86m（DEM）**＝橋の南端 278.11m より 5.75m 高い＝**勾配 9.3%**。
+        鉄道はふつう 3% 台まで。そこは丘を**切通しで抜ける**ので、DEM は切通しの底ではなく丘の上の面を返す。
+        列車は橋に入る直前、橋面より 20m 手前で +1.9m・40m 手前で +3.7m 高い所を走り、橋の上に浮いて見える。
+   直し：
+     ・案内線を 10m おきに刻み（平面の形は変えない）、各点で橋面か地面を測り直す。
+     ・橋面の点と置いた点は**固定**。それ以外は、固定点から前後へ**勾配 3.5% 以内**になるよう上下を抑える。
+     ・平らな所の点は捨てて保存を小さく保つ（許容 5cm。元の頂点は残す）。
+   地面に描いている線路のリボンは地形の面に沿ったまま。抑えた所は、列車が丘の中（切通し）を走る形になる。
+   列車は地形のあとに描くので隠れない。 */
+let trainProfileOn=true;
+let trainProfileInfo=null;
+const TRAIN_MAX_GRADE=.035,TRAIN_PROFILE_STEP_M=10,TRAIN_PROFILE_TOL_M=.05;
+/* 橋1本ぶんの両端・反り。橋の描画(bridgeDeckProfile)と同じ式。必要な点を先に取ってから通す。 */
+async function trainBridgeProfileFor(way){
+  const key=(la,lo)=>la.toFixed(7)+","+lo.toFixed(7);
+  const wanted=new Map();
+  bridgeDeckProfile(way,{ground:(la,lo)=>{wanted.set(key(la,lo),[la,lo]);return 0;},overWater:()=>false});
+  const values=new Map();
+  await Promise.all([...wanted.entries()].map(async([k,[la,lo]])=>{values.set(k,await fireworkGroundElevation(la,lo));}));
+  return bridgeDeckProfile(way,{
+    ground:(la,lo)=>{const v=values.get(key(la,lo));return Number.isFinite(v)?v:NaN;},
+    overWater:(la,lo)=>bridgeDeckSampler(+el.lat.value,+el.lon.value).overWater(la,lo)});
+}
+async function trainFillPathElevations(snap){
+  if(!trainProfileOn)return trainFillPathElevationsLegacy(snap);
+  if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return snap;
+  const mLat=111320,mLon=111320*Math.cos(snap.lat*D2R);
+  const baseZ=await trainRailElevationM(snap.lat,snap.lon);
+  if(!Number.isFinite(baseZ))return snap;
+  /* ① 刻む。平面の形は変えない（元の線分の上に点を足すだけ）。 */
+  const P=[];
+  for(let i=0;i<snap.path.length;i++){
+    const a=snap.path[i];
+    if(i>0){
+      const q=snap.path[i-1],len=Math.hypot(a[0]-q[0],a[1]-q[1]),n=Math.max(1,Math.ceil(len/TRAIN_PROFILE_STEP_M));
+      for(let k=1;k<n;k++){const u=k/n;P.push({e:q[0]+(a[0]-q[0])*u,n:q[1]+(a[1]-q[1])*u,orig:false});}
+    }
+    P.push({e:a[0],n:a[1],orig:true});
+  }
+  P[0].s=0;
+  for(let i=1;i<P.length;i++)P[i].s=P[i-1].s+Math.hypot(P[i].e-P[i-1].e,P[i].n-P[i-1].n);
+  /* ② 経路の近くの鉄道橋（経路から12m以内のものだけ）。 */
+  const reach=Math.max(...P.map(p=>Math.hypot(p.e,p.n)));
+  let ways=[];
+  try{ways=await fetchStaticBridgeWays(snap.lat,snap.lon,clamp(reach/1000+.3,.5,6));}catch(e){ways=[];}
+  const decks=[];
+  for(const way of (Array.isArray(ways)?ways:[])){
+    if(way.kind!=="rail"||!Array.isArray(way.points)||way.points.length<2)continue;
+    const pts=way.points.map(p=>[(p[1]-snap.lon)*mLon,(p[0]-snap.lat)*mLat]);
+    const lens=[],cum=[0];
+    for(let i=0;i+1<pts.length;i++){const l=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);lens.push(l);cum.push(cum[i]+l);}
+    const total=cum[cum.length-1];
+    if(!(total>1))continue;
+    const near=(e,n)=>{let best=null;
+      for(let i=0;i<lens.length;i++){
+        if(!(lens[i]>1e-6))continue;
+        const ax=pts[i][0],ay=pts[i][1],dx=pts[i+1][0]-ax,dy=pts[i+1][1]-ay;
+        let u=((e-ax)*dx+(n-ay)*dy)/(dx*dx+dy*dy);u=Math.max(0,Math.min(1,u));
+        const dist=Math.hypot(ax+dx*u-e,ay+dy*u-n);
+        if(!best||dist<best.dist)best={dist,travel:cum[i]+lens[i]*u};
+      }
+      return best;};
+    if(!P.some(p=>{const h=near(p.e,p.n);return h&&h.dist<=12;}))continue;
+    const prof=await trainBridgeProfileFor(way);
+    if(prof)decks.push({near,total,prof});
+  }
+  const deckAt=(e,n)=>{
+    let best=null;
+    for(const dk of decks){const h=dk.near(e,n);if(h&&h.dist<=12&&(!best||h.dist<best.h.dist))best={h,dk};}
+    if(!best)return NaN;
+    const t=clamp(best.h.travel/best.dk.total,0,1);
+    return lerp(best.dk.prof.start,best.dk.prof.end,t)+Math.sin(Math.PI*t)*best.dk.prof.camberM;
+  };
+  /* ③ 各点の高さ：橋の上なら橋面、それ以外は地面（v1150 と同じ規則）。 */
+  const ground=new Array(P.length);
+  for(let i=0;i<P.length;i+=40){
+    await Promise.all(P.slice(i,i+40).map(async(p,j)=>{ground[i+j]=await fireworkGroundElevation(snap.lat+p.n/mLat,snap.lon+p.e/mLon);}));
+  }
+  const z=new Array(P.length),fixed=new Array(P.length).fill(false);
+  let onBridge=0;
+  for(let i=0;i<P.length;i++){
+    const g=ground[i],d=deckAt(P[i].e,P[i].n);
+    /* 橋の線の上（12m以内）の点は、すべて橋面で固定する。両端は地面(DEM)と橋面が同じ値になるので、
+       「橋面が地面より高いとき」という v1150 の条件では橋の端が固定されず、勾配の調整で端が約1m持ち上がった。 */
+    const on=Number.isFinite(d);
+    z[i]=on?d:(Number.isFinite(g)?g:NaN);
+    if(on){fixed[i]=true;onBridge++;}
+  }
+  const originIdx=P.findIndex(p=>Math.abs(p.e)<.01&&Math.abs(p.n)<.01);
+  if(originIdx>=0){z[originIdx]=baseZ;fixed[originIdx]=true;}
+  /* 高さが取れなかった点は、近い点で埋める。全部だめなら従来のまま。 */
+  let last=NaN;for(let i=0;i<z.length;i++){if(Number.isFinite(z[i]))last=z[i];else if(Number.isFinite(last))z[i]=last;}
+  last=NaN;for(let i=z.length-1;i>=0;i--){if(Number.isFinite(z[i]))last=z[i];else if(Number.isFinite(last))z[i]=last;}
+  if(!z.every(Number.isFinite))return trainFillPathElevationsLegacy(snap);
+  /* ④ 勾配を抑える。固定点（橋面・置いた点）は動かさず、そこから前後へ広げる。 */
+  const raw=z.slice();
+  for(let iter=0;iter<4;iter++){
+    for(let i=1;i<z.length;i++){if(fixed[i])continue;const lim=TRAIN_MAX_GRADE*(P[i].s-P[i-1].s);z[i]=clamp(z[i],z[i-1]-lim,z[i-1]+lim);}
+    for(let i=z.length-2;i>=0;i--){if(fixed[i])continue;const lim=TRAIN_MAX_GRADE*(P[i+1].s-P[i].s);z[i]=clamp(z[i],z[i+1]-lim,z[i+1]+lim);}
+  }
+  let limited=0,maxFix=0;
+  for(let i=0;i<z.length;i++){const d=Math.abs(z[i]-raw[i]);if(d>.05)limited++;if(d>maxFix)maxFix=d;}
+  /* ⑤ 平らな所の点は捨てる（元の頂点は残す）。 */
+  const keep=new Uint8Array(z.length);
+  const origIdx=[];for(let i=0;i<P.length;i++)if(P[i].orig){keep[i]=1;origIdx.push(i);}
+  const rdp=(lo,hi)=>{
+    if(hi-lo<2)return;
+    let maxD=0,idx=-1;
+    for(let i=lo+1;i<hi;i++){
+      const span=P[hi].s-P[lo].s||1,interp=z[lo]+(z[hi]-z[lo])*(P[i].s-P[lo].s)/span,d=Math.abs(z[i]-interp);
+      if(d>maxD){maxD=d;idx=i;}
+    }
+    if(maxD>TRAIN_PROFILE_TOL_M&&idx>=0){keep[idx]=1;rdp(lo,idx);rdp(idx,hi);}
+  };
+  for(let k=0;k+1<origIdx.length;k++)rdp(origIdx[k],origIdx[k+1]);
+  const filled=[];
+  for(let i=0;i<P.length;i++)if(keep[i])filled.push([P[i].e,P[i].n,z[i]-baseZ]);
+  let maxGrade=0;
+  for(let i=1;i<z.length;i++){const ds=P[i].s-P[i-1].s;if(ds>1&&!(fixed[i]&&fixed[i-1]))maxGrade=Math.max(maxGrade,Math.abs(z[i]-z[i-1])/ds);}
+  trainProfileInfo={もとの頂点:snap.path.length,刻んだ点:P.length,保存する点:filled.length,橋の上の点:onBridge,橋の数:decks.length,
+    勾配で抑えた点:limited,最大の補正m:+maxFix.toFixed(2),橋の外の最大勾配:+(maxGrade*100).toFixed(2)+"%"};
+  trainProfileInfo.橋の近く=P.map((p,i)=>({北:+p.n.toFixed(1),地面:Number.isFinite(ground[i])?+ground[i].toFixed(2):null,元:+raw[i].toFixed(2),後:+z[i].toFixed(2),固定:fixed[i],元の頂点:p.orig})).filter(r=>r.北>-70&&r.北<45);
+  snap.path=filled;
+  snap.baseElevationM=baseZ;
+  snap.profileInfo=trainProfileInfo;
   return snap;
 }
 /* スロットを作って一覧に加える（標高は呼ぶ側で決める）。復元にも使う。 */
@@ -27611,6 +27744,8 @@ try{
           return s?trainFillPathElevations(s):null;
         },
         railElevation:(lat,lon)=>trainRailElevationM(+lat,+lon),
+        /* 【v1167】走る案内線の高さを 10m おき＋勾配3.5%で測り直すか。false で v1166 まで（頂点だけ）。 */
+        profile:(on)=>{if(typeof on==="boolean")trainProfileOn=on;return {有効:trainProfileOn,直前:trainProfileInfo,最大勾配:TRAIN_MAX_GRADE};},
         /* 【v1155】長い案内線。走る距離ぶん伸ばす。 */
         guide:async(lat,lon,cars,reachM)=>{
           const s=await trainRailSnap(+lat,+lon,+cars||2,+reachM||2000);
