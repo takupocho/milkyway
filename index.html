@@ -6872,7 +6872,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1178-train-lock";
+const APP_VERSION="1179-train-reach";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9753,13 +9753,22 @@ async function trainRailSnap(lat,lon,carCount,reachM){
           if(head<=JOIN_M)seq=p;
           else if(tail<=JOIN_M)seq=p.slice().reverse();
           else return;
+          /* 【v1179】**断片の端が、いまの先端を行き過ぎて重なっている**ときは、先端より手前の点を捨てる。
+             実測（北条鉄道）：次の断片の端が先端より 75〜110m 手前まで食い込んでいて、
+             「隙間へ向かう向き」が逆になって橋渡しを断られ、案内線が 2.2km で切れていた
+             （線路はそのあと 3km 以上続く）。先端を超える最初の点から先だけを使う。 */
+          {
+            let j=0;
+            while(j<seq.length-2&&(seq[j][0]-tip[0])*inDir[0]+(seq[j][1]-tip[1])*inDir[1]<=.5)j++;
+            if(j>0)seq=[tip].concat(seq.slice(j));
+          }
           const out=unit(seq[0],seq[1]);
           if(!out)return;
           const dot=inDir[0]*out[0]+inDir[1]*out[1];
           if(dot<MIN_DOT)return;
           /* 【v1156】隙間があるときは、そこへ向かう向きも線に沿っていること。
              これが無いと、横にある別の線へ飛び移れてしまう。 */
-          const gap=Math.min(head,tail);
+          const gap=Math.hypot(seq[0][0]-tip[0],seq[0][1]-tip[1]);
           if(gap>1){
             const bridge=unit(tip,seq[0]);
             if(!bridge)return;
@@ -10257,7 +10266,45 @@ function syncTrainRunRow(site){
     el.kmzTrainRunEditSpeed.value=String(Math.round(spec.run.speedKmh));
   }
 }
-function trainSetRun(slot,run){
+/* 【v1179】**走らせる設定を変えたら、案内線を取り直す。**
+   利用者報告（北条鉄道）：線路はあるのに、列車が一定の範囲から先へ進まない。
+   原因：案内線（列車が走れる線路の長さ）は**置いた瞬間に作った長さで固定**だった。
+   走らせない設定で置くと前後 約60m ぶんしか無く、置いたあとで「走らせる」をONにしても、その長さのまま端で止まる。
+   走らせる設定で置いても、長さは「速度×8分」(最大4km)で、時刻を大きく動かすと足りない。
+   直し：走らせる設定を変えるたびに、置いた場所から前後へ最大 TRAIN_RUN_REACH_M(6km) の線路をたどって案内線を作り直す。
+   取れなければ（通信失敗・線路なし）元の案内線のまま。 */
+const TRAIN_RUN_REACH_M=6000;
+async function trainRebuildGuide(slot){
+  const spec=trainSpecOf(slot&&slot.train);
+  if(!spec)return null;
+  const snap0=await trainRailSnap(slot.lat,slot.lon,spec.cars,TRAIN_RUN_REACH_M);
+  if(!snap0)return null;
+  const snap=await trainFillPathElevations(snap0);
+  if(!snap||!Array.isArray(snap.path)||snap.path.length<2)return null;
+  /* 案内線は「垂線の足」が原点。置いた点（slot）が足から少しずれていても、ずらさずに原点を置いた点へ合わせる。 */
+  const mLat=111320,mLon=111320*Math.cos(slot.lat*D2R);
+  const ox=(snap.lon-slot.lon)*mLon,oy=(snap.lat-slot.lat)*mLat;
+  const path=snap.path.map(p=>[p[0]+ox,p[1]+oy,p[2]]);
+  return {path,lengthM:snap.lengthM,movedM:snap.movedM};
+}
+async function trainSetRun(slot,run){
+  const ok=trainSetRunNow(slot,run);
+  if(!ok||!run)return ok;
+  const token=(slot._guideToken=(slot._guideToken||0)+1);
+  setKmzBuildingStatus("🚃 線路をたどり直しています…","ready");
+  let g=null;
+  try{g=await trainRebuildGuide(slot);}catch(e){g=null;}
+  if(token!==slot._guideToken||!kmzSlots.includes(slot)||!slot.train||!slot.train.run)return ok;
+  if(g&&g.path.length>=2){
+    slot.train={...slot.train,path:g.path};
+    delete slot._runOffsetM;
+    trainApplySlot(slot);trainSyncRun(slot);
+    setKmzBuildingStatus(`🚃 走れる線路：前後あわせて ${Math.round(g.lengthM)}m（${slot.train.name}）`,"ready");
+    drawPhoto._terrainRenderKey=null;update();
+  }else setKmzBuildingStatus("🚃 線路をたどり直せませんでした（元の範囲のままです）。","error");
+  return true;
+}
+function trainSetRunNow(slot,run){
   const spec=trainSpecOf(slot&&slot.train);
   if(!spec){setKmzBuildingStatus("列車を一覧から選んでください。","error");return false;}
   slot.train={...spec,run:run||null};
@@ -28144,6 +28191,9 @@ try{
           return {reverse:sp.reverse,進行方向:trainDirectionLabel(sp.reverse?d.backward:d.forward),もとの向き:trainDirectionLabel(d.forward),反対:trainDirectionLabel(d.backward)};},
         profile:(on)=>{if(typeof on==="boolean")trainProfileOn=on;return {有効:trainProfileOn,直前:trainProfileInfo,最大勾配:TRAIN_MAX_GRADE};},
         /* 【v1155】長い案内線。走る距離ぶん伸ばす。 */
+        /* 【v1179】線路の生データ（断片の端の位置）を見る。案内線が途切れる原因の診断用。 */
+        ways:async(lat,lon,km)=>{const ws=await fetchStaticRailWays(+lat,+lon,+km||3);const mLa=111320,mLo=111320*Math.cos(+lat*D2R);
+          return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
         guide:async(lat,lon,cars,reachM)=>{
           const s=await trainRailSnap(+lat,+lon,+cars||2,+reachM||2000);
           return s?trainFillPathElevations(s):null;
