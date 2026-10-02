@@ -6844,7 +6844,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1168-train-smooth";
+const APP_VERSION="1169-train-skyline";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -27802,6 +27802,8 @@ try{
       /* 【v1119】直前に描いた順。遠い順＝先に描く順。 */
       kmzOrder:()=>drawPhoto._kmzOrder||null,
       kmzGate:()=>drawKmzOneBuilding._gate||null,   /* 【v1157】 */
+      /* 【v1169】列車の稜線の範囲を、頂点から実際の一番近い距離で決めるか。false で v1168 まで。 */
+      kmzActualNearest:(on)=>{if(typeof on==="boolean"){kmzActualNearestOn=on;drawPhoto._terrainRenderKey=null;update();}return {有効:kmzActualNearestOn};},
       /* 【v1158】橋の映り込み。鏡の面・形が出来ているか。 */
       bridgeMirror:()=>{const m=drawPhoto._bridgeMirrorOverlay;
         return {共有の鏡の面:waterMirrorSharedPlaneM(),水のあった方位:waterMirrorCache.rows,
@@ -32198,6 +32200,25 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     else drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
   }
 }
+/* 【v1169】模型の頂点から、観測地に**実際に一番近い距離**(km)。
+   「置いた点までの距離 − 模型の大きさの半分」は、模型が置いた点を中心にあるときだけ正しい。
+   走っている列車は、車両が置いた点から何百m も離れた所にいる（模型は置いた点からの相対座標）。
+   車両が置いた点より手前にいると、その式は**車両より奥の山まで「手前の地形」に数えて**、
+   車両を山の稜線で切り取ってしまう（利用者報告：列車が途中で山に隠れて消え、リフレだけ残る。視点で現れる）。 */
+let kmzActualNearestOn=true;
+function kmzModelNearestKm(model,cfg,base){
+  const tris=model&&model.triangles;
+  if(!Array.isArray(tris)||!tris.length)return NaN;
+  const h=cfg.heading*D2R,sc=cfg.scale,ch=Math.cos(h),sh=Math.sin(h);
+  const b=base.bearing*D2R,d=base.distanceKm*1000,oE=Math.sin(b)*d,oN=Math.cos(b)*d;   /* 観測地から見た原点の東・北(m) */
+  let best=Infinity;
+  for(const tri of tris)for(const v of tri){
+    const e=(v[0]*ch+v[1]*sh)*sc,n=(-v[0]*sh+v[1]*ch)*sc;
+    const dist=Math.hypot(oE+e,oN+n);
+    if(dist<best)best=dist;
+  }
+  return Number.isFinite(best)?best/1000:NaN;
+}
 function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
@@ -32229,7 +32250,12 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
      実測：60m 先の2両編成（半径21.7m）は手前の端が 37.7m なのに 50m までを使っていた＝
      **模型の真横や下の地面で模型を切っていた**。
      手前に地形が無い（模型が目の前）ときは、そもそも切らない。 */
-  const skylineNearestKm=base.distanceKm-modelHalfSpanKm;
+  let skylineNearestKm=base.distanceKm-modelHalfSpanKm;
+  /* 【v1169】列車は頂点から実際の一番近い距離を使う（走っているときの誤切り抜きを防ぐ）。 */
+  if(kmzActualNearestOn&&slot.train){
+    const actualKm=kmzModelNearestKm(slot.model,cfg,base);
+    if(Number.isFinite(actualKm))skylineNearestKm=actualKm;
+  }
   const skylineLimitKm=skylineNearestKm;
   /* 【v1120】町は稜線で切らない。基準点が足元なので skylineLimitKm が 50m まで縮み、
      半径500mぶんの建物を半径50mの地形の稜線で切ってしまう（足元が丸ごと消える）。
@@ -32272,7 +32298,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   if(skylineSkipped)nearSky=null;
   /* 【v1157】確かめる用。`__hd.kmzGate()` で最後の1回が読める。 */
   if(!reflectionPass)drawKmzOneBuilding._gate={名:slot.fileName,段:phase,
-    距離km:+base.distanceKm.toFixed(3),稜線の範囲km:+skylineLimitKm.toFixed(4),
+    距離km:+base.distanceKm.toFixed(3),稜線の範囲km:+skylineLimitKm.toFixed(4),従来式の範囲km:+(base.distanceKm-modelHalfSpanKm).toFixed(4),
     稜線:nearSky?"作れた":(skylineSkipped?"切らない":"作れない"),
     模型の足元標高:Number.isFinite(cfg.altitude)?+cfg.altitude.toFixed(1):null,
     範囲の最高標高:(nearSky&&Number.isFinite(nearSky.maxElevationM))?+nearSky.maxElevationM.toFixed(1):null};
