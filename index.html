@@ -6903,7 +6903,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1187-live-map";
+const APP_VERSION="1189-eta-sorted";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9720,7 +9720,7 @@ function railSimStationSpec(name,side){
 }
 /* 【v1187】地図の駅アイコンをタップしたときの案内。Google マップの駅の時刻表のように、
    方面ごとに次の発車と「あと○分」を出す。時刻はいまのシミュレーション時刻（LIVE中は実時刻）から。
-   平日・土日祝は撮影日で切り替わる。1時間以上先は時刻で出す。 */
+   平日・土日祝は撮影日で切り替わる。1時間以上先は「あと○時間○分」で出す（v1188）。 */
 function railSimStationPopupHtml(slot){
   const o=slot&&slot.object;
   if(!o)return "";
@@ -9733,15 +9733,20 @@ function railSimStationPopupHtml(slot){
     {label:"北条町方面",key:"down",col:idx,show:idx<7},
     {label:"粟生方面",key:"up",col:7-idx,show:idx>0}];
   let html=`<div class="rs-title">${name}駅</div>`;
+  /* 【v1189】両方面をまぜて、発車までが近い順に並べる（先頭6本）。 */
+  const items=[];
   for(const d of dirs){
     if(!d.show)continue;
-    const next=rows[d.key].map(r=>r[d.col]).filter(t=>t>=now-.0).sort((a,b)=>a-b).slice(0,3);
-    if(!next.length){html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span> ${d.label}<div class="rs-sub">本日の運行は終了しました</div></div></div>`;continue;}
-    for(const t of next){
-      const diff=Math.ceil(t-now);
-      const eta=diff<=0?"まもなく":(diff<60?`${diff}<small>分</small>`:clock(t));
-      html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span> ${d.label}<div class="rs-sub">定刻出発 ${clock(t)}・普通</div></div><div class="rs-eta">${eta}</div></div>`;
-    }
+    for(const t of rows[d.key].map(r=>r[d.col]))if(t>=now)items.push({t,label:d.label});
+  }
+  items.sort((x,y)=>x.t-y.t||(x.label<y.label?-1:1));
+  if(!items.length)html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span><div class="rs-sub">本日の運行は終了しました</div></div></div>`;
+  for(const it of items.slice(0,6)){
+    const t=it.t,diff=Math.ceil(t-now);
+    /* 【v1188】1時間以上先も「あと○時間○分」で出す（時刻は左の「定刻出発」に出ている）。 */
+    const hh=Math.floor(diff/60),mm=diff%60;
+    const eta=diff<=0?"まもなく":(diff<60?`${diff}<small>分</small>`:`${hh}<small>時間</small>${mm?`${mm}<small>分</small>`:""}`);
+    html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span> ${it.label}<div class="rs-sub">定刻出発 ${clock(t)}・普通</div></div><div class="rs-eta">${eta}</div></div>`;
   }
   html+=`<div class="rs-foot">${dayType==="holiday"?"土日祝ダイヤ":"平日ダイヤ"}・現在 ${clock(now)}</div>`;
   return html;
