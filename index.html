@@ -3020,6 +3020,7 @@
   /* 【v1185】地図の列車・駅のアイコン（赤丸の代わり）。選ぶと黄色い縁。 */
   .map-kmz-icon{width:30px;height:30px;border-radius:50%;background:#e5322d;border:2.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:17px;line-height:1;cursor:pointer;}
   .map-kmz-icon.station{background:#2f6fd0;width:24px;height:24px;font-size:14px;}
+  .map-kmz-icon.train{width:36px;height:36px;font-size:20px;}   /* 【v1190】駅に停まっても輪が見えるよう、駅より大きく */
   .map-kmz-icon.target{border-color:#ffe08a;box-shadow:0 0 0 3px rgba(255,224,138,.6),0 1px 5px rgba(0,0,0,.45);}
   /* 【v1187】駅の案内（Google マップの駅の時刻表ふう） */
   .rail-station-popup .leaflet-popup-content-wrapper{border-radius:16px;padding:2px 4px;box-shadow:0 4px 18px rgba(0,0,0,.35);}
@@ -6903,7 +6904,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1189-eta-sorted";
+const APP_VERSION="1190-live-light";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14846,8 +14847,8 @@ function updateOsmKmzMarkers(){
       const iconKind=slot.train?"train":((slot.object&&String(slot.object.name||"").startsWith("駅・"))?"station":null);
       if(!m&&iconKind){
         /* 【v1185】列車・駅は、赤丸ではなくアイコン（🚃／🚉）にする。 */
-        m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,
-          icon:L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":"🚉"}</div>`,iconSize:[30,30],iconAnchor:[15,15]})}).addTo(osmMapInstance);
+        m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,zIndexOffset:iconKind==="station"?600:0,   /* 【v1190】駅を列車より上に */
+          icon:L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":"🚉"}</div>`,iconSize:iconKind==="train"?[36,36]:[24,24],iconAnchor:iconKind==="train"?[18,18]:[12,12]})}).addTo(osmMapInstance);
         m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();updateOsmFovOverlay();});
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
@@ -21919,8 +21920,12 @@ function playbackTick(now){
   /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
      必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
      再生中に周期的な負荷の山ができるため、その1回を省く。 */
-  const playbackUiUpdateDue=now-playbackLastUiTime>=250 || finished || trainChaseIndex>=0;   /* 【v1186】追跡中は毎コマ */
-  if(!playbackUiUpdateDue&&now-playbackLastRenderTime>=targetFrameMs-1){
+  /* 【v1190】**LIVE中は軽くする。** 実時間(1倍)なので、1秒に1回の更新で十分。
+     これまで通常の再生と同じ60fps＋4回/秒の全更新だったので、スマホでは重くて操作を受けつけず、秒も進まなかった（利用者報告）。
+     追跡カメラ中は動きが要るので今までどおり。地図を全面に開いているときは、隠れている写真の描き直しも省く。 */
+  const liveLight=liveOn&&trainChaseIndex<0,liveMapOnly=liveLight&&osmMapScreenOpen;
+  const playbackUiUpdateDue=now-playbackLastUiTime>=(liveLight?1000:250) || finished || trainChaseIndex>=0;   /* 【v1186】追跡中は毎コマ */
+  if(!playbackUiUpdateDue&&!liveLight&&now-playbackLastRenderTime>=targetFrameMs-1){
     playbackLastRenderTime=now;
     const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
     const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
@@ -21945,10 +21950,12 @@ function playbackTick(now){
     updatePlaybackClockLabel(playbackVisualMinutes);
     const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
     const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
-    refreshPlaybackCelestialState(jdPreview,norm360(gcAA.az));
-    drawPhoto(photoCtx,state);
-    drawDial(dialCtx,state);
-    drawCompassStrip(compassCtx,state);
+    if(!liveMapOnly){
+      refreshPlaybackCelestialState(jdPreview,norm360(gcAA.az));
+      drawPhoto(photoCtx,state);
+      drawDial(dialCtx,state);
+      drawCompassStrip(compassCtx,state);
+    }
   }
   if(finished){ stopPlayback(false); return; }
   requestAnimationFrame(playbackTick);
