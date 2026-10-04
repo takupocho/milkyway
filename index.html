@@ -5537,6 +5537,12 @@
         <h2 class="ctrl-group-toggle">開発者<span class="ctrl-arrow">▼</span></h2>
         <div class="ctrl-group-body">
           <p class="map-hint" style="margin-bottom:4px;">絵の仕上げに関わる調整です。値を変えると見え方が大きく変わります。</p>
+          <!-- 【v1195】前照灯の光量。1倍はv1194と同じ。 -->
+          <div id="trainHeadlightBrightnessPanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
+            <p class="map-hint" style="margin:0 0 6px;">キハのヘッドライトと前方を照らす光の明るさです。1.0倍が標準、最大5.0倍まで調整できます。夜間の窓明かりと連動します。</p>
+            <div class="field"><label class="top" for="trainHeadlightBrightness">ヘッドライトの明るさ <span class="val mono" id="trainHeadlightBrightnessVal">1.0倍</span></label><input type="range" id="trainHeadlightBrightness" min="0" max="5" step="0.1" value="1" aria-valuetext="1.0倍"></div>
+            <button id="trainHeadlightBrightnessResetBtn" type="button" class="ghost" style="margin-top:6px;">標準の明るさに戻す（1.0倍）</button>
+          </div>
           <!-- 【v1086】太陽・月の軌跡の濃さ。昼と夜で別に決める。 -->
           <div id="pathAlphaPanel" style="border:1px solid var(--line,#2a3345);border-radius:10px;padding:8px 10px;margin-top:8px;">
             <p class="map-hint" style="margin:0 0 2px;color:var(--ink);font-weight:700;">☀🌙 軌跡の濃さ</p>
@@ -6906,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1194-headlights";
+const APP_VERSION="1195-headlight-brightness";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8302,6 +8308,7 @@ const el={
   kmzBuildingSilhouetteBtn:$("kmzBuildingSilhouetteBtn"), kmzBuildingSilhouetteState:$("kmzBuildingSilhouetteState"),
   kmzSilhouetteDarkness:$("kmzSilhouetteDarkness"), kmzSilhouetteDarknessVal:$("kmzSilhouetteDarknessVal"),
   kmzNightBrightness:$("kmzNightBrightness"), kmzNightBrightnessVal:$("kmzNightBrightnessVal"),   /* 【v1173】 */
+  trainHeadlightBrightness:$("trainHeadlightBrightness"), trainHeadlightBrightnessVal:$("trainHeadlightBrightnessVal"), trainHeadlightBrightnessResetBtn:$("trainHeadlightBrightnessResetBtn"),   /* 【v1195】 */
   kmzBuildingGlowBtn:$("kmzBuildingGlowBtn"), kmzBuildingGlowState:$("kmzBuildingGlowState"),
   kmzBuildingDepthBtn:$("kmzBuildingDepthBtn"), kmzBuildingDepthState:$("kmzBuildingDepthState"),
   kmzBuildingOrderBtn:$("kmzBuildingOrderBtn"), kmzBuildingOrderState:$("kmzBuildingOrderState"),   /* 【v1119】 */
@@ -9499,6 +9506,21 @@ let trainBogieSmoothOn=true;
    ・日の出・日の入は、観測地と日付から計算した値(s.sunRiseSet)。終日昇らない日は点きっぱなし、終日沈まない日は点かない。 */
 let trainLightsOn=true;
 let trainHeadlightsOn=true;   /* 【v1194】表示メニューでキハの前照灯・前方照射を切り替える。 */
+const TRAIN_HEADLIGHT_BRIGHTNESS_MAX=5;
+let trainHeadlightBrightness=1;   /* 【v1195】1倍は従来の明るさ。 */
+function normalizeTrainHeadlightBrightness(value){
+  const n=savedNumber(value);
+  return n===null?1:Math.round(clamp(n,0,TRAIN_HEADLIGHT_BRIGHTNESS_MAX)*10)/10;
+}
+function setTrainHeadlightBrightness(value){
+  trainHeadlightBrightness=normalizeTrainHeadlightBrightness(value);
+  const text=`${trainHeadlightBrightness.toFixed(1)}倍`;
+  if(el.trainHeadlightBrightness){
+    el.trainHeadlightBrightness.value=String(trainHeadlightBrightness);
+    el.trainHeadlightBrightness.setAttribute("aria-valuetext",text);
+  }
+  if(el.trainHeadlightBrightnessVal)el.trainHeadlightBrightnessVal.textContent=text;
+}
 const TRAIN_WINDOW_LIGHT_BEFORE_SET_MIN=30,TRAIN_WINDOW_LIGHT_AFTER_RISE_MIN=30,TRAIN_WINDOW_LIGHT_RAMP_MIN=15;
 const TRAIN_LIGHT_COLORS={window:[255,214,140],head:[255,200,70],tail:[236,40,30]};
 function trainWindowLightAmount(s){
@@ -9575,7 +9597,7 @@ function trainHeadlightSourceMesh(){
    光が広がっても5260面の走査用キャンバスは大きくならない。
    水面用の「模型の型」には入れず、透明な光で水面に穴を開けない。 */
 function drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectLocalPolygon){
-  const beam=slot.model&&slot.model.headlightBeam,amount=trainHeadlightAmount(s);
+  const beam=slot.model&&slot.model.headlightBeam,amount=trainHeadlightAmount(s)*trainHeadlightBrightness;
   if(!beam||amount<=.01||slot.silhouette||slot.glow||targetCtx.canvas===sunsetKmzMaskCanvas||cfg.opacity<=0)return;
   targetCtx.save();
   targetCtx.globalCompositeOperation="screen";
@@ -21690,6 +21712,13 @@ el.popupMwFramingBtn.addEventListener("click",()=>{
   }
   showSkySearchPopup(mode==="core"?"天の川中心":mode==="arch"?"アーチ全体":"地景込み");
 });
+/* 【v1195】光量変更は照明だけを描き直す。地形や車体の再生成は不要。 */
+if(el.trainHeadlightBrightness)el.trainHeadlightBrightness.addEventListener("input",()=>{
+  setTrainHeadlightBrightness(el.trainHeadlightBrightness.value);update();scheduleSaveSettings();
+});
+if(el.trainHeadlightBrightnessResetBtn)el.trainHeadlightBrightnessResetBtn.addEventListener("click",()=>{
+  setTrainHeadlightBrightness(1);update();scheduleSaveSettings();
+});
 el.popupTrainHeadlightsBtn.addEventListener("click",()=>{
   trainHeadlightsOn=!trainHeadlightsOn;
   /* 照明は地形キャッシュの外へ重ねる。切替だけで地形を作り直さない。 */
@@ -23946,6 +23975,7 @@ function collectPersistedSettings(){
     cloudSeaGapPct:cloudSeaGapPct,
     railLinesVisible:railLinesVisible,
     trainHeadlightsOn:trainHeadlightsOn,   /* 【v1194】 */
+    trainHeadlightBrightness,   /* 【v1195】 */
     placeNameVisible:placeNameVisible,
     favPlacesSceneVisible:favPlacesSceneVisible,   /* 【v1082】 */
     driveLogSceneVisible:driveLogSceneVisible,   /* 【v1105】 */
@@ -24093,6 +24123,7 @@ const USER_DEFAULT_SETTINGS={
  "cloudSeaGapPct": 8,
  "railLinesVisible": true,
  "trainHeadlightsOn": true,
+ "trainHeadlightBrightness": 1,
  "placeNameVisible": true,
  "daylightStarsOn": false,
  "animationSpeed": "575",
@@ -24235,6 +24266,7 @@ async function applyPersistedSettingsText(stored){
   try{
     const s=JSON.parse(stored);
     trainHeadlightsOn=s.trainHeadlightsOn!==false;   /* 【v1194】古い設定は既定ON。 */
+    setTrainHeadlightBrightness(s.trainHeadlightBrightness);   /* 【v1195】旧設定・不正値は1倍。 */
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
     if(s.tz!==undefined) el.tz.value=s.tz;
@@ -25364,6 +25396,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     sunset:sunsetSnapshot(),   /* 【v932】夕陽の設定。ON/OFFも一緒に覚える */
     bridgeVisible:bridgeLinesVisible,
     trainHeadlightsOn,   /* 【v1194】撮影計画にも照明の入り切りを保存する。 */
+    trainHeadlightBrightness,   /* 【v1195】撮影計画にも光量を保存する。 */
     updatedAt:Date.now()
   };
   const waterSnapshot=capturePlanWaterSnapshot(lat,lon);
@@ -25580,6 +25613,7 @@ async function applySavedObservingPlan(location){
   await restorePlanWaterSnapshot(location);
   if(typeof location.bridgeVisible==="boolean") bridgeLinesVisible=location.bridgeVisible;
   if(typeof location.trainHeadlightsOn==="boolean")trainHeadlightsOn=location.trainHeadlightsOn;   /* 古い計画では現在の設定を保つ。 */
+  if(savedNumber(location.trainHeadlightBrightness)!==null)setTrainHeadlightBrightness(location.trainHeadlightBrightness);   /* 【v1195】光量のない旧計画は現在値を保つ。 */
   await restorePlanBridgeSnapshot(location);
   /* 【v1174】**計画を読み込んだとき、橋が最初から出ない**（利用者報告：少し移動すると橋が現れる）。
      原因：ここは bridgeLinesVisible を true にするだけで、橋のデータを**取りに行く処理を呼んでいなかった**。
@@ -33793,10 +33827,12 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
           face.color=normal.map((v,i)=>lerp(v,lit[i],lightAmount));
         }else if(face.glow===2&&slot.train.body===HOJO_KIHA_BODY_KEY){
           /* 【v1194】キハの灯そのものも照射と同じ夜間・ON/OFFに合わせる。 */
-          const headAmount=trainHeadlightAmount(s);
+          const gain=trainHeadlightBrightness,headAmount=trainHeadlightAmount(s)*Math.min(1,gain);
           if(headAmount<=.01)continue;
           const normal=rgbFor(face.color||DEFAULT_COLOR,face.shade);
-          face.color=normal.map((v,i)=>lerp(v,TRAIN_LIGHT_COLORS.head[i],headAmount));
+          /* 光量を上げても時刻のフェード量は0〜1に保ち、RGBの外へ補間しない。 */
+          const lit=TRAIN_LIGHT_COLORS.head.map(v=>clamp(v*Math.max(1,gain),0,255));
+          face.color=normal.map((v,i)=>lerp(v,lit[i],headAmount));
         }else{
           face.color=face.glow===2?TRAIN_LIGHT_COLORS.head:TRAIN_LIGHT_COLORS.tail;
         }
