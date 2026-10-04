@@ -6904,7 +6904,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1192-hojo-kiha";
+const APP_VERSION="1193-smooth-trains";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11321,7 +11321,8 @@ document.getElementById("mapPlaceCancelBtn").addEventListener("click",()=>{
 });
 /* 【v1155】走らせている列車を、いまの時刻の位置へ作り直す。
    置いた場所を `atMin` に通り、`speedKmh` で線路の上を進む。
-   1m 以上動いたときだけ作り直す（毎コマ作ると無駄なので）。 */
+   一般の列車は1m、キハは0.01m動いたときに位置を更新する。
+   【v1193】1両のキハは、向きと勾配が同じ間は模型を再利用し、位置だけを動かす。 */
 function trainSyncRun(slot){
   let spec=trainSpecOf(slot&&slot.train);
   if(!spec||!spec.run)return;
@@ -11340,9 +11341,22 @@ function trainSyncRun(slot){
   }else offsetM=spec.run.table?trainTableState(spec.run.table,kmzTimelineMinutes()).s
     :(kmzTimelineMinutes()-spec.run.atMin)*spec.run.speedKmh*1000/60;
   if(!Number.isFinite(offsetM))return;
-  if(Number.isFinite(slot._runOffsetM)&&Math.abs(slot._runOffsetM-offsetM)<1)return;
+  const isKiha=spec.body===HOJO_KIHA_BODY_KEY;
+  if(Number.isFinite(slot._runOffsetM)&&Math.abs(slot._runOffsetM-offsetM)<(isKiha?0.01:1))return;
+  /* 【v1193】時刻表運行の1両模型は、車体中心が原点。直線・一定勾配なら
+     同じ5260面を作り直す必要がない。曲線・勾配変化・折り返しでは作り直す。
+     姿勢の記録は模型に付けるので、別の操作で模型を交換したあとも古い記録を使わない。 */
+  const pose=isKiha&&spec.cars===1&&spec.run.sim?trainLayout(spec,offsetM)[0]:null;
+  const oldPose=slot.model&&slot.model._runPose;
+  if(pose&&oldPose&&slot.model.originShift&&slot.model.train.body===HOJO_KIHA_BODY_KEY
+     &&slot.model.train.cars===1&&Math.abs(oldPose.bearing-pose.bearing)<1e-9&&Math.abs(oldPose.pitch-pose.pitch)<1e-9){
+    slot.model.originShift={x:pose.x,y:pose.y,z:pose.z||0};
+    slot.model.train=spec;slot._runOffsetM=offsetM;
+    return;
+  }
   const model=buildTrainModel(spec,offsetM);
   if(!model)return;
+  if(pose)model._runPose={bearing:pose.bearing,pitch:pose.pitch};
   slot._runOffsetM=offsetM;slot.model=model;
 }
 function kmzSlotSettings(slot){
@@ -14884,6 +14898,32 @@ function mapKmzAimAtTarget(){
   scheduleCameraViewUpdate();
   scheduleSaveSettings();
   return true;
+}
+/* 【v1193】LIVE地図の短周期更新は、既存の運行列車アイコンを動かすだけ。
+   駅案内・レイヤ作成・距離表示は毎秒のupdateOsmKmzMarkersに任せる。
+   線形上の車両中心から位置を求めるので、隠れた写真用模型も作り直さない。 */
+function updateOsmRunningTrainMarkers(){
+  if(!osmMapInstance||!osmMapScreenOpen||osmMapZooming)return;
+  const minutes=kmzTimelineMinutes();
+  for(const slot of kmzSlots){
+    if(!slot||slot.visible===false||!slot.model)continue;
+    const marker=mapKmzMarkers.get(slot.id),spec=trainSpecOf(slot.train);
+    if(!marker||!spec||!spec.run||!spec.run.sim||spec.path.length<2)continue;
+    const sim=spec.run.sim,st=railSimState(sim,minutes);
+    if(!st.visible)continue;
+    const reverse=st.dir==="down"?(sim.sign<0):(sim.sign>0);
+    const offsetM=sim.sign*st.D/(reverse?-1:1);
+    const layout=trainLayout({...spec,reverse},offsetM);
+    if(!layout.length)continue;
+    let x=0,y=0;
+    for(const car of layout){x+=car.x;y+=car.y;}
+    x/=layout.length;y/=layout.length;
+    const moved=kmzMovedPosition(slot),sc=slot.scale||1;
+    const ll=trainLL(moved?moved.lat:slot.lat,moved?moved.lon:slot.lon,x*sc,y*sc);
+    if(!Number.isFinite(ll[0])||!Number.isFinite(ll[1]))continue;
+    const previous=marker.getLatLng();
+    if(Math.abs(previous.lat-ll[0])>1e-7||Math.abs(previous.lng-ll[1])>1e-7)marker.setLatLng(ll);
+  }
 }
 function updateOsmKmzMarkers(){
   if(!osmMapInstance||typeof kmzSlots==="undefined")return;
@@ -21969,32 +22009,58 @@ function playbackTick(now){
      今は素直に「実時間の何倍か」。1倍なら1秒を1秒で見る。 */
   const speedX=clamp(parseFloat(el.animationSpeedSelect.value)||20,1,ANIM_SPEED_MAX);
   const speed=speedX/60;   // 分/秒へ直す
-  playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,1800);
+  /* 【v1193】LIVEは各コマを実際の時計へ合わせる。低速な端末やタブ復帰でも
+     dtSecの上限による遅れを蓄積せず、毎秒の時刻補正で列車が飛ぶことを防ぐ。 */
+  if(liveOn){
+    const nowMinutes=liveNowMinutes();
+    if(nowMinutes<playbackVisualMinutes-720)liveTick();   /* 深夜0時の切り替えでは日付も合わせる。 */
+    playbackVisualMinutes=nowMinutes;
+  }else playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,1800);
   const finished=playbackVisualMinutes>=1800;
 
-  // リアル天の川は30fps、従来表示は最大60fps。座標はどちらも小数時刻で連続的に進める。
-  const targetFrameMs=Math.max(realMilkyWayEnabled ? 1000/30 : 1000/60, powerFrameMinMs());   /* 【v982】 */
+  /* 【v1193】LIVEで走行列車を見ている間は写真を30fpsで描く。通常再生は
+     リアル天の川30fps・従来表示最大60fpsを維持し、省電力の上限も守る。 */
+  const liveLight=liveOn&&trainChaseIndex<0,liveMapOnly=liveLight&&osmMapScreenOpen;
+  const liveSmoothTrain=liveLight&&kmzSlots.some(sl=>sl.visible&&sl.model&&sl.train&&sl.train.run&&sl.train.path&&sl.train.path.length>=2);
+  const targetFrameMs=Math.max(liveSmoothTrain||realMilkyWayEnabled?1000/30:1000/60,powerFrameMinMs());
   /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
      必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
      再生中に周期的な負荷の山ができるため、その1回を省く。 */
-  /* 【v1190】**LIVE中は軽くする。** 実時間(1倍)なので、1秒に1回の更新で十分。
-     これまで通常の再生と同じ60fps＋4回/秒の全更新だったので、スマホでは重くて操作を受けつけず、秒も進まなかった（利用者報告）。
-     追跡カメラ中は動きが要るので今までどおり。地図を全面に開いているときは、隠れている写真の描き直しも省く。 */
-  const liveLight=liveOn&&trainChaseIndex<0,liveMapOnly=liveLight&&osmMapScreenOpen;
+  /* 【v1190・v1193】LIVE中の重いUI・星空更新は1秒に1回を維持する。
+     その間は写真の列車または地図の列車アイコンを更新する。地形の描画キャッシュも再利用。
+     追跡カメラは従来どおり。地図を全面表示中は隠れた写真を描かない。 */
   const playbackUiUpdateDue=now-playbackLastUiTime>=(liveLight?1000:250) || finished || trainChaseIndex>=0;   /* 【v1186】追跡中は毎コマ */
-  if(!playbackUiUpdateDue&&!liveLight&&now-playbackLastRenderTime>=targetFrameMs-1){
+  if(!playbackUiUpdateDue&&(!liveLight||liveSmoothTrain)&&now-playbackLastRenderTime>=targetFrameMs-1){
     playbackLastRenderTime=now;
-    const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
-    const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
-    const newAz=norm360(gcAA.az);
-    refreshPlaybackCelestialState(jdPreview,newAz);
-    updatePlaybackClockLabel(playbackVisualMinutes);
-    drawPhoto(photoCtx,state);
-    drawDial(dialCtx,state);
-    drawCompassStrip(compassCtx,state);
+    if(liveMapOnly){
+      updateOsmRunningTrainMarkers();
+    }else if(liveLight){
+      railSimTick();
+      /* 固定カメラで列車中心を追う場合も、列車と同じコマで視線を進める。 */
+      if(lockAzToTrain){
+        const t=trainLockAim();
+        if(t){
+          state.facingAz=t.az;state.facingAlt=t.alt;
+          el.facingAz.value=t.az;el.facingAlt.value=t.alt;
+          el.azVal.textContent=`${Math.round(t.az)}°`;
+          el.altValLabel.textContent=`${formatAimDeg(t.alt)}°`;
+        }
+      }
+      drawPhoto(photoCtx,state);
+      if(lockAzToTrain)drawCompassStrip(compassCtx,state);
+    }else{
+      const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
+      const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
+      const newAz=norm360(gcAA.az);
+      refreshPlaybackCelestialState(jdPreview,newAz);
+      updatePlaybackClockLabel(playbackVisualMinutes);
+      drawPhoto(photoCtx,state);
+      drawDial(dialCtx,state);
+      drawCompassStrip(compassCtx,state);
+    }
   }
 
-  // DOM・タイムラインを含む重い全画面更新は4回/秒に抑え、その直後に小数時刻の星空を描き戻す。
+  // DOM・タイムラインを含む全更新はLIVEで1回/秒、通常再生で4回/秒。直後に小数時刻の写真を描き戻す。
   if(playbackUiUpdateDue){
     playbackLastUiTime=now;
     playbackLastRenderTime=now;
