@@ -6912,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1201-hojo-reserve";
+const APP_VERSION="1202-hojo-passing-lights";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9525,7 +9525,7 @@ function trainBodyDimensions(spec){
 const RAIL_SIM_HOJO_SIDING_LL=[[34.928309008077825,134.83173420985221],[34.92856846129891,134.83185231685638],[34.92898628036233,134.83206152915955],[34.92933812634429,134.83227610588074]];
 const RAIL_SIM_HOJO_SIDING_PARK_LL=[34.929244521562225,134.8322190200868];
 function railSimHojoVehicleName(vehicle){return `北条鉄道 ${vehicle===0?"キハ":"フラワ2000-1"}`;}
-function railSimHojoSidingTrain(spec,lat,lon){
+function railSimHojoNorthSidingTrain(spec,lat,lon){
   const sim=spec&&spec.run&&spec.run.sim;
   if(!sim||sim.route!=="hojo"||sim.vehicle!==1||sim.hojoSiding===1
      ||!Number.isFinite(lat)||!Number.isFinite(lon)||spec.path.length<2)return spec;
@@ -9560,6 +9560,67 @@ function railSimHojoSidingTrain(spec,lat,lon){
   return trainSpecOf({...spec,path:sim.sign>0?next:next.reverse(),
     run:{...spec.run,sim:{...sim,dist:sim.dist.map((d,i)=>i===7?stop:d),hojoSiding:1}}});
 }
+
+/* 【v1202】法華口の行き違い線。主力キハは本線を維持し、予備フラワだけ隣線へ。
+   OSM z14の丸めで隣線の中心間が約3.3mなので、3.70m幅の模型が接触しないよう
+   分岐点はそのまま、隣線の中間だけ中心間5.8mに補正する。経路は一度だけ作る。 */
+const RAIL_SIM_HOJO_PASSING_LL=[[34.8751932852227,134.85657691955566],[34.875474946560836,134.85629260540009],[34.87584462560262,134.85585808753967],[34.87611748287663,134.8554825782776]];
+const RAIL_SIM_HOJO_PASSING_CLEARANCE_M=5.8;
+function railSimHojoPassingTrain(spec,lat,lon){
+  const sim=spec&&spec.run&&spec.run.sim;
+  if(!sim||sim.route!=="hojo"||sim.vehicle!==1||sim.hojoPassing===1
+     ||!Number.isFinite(lat)||!Number.isFinite(lon)||spec.path.length<2)return spec;
+  const seq=sim.sign>0?spec.path:spec.path.slice().reverse();
+  const cumulative=path=>{const out=[0];for(let i=1;i<path.length;i++)out.push(out[i-1]+Math.hypot(path[i][0]-path[i-1][0],path[i][1]-path[i-1][1]));return out;};
+  const cum=cumulative(seq);
+  const project=(p,path=seq,along=cum)=>{
+    let best=null;
+    for(let i=0;i+1<path.length;i++){
+      const a=path[i],b=path[i+1],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);
+      if(len<.00001)continue;
+      const u=clamp(((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(len*len),0,1);
+      const q=[a[0]+u*dx,a[1]+u*dy,(a[2]||0)+u*((b[2]||0)-(a[2]||0))],d=Math.hypot(q[0]-p[0],q[1]-p[1]);
+      if(!best||d<best.d)best={d,i,p:q,along:along[i]+u*len};
+    }
+    return best;
+  };
+  const at=s=>{
+    if(s<=0)return seq[0].slice();
+    if(s>=cum[cum.length-1])return seq[seq.length-1].slice();
+    let i=0;while(i+1<cum.length-1&&cum[i+1]<=s)i++;
+    const u=(s-cum[i])/(cum[i+1]-cum[i]);return seq[i].map((v,k)=>v+u*((seq[i+1][k]||0)-v));
+  };
+  const mapped=RAIL_SIM_HOJO_PASSING_LL.map(p=>trainXY(lat,lon,p[0],p[1]));
+  const south=project(mapped[0]),north=project(mapped[mapped.length-1]),origin=project([0,0]);
+  if(!south||!north||!origin||south.d>4||north.d>4||north.along-south.along<80||north.along-south.along>220)return spec;
+  const station=at(origin.along+sim.dist[3]);
+  const stationMain=project(station);
+  if(stationMain.along<south.along+15||stationMain.along>north.along-15)return spec;
+  const dx=north.p[0]-south.p[0],dy=north.p[1]-south.p[1],len=Math.hypot(dx,dy),normal=[dy/len,-dx/len];
+  const interior=mapped.slice(1,-1).map(p=>{
+    const u=clamp(((p[0]-south.p[0])*dx+(p[1]-south.p[1])*dy)/(len*len),0,1);
+    const q=[south.p[0]+u*dx,south.p[1]+u*dy];
+    const side=(p[0]-q[0])*normal[0]+(p[1]-q[1])*normal[1]>=0?1:-1;
+    const x=q[0]+side*normal[0]*RAIL_SIM_HOJO_PASSING_CLEARANCE_M,y=q[1]+side*normal[1]*RAIL_SIM_HOJO_PASSING_CLEARANCE_M;
+    return [x,y,project([x,y]).p[2]];
+  });
+  const next=seq.slice(0,south.i+1).map(p=>p.slice());
+  if(Math.hypot(next[next.length-1][0]-south.p[0],next[next.length-1][1]-south.p[1])>.05)next.push(south.p);else next[next.length-1]=south.p;
+  next.push(...interior,north.p,...seq.slice(north.i+1).map(p=>p.slice()));
+  const clean=[];for(const p of next)if(!clean.length||Math.hypot(p[0]-clean[clean.length-1][0],p[1]-clean[clean.length-1][1])>.05)clean.push(p);
+  const nextCum=cumulative(clean),newOrigin=project([0,0],clean,nextCum);
+  const dist=sim.dist.map(d=>project(at(origin.along+d),clean,nextCum).along-newOrigin.along);
+  /* 入口から車体全部が入り、出口にも余裕がある場所を駅の停止中心にする。 */
+  const stop=dist[3]+newOrigin.along;
+  const southNew=project(south.p,clean,nextCum),northNew=project(north.p,clean,nextCum);
+  if(stop<southNew.along+13||stop>northNew.along-13)return spec;
+  return trainSpecOf({...spec,path:sim.sign>0?clean:clean.reverse(),
+    run:{...spec.run,sim:{...sim,dist,hojoPassing:1}}});
+}
+function railSimHojoSidingTrain(spec,lat,lon){
+  return railSimHojoPassingTrain(railSimHojoNorthSidingTrain(spec,lat,lon),lat,lon);
+}
+
 let trainBogieSmoothOn=true;
 
 /* 【v1175】**夜の窓明かり・ヘッドライト・尾灯。**
@@ -9610,11 +9671,26 @@ function trainWindowLightAmount(s){
 }
 /* 【v1194】窓明かりと同じ時刻判定に、日中の消灯を重ねる。
    日の入前に窓が点き始めても光芒は出さず、太陽高度0〜-6度でなめらかに点灯。 */
-function trainHeadlightAmount(s){
+/* 【v1202】終点到着30秒で前照灯を消し、その車両の最終到着10分後に窓・尾灯も消す。
+   始発前や未使用の予備車は消灯。発車の瞬間に再点灯し、通常の列車・手置きの車体には適用しない。 */
+const _trainServiceLightGateCache=new WeakMap();
+function trainServiceLightGates(slot){
+  const sim=slot&&slot.train&&slot.train.run&&slot.train.run.sim;
+  if(!sim||sim.route!=="hojo")return {head:1,windows:1,tail:1};
+  const time=kmzTimelineMinutes(),date=String(el.dateInput&&el.dateInput.value||"");
+  const cache=_trainServiceLightGateCache.get(sim);
+  if(cache&&cache.time===time&&cache.date===date)return cache.gates;
+  const st=railSimState(sim,time,date),seconds=st.terminalDwellSec;
+  const powered=st.visible&&st.serviceStarted&&!(st.serviceEnded&&seconds>=600-1e-6);
+  const gates={head:powered&&(seconds===null||seconds<30-1e-6)?1:0,windows:powered?1:0,tail:powered?1:0};
+  _trainServiceLightGateCache.set(sim,{time,date,gates});
+  return gates;
+}
+function trainHeadlightAmount(s,slot){
   if(!trainLightsOn||!trainHeadlightsOn)return 0;
   const alt=s&&s.sunAltAz&&s.sunAltAz.alt;
   const night=Number.isFinite(alt)?clamp(-alt/6,0,1):1-clamp(s&&Number.isFinite(s.twilight)?s.twilight:1,0,1);
-  return trainWindowLightAmount(s)*night;
+  return trainWindowLightAmount(s)*night*trainServiceLightGates(slot).head;
 }
 let trainHeadlightMeshCache=null;
 /* 灯の位置は、各車体の丸灯の実面から面積重み付きで求める。車体ごとに保存し、毎コマ探さない。
@@ -9668,7 +9744,7 @@ function trainHeadlightSourceMesh(spec){
    光が広がっても5260面の走査用キャンバスは大きくならない。
    水面用の「模型の型」には入れず、透明な光で水面に穴を開けない。 */
 function drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectLocalPolygon){
-  const beam=slot.model&&slot.model.headlightBeam,amount=trainHeadlightAmount(s)*trainHeadlightBrightness;
+  const beam=slot.model&&slot.model.headlightBeam,amount=trainHeadlightAmount(s,slot)*trainHeadlightBrightness;
   if(!beam||amount<=.01||slot.silhouette||slot.glow||targetCtx.canvas===sunsetKmzMaskCanvas||cfg.opacity<=0)return;
   targetCtx.save();
   targetCtx.globalCompositeOperation="screen";
@@ -9910,7 +9986,7 @@ function trainSpecOf(value){
     /* 【v1182】鉄道シミュレーション：路線・方向・粟生からの駅の距離（8個）。 */
     const sm=value.run.sim;
     if(run&&sm&&Number.isInteger(+sm.vehicle)&&(+sm.sign===1||+sm.sign===-1)&&Array.isArray(sm.dist)&&sm.dist.length===8&&sm.dist.every(v=>Number.isFinite(+v)))
-      run.sim={route:"hojo",vehicle:+sm.vehicle,sign:+sm.sign,dist:sm.dist.map(Number),...(sm.hojoSiding===1?{hojoSiding:1}:{})};
+      run.sim={route:"hojo",vehicle:+sm.vehicle,sign:+sm.sign,dist:sm.dist.map(Number),...(sm.hojoSiding===1?{hojoSiding:1}:{}),...(sm.hojoPassing===1?{hojoPassing:1}:{})};
     /* 【v1181】時刻表モード：停車位置と到着・発車の時刻（分・小数）。 */
     const tb=value.run.table;
     if(run&&tb&&Array.isArray(tb.stops)){
@@ -10047,7 +10123,10 @@ const _rsDiagramCache={};
 function railSimDiagram(dayType){
   if(_rsDiagramCache[dayType])return _rsDiagramCache[dayType];
   const rows=RAIL_SIM_HOJO[dayType],trips=[];
-  for(const dir of ["down","up"])rows[dir].forEach(row=>trips.push({dir,row}));
+  for(const dir of ["down","up"])rows[dir].forEach(source=>{
+    const row=source.slice(),arr=row.map((t,k)=>(k===0||k===7)?t:t-RAIL_SIM_DWELL_MIN);
+    trips.push({dir,row,arr});
+  });
   trips.sort((x,y)=>x.row[0]-y.row[0]);
   const vehicles=[];
   for(const trip of trips){
@@ -10060,38 +10139,69 @@ function railSimDiagram(dayType){
     if(!pick){pick={trips:[],at:origin,free:-1e9};vehicles.push(pick);}
     pick.trips.push(trip);pick.at=dest;pick.free=trip.row[7];
   }
+  /* 【v1202】法華口では両車が行き違い線内に到着してから発車する。
+     到着時刻を別に保ち、早い側の発車だけ最大45秒待つ。他駅・終点の時刻は維持する。 */
+  const main=vehicles[0],reserve=vehicles[1],clearanceMin=5/60;
+  if(main&&reserve)for(const a of main.trips)for(const b of reserve.trips){
+    if(a.dir===b.dir)continue;
+    const ka=a.dir==="down"?3:4,kb=b.dir==="down"?3:4;
+    if(Math.abs(a.arr[ka]-b.arr[kb])>2)continue;
+    const clear=Math.max(a.arr[ka],b.arr[kb])+clearanceMin;
+    for(const [trip,k] of [[a,ka],[b,kb]])if(trip.row[k]<clear){
+      trip.hokkeguchiHoldSec=Math.round((clear-trip.row[k])*60);
+      trip.row[k]=clear;
+    }
+  }
   return _rsDiagramCache[dayType]=vehicles;
 }
 /* 時刻 tMin の、編成 sim.vehicle の状態。D＝粟生から線路上の距離を、置いた点（案内線の原点）から測った値(m)。
    dir＝いま向いている方向（折り返しは待っている間の真ん中で切り替える）。その日に使わない予備フラワは北条町側線で待機する。 */
-function railSimState(sim,tMin){
-  const veh=railSimDiagram(railSimDayType())[sim.vehicle];
-  if(!Array.isArray(sim.dist)||sim.dist.length!==8)return {visible:false,D:0,dir:"down",v:0};
-  if(!veh){
-    /* 【v1201】土日祝に運用のない予備車も、北条町側線で待機する。 */
-    if(sim.route==="hojo"&&sim.vehicle===1)return {visible:true,D:sim.dist[7],dir:"up",v:0,parked:true,reserve:true};
-    return {visible:false,D:0,dir:"down",v:0};
+/* 【v1202】翌朝まで進む時刻スライダーも、実際の運行日のダイヤで読む。
+   照明の待ち時間はシミュレーション時刻から求め、再生停止・逆送り・日付変更でも同じ状態になる。 */
+function railSimServiceClock(tMin,dateText){
+  const minute=Number.isFinite(tMin)?tMin:0,dayOffset=Math.floor(minute/1440);
+  const text=String(dateText||(el.dateInput&&el.dateInput.value)||"");
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  let date=text;
+  if(m&&dayOffset){
+    const d=new Date(+m[1],+m[2]-1,+m[3]+dayOffset);
+    date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }
+  return {tMin:minute-dayOffset*1440,dayOffset,date,dayType:railSimDayType(date)};
+}
+function railSimState(sim,tMin,dateText){
+  const clock=railSimServiceClock(tMin,dateText);tMin=clock.tMin;
+  const veh=railSimDiagram(clock.dayType)[sim.vehicle];
+  const beforeService={terminalDwellSec:Infinity,serviceStarted:false,serviceEnded:false,finalArrMin:null};
+  if(!Array.isArray(sim.dist)||sim.dist.length!==8)return {visible:false,D:0,dir:"down",v:0,...beforeService};
+  if(!veh||!veh.trips.length){
+    /* 土日祝に運用のない予備車も、消灯して北条町側線で待機する。 */
+    if(sim.route==="hojo"&&sim.vehicle===1)return {visible:true,D:sim.dist[7],dir:"up",v:0,parked:true,reserve:true,...beforeService};
+    return {visible:false,D:0,dir:"down",v:0,...beforeService};
   }
   const dEnd=(trip)=>trip.dir==="down"?sim.dist[7]:sim.dist[0],dStart=(trip)=>trip.dir==="down"?sim.dist[0]:sim.dist[7];
-  const T=veh.trips;
-  if(tMin<T[0].row[0])return {visible:true,D:dStart(T[0]),dir:T[0].dir,v:0,parked:true};
+  const T=veh.trips,finalArrMin=T[T.length-1].row[7];
+  if(tMin<T[0].row[0])return {visible:true,D:dStart(T[0]),dir:T[0].dir,v:0,parked:true,...beforeService,finalArrMin};
   for(let i=0;i<T.length;i++){
     const row=T[i].row;
     if(tMin<=row[7]){
       const stops=row.map((t,k)=>{
         const j=T[i].dir==="down"?k:7-k;
-        return {s:sim.dist[j],dep:t,arr:(k===0||k===7)?t:t-RAIL_SIM_DWELL_MIN};
+        return {s:sim.dist[j],dep:t,arr:T[i].arr?T[i].arr[k]:((k===0||k===7)?t:t-RAIL_SIM_DWELL_MIN)};
       });
       const st=trainTableState({stops,acc:TRAIN_TABLE_DEFAULT_ACC_KMHS/3.6,dec:TRAIN_TABLE_DEFAULT_DEC_KMHS/3.6},tMin);
-      return {visible:true,D:st.s,v:st.v,dir:T[i].dir,trip:i,from:row[0],to:row[7]};
+      return {visible:true,D:st.s,v:st.v,dir:T[i].dir,trip:i,from:row[0],to:row[7],
+              terminalDwellSec:tMin>=row[7]?0:null,serviceStarted:true,serviceEnded:i===T.length-1&&tMin>=row[7],finalArrMin};
     }
     const next=T[i+1];
     if(!next||tMin<next.row[0]){   /* 終点で待機（折り返しの向きは待機の真ん中で切り替える） */
       const turn=next?(tMin>=(row[7]+next.row[0])/2):false;
-      return {visible:true,D:dEnd(T[i]),dir:turn?next.dir:T[i].dir,v:0,parked:true};
+      return {visible:true,D:dEnd(T[i]),dir:turn?next.dir:T[i].dir,v:0,parked:true,
+              terminalDwellSec:Math.max(0,(tMin-row[7])*60),serviceStarted:true,serviceEnded:!next,finalArrMin};
     }
   }
-  return {visible:true,D:dEnd(T[T.length-1]),dir:T[T.length-1].dir,v:0,parked:true};
+  return {visible:true,D:dEnd(T[T.length-1]),dir:T[T.length-1].dir,v:0,parked:true,
+          terminalDwellSec:Math.max(0,(tMin-finalArrMin)*60),serviceStarted:true,serviceEnded:true,finalArrMin};
 }
 function railSimSyncSlot(slot){
   const sim=slot&&slot.train&&slot.train.run&&slot.train.run.sim;
@@ -10122,8 +10232,14 @@ function railSimStationPopupHtml(slot){
   const name=String(o.name||"").replace(/^駅・/,""),line=RAIL_SIM_HOJO;
   const idx=line.stations.findIndex(st=>st.name===name);
   if(idx<0)return `<div class="rs-title">${name}駅</div>`;
-  const now=kmzTimelineMinutes(),dayType=railSimDayType(),rows=line[dayType];
-  const clock=(t)=>`${Math.floor(t/60)%24}:${String(Math.floor(t)%60).padStart(2,"0")}`;
+  /* 【v1202】行き違いで調整した実際の発車時刻を案内し、翌朝の表示も当日のダイヤへ。 */
+  const service=railSimServiceClock(kmzTimelineMinutes()),now=service.tMin,dayType=service.dayType;
+  const rows={down:[],up:[]};
+  for(const vehicle of railSimDiagram(dayType))for(const trip of vehicle.trips)rows[trip.dir].push(trip.row);
+  const clock=(t)=>{
+    const sec=Math.round(t*60),ss=((sec%60)+60)%60;
+    return `${Math.floor(sec/3600)%24}:${String(Math.floor(sec/60)%60).padStart(2,"0")}${ss?":"+String(ss).padStart(2,"0"):""}`;
+  };
   const dirs=[
     {label:"北条町方面",key:"down",col:idx,show:idx<7},
     {label:"粟生方面",key:"up",col:7-idx,show:idx>0}];
@@ -10161,7 +10277,7 @@ function railSimMapStationTap(e){
   best.m.openPopup();
   return true;
 }
-function railSimTick(){for(const sl of kmzSlots)railSimSyncSlot(sl);}   /* 毎回の更新・再生のコマで、走っていない時間の列車を隠す */
+function railSimTick(){for(const sl of kmzSlots)railSimSyncSlot(sl);}   /* 毎回の更新・再生のコマで運行と待機の表示を同期する */
 function trainSpecSummary(spec){
   const s=trainSpecOf(spec);
   if(!s)return "";
@@ -13365,7 +13481,7 @@ async function railSimSetupHojo(){
   const deck=await trainBridgeDeckElevationM(snap.lat,snap.lon);
   const onBridge=Number.isFinite(deck)&&(!Number.isFinite(ground)||deck>ground+.3);
   const baseM=onBridge?deck:(ground===null?0:ground);
-  /* 【v1185】編成の数＝平日・土日祝のうち多いほう。その日に使わない編成は隠れる。 */
+  /* 【v1202】編成の数＝平日・土日祝のうち多いほう。運用のない予備車も北条町側線で待機する。 */
   const vehicleCount=Math.max(2,railSimDiagram("weekday").length,railSimDiagram("holiday").length);
   const make=(vehicle)=>{
     const slot=trainCreateSlot({name:railSimHojoVehicleName(vehicle),cars:1,path,reverse:sign<0,
@@ -33711,7 +33827,21 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
   const rw=Math.max(1,Math.round(boxW*ss)),rh=Math.max(1,Math.round(boxH*ss));
   const scratch=kmzDepthScratchFor(rw,rh);
   const data=scratch.image.data,pixels32=scratch.pixels32,depthBuffer=scratch.depth;
+  /* 【v1202】模型をまとめても、それぞれの手前の地形による切り抜きを保つ。
+     稜線は模型ごとに横一列だけ変換し、画素の内側では比較だけで済ませる。 */
+  const skylineMasks=new Map();
+  const skylineMaskFor=sky=>{
+    if(!sky||!sky.length)return null;
+    let mask=skylineMasks.get(sky);if(mask)return mask;
+    mask=new Float32Array(rw);
+    for(let x=0;x<rw;x++){
+      const px=minX+(x+.5)/ss,ix=clamp(Math.floor(px),0,sky.length-1),jx=Math.min(ix+1,sky.length-1);
+      mask[x]=(lerp(sky[ix],sky[jx],clamp(px-ix,0,1))-minY)*ss;
+    }
+    skylineMasks.set(sky,mask);return mask;
+  };
   const rasterize=(face,blend)=>{
+    const skylineMask=skylineMaskFor(face.skyline);
     const zs=face.zs;
     if(!zs||zs.length!==3)return;
     if(!(zs[0]>0&&zs[1]>0&&zs[2]>0))return;
@@ -33729,7 +33859,7 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
     const bx0=Math.max(0,Math.floor(Math.min(ax,bx,cx))),bx1=Math.min(rw-1,Math.ceil(Math.max(ax,bx,cx)));
     const by0=Math.max(0,Math.floor(Math.min(ay,by,cy))),by1=Math.min(rh-1,Math.ceil(Math.max(ay,by,cy)));
     if(bx1<bx0||by1<by0)return;
-    const color=rgbFor(face.color||defaultColor,face.shade);
+    const color=face.rgb||rgbFor(face.color||defaultColor,face.shade);
     const r=color[0],g=color[1],b=color[2],alpha=blend?face.alpha:1;
     const packed=(KMZ_LITTLE_ENDIAN?((255<<24)|(b<<16)|(g<<8)|r):((r<<24)|(g<<16)|(b<<8)|255))>>>0;
     /* 重みも 1/z も x に対して直線的なので、
@@ -33758,6 +33888,7 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
       let inverseZ=iza+wb*slopeB+wc*slopeC;
       const row=y*rw;
       for(let x=lo;x<=hi;x++,inverseZ+=stepZ){
+        if(skylineMask&&y+.5>=skylineMask[x])continue;
         if(!(inverseZ>0))continue;
         const z=1/inverseZ,index=row+x;
         if(z>=depthBuffer[index])continue;
@@ -33794,6 +33925,68 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
   targetCtx.drawImage(scratch.canvas,0,0,rw,rh,minX,minY,boxW,boxH);
   targetCtx.imageSmoothingEnabled=smoothing;
 }
+/* 【v1202】隣り合う長い車体は中心の距離だけでは前後が決まらない。
+   通常の列車・駅を投影したあと、画面の矩形が重なる組だけ同じZバッファへ。
+   画質と2倍の縁処理を保ち、画面全体の深度描画や再投影は増やさない。
+   一つだけ／重ならない模型は従来の描き方をそのまま使う。 */
+const kmzOpaqueModelCache=new WeakMap();
+function kmzOpaqueGroupSlot(slot){
+  if(!kmzSlotDepthSort||!slot||!slot.visible||!slot.model||slot.model.lines||slot.glow||slot.silhouette
+    ||(Number.isFinite(slot.opacity)&&slot.opacity!==1)
+    ||!(slot.train||(slot.object&&String(slot.object.name||"").startsWith("駅・"))))return false;
+  const model=slot.model,alphas=model.triangleAlphas;
+  let cached=kmzOpaqueModelCache.get(model);
+  if(!cached||cached.alphas!==alphas||cached.length!==(alphas?alphas.length:0)){
+    cached={alphas,length:alphas?alphas.length:0,opaque:!alphas||alphas.every(a=>!Number.isFinite(a)||a>=1)};
+    kmzOpaqueModelCache.set(model,cached);
+  }
+  return cached.opaque;
+}
+function kmzPaintOpaqueGroups(targetCtx,records,W,H){
+  if(!records.length)return;
+  const bounds=records.map(record=>{
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    for(const face of record.faces)for(const p of face.points){
+      x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);
+    }
+    return [Math.max(0,x0),Math.max(0,y0),Math.min(W,x1),Math.min(H,y1)];
+  });
+  const parents=records.map((_,i)=>i),root=i=>{while(parents[i]!==i)i=parents[i];return i;};
+  for(let i=0;i<records.length;i++)for(let j=0;j<i;j++){
+    const a=bounds[i],b=bounds[j];
+    if(a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3])parents[root(i)]=root(j);
+  }
+  const groups=new Map();
+  for(let i=0;i<records.length;i++){const k=root(i);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
+  for(const indices of groups.values()){
+    if(indices.length===1){records[indices[0]].paint();continue;}
+    const faces=[];
+    for(const i of indices){const record=records[i];for(const face of record.faces){
+      face.rgb=record.rgbFor(face.color||record.defaultColor,face.shade);face.skyline=record.nearSky;faces.push(face);
+    }}
+    targetCtx.save();targetCtx.globalAlpha=1;
+    drawKmzDepthBuffer(targetCtx,faces,W,H,()=>[198,194,186],[198,194,186]);targetCtx.restore();
+  }
+}
+function drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,slots){
+  const records=[],flush=()=>{kmzPaintOpaqueGroups(targetCtx,records,W,H);records.length=0;};
+  for(const slot of slots){
+    if(!kmzOpaqueGroupSlot(slot))flush();
+    if(slot&&slot.model&&slot.model.lines)drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot);
+    else drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,kmzOpaqueGroupSlot(slot)?records:null);
+  }
+  flush();
+}
+/* 水面反射の濃さ・加算合成が同じ列車だけをまとめる。異なる設定は従来どおり別の絵。 */
+function kmzReflectionGroups(slots){
+  const groups=[];let current=null;
+  for(const slot of slots){
+    if(kmzOpaqueGroupSlot(slot)&&slot.train){
+      if(!current){current=[];groups.push(current);}current.push(slot);
+    }else{current=null;groups.push([slot]);}
+  }
+  return groups;
+}
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(arActive)return;
   /* 【v1197】v1157以降は地形の前には描かない。可視性と模型の同期だけを
@@ -33808,11 +34001,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   const drawOrder=kmzSlotsInDrawOrder(s);
   /* 【v1119】確かめる用に描いた順を控えておく。 */
   drawPhoto._kmzOrder={自動:kmzSlotDepthSort,順:drawOrder.map(slot=>({名:slot&&slot.fileName,km:+kmzSlotDistanceKm(s,slot).toFixed(3)}))};
-  for(const slot of drawOrder){
-    /* 【v1111】筒場は三角形ではなく線の集まりなので、別の道で描く。 */
-    if(slot&&slot.model&&slot.model.lines)drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot);
-    else drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot);
-  }
+  drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,drawOrder);
 }
 /* 【v1169】模型の頂点から、観測地に**実際に一番近い距離**(km)。
    「置いた点までの距離 − 模型の大きさの半分」は、模型が置いた点を中心にあるときだけ正しい。
@@ -33852,7 +34041,7 @@ function kmzModelGeometryIndex(model){
   record={triangles,triangleCount:triangles.length,vertexIds,vertices};
   kmzGeometryIndexCache.set(model,record);return record;
 }
-function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
+function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
   railSimSyncSlot(slot);   /* 【v1182】時刻表どおり走っていない間は隠す */
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
   if(phase!=="after"&&phase!=="reflection")return;   /* 【v1197】同期後、不要な段は計算しない。 */
@@ -34063,7 +34252,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   const rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)*silhouetteKeep));
   /* 【v1196】光は専用の距離判定済み。車体の稜線で手前の光を切らない。 */
   drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectHeadlightPolygon);
-  targetCtx.save();
+  const applyBodyClip=()=>{
   if(nearSky){
     // 手前の地形の稜線より上だけを残す。稜線より下は手前の山に隠れている。
     const clip=new Path2D();
@@ -34074,6 +34263,8 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
     targetCtx.clip(clip);
   }
   targetCtx.globalAlpha=cfg.opacity;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
+  };
+  targetCtx.save();applyBodyClip();
   if(slot.glow){
     /* 【v852】自ら光るもの（花火・イルミネーション）。
 
@@ -34168,7 +34359,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
     /* 【v1175】【v1199】列車の光る面。窓(1/4)は日の入30分前〜夜明け30分後のあいだ、いまの色からなめらかに暖色へ。
        ヘッドライト(2)と尾灯(3)は常時。光らせた面は shade=2 にして、rgbFor が色をそのまま使う。 */
     if(slot.train&&trainLightsOn){
-      const lightAmount=trainWindowLightAmount(s);
+      const serviceLights=trainServiceLightGates(slot),lightAmount=trainWindowLightAmount(s)*serviceLights.windows;
       drawKmzOneBuilding._lights={窓明かり:+lightAmount.toFixed(3)};
       for(const face of projected){
         if(!face.glow)continue;
@@ -34179,18 +34370,20 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
           face.color=normal.map((v,i)=>lerp(v,lit[i],lightAmount));
         }else if(face.glow===2&&trainBodyModelData(slot.train)){
           /* 【v1194】キハの灯そのものも照射と同じ夜間・ON/OFFに合わせる。 */
-          const gain=trainHeadlightBrightness,headAmount=trainHeadlightAmount(s)*Math.min(1,gain);
+          const gain=trainHeadlightBrightness,headAmount=trainHeadlightAmount(s,slot)*Math.min(1,gain);
           if(headAmount<=.01)continue;
           const normal=rgbFor(face.color||DEFAULT_COLOR,face.shade);
           /* 光量を上げても時刻のフェード量は0〜1に保ち、RGBの外へ補間しない。 */
           const lit=TRAIN_LIGHT_COLORS.head.map(v=>clamp(v*Math.max(1,gain),0,255));
           face.color=normal.map((v,i)=>lerp(v,lit[i],headAmount));
         }else{
+          if(face.glow===3&&!serviceLights.tail)continue;
           face.color=face.glow===2?TRAIN_LIGHT_COLORS.head:TRAIN_LIGHT_COLORS.tail;
         }
         face.shade=2;
       }
     }
+    const paintFaces=()=>{
     if(kmzDepthBuffer){
       /* 【v903】1画素ごとに手前の面を選ぶ。globalAlpha は上で
          cfg.opacity にしてあるので、模型全体の濃さは今までどおり効く。 */
@@ -34206,6 +34399,11 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
         targetCtx.beginPath();targetCtx.moveTo(p[0][0],p[0][1]);targetCtx.lineTo(p[1][0],p[1][1]);targetCtx.lineTo(p[2][0],p[2][1]);targetCtx.closePath();targetCtx.fill();targetCtx.stroke();
       }
     }
+    };
+    if(opaqueRecords){
+      opaqueRecords.push({faces:projected,nearSky,rgbFor,defaultColor:DEFAULT_COLOR,
+        paint:()=>{targetCtx.save();applyBodyClip();paintFaces();targetCtx.restore();}});
+    }else paintFaces();
   }
   targetCtx.restore();
 }
@@ -38013,8 +38211,8 @@ function drawPhoto(ctx,s){
            （花火は加算、城はふつうに重ねる、が同時に成り立たない）。
            スロットは数個なので、1枚ずつ描いても費用は小さい。 */
         /* 【v1119】映り込みも同じ順にする。手前の物の映り込みは、奥の物の映り込みより手前に出る。 */
-        for(const slot of kmzSlotsInDrawOrder(s)){
-          if(!slot.visible||!slot.model||arActive)continue;
+        for(const slots of kmzReflectionGroups(kmzSlotsInDrawOrder(s))){
+          const slot=slots[0];if(!slot.visible||!slot.model||arActive)continue;
           const kmzReflection=drawPhoto._kmzReflectionCanvas||(drawPhoto._kmzReflectionCanvas=document.createElement("canvas"));
           if(kmzReflection.width!==W||kmzReflection.height!==H){kmzReflection.width=W;kmzReflection.height=H;}
           const kmzReflectionContext=kmzReflection.getContext("2d");
@@ -38022,8 +38220,7 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.globalCompositeOperation="source-over";
           kmzReflectionContext.globalAlpha=1;
           kmzReflectionContext.clearRect(0,0,W,H);
-          if(slot.model&&slot.model.lines)drawKmzLineModel(kmzReflectionContext,s,toXY,W,H,"reflection",slot);   /* 【v1111】 */
-          else drawKmzOneBuilding(kmzReflectionContext,s,toXY,W,H,"reflection",slot);
+          drawKmzModelSequence(kmzReflectionContext,s,toXY,W,H,"reflection",slots);
           ctx.save();
           /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
           if(slot.glow)ctx.globalCompositeOperation="lighter";
