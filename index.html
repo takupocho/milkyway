@@ -3026,6 +3026,9 @@
   .rail-station-popup .leaflet-popup-content-wrapper{border-radius:16px;padding:2px 4px;box-shadow:0 4px 18px rgba(0,0,0,.35);}
   .rail-station-popup .leaflet-popup-content{margin:10px 12px;font-family:system-ui,sans-serif;color:#1c2330;}
   .rail-station-popup .rs-title{font-size:17px;font-weight:800;margin-bottom:6px;}
+  /* 【v1203】駅名と現在時刻を残して、便一覧だけを最終便までスクロールする。 */
+  .rail-station-popup .rs-list{position:relative;max-height:min(288px,calc(100vh - 160px));max-height:min(288px,calc(100dvh - 160px));overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding-right:3px;}
+  .rail-station-popup .rs-list:focus-visible{outline:2px solid #2f6fd0;outline-offset:2px;border-radius:3px;}
   .rail-station-popup .rs-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 0;border-top:1px solid #e3e6ec;}
   .rail-station-popup .rs-co{display:inline-block;background:#8ee13d;color:#173300;font-weight:700;font-size:11px;border-radius:7px;padding:1px 7px;margin-right:4px;}
   .rail-station-popup .rs-sub{font-size:11.5px;color:#5a6577;margin-top:2px;}
@@ -6912,7 +6915,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1202-hojo-passing-lights";
+const APP_VERSION="1203-station-timetable";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10243,27 +10246,80 @@ function railSimStationPopupHtml(slot){
   const dirs=[
     {label:"北条町方面",key:"down",col:idx,show:idx<7},
     {label:"粟生方面",key:"up",col:7-idx,show:idx>0}];
-  let html=`<div class="rs-title">${name}駅</div>`;
-  /* 【v1189】両方面をまぜて、発車までが近い順に並べる（先頭6本）。 */
+  let html=`<div class="rs-title">${name}駅</div><div class="rs-list" role="region" aria-label="${name}駅のこれからの時刻表" tabindex="0" data-service="${service.date}:${dayType}:${idx}">`;
+  /* 【v1203】両方面をまぜて、現在以降の全便を発車までが近い順に並べる。 */
   const items=[];
   for(const d of dirs){
     if(!d.show)continue;
-    for(const t of rows[d.key].map(r=>r[d.col]))if(t>=now)items.push({t,label:d.label});
+    for(const t of rows[d.key].map(r=>r[d.col]))if(t>=now)items.push({t,label:d.label,key:`${d.key}:${t}`});
   }
   items.sort((x,y)=>x.t-y.t||(x.label<y.label?-1:1));
-  if(!items.length)html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span><div class="rs-sub">本日の運行は終了しました</div></div></div>`;
-  for(const it of items.slice(0,6)){
+  if(!items.length)html+=`<div class="rs-row" data-rs-key="ended"><div class="rs-main"><span class="rs-co">北条鉄道</span><div class="rs-sub">本日の運行は終了しました</div></div></div>`;
+  for(const it of items){
     const t=it.t,diff=Math.ceil(t-now);
     /* 【v1188】1時間以上先も「あと○時間○分」で出す（時刻は左の「定刻出発」に出ている）。 */
     const hh=Math.floor(diff/60),mm=diff%60;
     const eta=diff<=0?"まもなく":(diff<60?`${diff}<small>分</small>`:`${hh}<small>時間</small>${mm?`${mm}<small>分</small>`:""}`);
-    html+=`<div class="rs-row"><div class="rs-main"><span class="rs-co">北条鉄道</span> ${it.label}<div class="rs-sub">定刻出発 ${clock(t)}・普通</div></div><div class="rs-eta">${eta}</div></div>`;
+    html+=`<div class="rs-row" data-rs-key="${it.key}"><div class="rs-main"><span class="rs-co">北条鉄道</span> ${it.label}<div class="rs-sub">定刻出発 ${clock(t)}・普通</div></div><div class="rs-eta">${eta}</div></div>`;
   }
-  html+=`<div class="rs-foot">${dayType==="holiday"?"土日祝ダイヤ":"平日ダイヤ"}・現在 ${clock(now)}</div>`;
+  html+=`</div><div class="rs-foot">${dayType==="holiday"?"土日祝ダイヤ":"平日ダイヤ"}・現在 ${clock(now)}</div>`;
   return html;
 }
 /* 【v1191】**駅アイコンのタップを取りこぼさない。** アイコンに直接当たらなかったタップ（列車のアイコンが重なっている・指が少しずれた）も、
    28px 以内にいちばん近い駅があれば、その駅の案内を開く。 */
+/* 【v1203】Leafletの内容を毎秒作り直すとスクロールと慣性が途切れる。
+   便をキーにして既存の行だけ更新し、読んでいる先頭の便と画面内の位置を保つ。 */
+function railSimPrepareStationPopup(marker){
+  const popup=marker&&marker.getPopup&&marker.getPopup(),node=popup&&popup.getElement&&popup.getElement();
+  const list=node&&node.querySelector(".rs-list");
+  if(!list)return;
+  if(!list._railScrollReady){
+    const stop=e=>e.stopPropagation();
+    for(const type of ["wheel","touchstart","touchmove","pointerdown","mousedown","dblclick"])
+      list.addEventListener(type,stop,{passive:true});
+    list.addEventListener("keydown",e=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"," "].includes(e.key))e.stopPropagation();});
+    list._railScrollReady=true;
+  }
+  const map=popup._map,container=map&&map.getContainer&&map.getContainer();
+  const viewport=window.visualViewport&&window.visualViewport.height||window.innerHeight;
+  const mapHeight=container&&container.clientHeight||viewport;
+  const chrome=Math.max(0,node.getBoundingClientRect().height-list.getBoundingClientRect().height);
+  const height=Math.floor(Math.max(72,Math.min(288,mapHeight-chrome-40,viewport-chrome-40)));
+  if(list.style.maxHeight!==`${height}px`)list.style.maxHeight=`${height}px`;
+}
+function railSimRefreshStationPopup(marker,slot){
+  const popup=marker&&marker.getPopup&&marker.getPopup();
+  if(!popup)return;
+  const html=railSimStationPopupHtml(slot);
+  if(html===marker._railHtml){railSimPrepareStationPopup(marker);return;}
+  const node=popup.getElement&&popup.getElement(),list=node&&node.querySelector(".rs-list");
+  const parsed=document.createElement("div");parsed.innerHTML=html;
+  const next=parsed.querySelector(".rs-list");
+  if(!list||!next){popup.update();railSimPrepareStationPopup(marker);return;}
+  const sameService=list.dataset.service===next.dataset.service;
+  const oldTop=list.scrollTop;
+  const anchor=sameService&&Array.from(list.children).find(row=>row.offsetTop+row.offsetHeight>oldTop);
+  const anchorKey=anchor&&anchor.dataset.rsKey,anchorOffset=anchor?anchor.offsetTop-oldTop:0;
+  const rows=new Map(Array.from(list.children).map(row=>[row.dataset.rsKey,row]));
+  const wanted=Array.from(next.children),keys=new Set(wanted.map(row=>row.dataset.rsKey));
+  if(!sameService)list.replaceChildren();
+  for(let i=0;i<wanted.length;i++){
+    const fresh=wanted[i],existing=sameService&&rows.get(fresh.dataset.rsKey),row=existing||fresh;
+    if(existing&&existing.innerHTML!==fresh.innerHTML)existing.innerHTML=fresh.innerHTML;
+    if(list.children[i]!==row)list.insertBefore(row,list.children[i]||null);
+  }
+  for(const row of Array.from(list.children))if(!keys.has(row.dataset.rsKey))row.remove();
+  list.dataset.service=next.dataset.service;
+  for(const selector of [".rs-title",".rs-foot"]){
+    const current=node.querySelector(selector),fresh=parsed.querySelector(selector);
+    if(current&&fresh&&current.innerHTML!==fresh.innerHTML)current.innerHTML=fresh.innerHTML;
+  }
+  marker._railHtml=html;
+  railSimPrepareStationPopup(marker);
+  const retained=anchorKey&&Array.from(list.children).find(row=>row.dataset.rsKey===anchorKey);
+  const targetTop=sameService?(retained?retained.offsetTop-anchorOffset:Math.min(oldTop,list.scrollHeight-list.clientHeight)):0;
+  if(Math.abs(list.scrollTop-targetTop)>.5)list.scrollTop=targetTop;
+}
 function railSimMapStationTap(e){
   if(!osmMapInstance||!e||!e.containerPoint)return false;
   let best=null;
@@ -15468,6 +15524,7 @@ function updateOsmKmzMarkers(){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
           m._railStation=true;
           m.bindPopup(()=>{const h=railSimStationPopupHtml(slot);m._railHtml=h;return h;},{className:"rail-station-popup",autoPan:true,maxWidth:280,minWidth:230,offset:[0,-8]});
+          m.on("popupopen",()=>railSimPrepareStationPopup(m));
         }
         mapKmzMarkers.set(slot.id,m);
       }
@@ -15481,9 +15538,8 @@ function updateOsmKmzMarkers(){
         m.setRadius(isTarget?11:9);
         m.setStyle({color:isTarget?"#ffe08a":"#fff",weight:isTarget?3:2.5});
       }else{const box=m.getElement&&m.getElement();if(box){const ic=box.firstElementChild;if(ic)ic.classList.toggle("target",isTarget);}}
-      if(iconKind==="station"&&m.isPopupOpen&&m.isPopupOpen()){   /* 【v1187】開いている案内の「あと○分」を進める（【v1191】文字が変わったときだけ作り直す） */
-        const pop=m.getPopup();
-        if(pop&&railSimStationPopupHtml(slot)!==m._railHtml)pop.update();
+      if(iconKind==="station"&&m.isPopupOpen&&m.isPopupOpen()){
+        railSimRefreshStationPopup(m,slot);   /* 【v1203】スクロール中も同じ行を保って「あと○分」を進める。 */
       }
     }
   }
