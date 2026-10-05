@@ -6912,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1196-terrain-headlights";
+const APP_VERSION="1197-render-cache";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9006,6 +9006,7 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
   const model=slot&&slot.model;
   if(!model||!model.lines||!model.lines.length)return;
   const cfg=kmzSlotSettings(slot);
+  if(phase!=="after"&&phase!=="reflection")return;   /* 【v1197】不要な段の稜線計算を省く。 */
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;
   const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   if(!Number.isFinite(base.distanceKm)||base.distanceKm<.003||base.distanceKm>120)return;
@@ -10197,10 +10198,18 @@ function buildTrainModel(rawSpec,runOffsetM){
   let headlightBeam=null;
   const LIGHT=(()=>{const v=[.42,-.30,.86],l=Math.hypot(...v);return v.map(x=>x/l);})();
   let place=(p)=>p;
+  /* 【v1197】同じ車両内の共有頂点は同じ式で1回だけ配置する。
+     車両ごとに破棄し、曲線・勾配・反転では以前の座標を持ち越さない。 */
+  let placedVertexCache=new WeakMap();
+  const placeVertex=(p)=>{
+    let placed=placedVertexCache.get(p);
+    if(!placed){placed=place(p);placedVertexCache.set(p,placed);}
+    return placed;
+  };
   /* 陰影は面の向きから。オブジェクト（v1107）と同じ考え方だが、色を面ごとに渡せるようにした。
      【v1175】glow が 2 以上（ヘッドライト・尾灯）は、陰影を掛けず色をそのまま持つ。窓(1)は今までどおり陰影つき（日中の見え方を変えない）。 */
   const push=(a,b,c,rgb,glow=0,preserveColor=false)=>{
-    const A=place(a),B=place(b),C=place(c);
+    const A=placeVertex(a),B=placeVertex(b),C=placeVertex(c);
     const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];
     const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
     const len=Math.hypot(n[0],n[1],n[2]);
@@ -10252,6 +10261,7 @@ function buildTrainModel(rawSpec,runOffsetM){
       const u=p[0],v=p[1]*cp-p[2]*sp,w=p[1]*sp+p[2]*cp;
       return [car.x+u*cs+v*sn,car.y-u*sn+v*cs,w+cz];
     };
+    placedVertexCache=new WeakMap();
     /* 【v1192】運行・折返し・傾き・鏡像は既存の置き方を使い、車体だけ差し替える。
        白材質には方向幕やドア枠も含まれるため、端面の丸灯だけをライトとして扱う。 */
     if(spec.body===HOJO_KIHA_BODY_KEY){
@@ -33331,6 +33341,9 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
      1度あたり数百点を見るので、ここでノイズを引くと重い。 */
   const cloudFloor=(typeof cloudSeaCoversGround==="function"&&cloudSeaCoversGround())?cloudSeaElevationM:null;
   const samples=[];
+  /* 【v1197】0.25度の投影は維持し、同じ整数方位の標高走査だけを一度にする。
+     この呼び出しの中だけで使い、地形・高さ・距離が変われば必ず計算し直す。 */
+  const rowCache=new Map();
   /* 【v1139】この範囲の地形のいちばん高い標高。雲海を出しているときは雲の高さも下限になる。 */
   let skylineMaxElevation=(cloudFloor!==null)?cloudFloor:-Infinity;
   /* 360方位すべてを拾ってはいけない。画角の外の方位も toXY は座標を返すので、
@@ -33344,7 +33357,9 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
     const row=grid[azIndex];
     const detailRow=(detailGrid&&detailGrid[azIndex])||null;
     if(!(row&&row.length)&&!(detailRow&&detailRow.length)) continue;
-    let best=-Infinity;
+    let result=rowCache.get(azIndex);
+    if(!result){
+    let best=-Infinity,maxElevation=-Infinity;
     for(const scanRow of [row,detailRow]){
     if(!scanRow||!scanRow.length) continue;
     for(let i=0;i<scanRow.length;i++){
@@ -33394,10 +33409,14 @@ function kmzNearTerrainSkyline(s,toXY,W,H,limitKm){
          h ≤ B なら D>d のときこれは成り立たない＝**隠せない**と言い切れる。
          角度で比べると、平らな地面でも近いほうが高く見えるので、
          地面に接している模型（列車）が丸ごと消えてしまう。 */
-      if(Number.isFinite(pt.baseElevation)&&pt.baseElevation>skylineMaxElevation)
-        skylineMaxElevation=pt.baseElevation;
+      if(Number.isFinite(pt.baseElevation)&&pt.baseElevation>maxElevation)
+        maxElevation=pt.baseElevation;
     }
     }
+    result={best,maxElevation};rowCache.set(azIndex,result);
+    }
+    if(result.maxElevation>skylineMaxElevation)skylineMaxElevation=result.maxElevation;
+    const best=result.best;
     if(!Number.isFinite(best)) continue;
     const point=toXY(az,best);
     if(!point||!point.every(Number.isFinite)) continue;
@@ -33684,6 +33703,15 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
 }
 function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
   if(arActive)return;
+  /* 【v1197】v1157以降は地形の前には描かない。可視性と模型の同期だけを
+     済ませ、反射の選別にも現在時刻の状態を渡す。距離・稜線・並替は後段だけ。 */
+  if(phase==="before"){
+    for(const slot of kmzSlots){
+      railSimSyncSlot(slot);
+      if(slot&&slot.train&&slot.train.run)trainSyncRun(slot);
+    }
+    return;
+  }
   const drawOrder=kmzSlotsInDrawOrder(s);
   /* 【v1119】確かめる用に描いた順を控えておく。 */
   drawPhoto._kmzOrder={自動:kmzSlotDepthSort,順:drawOrder.map(slot=>({名:slot&&slot.fileName,km:+kmzSlotDistanceKm(s,slot).toFixed(3)}))};
@@ -33705,16 +33733,36 @@ function kmzModelNearestKm(model,cfg,base){
   const h=cfg.heading*D2R,sc=cfg.scale,ch=Math.cos(h),sh=Math.sin(h);
   const b=base.bearing*D2R,d=base.distanceKm*1000,oE=Math.sin(b)*d,oN=Math.cos(b)*d;   /* 観測地から見た原点の東・北(m) */
   let best=Infinity;
-  for(const tri of tris)for(const v of tri){
+  for(const v of kmzModelGeometryIndex(model).vertices){
     const e=(v[0]*ch+v[1]*sh)*sc,n=(-v[0]*sh+v[1]*ch)*sc;
     const dist=Math.hypot(oE+e,oN+n);
     if(dist<best)best=dist;
   }
   return Number.isFinite(best)?best/1000:NaN;
 }
+/* 【v1197】模型の静的な頂点索引。座標は丸めず、-0も区別する。
+   生成後のgeometryは不変。交換・面配列の交換・面数変更で索引も作り直す。
+   設定の保存や模型データには書き込まず、不要な模型と一緒に回収される。 */
+const kmzGeometryIndexCache=new WeakMap();
+function kmzModelGeometryIndex(model){
+  const triangles=model.triangles;
+  let record=kmzGeometryIndexCache.get(model);
+  if(record&&record.triangles===triangles&&record.triangleCount===triangles.length)return record;
+  const keys=new Map(),vertexIds=new WeakMap(),vertices=[];
+  for(const triangle of triangles)for(const v of triangle){
+    if(vertexIds.has(v))continue;
+    const key=[v[0],v[1],v[2]].map(n=>Object.is(n,-0)?"-0":String(n)).join(",");
+    let id=keys.get(key);
+    if(id===undefined){id=vertices.length;keys.set(key,id);vertices.push(v);}
+    vertexIds.set(v,id);
+  }
+  record={triangles,triangleCount:triangles.length,vertexIds,vertices};
+  kmzGeometryIndexCache.set(model,record);return record;
+}
 function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   railSimSyncSlot(slot);   /* 【v1182】時刻表どおり走っていない間は隠す */
   if(!slot||!slot.visible||!slot.model)return;const cfg=kmzSlotSettings(slot);
+  if(phase!=="after"&&phase!=="reflection")return;   /* 【v1197】同期後、不要な段は計算しない。 */
   if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return;const base=terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon);
   /* 【v1120】町は観測地点を囲んでいるので、中心までの距離（＝0）で切ってはいけない。 */
   const isTown=townSpecOf(slot.town)!==null;
@@ -33746,7 +33794,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
      手前に地形が無い（模型が目の前）ときは、そもそも切らない。 */
   let skylineNearestKm=base.distanceKm-modelHalfSpanKm;
   /* 【v1169】列車は頂点から実際の一番近い距離を使う（走っているときの誤切り抜きを防ぐ）。 */
-  if(kmzActualNearestOn&&slot.train){
+  if(!reflectionPass&&kmzActualNearestOn&&slot.train){
     const actualKm=kmzModelNearestKm(slot.model,cfg,base);
     if(Number.isFinite(actualKm))skylineNearestKm=actualKm;
   }
@@ -33863,6 +33911,10 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
     const points=poly.map(kmzProject);
     return points.every(p=>p&&p.every(Number.isFinite))?points:null;
   };
+  /* 【v1197】同じ頂点を面ごとに再投影しない。キャッシュは1描画内だけなので
+     視点・模型位置・鏡面・画角の変更はすべてそのコマで反映する。 */
+  const geometry=kmzModelGeometryIndex(slot.model),vertexProjectionCache=new Array(geometry.vertices.length);
+  const headingCos=Math.cos(heading),headingSin=Math.sin(heading);
   for(let triIndex=0;triIndex<slot.model.triangles.length;triIndex++){
     const triangle=slot.model.triangles[triIndex];
     /* 【v903】zs = 頂点ごとの「カメラの正面方向の奥行き」。
@@ -33870,28 +33922,26 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
        水平距離（depth）だけだと、見下ろすときに屋根と床下の前後が付かない。 */
     const points=[],zs=[],vecs=[];let depth=0,valid=true,inside=true;const local=needShading?[]:null;
     for(const vertex of triangle){
-      const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
-      const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
-      const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
-      /* 【v1110】映り込みの段では、水面を挟んだ反対側の高さにする＝本当の鏡像。
-         以前は画面を水平線で折り返していたが、それは観測者が水面の高さにいるときだけ正しい近似で、
-         高い所から見ると 2H/D（H=視点の高さ・D=距離）ぶん上にずれていた。
-         【v1121】その水面を **0m に決め打ちしていた**のを、実際の水面標高 mirrorZ にした。
-         鏡像は 2·mirrorZ − h。海（0m）ではこれまでと同じ式になる。 */
-      const heightAboveSea=cfg.altitude+vertex[2]*cfg.scale;
-      /* 【v1158】水に浸かっている所は映らない。折り返す前に水面で止める。
-         足元が水面より上の模型（列車・建物・花火）は1点も変わらない。 */
-      const rise=(reflectionPass?(2*mirrorZ-Math.max(heightAboveSea,mirrorZ)):heightAboveSea)-eye-curvature;
-      const bearingRad=ray.bearing*D2R,vec=[Math.sin(bearingRad)*distanceM,Math.cos(bearingRad)*distanceM,rise];
-      vecs.push(vec);depth+=distanceM;
-      /* 陰影に使う向きも、鏡像では上下が入れ替わる。 */
-      if(local)local.push([east,north,(reflectionPass?-1:1)*vertex[2]*cfg.scale]);
-      if(inside){for(const f of kmzClipPlanes){if(f(vec)<0){inside=false;break;}}}
-      if(inside){
-        const altitude=Math.atan2(rise,Math.max(1,distanceM))*R2D,point=toXY(ray.bearing,altitude);
-        if(!point||!point.every(Number.isFinite)){inside=false;}
-        else{points.push(point);zs.push(Math.hypot(distanceM,rise)*dot(toVec(ray.bearing,altitude),cameraForward));}   // 【v903】
+      const id=geometry.vertexIds.get(vertex);let record=vertexProjectionCache[id];
+      if(!record){
+        const east=(vertex[0]*headingCos+vertex[1]*headingSin)*cfg.scale,north=(-vertex[0]*headingSin+vertex[1]*headingCos)*cfg.scale;
+        const localDistance=Math.hypot(east,north),localBearing=Math.atan2(east,north)*R2D,placed=kmzDestinationPoint(cfg.lat,cfg.lon,localBearing,localDistance/1000);
+        const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000,curvature=distanceM*distanceM/(2*earthRadius);
+        const heightAboveSea=cfg.altitude+vertex[2]*cfg.scale;
+        const rise=(reflectionPass?(2*mirrorZ-Math.max(heightAboveSea,mirrorZ)):heightAboveSea)-eye-curvature;
+        const bearingRad=ray.bearing*D2R,vec=[Math.sin(bearingRad)*distanceM,Math.cos(bearingRad)*distanceM,rise];
+        let inFrame=true,point=null,z=0;
+        for(const f of kmzClipPlanes){if(f(vec)<0){inFrame=false;break;}}
+        if(inFrame){
+          const altitude=Math.atan2(rise,Math.max(1,distanceM))*R2D;point=toXY(ray.bearing,altitude);
+          if(!point||!point.every(Number.isFinite))inFrame=false;
+          else z=Math.hypot(distanceM,rise)*dot(toVec(ray.bearing,altitude),cameraForward);
+        }
+        record={east,north,vec,distanceM,inFrame,point,z};vertexProjectionCache[id]=record;
       }
+      vecs.push(record.vec);depth+=record.distanceM;
+      if(local)local.push([record.east,record.north,(reflectionPass?-1:1)*vertex[2]*cfg.scale]);
+      if(inside){inside=record.inFrame;if(inside){points.push(record.point);zs.push(record.z);}}
     }
     const color=triangleColors?triangleColors[triIndex]:null;
     const alpha=(triangleAlphas&&Number.isFinite(triangleAlphas[triIndex]))?triangleAlphas[triIndex]:1;
