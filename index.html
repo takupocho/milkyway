@@ -6912,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1198-rotation-cache";
+const APP_VERSION="1199-rear-window-light";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9500,7 +9500,7 @@ let trainBogieSmoothOn=true;
 
 /* 【v1175】**夜の窓明かり・ヘッドライト・尾灯。**
    利用者の要望：夜は列車の窓明かりやヘッドライトを光らせたい。窓明かりは日の入の30分前から夜明けの30分後まで、ヘッドライトは常時。
-   ・面ごとに「光る種類」を持たせる（model.triangleGlow）。0=ふつう／1=窓（日の入前〜夜明け後だけ点灯）／2=ヘッドライト（常時）／3=尾灯（常時・赤）。
+   ・面ごとに「光る種類」を持たせる（model.triangleGlow）。0=ふつう／1=窓（日の入前〜夜明け後だけ点灯）／2=ヘッドライト／3=尾灯（赤）／4=最後尾の窓（半分の明るさ）。
    ・光る面は、太陽の向きによる陰影と、夜の暗さ(daylight)・夜の明るさ設定を**受けない**（描画側で色をそのまま使う）。
    ・窓明かりは、日の入の TRAIN_WINDOW_LIGHT_BEFORE_SET_MIN 分前から、翌朝の日の出の TRAIN_WINDOW_LIGHT_AFTER_RISE_MIN 分後まで。
      点く・消えるときは TRAIN_WINDOW_LIGHT_RAMP_MIN 分かけてなめらかに変える。
@@ -9524,6 +9524,9 @@ function setTrainHeadlightBrightness(value){
 }
 const TRAIN_WINDOW_LIGHT_BEFORE_SET_MIN=30,TRAIN_WINDOW_LIGHT_AFTER_RISE_MIN=30,TRAIN_WINDOW_LIGHT_RAMP_MIN=15;
 const TRAIN_LIGHT_COLORS={window:[255,214,140],head:[255,200,70],tail:[236,40,30]};
+/* 【v1199】最後尾の窓は前面・側面の半分の点灯色。同じ時刻でフェードする。 */
+const TRAIN_REAR_WINDOW_LIGHT_GAIN=.5;
+const TRAIN_REAR_WINDOW_LIGHT_COLORS=TRAIN_LIGHT_COLORS.window.map(v=>v*TRAIN_REAR_WINDOW_LIGHT_GAIN);
 function trainWindowLightAmount(s){
   const info=s&&s.sunRiseSet;
   if(!info||!Number.isFinite(s.jd))return 0;
@@ -10207,14 +10210,14 @@ function buildTrainModel(rawSpec,runOffsetM){
     return placed;
   };
   /* 陰影は面の向きから。オブジェクト（v1107）と同じ考え方だが、色を面ごとに渡せるようにした。
-     【v1175】glow が 2 以上（ヘッドライト・尾灯）は、陰影を掛けず色をそのまま持つ。窓(1)は今までどおり陰影つき（日中の見え方を変えない）。 */
+     【v1175】【v1199】ヘッドライト(2)・尾灯(3)は陰影を掛けず色をそのまま持つ。窓(1/4)は陰影つき（日中の見え方を変えない）。 */
   const push=(a,b,c,rgb,glow=0,preserveColor=false)=>{
     const A=placeVertex(a),B=placeVertex(b),C=placeVertex(c);
     const u=[B[0]-A[0],B[1]-A[1],B[2]-A[2]],v=[C[0]-A[0],C[1]-A[1],C[2]-A[2]];
     const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
     const len=Math.hypot(n[0],n[1],n[2]);
     if(!(len>1e-9))return;   /* つぶれた三角形は捨てる */
-    const k=preserveColor||glow>=2?1:.52+.48*Math.abs((n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2])/len);   /* 窓(1)は今までどおり陰影つき。ヘッドライト(2)・尾灯(3)は色そのまま */
+    const k=preserveColor||glow===2||glow===3?1:.52+.48*Math.abs((n[0]*LIGHT[0]+n[1]*LIGHT[1]+n[2]*LIGHT[2])/len);   /* 窓(1/4)は陰影つき。ヘッドライト(2)・尾灯(3)は色そのまま */
     triangles.push([A,B,C]);
     triangleColors.push(rgb.map(c0=>Math.round(clamp(c0*k,0,255))));
     triangleAlphas.push(1);
@@ -10273,7 +10276,9 @@ function buildTrainModel(rawSpec,runOffsetM){
         const x=(a[0]+bb[0]+c[0])/3,z=(a[2]+bb[2]+c[2])/3;
         const front=end===1&&carIndex===layout.length-1,rear=end===-1&&carIndex===0;
         let glow=0;
-        if(mat===b.glassMaterial&&(!end||front))glow=1;
+        /* 【v1199】編成の最後尾だけを弱い窓明かりにする。中間の端面は消灯。
+           reverse時はlayoutの進行方向に従い、灯る最後尾も切り替わる。 */
+        if(mat===b.glassMaterial)glow=rear?4:((!end||front)?1:0);
         else if(mat===b.lampMaterial&&end&&Math.abs(x)>.9&&z>3.45&&front)glow=2;
         else if(mat===b.tailMaterial&&end&&Math.abs(x)>.9&&z>2&&z<2.8&&rear)glow=3;
         push(a,bb,c,b.palette[mat],glow,true);
@@ -34083,16 +34088,17 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
       }
       face.shade=shade;
     }
-    /* 【v1175】列車の光る面。窓(1)は日の入30分前〜夜明け30分後のあいだ、いまの色からなめらかに暖色へ。
+    /* 【v1175】【v1199】列車の光る面。窓(1/4)は日の入30分前〜夜明け30分後のあいだ、いまの色からなめらかに暖色へ。
        ヘッドライト(2)と尾灯(3)は常時。光らせた面は shade=2 にして、rgbFor が色をそのまま使う。 */
     if(slot.train&&trainLightsOn){
       const lightAmount=trainWindowLightAmount(s);
       drawKmzOneBuilding._lights={窓明かり:+lightAmount.toFixed(3)};
       for(const face of projected){
         if(!face.glow)continue;
-        if(face.glow===1){
+        if(face.glow===1||face.glow===4){
           if(lightAmount<=.01)continue;
-          const normal=rgbFor(face.color||DEFAULT_COLOR,face.shade),lit=TRAIN_LIGHT_COLORS.window;
+          const normal=rgbFor(face.color||DEFAULT_COLOR,face.shade);
+          const lit=face.glow===4?TRAIN_REAR_WINDOW_LIGHT_COLORS:TRAIN_LIGHT_COLORS.window;
           face.color=normal.map((v,i)=>lerp(v,lit[i],lightAmount));
         }else if(face.glow===2&&slot.train.body===HOJO_KIHA_BODY_KEY){
           /* 【v1194】キハの灯そのものも照射と同じ夜間・ON/OFFに合わせる。 */
