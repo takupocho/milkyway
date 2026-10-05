@@ -6912,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1197-render-cache";
+const APP_VERSION="1198-rotation-cache";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -27516,6 +27516,12 @@ for(const prop of ["rayGrid","_osmWaterRings","_renderRevision"]){
    実装時に全呼び出し箇所を確認し、書き換えが無いことを確かめた
    （読むだけ、または別の配列へ push しているだけ）。
    今後この帯を書き換える処理を足すときは、ここを思い出すこと。 */
+/* 【v1198】通常の細密水面の全可視帯。画面の下端とは独立に保存する。
+   方位・標高・水位は丸めない。上限は列数と帯数の両方で持つ。
+   高精細・局所DEM・雲海・水域診断は従来の計算経路を使う。 */
+const NORMAL_WATER_BAND_MAX_RAYS=2048,NORMAL_WATER_BAND_MAX_BANDS=300000;
+const normalWaterBandProfileMemo={signature:null,grid:null,rings:null,near:null,
+  values:new Map(),bands:0,hits:0,builds:0,evictions:0,resets:0};
 const VISIBLE_BANDS_CACHE_MAX=30000;
 let visibleBandsCache=new Map();
 let visibleBandsCacheGrid=null,visibleBandsCacheRings=null;
@@ -28904,6 +28910,11 @@ try{
       terrainProfileReset:()=>{terrainRenderMsAccum=0;},
       /* 【v974】段ごとの時間。 */
       stageProfile:()=>({...terrainStageProf}),
+      /* 【v1198】首振りキャッシュの診断。データ自体は公開・保存しない。 */
+      waterRotationProfile:()=>({rays:normalWaterBandProfileMemo.values.size,
+        bands:normalWaterBandProfileMemo.bands,hits:normalWaterBandProfileMemo.hits,
+        builds:normalWaterBandProfileMemo.builds,evictions:normalWaterBandProfileMemo.evictions,
+        resets:normalWaterBandProfileMemo.resets}),
       /* 【v975】WebGL 第1段階の実験。いまの場面で1コマ描いて、Canvasと比べる。 */
       terrainCompare:()=>{glTerrainX.armed=true;glTerrainX.result=null;drawPhoto._terrainRenderKey=null;update();return glTerrainX.result||{error:"走らなかった（WebGL2が無い／地形が無い／replayのみ）"};},
       terrainGlCanvas:()=>glTerrainX.canvas,
@@ -35389,6 +35400,29 @@ function photoAtlasBindTextures(gl,L){
 }
 /* 【v996】メッシュ版の builder。頂点の並びは glTerrainBuild と同じ [x,y,distKm,alt,water]。 */
 let glMeshOn=true;
+/* 【v1198】同じ build 内だけ、隣り合う升目の共通頂点を再利用する。
+   方位・仰角が変わる次の build へ投影結果は持ち越さない。
+   typed array は容量だけ再利用し、採用層・投影有効印を毎回消す。 */
+const glTerrainMeshWorkspacePool=[];
+let glTerrainMeshWorkspaceDepth=0;
+function glTerrainMeshWorkspace(columns,layers){
+  const index=glTerrainMeshWorkspaceDepth++;
+  const work=glTerrainMeshWorkspacePool[index]||(glTerrainMeshWorkspacePool[index]={columnCapacity:0,layerCapacity:0,pairCapacity:0});
+  const grow=(old,needed)=>{let n=Math.max(16,old);while(n<needed)n*=2;return n;};
+  if(work.columnCapacity<columns){
+    const n=work.columnCapacity=grow(work.columnCapacity,columns);
+    for(const name of ['colSin','colCos'])work[name]=new Float64Array(n);
+  }
+  if(work.layerCapacity<layers||!work.use){work.layerCapacity=grow(work.layerCapacity,layers);work.use=new Uint8Array(work.layerCapacity);}
+  const pairs=layers*(columns-1);
+  if(work.pairCapacity<pairs||!work.ok){
+    const n=work.pairCapacity=grow(work.pairCapacity,pairs);
+    for(const name of ['pxA','pyA','pxB','pyB','pairAlt'])work[name]=new Float32Array(n);
+    for(const name of ['ok','pairWater','pairCloud'])work[name]=new Uint8Array(n);
+  }
+  work.use.fill(0,0,layers);work.ok.fill(0,0,pairs);
+  return work;
+}
 function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCount,projector,bottomY,maxJumpX,originLat,originLon){
   let data=glTerrainScratch,n=0,runs=0;
   /* 【v997】観測地点の z16 タイルを原点にしたメルカトル座標（平面近似：50km で誤差 ≈50m、z12 の1画素相当）。 */
@@ -35396,16 +35430,15 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
   const need=(extra)=>{if(n+extra>data.length){let size=data.length*2;while(size<n+extra)size*=2;const bigger=new Float32Array(size);bigger.set(data.subarray(0,n));data=glTerrainScratch=bigger;}};
   const C=columns.length;
   if(C<2)return {data,count:0,runs:0};
-  const colSin=new Float64Array(C),colCos=new Float64Array(C);
+  const work=glTerrainMeshWorkspace(C,layerCount);
+  try{
+  const {colSin,colCos}=work;
   for(let c=0;c<C;c++){colSin[c]=projector.azSin(columns[c].az);colCos[c]=projector.azCos(columns[c].az);}
   const tmp=[0,0];
   const P=C-1;   /* 列の対の数 */
   /* 1巡目：層ごとに run を切り、対 (c,c+1) の稜線（run の端は min に丸める）と投影を控える。
      Canvas と同じく、alt が全列でひとつ遠い層と同じ層は「無い」ものとして飛ばす。 */
-  const use=new Uint8Array(layerCount);
-  const pxA=new Float32Array(layerCount*P),pyA=new Float32Array(layerCount*P),pxB=new Float32Array(layerCount*P),pyB=new Float32Array(layerCount*P);
-  const ok=new Uint8Array(layerCount*P);
-  const pairWater=new Uint8Array(layerCount*P),pairCloud=new Uint8Array(layerCount*P),pairAlt=new Float32Array(layerCount*P);
+  const {use,pxA,pyA,pxB,pyB,ok,pairWater,pairCloud,pairAlt}=work;
   for(let k=layerCount-1;k>=0;k--){
     if(k<layerCount-1){
       let changed=false;
@@ -35414,6 +35447,9 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
     }
     use[k]=1;
     const base=k*P;
+    /* 直前の升目の右端は、次の升目の左端と同じ。run の端で高度が
+       min 補正された場合だけ再投影する。保存は float64 のまま。 */
+    let previousColumn=-1,previousAlt=NaN,previousX=0,previousY=0,previousValid=false;
     let runStart=0;
     while(runStart<C){
       const runWater=waterGrid[runStart*layerCount+k],runCloud=cloudGrid[runStart*layerCount+k];
@@ -35432,8 +35468,14 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
         const a0=altGrid[c*layerCount+k];
         const a1=(c+1<=runEnd)?altGrid[(c+1)*layerCount+k]:Math.min(altGrid[(c+1)*layerCount+k],ownLastAlt);
         let good=1;
-        if(projector.project(colSin[c],colCos[c],a0,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){pxA[i]=tmp[0];pyA[i]=tmp[1];}else good=0;
-        if(good&&projector.project(colSin[c+1],colCos[c+1],a1,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){pxB[i]=tmp[0];pyB[i]=tmp[1];}else good=0;
+        if(previousColumn===c&&Object.is(previousAlt,a0)&&!Number.isNaN(a0)){
+          if(previousValid){pxA[i]=previousX;pyA[i]=previousY;}else good=0;
+        }else if(projector.project(colSin[c],colCos[c],a0,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1])){pxA[i]=tmp[0];pyA[i]=tmp[1];}else good=0;
+        if(good){
+          previousColumn=c+1;previousAlt=a1;
+          previousValid=!!projector.project(colSin[c+1],colCos[c+1],a1,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1]);
+          if(previousValid){previousX=tmp[0];previousY=tmp[1];pxB[i]=tmp[0];pyB[i]=tmp[1];}else good=0;
+        }else{previousColumn=-1;previousValid=false;}
         if(good&&Math.abs(pxB[i]-pxA[i])>maxJumpX)good=0;
         ok[i]=good;
       }
@@ -35497,6 +35539,7 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
     }
   }
   return {data,count:n/GL_STRIDE,runs};
+  }finally{glTerrainMeshWorkspaceDepth--;}
 }
 function glTerrainUpload(geom,key){
   const x=glTerrain,gl=x.gl;
@@ -35558,9 +35601,14 @@ function glFineStore(){
          同じ量だけ四角形を外へ広げる（左上=p0,p1 側を左・上へ、右下=p2,p3 側を右・下へ）。
          隣り合う四角形は重なるだけなので継ぎ目は出ず、外周だけが0.5px太る＝strokeと同じ。 */
       const e=.5;
-      const q0=[p0[0]-e,p0[1]+e],q1=[p1[0]-e,p1[1]-e],q2=[p2[0]+e,p2[1]-e],q3=[p3[0]+e,p3[1]+e];
-      const put=(p)=>{d[i++]=p[0];d[i++]=p[1];d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;};
-      put(q0);put(q1);put(q2);put(q0);put(q2);put(q3);
+      /* 【v1198】同じ0.5pxの縁・同じ6頂点を、一時配列なしで書く。 */
+      const x0=p0[0]-e,y0=p0[1]+e,x1=p1[0]-e,y1=p1[1]-e,x2=p2[0]+e,y2=p2[1]-e,x3=p3[0]+e,y3=p3[1]+e;
+      d[i++]=x0;d[i++]=y0;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
+      d[i++]=x1;d[i++]=y1;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
+      d[i++]=x2;d[i++]=y2;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
+      d[i++]=x0;d[i++]=y0;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
+      d[i++]=x2;d[i++]=y2;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
+      d[i++]=x3;d[i++]=y3;d[i++]=dist;d[i++]=alt;d[i++]=1;d[i++]=0;d[i++]=0;
       this.n=i;
     },
     get count(){return this.n/GL_STRIDE;}};
@@ -39501,6 +39549,58 @@ function drawPhoto(ctx,s){
          とくに `normalFineWaterMaskPass` は**1コマの中で切り替わる**ので、
          捨てる条件ではなく**鍵の一部**にすること。
          捨てる条件に入れると毎回捨てて当たり0%になる（計測中に実際にやった）。 */
+      /* 【v1198】画角は切り取りだけに使う。normalFineWaterMaskPass の列は
+         v809から固定方位格子なので、首振り中も同じ全帯を再利用できる。
+         -89度は現行細密水面の最低 bottomAlt と同じ。受け皿も含めてから
+         hi>bottomAlt の部分だけ返す（雲海などはこの経路へ入れない）。 */
+      let normalWaterBandFrameSignature=null;
+      function normalFineWaterRotationBands(azDeg,bottomAlt){
+        const memo=normalWaterBandProfileMemo;
+        if(normalWaterBandFrameSignature===null){
+          normalWaterBandFrameSignature=[realTerrainState.key,realTerrainState._renderRevision||0,
+            realTerrainState.observerElevation,eyeHeightAboveGroundM(),+el.lat.value,+el.lon.value,
+            worldMapTiles,realTerrainState._osmWaterRingsRadiusKm,W,s.fovH,
+            normalWaterFineLevelValue(),waterDrawRadiusKm(),seaHorizonRealistic?1:0].join("|");
+        }
+        if(memo.signature!==normalWaterBandFrameSignature||memo.grid!==realTerrainState.rayGrid||
+           memo.rings!==realTerrainState._osmWaterRings||memo.near!==realTerrainState.waterNearKm){
+          memo.signature=normalWaterBandFrameSignature;memo.grid=realTerrainState.rayGrid;
+          memo.rings=realTerrainState._osmWaterRings;memo.near=realTerrainState.waterNearKm;
+          memo.values.clear();memo.bands=0;memo.resets++;
+          // 下位の走査/水判定メモも更新する。丸めた旧署名が同じでも持ち越さない。
+          normalFineWaterWalkMemo={signature:"",rings:null,points:0,values:new Map()};
+          normalFineWaterMemo={signature:"",rings:null,values:new Map()};
+        }
+        let full=memo.values.get(azDeg);
+        if(full===undefined){
+          full=azimuthVisibleBandsUncached(azDeg,-89,false,true);
+          memo.builds++;terrainStageProf.bandsN++;
+          actMonBandsMiss("key",azDeg+"|full-water-profile");
+          const count=full?full.length:0;
+          if(count<=NORMAL_WATER_BAND_MAX_BANDS){
+            while(memo.values.size>=NORMAL_WATER_BAND_MAX_RAYS||memo.bands+count>NORMAL_WATER_BAND_MAX_BANDS){
+              const oldest=memo.values.keys().next();if(oldest.done)break;
+              const dropped=memo.values.get(oldest.value);
+              memo.values.delete(oldest.value);memo.bands-=dropped?dropped.length:0;memo.evictions++;
+            }
+            memo.values.set(azDeg,full);memo.bands+=count;
+          }
+        }else{
+          memo.hits++;
+          memo.values.delete(azDeg);memo.values.set(azDeg,full);
+        }
+        if(!full)return null;
+        const bands=[];
+        for(const band of full){
+          if(!(band.hi>bottomAlt))continue;
+          // 同じ高度なら元の highest は bottomAlt のまま。-0 もそのまま保つ。
+          const lo=band.lo>bottomAlt?band.lo:bottomAlt;
+          // 呼び出し側は帯を読むだけ。切らない帯は共有し、切る帯だけ新しくする。
+          bands.push(Object.is(lo,band.lo)?band:
+            {lo,hi:band.hi,distanceKm:band.distanceKm,water:band.water,cloud:band.cloud});
+        }
+        return bands.length?bands:null;
+      }
       function azimuthVisibleBands(azDeg,bottomAlt,skylineOnly,rawBands){
         const grid=realTerrainState.rayGrid;
         if(!grid) return azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
@@ -39510,18 +39610,6 @@ function drawPhoto(ctx,s){
           visibleBandsCache.clear();
           visibleBandsCacheGrid=grid;visibleBandsCacheRings=rings;
         }
-        const eyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
-        const key=azDeg+"|"+bottomAlt+"|"+(skylineOnly?1:0)+"|"+(rawBands?1:0)
-          +"|"+eyeElevation
-          +"|"+(normalFineWaterMaskPass?1:0)
-          +"|"+(highDetailOn?1:0)
-          /* 高精細の品質はDOMを読むので、高精細のときだけ引く。 */
-          +"|"+(highDetailOn?highDetailQualityValue():0)
-          +"|"+(cloudSeaVisible?1:0)
-          +"|"+(seaHorizonRealistic?1:0)   /* 【v884】入れないと切り替えても古い帯が返る */
-          +"|"+worldMapTiles
-          +"|"+s.fovH
-          +"|"+(realTerrainState._osmWaterRingsRadiusKm||0);
         /* 【v888】診断したい方位だけキャッシュを迂回する。
            キャッシュに当たると中身を控える機会が無いため。
 
@@ -39537,6 +39625,26 @@ function drawPhoto(ctx,s){
             finally{ waterRayDiagCapturing=false;waterRayDiagStoreThis=false; }
           }
         }
+        if(normalFineWaterMaskPass&&!highDetailOn&&!cloudSeaVisible&&!localDetailTerrainEnabled&&
+           !waterRayDiagVisible&&rawBands&&!skylineOnly&&Number.isFinite(azDeg)&&
+           Number.isFinite(bottomAlt)&&bottomAlt>=-89){
+          const started=performance.now();
+          const result=normalFineWaterRotationBands(azDeg,bottomAlt);
+          terrainStageProf.bands+=performance.now()-started;
+          return result;
+        }
+        const eyeElevation=(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+        const key=azDeg+"|"+bottomAlt+"|"+(skylineOnly?1:0)+"|"+(rawBands?1:0)
+          +"|"+eyeElevation
+          +"|"+(normalFineWaterMaskPass?1:0)
+          +"|"+(highDetailOn?1:0)
+          /* 高精細の品質はDOMを読むので、高精細のときだけ引く。 */
+          +"|"+(highDetailOn?highDetailQualityValue():0)
+          +"|"+(cloudSeaVisible?1:0)
+          +"|"+(seaHorizonRealistic?1:0)   /* 【v884】入れないと切り替えても古い帯が返る */
+          +"|"+worldMapTiles
+          +"|"+s.fovH
+          +"|"+(realTerrainState._osmWaterRingsRadiusKm||0);
         const hit=visibleBandsCache.get(key);
         if(hit!==undefined) return hit;
         const __b0=performance.now();
