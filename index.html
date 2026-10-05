@@ -6912,7 +6912,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1195-headlight-brightness";
+const APP_VERSION="1196-terrain-headlights";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9575,7 +9575,7 @@ function trainHeadlightSourceMesh(){
       const t=(distances[k]+distances[k+1])/180;
       for(let j=0;j<sides;j++){const next=(j+1)%sides;add([rings[k][j],rings[k][next],rings[k+1][next],rings[k+1][j]],.036*Math.pow(1-t,.7),"air");}
     }
-    const groundDistances=[4,12,24,40,58,76,90],across=[-1,-.8,-.5,0,.5,.8,1];
+    const groundDistances=[4,10,16,22,28,34,40,46,52,58,64,70,76,82,88,90],across=[-1,-.8,-.5,0,.5,.8,1];   /* 【v1196】地形へ合わせる照射面は約6mごとに刻む。 */
     const ground=groundDistances.map(d=>{
       const cap=Math.sqrt(Math.max(0,1-Math.pow(Math.max(0,d-72)/18,2)));
       const width=(.55+d*.075)*cap;
@@ -9603,14 +9603,215 @@ function drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectLocalPolygon){
   targetCtx.globalCompositeOperation="screen";
   targetCtx.fillStyle="rgb(255,225,158)";
   for(const face of beam.faces){
-    const points=projectLocalPolygon(face.vertices);
-    if(!points||points.length<3)continue;
+    /* 【v1196】地面の4頂点は同一平面とは限らない。2三角形に分けて投影する。 */
+    const v=face.vertices,polygons=face.kind==="ground"?[[v[0],v[1],v[2]],[v[0],v[2],v[3]]]:[v];
     targetCtx.globalAlpha=clamp(cfg.opacity*amount*face.alpha,0,1);
-    targetCtx.beginPath();targetCtx.moveTo(points[0][0],points[0][1]);
-    for(let i=1;i<points.length;i++)targetCtx.lineTo(points[i][0],points[i][1]);
-    targetCtx.closePath();targetCtx.fill();
+    for(const polygon of polygons){
+      const points=projectLocalPolygon(polygon,face.kind);
+      if(!points||points.length<3)continue;
+      targetCtx.beginPath();targetCtx.moveTo(points[0][0],points[0][1]);
+      for(let i=1;i<points.length;i++)targetCtx.lineTo(points[i][0],points[i][1]);
+      targetCtx.closePath();targetCtx.fill();
+    }
   }
   targetCtx.restore();
+}
+
+/* 【v1196】足元の光を、取得済みの地形・鉄道橋の表面に沿わせる。
+   一描画ごとに作る読み手。通信・地形再生成・キャッシュの無効化は行わない。 */
+function trainHeadlightGroundSampler(slot,cfg,s){
+  const model=slot.model||{},os=model.originShift||{x:0,y:0,z:0};
+  const scale=Number.isFinite(cfg.scale)&&cfg.scale>0?cfg.scale:1;
+  const offset=.08*scale,baseAlt=Number.isFinite(cfg.altitude)?cfg.altitude:0;
+  const ox=Number.isFinite(os.x)?os.x:0,oy=Number.isFinite(os.y)?os.y:0,oz=Number.isFinite(os.z)?os.z:0;
+  const observerLat=Number.isFinite(s.lat)?s.lat:cfg.lat,observerLon=Number.isFinite(s.lon)?s.lon:cfg.lon;
+  let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity,radius=0;
+  for(const face of model.headlightBeam&&model.headlightBeam.faces||[]){
+    if(face.kind!=="ground")continue;
+    for(const v of face.vertices){
+      if(!Number.isFinite(v[0])||!Number.isFinite(v[1]))continue;
+      xmin=Math.min(xmin,v[0]+ox);xmax=Math.max(xmax,v[0]+ox);
+      ymin=Math.min(ymin,v[1]+oy);ymax=Math.max(ymax,v[1]+oy);
+      radius=Math.max(radius,Math.hypot(v[0],v[1])*scale);
+    }
+  }
+  if(!Number.isFinite(xmin)){xmin=ox-125;xmax=ox+125;ymin=oy-125;ymax=oy+125;radius=125*scale;}
+  /* 経路の空間索引は経路配列が変わったときだけ作り、光が届く区画だけを読む。
+     頂点と経路はどちらも heading 適用前の座標。originShift を戻して比較する。 */
+  const path=slot.train&&slot.train.path||model.train&&model.train.path||[];
+  const indexes=trainHeadlightGroundSampler._pathIndexes||(trainHeadlightGroundSampler._pathIndexes=new WeakMap());
+  let index=indexes.get(path);
+  const cellM=128;
+  if(!index){
+    index={cells:new Map(),long:[]};
+    for(let i=0;i+1<path.length;i++){
+      const a=path[i],b=path[i+1];
+      if(!a||!b||![a[0],a[1],a[2],b[0],b[1],b[2]].every(Number.isFinite))continue;
+      const dx=b[0]-a[0],dy=b[1]-a[1],len2=dx*dx+dy*dy;
+      if(len2<1e-10)continue;
+      const seg={a,b,dx,dy,len2};
+      const x0=Math.floor(Math.min(a[0],b[0])/cellM),x1=Math.floor(Math.max(a[0],b[0])/cellM);
+      const y0=Math.floor(Math.min(a[1],b[1])/cellM),y1=Math.floor(Math.max(a[1],b[1])/cellM);
+      if((x1-x0+1)*(y1-y0+1)>256){index.long.push(seg);continue;}
+      for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){
+        const key=x+"/"+y;
+        let list=index.cells.get(key);if(!list)index.cells.set(key,list=[]);list.push(seg);
+      }
+    }
+    indexes.set(path,index);
+  }
+  const nearPath=new Set(),margin=8;
+  for(let x=Math.floor((xmin-margin)/cellM);x<=Math.floor((xmax+margin)/cellM);x++)
+    for(let y=Math.floor((ymin-margin)/cellM);y<=Math.floor((ymax+margin)/cellM);y++)
+      for(const seg of index.cells.get(x+"/"+y)||[])nearPath.add(seg);
+  for(const seg of index.long){
+    if(Math.max(seg.a[0],seg.b[0])>=xmin-margin&&Math.min(seg.a[0],seg.b[0])<=xmax+margin&&
+       Math.max(seg.a[1],seg.b[1])>=ymin-margin&&Math.min(seg.a[1],seg.b[1])<=ymax+margin)nearPath.add(seg);
+  }
+  const pathHeight=vertex=>{
+    const x=vertex[0]+ox,y=vertex[1]+oy;let best=Infinity,z=NaN;
+    for(const seg of nearPath){
+      const t=clamp(((x-seg.a[0])*seg.dx+(y-seg.a[1])*seg.dy)/seg.len2,0,1);
+      const d2=(x-seg.a[0]-t*seg.dx)**2+(y-seg.a[1]-t*seg.dy)**2;
+      if(d2<best){best=d2;z=lerp(seg.a[2],seg.b[2],t);}
+    }
+    return Number.isFinite(z)?baseAlt+(z-oz)*scale:baseAlt;
+  };
+  /* bridgeDemHeightAt は不足タイルを取得するため、同じ復号だけをキャッシュに適用。 */
+  const cachedBridgeGround=(lat,lon)=>{
+    const ref=terrainTilePoint(lat,lon,14),pixels=bridgeDemPixels.get(ref.key);
+    if(!pixels||pixels==="loading")return NaN;
+    const value=decodeGsiElevationBilinear(pixels,ref.pixelX,ref.pixelY,(dx,dy)=>{
+      const p=bridgeDemPixels.get(terrainTileNeighbourKey(ref,dx,dy));
+      return p&&p!=="loading"?p:null;
+    });
+    return Number.isFinite(value)?value:NaN;
+  };
+  const originMLon=Math.max(1,111320*Math.cos(cfg.lat*D2R)),nearM=radius+30;
+  const nearLat=nearM/111320,nearLon=nearM/originMLon,bridges=[];
+  const bridgeSample={ground:cachedBridgeGround,overWater:(lat,lon)=>{
+    const rings=realTerrainState&&realTerrainState._osmWaterRings;
+    if(Array.isArray(rings)&&rings.length&&pointInWaterRings(lat,lon,rings))return true;
+    return worldMapWaterForDistance(lat,lon,Math.hypot((lon-cfg.lon)*originMLon,(lat-cfg.lat)*111320))===true;
+  }};
+  for(const way of osmBridgeState.ways||[]){
+    const points=way.points;if(way.kind!=="rail"||!Array.isArray(points)||points.length<2)continue;
+    let nearby=false;
+    for(let i=0;i+1<points.length&&!nearby;i++){
+      const a=points[i],b=points[i+1];
+      nearby=Math.max(a[0],b[0])>=cfg.lat-nearLat&&Math.min(a[0],b[0])<=cfg.lat+nearLat&&
+        Math.max(a[1],b[1])>=cfg.lon-nearLon&&Math.min(a[1],b[1])<=cfg.lon+nearLon;
+    }
+    if(!nearby)continue;
+    const profile=bridgeDeckProfile(way,bridgeSample);
+    const lat=points[0][0],lon=points[0][1],mLon=111320*Math.cos(lat*D2R);
+    const xy=points.map(p=>[(p[1]-lon)*mLon,(p[0]-lat)*111320]),segments=[];
+    let travel=0;
+    for(let i=0;i+1<xy.length;i++){
+      const a=xy[i],b=xy[i+1],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);
+      if(len>1e-5)segments.push({a,dx,dy,len,len2:len*len,travel,first:i===0,last:i===xy.length-2});
+      travel+=len;
+    }
+    bridges.push({lat,lon,mLon,segments,profile,halfWidth:Math.max(1,(way.widthM||5)/2)});
+  }
+  const bridgeHeight=(lat,lon,vertex)=>{
+    let best=Infinity,elevation=NaN;
+    for(const bridge of bridges){
+      const x=(lon-bridge.lon)*bridge.mLon,y=(lat-bridge.lat)*111320;
+      for(const seg of bridge.segments){
+        const raw=((x-seg.a[0])*seg.dx+(y-seg.a[1])*seg.dy)/seg.len2;
+        if((seg.first&&raw<0)||(seg.last&&raw>1))continue; // 橋の端より先へ伸ばさない。
+        const t=clamp(raw,0,1),d2=(x-seg.a[0]-t*seg.dx)**2+(y-seg.a[1]-t*seg.dy)**2;
+        if(d2>bridge.halfWidth**2||d2>=best)continue;
+        if(bridge.profile){
+          const u=clamp((seg.travel+t*seg.len)/bridge.profile.totalM,0,1);
+          elevation=lerp(bridge.profile.start,bridge.profile.end,u)+Math.sin(Math.PI*u)*bridge.profile.camberM;
+        }else elevation=nearPath.size?pathHeight(vertex):NaN; // 橋DEM未取得時の線路高は、橋の実幅内だけ。
+        best=d2;
+      }
+    }
+    return elevation;
+  };
+  return (vertex,placedLL)=>{
+    const lat=placedLL.lat,lon=placedLL.lon;
+    let height=bridgeHeight(lat,lon,vertex);
+    if(!Number.isFinite(height)){
+      const ray=terrainDistanceAndBearing(observerLat,observerLon,lat,lon),distanceM=ray.distanceKm*1000;
+      const missing=worldHeightTileMissing;let unavailable=false;
+      try{height=worldHeightForDistance(lat,lon,distanceM);unavailable=worldHeightTileMissing;}
+      finally{worldHeightTileMissing=missing;}
+      if(highDetailOn){const fine=highDetailElevationAt(lat,lon);if(Number.isFinite(fine))height=fine;}
+      if(localDetailTerrainEnabled&&localDetailTerrainData&&distanceM<=2000){
+        const bearing=ray.bearing*D2R,local=sampleLocalDetailElevation(Math.sin(bearing)*distanceM,Math.cos(bearing)*distanceM);
+        if(local&&Number.isFinite(local.elevation))height=Number.isFinite(height)?lerp(height,local.elevation,local.blend):local.elevation;
+      }
+      /* 取得済みDEMの標高なしは海面0m。橋外へ線路高を延ばさない。
+         タイル未取得のときだけ、下の経路高へ一時的に戻す。 */
+      if(!Number.isFinite(height)&&!unavailable)height=0;
+    }
+    if(!Number.isFinite(height))height=pathHeight(vertex);
+    return height+offset;
+  };
+}
+
+/* 【v1196】光の各点までにある地形だけを遮蔽物として使う。
+   車体の距離で作った稜線を流用すると、ドローンから見た手前の光まで切れる。
+   方位ごとの累積最高傾きを1描画で共有し、距離の検索は二分探索にする。 */
+function trainHeadlightTerrainSampler(s,eye,rangeM=Infinity){
+  const grid=realTerrainState.rayGrid||realTerrainState.nearSurfaceGrid;
+  const detail=typeof kmzDetailGridState!=="undefined"&&
+    kmzDetailGridState.signature===kmzDetailGridSignature()?kmzDetailGridState.grid:null;
+  const cloud=(typeof cloudSeaCoversGround==="function"&&cloudSeaCoversGround())?cloudSeaElevationM:null;
+  const rows=new Map(),earthRadius=6371000*(7/6);
+  const rowAt=index=>{
+    index=(index+360)%360;
+    if(rows.has(index))return rows.get(index);
+    const points=[];
+    for(const row of [(grid&&grid[index]),(detail&&detail[index])]){
+      if(!Array.isArray(row))continue;
+      for(const p of row){
+        if(!p||!Number.isFinite(p.distanceKm))continue;
+        const d=p.distanceKm*1000;if(d>rangeM)break;
+        if(d<.5)continue;
+        let elevation=Number.isFinite(p.baseElevation)?p.baseElevation:(p.water?0:NaN);
+        if(!Number.isFinite(elevation))continue;   /* 古い pt.alt は使わない。 */
+        if(Number.isFinite(cloud))elevation=Math.max(elevation,cloud);
+        points.push([d,(elevation-eye-d*d/(2*earthRadius))/d]);
+      }
+    }
+    points.sort((a,b)=>a[0]-b[0]);
+    let highest=-Infinity;
+    for(const p of points){highest=Math.max(highest,p[1]);p[1]=highest;}
+    rows.set(index,points);return points;
+  };
+  const slopeAt=(index,d)=>{
+    const row=rowAt(index);let a=0,b=row.length;
+    while(a<b){const mid=(a+b)>>1;if(row[mid][0]<d-.5)a=mid+1;else b=mid;}
+    return a?row[a-1][1]:-Infinity;
+  };
+  return (bearing,distanceM,height)=>{
+    const d=Math.max(.05,distanceM),az=norm360(bearing),i=Math.floor(az),u=az-i;
+    const a=slopeAt(i,d),b=u>.00001?slopeAt(i+1,d):a;
+    const slope=Number.isFinite(a)&&Number.isFinite(b)?lerp(a,b,u):
+      (Number.isFinite(a)?a:b);
+    if(!Number.isFinite(slope))return 1e6;
+    return height-eye-d*d/(2*earthRadius)-slope*d+.03;
+  };
+}
+function trainHeadlightTerrainClearance(s,bearing,distanceM,height,eye,sampler){
+  return (sampler||trainHeadlightTerrainSampler(s,eye,distanceM))(bearing,distanceM,height);
+}
+/* 隣接点の可視境界で切る。面全体を捨てないので、斜面の境界で光が飛ばない。 */
+function trainHeadlightClipTerrain(records){
+  const out=[];
+  for(let i=0;i<records.length;i++){
+    const a=records[i],b=records[(i+1)%records.length],da=a.clearance,db=b.clearance;
+    if(da>=0)out.push(a.vec);
+    if((da>=0)!==(db>=0)){
+      const u=da/(da-db);out.push(a.vec.map((v,k)=>lerp(v,b.vec[k],u)));
+    }
+  }
+  return out.length>=3?out:null;
 }
 
 /* 【v1099】と同じ作法で、入口をひとつにする。ここを通った形だけが本物。 */
@@ -33637,21 +33838,27 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
     const flat=Math.hypot(v[0],v[1]);
     return toXY(norm360(atan2d(v[0],v[1])),Math.atan2(v[2],Math.max(.05,flat))*R2D);
   };
-  /* 【v1194】光芒にも模型と同じ球面配置・鏡像・カメラ手前面の切り取りを使う。
-     隣り合う面で共有する頂点は1回だけ投影し、30fps時の追加負荷を抑える。 */
+  /* 【v1196】地表光は各位置の実標高へ載せ、遮蔽も各点までの距離で判定。
+     空中光は元の車体姿勢を維持。共有頂点と方位の標高は1描画内だけで再利用する。 */
   const headlightVertexCache=new Map();
-  const projectHeadlightPolygon=(vertices)=>{
-    let poly=vertices.map(vertex=>{
-      let vec=headlightVertexCache.get(vertex);
-      if(vec)return vec;
+  let headlightGround=null,headlightTerrain=null;
+  const projectHeadlightPolygon=(vertices,kind)=>{
+    if(kind==="ground"&&!headlightGround)headlightGround=trainHeadlightGroundSampler(slot,cfg,s);
+    if(!reflectionPass&&!headlightTerrain)headlightTerrain=trainHeadlightTerrainSampler(s,eye,
+      base.distanceKm*1000+(Math.hypot(slot.model.width||0,slot.model.depth||0)/2+105)*cfg.scale);
+    const records=vertices.map(vertex=>{
+      let record=headlightVertexCache.get(vertex);if(record)return record;
       const east=(vertex[0]*Math.cos(heading)+vertex[1]*Math.sin(heading))*cfg.scale,north=(-vertex[0]*Math.sin(heading)+vertex[1]*Math.cos(heading))*cfg.scale;
       const placed=kmzDestinationPoint(cfg.lat,cfg.lon,Math.atan2(east,north)*R2D,Math.hypot(east,north)/1000);
       const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000;
-      const h=cfg.altitude+vertex[2]*cfg.scale,height=reflectionPass?2*mirrorZ-Math.max(h,mirrorZ):h;
+      const h=kind==="ground"?headlightGround(vertex,placed):cfg.altitude+vertex[2]*cfg.scale;
+      const height=reflectionPass?2*mirrorZ-Math.max(h,mirrorZ):h;
       const rise=height-eye-distanceM*distanceM/(2*earthRadius),bearing=ray.bearing*D2R;
-      vec=[Math.sin(bearing)*distanceM,Math.cos(bearing)*distanceM,rise];
-      headlightVertexCache.set(vertex,vec);return vec;
+      record={vec:[Math.sin(bearing)*distanceM,Math.cos(bearing)*distanceM,rise],
+        clearance:reflectionPass?1:trainHeadlightTerrainClearance(s,ray.bearing,distanceM,h,eye,headlightTerrain)};
+      headlightVertexCache.set(vertex,record);return record;
     });
+    let poly=trainHeadlightClipTerrain(records);if(!poly)return null;
     for(const f of kmzClipPlanes){poly=kmzClipByPlane(poly,f);if(poly.length<3)return null;}
     const points=poly.map(kmzProject);
     return points.every(p=>p&&p.every(Number.isFinite))?points:null;
@@ -33711,6 +33918,8 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
   /* 【v931】シルエットの濃さ。0で今までどおり、100で真っ黒。 */
   const silhouetteKeep=1-clamp(kmzSilhouetteDarkness,0,100)/100;
   const rgb=night.map((v,i)=>Math.round(lerp(v,day[i],daylight)*silhouetteKeep));
+  /* 【v1196】光は専用の距離判定済み。車体の稜線で手前の光を切らない。 */
+  drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectHeadlightPolygon);
   targetCtx.save();
   if(nearSky){
     // 手前の地形の稜線より上だけを残す。稜線より下は手前の山に隠れている。
@@ -33722,7 +33931,6 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot){
     targetCtx.clip(clip);
   }
   targetCtx.globalAlpha=cfg.opacity;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
-  drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectHeadlightPolygon);
   if(slot.glow){
     /* 【v852】自ら光るもの（花火・イルミネーション）。
 
