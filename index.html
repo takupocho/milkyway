@@ -1034,6 +1034,9 @@
   }
   .display-popup-section-title:first-of-type{margin-top:4px;}
   .display-control-btn{border-radius:8px;}
+  /* 【v1211】列車の中心固定と追跡を横に並べて使う。 */
+  .train-camera-buttons{display:flex;flex:0 0 100%;gap:8px;min-width:0;}
+  .train-camera-buttons .display-control-btn{flex:1;min-width:0;white-space:normal;min-height:36px;}
   /* 【v1208】地図・シミュレーションに共通のタップ列車名。 */
   .train-tap-name{position:absolute;left:50%;bottom:calc(var(--sim-inset-y,0px) + 58px);transform:translateX(-50%);z-index:1180;max-width:calc(100% - 32px);padding:10px 16px;border:1px solid rgba(255,224,138,.65);border-radius:10px;background:rgba(16,23,42,.94);box-shadow:0 3px 14px rgba(0,0,0,.32);color:#fff4ce;font:700 14px/1.5 'Inter',sans-serif;text-align:center;overflow-wrap:anywhere;pointer-events:none;}
   .train-tap-name[hidden]{display:none!important;}
@@ -2194,6 +2197,11 @@
   .plan-modal-actions{display:flex;justify-content:flex-end;gap:7px;}
   .plan-modal-actions button{min-height:34px;padding:7px 13px;}
   .plan-modal-actions .primary{border-color:var(--core-amber);color:var(--core-amber);}
+  /* 【v1210】上書き確認は保存画面の手前に出し、入力内容を残す。 */
+  .plan-overwrite-dialog{width:min(420px,calc(100vw - 32px));margin:auto;}
+  .plan-overwrite-dialog::backdrop{background:rgba(5,8,20,.72);}
+  .plan-overwrite-message{margin:12px 0 18px;font:500 13px/1.65 'Inter',sans-serif;white-space:pre-line;overflow-wrap:anywhere;}
+  .plan-overwrite-dialog .plan-modal-actions button{min-width:72px;min-height:40px;}
   .external-status-list{display:flex;flex-direction:column;gap:7px;margin:0 0 12px;}
   .external-status-row{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:start;padding:10px;border:1px solid rgba(154,164,210,.25);border-radius:10px;background:rgba(255,255,255,.04);}
   .external-status-dot{width:10px;height:10px;margin-top:3px;border-radius:50%;background:#dc3e4f;box-shadow:0 0 5px rgba(220,62,79,.48);}
@@ -5950,14 +5958,16 @@
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
                 <button id="popupLockMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">月中心に固定</button>
-                <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">列車を中心に固定</button>
+                <div class="train-camera-buttons">
+              <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">列車を中心に固定</button>
+              <button id="popupChaseTrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">列車を追跡</button>
+            </div>
                 <div class="train-lock-picker" id="popupTrainLockPicker">
-                  <div class="train-lock-picker-row"><label for="popupTrainLockSelect">固定する列車</label><select id="popupTrainLockSelect" aria-describedby="popupTrainLockStatus popupTrainLockHint"><option value="">列車がありません</option></select></div>
+                  <div class="train-lock-picker-row"><label for="popupTrainLockSelect">列車を選択</label><select id="popupTrainLockSelect" aria-describedby="popupTrainLockStatus popupTrainLockHint"><option value="">列車がありません</option></select></div>
                   <p id="popupTrainLockStatus" class="train-lock-picker-status" role="status" aria-live="polite">先に列車を追加してください。</p>
-                  <p id="popupTrainLockHint" class="train-lock-picker-note">地図の列車タップ、設定のKMZ一覧からも選べます。</p>
+                  <p id="popupTrainLockHint" class="train-lock-picker-note">地図の列車タップ、設定のKMZ一覧からも選べます。追跡中も構図を変更できます。</p>
                 </div>
-                <button id="popupChaseTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を追跡</button>
-                <button id="popupLiveBtn" type="button" class="constellation-toggle-btn display-control-btn">LIVE</button>
+                    <button id="popupLiveBtn" type="button" class="constellation-toggle-btn display-control-btn">LIVE</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
                 <button id="popupTrailTaperBtn" type="button" class="constellation-toggle-btn display-control-btn">尾を描く</button>
               </div>
@@ -6374,6 +6384,11 @@
                   <div class="plan-modal-actions"><button id="planSaveCancelBtn" type="button">キャンセル</button><button id="planSaveRunBtn" type="button" class="primary">この内容を保存</button></div>
                 </section>
               </div>
+              <dialog id="planOverwriteDialog" class="plan-modal plan-overwrite-dialog" role="alertdialog" aria-labelledby="planOverwriteTitle" aria-describedby="planOverwriteMessage">
+                <h3 id="planOverwriteTitle" class="plan-modal-title">上書きしますか？</h3>
+                <p id="planOverwriteMessage" class="plan-overwrite-message"></p>
+                <div class="plan-modal-actions"><button id="planOverwriteNoBtn" type="button" autofocus>いいえ</button><button id="planOverwriteYesBtn" type="button" class="primary">はい</button></div>
+              </dialog>
               <div id="externalStatusOverlay" class="plan-modal-overlay" aria-hidden="true">
                 <section class="plan-modal" role="dialog" aria-modal="true" aria-labelledby="externalStatusTitle">
                   <div class="plan-modal-header"><h3 id="externalStatusTitle" class="plan-modal-title">外部データの取得状況</h3><button id="externalStatusCloseBtn" class="plan-modal-close" type="button" aria-label="閉じる">×</button></div>
@@ -6940,7 +6955,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1209-shintetsu-ao-line";
+const APP_VERSION="1211-train-follow-framing";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8169,6 +8184,7 @@ const el={
   objectPreview:$("objectPreview"), objectStudioSummary:$("objectStudioSummary"), objectName:$("objectName"),
   objectSaveBtn:$("objectSaveBtn"), objectLoadBtn:$("objectLoadBtn"), objectLibraryPanel:$("objectLibraryPanel"),
   objectLibraryList:$("objectLibraryList"), objectStudioStatus:$("objectStudioStatus"),
+  planOverwriteDialog:$("planOverwriteDialog"), planOverwriteMessage:$("planOverwriteMessage"), planOverwriteNoBtn:$("planOverwriteNoBtn"), planOverwriteYesBtn:$("planOverwriteYesBtn"),
   planSaveOverlay:$("planSaveOverlay"), planSaveTitle:$("planSaveTitle"), planSaveHelp:$("planSaveHelp"), planSaveCloseBtn:$("planSaveCloseBtn"), planSaveCancelBtn:$("planSaveCancelBtn"), planSaveName:$("planSaveName"), planSavePreview:$("planSavePreview"), planSaveRunBtn:$("planSaveRunBtn"),
   planPhotoInput:$("planPhotoInput"), planPhotoSelectBtn:$("planPhotoSelectBtn"), planPhotoRemoveBtn:$("planPhotoRemoveBtn"), planPhotoPreviewWrap:$("planPhotoPreviewWrap"), planPhotoPreview:$("planPhotoPreview"), planPhotoStatus:$("planPhotoStatus"),
   planLoadOverlay:$("planLoadOverlay"), planLoadCloseBtn:$("planLoadCloseBtn"), planLoadSearch:$("planLoadSearch"), planLoadList:$("planLoadList"),
@@ -12864,7 +12880,7 @@ function kmzLoadEditor(){
 function kmzSelectSlot(id){
   const selected=kmzSlots.find(slot=>slot.id===id);
   if(selected&&selected.train)trainLockRemember(selected);   /* 【v1207】列車だけが固定対象を変える。 */
-  if(id===kmzActiveId){if(selected&&selected.train&&lockAzToTrain)update();return;}
+  if(id===kmzActiveId){if(selected&&selected.train&&(lockAzToTrain||trainChaseOn))update();return;}
   kmzCommitEditor();
   kmzActiveId=id;
   kmzLoadEditor();
@@ -17332,13 +17348,15 @@ function trainLockRemember(slot){
 function trainLockSelect(id){
   const slot=kmzSlots.find(sl=>sl&&sl.id===id&&sl.train);if(!slot)return false;
   trainLockRemember(slot);kmzSelectSlot(slot.id);
-  syncTrainLockControls();if(lockAzToTrain)update();return true;
+  syncTrainLockControls();if(lockAzToTrain||trainChaseOn)update();return true;
 }
 function trainLockSlotRemoved(slot){
   if(!slot||!slot.train||trainLockSlotKey(slot)!==trainLockTargetKey)return;
+  trainChaseSet(false,{restore:false,render:false});trainLockFineView=null;
   trainLockTargetKey=null;lockAzToTrain=false;syncTrainLockControls();scheduleSaveSettings();
 }
 function trainLockRestoreTarget(key){
+  trainChaseSet(false,{restore:false,render:false});trainLockFineView=null;
   const found=k=>k&&kmzSlots.some(slot=>slot&&slot.train&&trainLockSlotKey(slot)===k);
   if(found(key))trainLockTargetKey=key;
   else if(!found(trainLockTargetKey))trainLockTargetKey=null;
@@ -17363,81 +17381,164 @@ function syncTrainLockControls(){
   if(select.value!==value)select.value=value;
   if(select.disabled!==!trains.length)select.disabled=!trains.length;
   const hidden=target&&target.visible===false,sim=target&&target.train.run&&target.train.run.sim;
-  const message=!target?(trains.length?"固定する列車を選んでください。":"先に列車を追加してください。"):
-    hidden?(sim?"運用待機中：表示再開後に同じ列車を固定します。":"非表示中：表示を戻すと同じ列車を固定します。"):
-    (lockAzToTrain?"選択した列車を中心に固定中":"この列車を固定するには、上のボタンをONにしてください。");
+  const message=!target?(trains.length?"列車を選択してください。":"先に列車を追加してください。"):
+    hidden?(sim?"運用待機中：表示再開後に同じ列車を追います。":"非表示中：表示を戻すと同じ列車を追います。"):
+    (trainChaseOn?(lockAzToTrain?"選択した列車を追跡・中心固定中（ドラッグで角度を変更）":"選択した列車を現在の構図で追跡中"):
+      (lockAzToTrain?"選択した列車を中心に固定中":"上のボタンで、選択した列車の中心固定・追跡をONにできます。"));
   if(status&&status.textContent!==message)status.textContent=message;
   if(el.popupLockTrainBtn){
-    const pressed=String(lockAzToTrain),title=target?`固定対象：${trainDisplayName(target)}`:"固定する列車を選んでください。";
+    const pressed=String(lockAzToTrain),title=target?`固定対象：${trainDisplayName(target)}`:"列車を選択してください。";
     if(el.popupLockTrainBtn.getAttribute("aria-pressed")!==pressed)el.popupLockTrainBtn.setAttribute("aria-pressed",pressed);
     if(el.popupLockTrainBtn.title!==title)el.popupLockTrainBtn.title=title;
   }
+  if(el.popupChaseTrainBtn){
+    el.popupChaseTrainBtn.setAttribute("aria-pressed",String(trainChaseOn));
+    const title=target?`追跡対象：${trainDisplayName(target)}`:"列車を選択してください。";
+    if(el.popupChaseTrainBtn.title!==title)el.popupChaseTrainBtn.title=title;
+  }
 }
 
-/* 【v1186】**列車を追跡**（後ろから追うカメラ）。ボタンを押すたびに 1台目 → 2台目 → …… → 終了。
-   観測地点（カメラ）を、列車の進む向きの**後ろ TRAIN_CHASE_BACK_M** に置き、レールの **TRAIN_CHASE_HEIGHT_M 上**から
-   列車の方を向く。毎回の更新で列車の位置に合わせ直すので、再生中も、時刻を動かしても追いかける。
-   始める前の観測地点・高さ・向きは覚えておき、終わったら戻す。 */
-const TRAIN_CHASE_BACK_M=38,TRAIN_CHASE_HEIGHT_M=15;
-let trainChaseIndex=-1,trainChaseSaved=null;
+/* 【v1211】追跡は選択した列車に対する視点の位置を保つ。
+   車両の向きは基準にしないため、折返しやカーブでも構図が飛ばない。 */
+let trainChaseOn=false,trainChaseSaved=null,trainChasePose=null,trainLockFineView=null;
+let trainChaseTerrainAt=-Infinity;
 function trainChaseSlots(){
-  return kmzSlots.filter(sl=>sl&&sl.train&&sl.visible!==false&&trainSpecOf(sl.train)).sort((a,b)=>a.id-b.id);
+  return kmzSlots.filter(sl=>sl&&sl.train&&trainSpecOf(sl.train)).sort((a,b)=>a.id-b.id);
 }
-function trainChaseLabel(){
-  return trainChaseIndex<0?"列車を追跡":`列車を追跡：${trainChaseIndex+1}台目`;
+function trainChaseLabel(){return "列車を追跡";}
+function trainCameraTargetPose(slot=trainLockTarget(),includeHidden=false){
+  if(!slot||(!includeHidden&&slot.visible===false))return null;
+  const cfg=kmzSlotSettings(slot),spec=trainSpecOf(slot.train);
+  if(!spec||!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))return null;
+  const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
+  if(!lay.length)return null;
+  let x=0,y=0,z=0;
+  if(!(slot.model&&slot.model.originShift)){
+    for(const c of lay){x+=c.x;y+=c.y;z+=c.z||0;}
+    x/=lay.length;y/=lay.length;z/=lay.length;
+  }
+  const scale=cfg.scale||1,h=cfg.heading*D2R,ch=Math.cos(h),sh=Math.sin(h);
+  const [lat,lon]=trainLL(cfg.lat,cfg.lon,(x*ch+y*sh)*scale,(-x*sh+y*ch)*scale);
+  return {slot,lat,lon,elevationM:cfg.altitude+(z+TRAIN_CAR_HEIGHT_FOR_AIM_M)*scale};
 }
-function trainChaseSet(index){
-  const list=trainChaseSlots();
-  if(index>=0&&index<list.length){
-    if(trainChaseIndex<0){   /* 始めるとき、元の視点を覚える */
-      trainChaseSaved={lat:el.lat.value,lon:el.lon.value,tz:el.tz.value,rise:cameraRiseM,az:el.facingAz.value,alt:el.facingAlt.value,hold:droneHoldElevation};
-    }
-    trainChaseIndex=index;
-  }else{
-    if(trainChaseIndex>=0&&trainChaseSaved){
+function trainCameraFineAim(){
+  const fine=trainLockFineView;
+  if(!lockAzToTrain||!fine||+el.facingAz.value!==fine.uiAz||+el.facingAlt.value!==fine.uiAlt)return null;
+  return {az:fine.az,alt:fine.alt,focal:+el.focalLength.value};
+}
+function trainLockWriteAim(t){
+  el.facingAz.value=roundToAimStep(norm360(t.az));
+  el.facingAlt.value=roundToAimStep(clamp(t.alt,-89,85));
+  trainLockFineView={az:norm360(t.az),alt:clamp(t.alt,-89,85),uiAz:+el.facingAz.value,uiAlt:+el.facingAlt.value};
+}
+function trainChaseCapture(focus){
+  const base=terrainDistanceAndBearing(focus.lat,focus.lon,+el.lat.value,+el.lon.value);
+  const eye=observerEyeElevationM();
+  return {distanceM:base.distanceKm*1000,bearing:base.bearing,
+    heightM:(Number.isFinite(eye)?eye:focus.elevationM-TRAIN_CAR_HEIGHT_FOR_AIM_M+eyeHeightAboveGroundM())-focus.elevationM,
+    last:null};
+}
+function trainChaseRecord(focus){
+  trainChasePose.last={lat:+el.lat.value,lon:+el.lon.value,rise:cameraRiseM,
+    tripod:tripodHeightM,viewpoint:viewpointOffsetM,ground:groundElevationM(),hold:droneHoldElevation,focus};
+}
+function trainChaseSet(on,{restore=true,render=true}={}){
+  /* デバッグ窓の数値指定は残す。通常UIの対象は共通の選択キーだけで決める。 */
+  if(typeof on==="number"){
+    const slot=trainChaseSlots()[on];on=!!slot;
+    if(slot)trainLockRemember(slot);
+  }
+  on=!!on;
+  if(on&&!trainChaseOn){
+    const focus=trainCameraTargetPose(trainLockTarget(),true);
+    if(!focus){setKmzBuildingStatus("追跡する列車を選択してください。","error");showSkySearchPopup("列車がありません");return false;}
+    trainChaseSaved={lat:el.lat.value,lon:el.lon.value,tz:el.tz.value,rise:cameraRiseM,
+      az:el.facingAz.value,alt:el.facingAlt.value,hold:droneHoldElevation,fine:trainLockFineView};
+    trainChasePose=trainChaseCapture(focus);trainChaseOn=true;
+    cameraPano.playing=false;cameraPanoClear();
+    trainChaseRecord(focus);trainChaseTerrainAt=-Infinity;
+  }else if(!on&&trainChaseOn){
+    /* 戻した視点へ古い追跡地点のDEMが後から届かないよう失効させる。 */
+    realTerrainState.requestToken++;realTerrainState.loadingKey="";walkPending=false;
+    if(restore&&trainChaseSaved){
       el.lat.value=trainChaseSaved.lat;el.lon.value=trainChaseSaved.lon;el.tz.value=trainChaseSaved.tz;
       el.facingAz.value=trainChaseSaved.az;el.facingAlt.value=trainChaseSaved.alt;
       cameraRiseM=trainChaseSaved.rise;droneHoldElevation=trainChaseSaved.hold;
-      syncTripodHeightControl();
-      drawPhoto._terrainRenderKey=null;
+      trainLockFineView=trainChaseSaved.fine;syncTripodHeightControl();drawPhoto._terrainRenderKey=null;
     }
-    trainChaseIndex=-1;trainChaseSaved=null;
+    if(!restore&&cameraRiseM<DRONE_GROUND_CLEARANCE_M)droneHoldElevation=null;
+    trainChaseOn=false;trainChaseSaved=null;trainChasePose=null;
   }
-  syncDisplayPopupControls();
-  update();
+  syncDisplayPopupControls();if(render)update();return true;
 }
-/* 追跡ボタン：1回目＝1台目、2回目＝2台目、……、最後の次＝終了。列車が無ければ知らせる。 */
-function trainChaseCycle(){
-  const n=trainChaseSlots().length;
-  if(!n){setKmzBuildingStatus("追跡する列車がありません。先に列車を置くか、鉄道シミュレーションをセットしてください。","error");showSkySearchPopup("列車がありません");return;}
-  trainChaseSet(trainChaseIndex+1<n?trainChaseIndex+1:-1);
-}
-/* update() の頭で呼ぶ。追跡中なら、観測地点と向きを列車の後ろへ置き直す。 */
+function trainChaseCycle(){trainChaseSet(!trainChaseOn);}
 function trainChaseApply(){
-  if(trainChaseIndex<0)return;
-  const list=trainChaseSlots(),slot=list[trainChaseIndex];
-  if(!slot){trainChaseSet(-1);return;}
-  const cfg=kmzSlotSettings(slot),spec=trainSpecOf(slot.train);
-  if(!spec||!Number.isFinite(cfg.lat))return;
-  const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
-  if(!lay.length)return;
-  const bearing=lay[lay.length-1].bearing;   /* 先頭車が向いている方位＝進行方向 */
-  const os=slot.model&&slot.model.originShift;
-  let z=cfg.altitude;
-  if(!os){let sz=0;for(const c of lay)sz+=(c.z||0);z+=sz/lay.length;}
-  const back=kmzDestinationPoint(cfg.lat,cfg.lon,norm360(bearing+180),TRAIN_CHASE_BACK_M/1000);
-  el.lat.value=back.lat.toFixed(6);el.lon.value=back.lon.toFixed(6);
-  if(el.citySelect)el.citySelect.value=0;
-  /* 高さ：レールの上 TRAIN_CHASE_HEIGHT_M に目が来るよう、ドローンの上昇量で合わせる（地面の標高は直前の位置のもの）。 */
+  if(!trainChaseOn)return false;
+  const slot=trainLockTarget();
+  if(!slot){trainChaseSet(false,{restore:false,render:false});return false;}
+  const focus=trainCameraTargetPose(slot);if(!focus)return false;
+  if(!trainChasePose){trainChasePose=trainChaseCapture(focus);trainChaseRecord(focus);}
+  let pose=trainChasePose;
+  const last=pose.last;
+  /* 視点の手動移動・高度操作も相対位置に取り込む。動く前の列車を基準にする。 */
+  if(last&&(+el.lat.value!==last.lat||+el.lon.value!==last.lon)){
+    pose=trainChasePose=trainChaseCapture(last.focus);
+  }else if(last&&((Math.abs(cameraRiseM-last.rise)>.001&&
+      (groundElevationM()===last.ground||droneHoldElevation!==last.hold))||
+      tripodHeightM!==last.tripod||viewpointOffsetM!==last.viewpoint)){
+    const eye=observerEyeElevationM();if(Number.isFinite(eye))pose.heightM=eye-last.focus.elevationM;
+  }
+  /* 中心固定と併用時は、手動で変えた方位・仰角を列車の周りの回り込みにする。
+     焦点距離だけの変更では、視点の距離も高さも変えない。 */
+  const requested=cameraMoveOverride||(!trainCameraFineAim()&&trainLockFineView?
+    {az:+el.facingAz.value,alt:+el.facingAlt.value}:null);
+  if(lockAzToTrain&&requested&&Number.isFinite(requested.az)&&Number.isFinite(requested.alt)){
+    const radius=Math.max(.1,Math.hypot(pose.distanceM,pose.heightM));
+    const pitch=clamp(requested.alt,-89,85)*D2R;
+    pose.distanceM=radius*Math.cos(pitch);pose.heightM=-radius*Math.sin(pitch);
+    pose.bearing=norm360(requested.az+180);
+  }
+  const point=kmzDestinationPoint(focus.lat,focus.lon,pose.bearing,pose.distanceM/1000);
+  const moved=terrainDistanceAndBearing(+el.lat.value,+el.lon.value,point.lat,point.lon).distanceKm*1000>.00001;
+  /* 再生していない開始時には座標を丸め直さず、現在の構図をそのまま使う。 */
+  if(moved){el.lat.value=point.lat.toFixed(10);el.lon.value=point.lon.toFixed(10);if(el.citySelect)el.citySelect.value=0;}
   const ground=groundElevationM();
   if(ground!==null){
-    const rise=clamp(z+TRAIN_CHASE_HEIGHT_M-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
-    if(Math.abs(rise-cameraRiseM)>.05){cameraRiseM=rise;droneHoldElevation=null;syncTripodHeightControl();drawPhoto._terrainRenderKey=null;}
+    const desired=focus.elevationM+pose.heightM;
+    const rise=clamp(desired-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);
+    const actualEye=ground+viewpointOffsetM+tripodHeightM+rise;
+    if(Math.abs(rise-cameraRiseM)>.001){cameraRiseM=rise;syncTripodHeightControl();drawPhoto._terrainRenderKey=null;}
+    /* DEMが届いても絶対標高を保持する。地面下・上昇上限は既存の制限を優先する。 */
+    const groundIsCurrent=realTerrainState.key===`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
+    /* 移動前の地面で一時的に制限されても、下り坂の希望高度を失わない。
+       新地点のDEMを受け取ってから安全な高さを確定する。 */
+    droneHoldElevation=groundIsCurrent?actualEye:desired;
+    if(groundIsCurrent)pose.heightM=actualEye-focus.elevationM;
   }
-  /* 向き：進行方向へ、列車の中ほどを見下ろす角度。 */
-  el.facingAz.value=Math.round(norm360(bearing)*10)/10;
-  el.facingAlt.value=Math.round(clamp(-Math.atan2(TRAIN_CHASE_HEIGHT_M-2,TRAIN_CHASE_BACK_M)*R2D,-30,85)*10)/10;
+  trainChaseRecord(focus);return moved;
 }
+/* 歩行用の継続移動更新を共有し、停止待ちで地形が更新されない状態を避ける。
+   描画は30fps上限、重い地形取得は最大2回/秒。既存の品質設定は変えない。 */
+function trainChaseRefreshTerrain(now=performance.now()){
+  const slot=trainLockTarget();
+  if(!trainChaseOn||!trainChasePose||!slot||slot.visible===false)return;
+  const key=`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
+  if(realTerrainState.key===key)return;
+  /* 次の地形が届くまで、取得済み地形の継続描画を許可する。 */
+  realTerrainState.loadingKey=key;
+  if(now-trainChaseTerrainAt<500)return;
+  trainChaseTerrainAt=now;refreshTerrainWhileWalking();
+}
+function trainChaseFrame(){
+  if(!trainChaseOn)return;
+  railSimTick();trainChaseApply();trainLockApply();
+  if(!state)return;
+  const fine=trainCameraFineAim();
+  state.lat=+el.lat.value;state.lon=+el.lon.value;
+  state.facingAz=fine?fine.az:+el.facingAz.value;state.facingAlt=fine?fine.alt:+el.facingAlt.value;
+  trainChaseRefreshTerrain();
+}
+
 /* 【v1186】**LIVE**：現在時刻で、再生ボタンを押さなくてもリアルタイムに進める（実時間＝1倍速の再生）。
    時刻バーを触る・再生を止めると終わる。地図を開いていても、列車の位置が毎秒動く。 */
 let liveOn=false,liveTimer=0,liveInternalStop=false,livePrevSpeed=null;
@@ -17475,29 +17576,16 @@ function liveTick(){
 }   /* 地図のアイコンは再生のコマ(liveMapOnly)か update() が更新する（v1191） */
 /* 列車の真ん中（全車両の平均）が、観測地点から見て何度・どの高さかを出す。 */
 function trainLockAim(){
-  const slot=trainLockTarget();
-  if(!slot||!state)return null;
-  const cfg=kmzSlotSettings(slot);   /* 走らせていれば、いまの時刻の位置へ作り直す */
-  if(slot.visible===false)return null;   /* 【v1207】待機中は対象を保持して固定だけ一時停止。 */
-  const spec=trainSpecOf(slot.train);
-  const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
-  if(!lay.length||!Number.isFinite(cfg.lat))return null;
-  let x=0,y=0,z=0;
-  if(!(slot.model&&slot.model.originShift)){for(const c of lay){x+=c.x;y+=c.y;z+=(c.z||0);}x/=lay.length;y/=lay.length;z/=lay.length;}   /* 【v1184】中心へ寄せた列車は cfg が既に列車の位置 */
-  const [lat,lon]=trainLL(cfg.lat,cfg.lon,x*(cfg.scale||1),y*(cfg.scale||1));
-  const base=terrainDistanceAndBearing(state.lat,state.lon,lat,lon);
-  const eye=observerEyeElevationM();
-  const dM=Math.max(1,base.distanceKm*1000);
-  const dz=(cfg.altitude+z+TRAIN_CAR_HEIGHT_FOR_AIM_M)-(Number.isFinite(eye)?eye:cfg.altitude);
-  return {az:base.bearing,alt:clamp(Math.atan2(dz,dM)*R2D,-30,85),distanceM:dM,slot};
+  const focus=trainCameraTargetPose();if(!focus)return null;
+  /* 追跡の移動を反映した入力座標を使う。直前の state 座標では1コマ遅れる。 */
+  const base=terrainDistanceAndBearing(+el.lat.value,+el.lon.value,focus.lat,focus.lon);
+  const eye=observerEyeElevationM(),dM=Math.max(.01,base.distanceKm*1000);
+  const dz=focus.elevationM-(Number.isFinite(eye)?eye:focus.elevationM-TRAIN_CAR_HEIGHT_FOR_AIM_M);
+  return {az:base.bearing,alt:clamp(Math.atan2(dz,dM)*R2D,-89,85),distanceM:dM,slot:focus.slot};
 }
-/* update() の頭で呼ぶ。固定がONなら、画面の向きを列車に合わせてから描く。 */
 function trainLockApply(){
   if(!lockAzToTrain)return;
-  const t=trainLockAim();
-  if(!t)return;
-  el.facingAz.value=Math.round(t.az*10)/10;
-  el.facingAlt.value=Math.round(t.alt*10)/10;
+  const t=trainLockAim();if(t)trainLockWriteAim(t);
 }
 // 天の川中心・太陽中心・月中心の固定は同時には使えないため、共通の処理でON/OFFと排他制御をまとめる。
 function setAzLockTarget(target){
@@ -17506,6 +17594,7 @@ function setAzLockTarget(target){
   lockAzToSun = target==="sun";
   lockAzToMoon = target==="moon";
   lockAzToTrain = target==="train";
+  if(!lockAzToTrain)trainLockFineView=null;
   if(lockAzToTrain&&!trainLockTarget()){lockAzToTrain=false;setKmzBuildingStatus("列車がありません。先に列車を置いてください。","error");}
   el.lockAzToGcBtn.classList.toggle("active",lockAzToGc);
   el.lockAzToGcState.textContent = lockAzToGc ? "ON" : "OFF";
@@ -17518,12 +17607,12 @@ function setAzLockTarget(target){
     if(lockAzToGc && state.gcAltAz && state.gcAltAz.alt>-90) az=state.gcAltAz.az;
     else if(lockAzToSun && state.sunAltAz){az=state.sunAltAz.az;alt=state.sunAltAz.alt;}
     else if(lockAzToMoon && state.moonAltAz){az=state.moonAltAz.az;alt=state.moonAltAz.alt;}
-    else if(lockAzToTrain){const t=trainLockAim();if(t){az=t.az;alt=t.alt;}}
+    else if(lockAzToTrain){const t=trainLockAim();if(t){trainLockWriteAim(t);az=t.az;alt=t.alt;}}
     if(az!==null){
-      el.facingAz.value=Math.round(norm360(az));
+      if(!lockAzToTrain)el.facingAz.value=Math.round(norm360(az));
       /* 太陽・月の「中心固定」は方位だけでなく仰角も追う。
          望遠再生中に上下へ画面外へ抜ける現象を防ぎ、接地の連続した動きを確認できる。 */
-      if(alt!==null&&Number.isFinite(alt)) el.facingAlt.value=clamp(alt,-30,85);
+      if(!lockAzToTrain&&alt!==null&&Number.isFinite(alt)) el.facingAlt.value=clamp(alt,-30,85);
       update();
     }
   }
@@ -22465,7 +22554,7 @@ function playCameraMove(){
   const times=[],draws=[],terrains=[];
   /* 【v917】先に焼く。数百ms止まるので、押した直後に一度だけ。 */
   cameraPano.playing=false;
-  const panoError=cameraMovePanoOn?cameraPanoPrepare():null;
+  const panoError=cameraMovePanoOn&&!trainChaseOn?cameraPanoPrepare():null;
   cameraPano.playing=!!(cameraPano.tiles&&cameraPano.tiles.length);
   cameraMoveState.panoError=panoError;
   cameraMoveState.playing=true;
@@ -23019,7 +23108,7 @@ function syncDisplayPopupControls(){
   el.popupLockMoonBtn.classList.toggle("active",lockAzToMoon);
   el.popupLockTrainBtn.classList.toggle("active",lockAzToTrain);   /* 【v1178】 */
   syncTrainLockControls();   /* 【v1207】名前と固定対象の選択欄。 */
-  el.popupChaseTrainBtn.classList.toggle("active",trainChaseIndex>=0);   /* 【v1186】 */
+  el.popupChaseTrainBtn.classList.toggle("active",trainChaseOn);   /* 【v1186】 */
   if(el.popupChaseTrainBtn.textContent!==trainChaseLabel())el.popupChaseTrainBtn.textContent=trainChaseLabel();
   el.popupLiveBtn.classList.toggle("active",liveOn);
   el.popupStarTrailBtn.classList.toggle("active",starTrailMode);
@@ -23441,7 +23530,7 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     const t=trainLockAim();
     if(t){
       state.facingAz=t.az;state.facingAlt=t.alt;
-      el.facingAz.value=t.az;el.facingAlt.value=t.alt;
+      trainLockWriteAim(t);
       el.azVal.textContent=`${Math.round(t.az)}°`;
       el.altValLabel.textContent=`${formatAimDeg(t.alt)}°`;
     }
@@ -23554,16 +23643,16 @@ function playbackTick(now){
 
   /* 【v1193】LIVEで走行列車を見ている間は写真を30fpsで描く。通常再生は
      リアル天の川30fps・従来表示最大60fpsを維持し、省電力の上限も守る。 */
-  const liveLight=liveOn&&trainChaseIndex<0,liveMapOnly=liveLight&&osmMapScreenOpen;
+  const liveLight=liveOn&&!trainChaseOn,liveMapOnly=liveLight&&osmMapScreenOpen;
   const liveSmoothTrain=liveLight&&kmzSlots.some(sl=>sl.visible&&sl.model&&sl.train&&sl.train.run&&sl.train.path&&sl.train.path.length>=2);
-  const targetFrameMs=Math.max(liveSmoothTrain||realMilkyWayEnabled?1000/30:1000/60,powerFrameMinMs());
+  const targetFrameMs=Math.max(trainChaseOn||liveSmoothTrain||realMilkyWayEnabled?1000/30:1000/60,powerFrameMinMs());
   /* 【v718】250msごとの全UI更新が来るコマでは、下のUI更新後に小数時刻の写真を
      必ず描き直す。同じコマの通常描画を先に行うと、ほぼ同じdrawPhoto()が2回続き、
      再生中に周期的な負荷の山ができるため、その1回を省く。 */
   /* 【v1190・v1193】LIVE中の重いUI・星空更新は1秒に1回を維持する。
      その間は写真の列車または地図の列車アイコンを更新する。地形の描画キャッシュも再利用。
      追跡カメラは従来どおり。地図を全面表示中は隠れた写真を描かない。 */
-  const playbackUiUpdateDue=now-playbackLastUiTime>=(liveLight?1000:250) || finished || trainChaseIndex>=0;   /* 【v1186】追跡中は毎コマ */
+  const playbackUiUpdateDue=now-playbackLastUiTime>=(liveLight?1000:250) || finished;   /* 【v1211】追跡でも全UI更新は4回/秒に抑える */
   if(!playbackUiUpdateDue&&(!liveLight||liveSmoothTrain)&&now-playbackLastRenderTime>=targetFrameMs-1){
     playbackLastRenderTime=now;
     if(liveMapOnly){
@@ -23575,7 +23664,7 @@ function playbackTick(now){
         const t=trainLockAim();
         if(t){
           state.facingAz=t.az;state.facingAlt=t.alt;
-          el.facingAz.value=t.az;el.facingAlt.value=t.alt;
+          trainLockWriteAim(t);
           el.azVal.textContent=`${Math.round(t.az)}°`;
           el.altValLabel.textContent=`${formatAimDeg(t.alt)}°`;
         }
@@ -23583,6 +23672,7 @@ function playbackTick(now){
       drawPhoto(photoCtx,state);
       if(lockAzToTrain)drawCompassStrip(compassCtx,state);
     }else{
+      trainChaseFrame();
       const jdPreview=jdForSliderMinutes(playbackVisualMinutes);
       const gcAA=raDecToAltAz(GC.ra,GC.dec,jdPreview,state.lat,state.lon);
       const newAz=norm360(gcAA.az);
@@ -26558,6 +26648,8 @@ async function compressPlanPhoto(file){
   }finally{URL.revokeObjectURL(sourceUrl);}
 }
 function resetPlanPhotoEditor(){
+  planPhotoProcessing=false;setPlanSaveCommitting(planSaveCommitting);
+  el.planSaveRunBtn.disabled=planSaveCommitting||!!registerCurrentObservingPlan.busy;
   planPhotoEditorVersion++;
   revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";pendingPlanPhoto=null;pendingPlanPhotoRemoved=false;planSaveExistingPhotoRecord=null;
   el.planPhotoInput.value="";el.planPhotoSelectBtn.textContent="写真を選択";el.planPhotoPreview.removeAttribute("src");el.planPhotoPreviewWrap.classList.remove("show");el.planPhotoRemoveBtn.hidden=true;el.planPhotoStatus.textContent="";
@@ -26582,27 +26674,28 @@ async function preparePlanPhotoEditor(){
     planSaveExistingPhotoRecord=record;showPlanPhotoPreview(record.fullDataUrl||planPhotoBlob(record,true),record.fallback?"バックアップ画像から復元しました。写真を選び直して保存すると本体も修復されます。":"登録済みの写真です。変更または削除できます。");
   }catch(e){el.planPhotoStatus.textContent="登録写真を読み込めませんでした。";}
 }
-async function persistPlanPhotoForLocation(location){
+async function persistPlanPhotoForLocation(location,preserveExistingPhoto=false){
   if(!location)return;
-  if(pendingPlanPhoto){
+  const photo=pendingPlanPhoto,photoRemoved=pendingPlanPhotoRemoved,existingPhoto=planSaveExistingPhotoRecord;
+  if(photo){
     const photoId=`photo_${location.id}`;
-    const fullBuffer=await pendingPlanPhoto.fullBlob.arrayBuffer(),thumbBuffer=await pendingPlanPhoto.thumbBlob.arrayBuffer();
-    await planPhotoPut({id:photoId,fullBuffer,thumbBuffer,mimeType:"image/jpeg",width:pendingPlanPhoto.width,height:pendingPlanPhoto.height,originalName:pendingPlanPhoto.originalName,exif:pendingPlanPhoto.exif||null,updatedAt:Date.now()});
+    const fullBuffer=await photo.fullBlob.arrayBuffer(),thumbBuffer=await photo.thumbBlob.arrayBuffer();
+    await planPhotoPut({id:photoId,fullBuffer,thumbBuffer,mimeType:"image/jpeg",width:photo.width,height:photo.height,originalName:photo.originalName,exif:photo.exif||null,updatedAt:Date.now()});
     const verified=await planPhotoGet(photoId);if(!planPhotoBlob(verified,true))throw new Error("写真データの保存確認に失敗しました。端末の空き容量をご確認ください。");
     if(location.photoId&&location.photoId!==photoId)await planPhotoDelete(location.photoId).catch(()=>{});
-    location.photoId=photoId;location.photoPreviewDataUrl=await blobToDataUrl(pendingPlanPhoto.thumbBlob);location.photoExif=pendingPlanPhoto.exif||null;await saveObservingLocations();return;
+    location.photoId=photoId;location.photoPreviewDataUrl=await blobToDataUrl(photo.thumbBlob);location.photoExif=photo.exif||null;await saveObservingLocations();return;
   }
-  if(pendingPlanPhotoRemoved){
+  if(photoRemoved){
     if(location.photoId)await planPhotoDelete(location.photoId).catch(()=>{});
     delete location.photoId;delete location.photoPreviewDataUrl;delete location.photoExif;await saveObservingLocations();return;
   }
   // 登録済み計画を別タイトルで保存した場合は、表示中の写真も新しい計画へ複製する。
-  if(planSaveExistingPhotoRecord&&!location.photoId){
+  if(existingPhoto&&!location.photoId&&!preserveExistingPhoto){
     const photoId=`photo_${location.id}`;
-    if(!planSaveExistingPhotoRecord.fallback)await planPhotoPut({...planSaveExistingPhotoRecord,id:photoId,updatedAt:Date.now()});
+    if(!existingPhoto.fallback)await planPhotoPut({...existingPhoto,id:photoId,updatedAt:Date.now()});
     location.photoId=photoId;
-    const thumb=planPhotoBlob(planSaveExistingPhotoRecord,false);if(thumb)location.photoPreviewDataUrl=await blobToDataUrl(thumb);else if(planSaveExistingPhotoRecord.thumbDataUrl)location.photoPreviewDataUrl=planSaveExistingPhotoRecord.thumbDataUrl;
-    location.photoExif=planSaveExistingPhotoRecord.exif||null;await saveObservingLocations();
+    const thumb=planPhotoBlob(existingPhoto,false);if(thumb)location.photoPreviewDataUrl=await blobToDataUrl(thumb);else if(existingPhoto.thumbDataUrl)location.photoPreviewDataUrl=existingPhoto.thumbDataUrl;
+    location.photoExif=existingPhoto.exif||null;await saveObservingLocations();
   }
 }
 /* 【v880】読み込んだ模型を**配列で**保存する。
@@ -26793,19 +26886,79 @@ async function restorePlanBridgeSnapshot(location){
   syncBridgeButtonStatus();drawPhoto._terrainRenderKey=null;
   return true;
 }
+/* 【v1210】同名保存の確認。はいを選ぶまでは計画・写真・キャッシュに書き込まない。 */
+let planSaveModalGeneration=0,planSaveCommitting=false,planPhotoProcessing=false;
+function setPlanSaveCommitting(on){
+  planSaveCommitting=on;
+  el.planSaveCloseBtn.disabled=on;el.planSaveCancelBtn.disabled=on;
+  el.planPhotoSelectBtn.disabled=on||planPhotoProcessing;
+  el.planPhotoRemoveBtn.disabled=on;el.planPhotoInput.disabled=on;
+}
+let pendingPlanOverwriteResolve=null;
+function finishPlanOverwrite(accepted=false){
+  const resolve=pendingPlanOverwriteResolve;
+  pendingPlanOverwriteResolve=null;
+  if(el.planOverwriteDialog.open)el.planOverwriteDialog.close();
+  if(resolve)resolve(accepted);
+}
+function confirmPlanOverwrite(location,title){
+  if(pendingPlanOverwriteResolve)return Promise.resolve(false);
+  const sameName=String(location.title||"").trim()===title;
+  const place=location.placeName||`${(+location.lat).toFixed(5)}, ${(+location.lon).toFixed(5)}`;
+  el.planOverwriteMessage.textContent=(sameName
+    ?`「${title}」は既に保存されています。現在の内容で上書きしますか？`
+    :`保存済みの「${location.title}」を、現在の内容と名前「${title}」で上書きしますか？`)
+    +`\n保存済みの地点：${place}`;
+  return new Promise(resolve=>{
+    pendingPlanOverwriteResolve=resolve;
+    try{el.planOverwriteDialog.showModal();el.planOverwriteNoBtn.focus();}
+    catch(e){pendingPlanOverwriteResolve=null;resolve(false);throw e;}
+  });
+}
+/* 同名の旧データが複数ある場合は編集中、読込中、更新日時が新しい順で対象を決める。 */
+function planOverwriteTarget(title){
+  const editing=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
+  const matches=savedObservingLocations.filter(item=>String(item.title||"").trim()===title);
+  return matches.find(item=>item.id===editingSavedPlanId)
+    ||matches.find(item=>item.id===activeLoadedPlanId)
+    ||matches.reduce((latest,item)=>!latest||(+item.updatedAt||0)>(+latest.updatedAt||0)?item:latest,null)
+    ||editing||null;
+}
+/* 上書きした計画に紐づく登録地点も移す。登録地点側で付けた独自の名前は保つ。 */
+function favUpdateFromPlan(location,previousTitle){
+  if(!favPlacesLoaded)return;
+  let changed=false;
+  for(const place of favPlaces){
+    if(place.planId!==location.id)continue;
+    place.lat=location.lat;place.lon=location.lon;
+    if(place.name===String(previousTitle||"").slice(0,40))place.name=String(location.title).slice(0,40);
+    changed=true;
+  }
+  if(!changed)return;
+  favPlacesSave();favRefreshMarkers();
+  if(favPlacesSceneVisible){drawPhoto._terrainRenderKey=null;if(typeof update==="function")update();}
+}
 async function registerCurrentObservingPlan(customTitle=""){
+  if(registerCurrentObservingPlan.busy)return null;
+  registerCurrentObservingPlan.busy=true;
+  const saveGeneration=el.planSaveOverlay.classList.contains("show")?planSaveModalGeneration:null;
+  const saveCancelled=()=>saveGeneration!==null&&(saveGeneration!==planSaveModalGeneration||!el.planSaveOverlay.classList.contains("show"));
+  try{
   const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)){alert("観測地点の緯度・経度を設定してください。");return null;}
   if(!Number.isFinite(currentObservedPlaceLat)||!Number.isFinite(currentObservedPlaceLon)||Math.abs(currentObservedPlaceLat-lat)>0.0001||Math.abs(currentObservedPlaceLon-lon)>0.0001){
     await reverseGeocodeAndShow(lat,lon);
   }
+  if(saveCancelled())return null;
   const placeMatches=Number.isFinite(currentObservedPlaceLat)&&Number.isFinite(currentObservedPlaceLon)&&Math.abs(currentObservedPlaceLat-lat)<=0.0001&&Math.abs(currentObservedPlaceLon-lon)<=0.0001;
   const placeName=(placeMatches?currentObservedPlaceName:"")||`${lat.toFixed(5)}, ${lon.toFixed(5)}`;
   const classification=classifyObservedPlace(placeName);
   const title=String(customTitle||"").trim()||placeName;
-  // 「編集」から開いた場合は、タイトルを変更しても同じ登録データを更新する。
-  const editingLocation=savedObservingLocations.find(item=>item.id===editingSavedPlanId);
-  const duplicate=editingLocation||savedObservingLocations.find(item=>Math.abs(item.lat-lat)<0.00001&&Math.abs(item.lon-lon)<0.00001&&item.title===title);
+  const duplicate=planOverwriteTarget(title);
+  if(duplicate&&!await confirmPlanOverwrite(duplicate,title))return null;
+  if(saveCancelled())return null;
+  if(saveGeneration!==null)setPlanSaveCommitting(true);
+  const previousTitle=duplicate&&duplicate.title;
   const location={
     id:duplicate?duplicate.id:`loc_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
     title,placeName,prefecture:classification.prefecture,city:classification.city,
@@ -26839,9 +26992,11 @@ async function registerCurrentObservingPlan(customTitle=""){
   if(duplicate){Object.assign(duplicate,location);savedLocation=duplicate;}else savedObservingLocations.push(location);
   setTimeout(favImportFromPlans,0);   /* 【v1007】新しい計画は登録地点にも */
   await saveObservingLocations();
+  if(duplicate)favUpdateFromPlan(savedLocation,previousTitle);
   renderSavedLocationSelect(savedLocation.id);
   renderSavedPlansList(el.planLoadSearch.value);
   return {location:savedLocation,updated:!!duplicate};
+  }finally{registerCurrentObservingPlan.busy=false;}
 }
 /* 【v687】雲海の設定を撮影計画へ入れる／戻す。
    雲海はその土地とその日の狙いそのものなので、地点や時刻と一緒に覚えておきたい。
@@ -27457,9 +27612,13 @@ function renderCurrentPlanPreview(){
   if(sunsetModeOn) appendPlanPreviewItem("夕焼けモード",`ON・彩度${sunsetMode.vivid}%・橙${sunsetMode.saturate}%`,true);
 }
 function setPlanModalOpen(kind,open){
+  if(kind==="save"){
+    if(planSaveCommitting)return;
+    planSaveModalGeneration++;
+  }
   const overlay=kind==="save"?el.planSaveOverlay:el.planLoadOverlay;
   overlay.classList.toggle("show",!!open);overlay.setAttribute("aria-hidden",open?"false":"true");
-  if(!open){if(kind==="save"){resetPlanPhotoEditor();editingSavedPlanId="";syncPlanEditingSaveButton();}return;}
+  if(!open){if(kind==="save"){finishPlanOverwrite(false);resetPlanPhotoEditor();editingSavedPlanId="";syncPlanEditingSaveButton();}return;}
   if(kind==="save"){
     renderPlanSaveCameraWorkSelect();   /* 【v927】下見より先に作る */
     renderCurrentPlanPreview();el.planSaveName.value=el.savedLocationName.value||"";
@@ -27495,6 +27654,8 @@ const PLAN_GENRES=[
   {key:"constellation",label:"星座"},
   {key:"castle",label:"お城"},
   {key:"firework",label:"花火"},
+  {key:"railway",label:"鉄道"},
+  {key:"mountain",label:"山"},
   {key:"other",label:"その他"}
 ];
 /* 記録から読み出す。並びは必ずPLAN_GENRESの順に揃える。 */
@@ -28146,7 +28307,13 @@ el.deleteSavedLocationBtn.addEventListener("click",()=>{
   if(!location){alert("削除する観測地を選択してください。");return;}removeSavedObservingPlan(location);
 });
 // 地図やシミュレーション枠の overflow に切られないよう、撮影計画モーダルは body 直下へ移す。
-document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay,el.slideshowOverlay);
+document.body.append(el.planSaveOverlay,el.planLoadOverlay,el.photoViewerOverlay,el.slideshowOverlay,el.planOverwriteDialog);
+el.planOverwriteYesBtn.addEventListener("click",()=>finishPlanOverwrite(true));
+el.planOverwriteNoBtn.addEventListener("click",()=>finishPlanOverwrite(false));
+el.planOverwriteDialog.addEventListener("cancel",e=>{e.preventDefault();finishPlanOverwrite(false);});
+el.planOverwriteDialog.addEventListener("close",()=>{if(!el.planOverwriteDialog.open&&pendingPlanOverwriteResolve)finishPlanOverwrite(false);});
+/* 確認画面のEscapeや矢印キーを、背後の保存画面・スライドショーへ渡さない。 */
+el.planOverwriteDialog.addEventListener("keydown",e=>e.stopPropagation());
 if(el.playSpeedPopup) document.body.appendChild(el.playSpeedPopup);   // v695
 el.quickSavePlanBtn.addEventListener("click",()=>{
   // 「編集」でシミュレーションへ戻っている間は同じ計画を更新する。
@@ -28243,14 +28410,19 @@ el.planPhotoSelectBtn.addEventListener("click",()=>el.planPhotoInput.click());
 el.planPhotoInput.addEventListener("change",async()=>{
   const file=el.planPhotoInput.files?.[0];if(!file)return;
   const editorVersion=++planPhotoEditorVersion;
-  el.planPhotoSelectBtn.disabled=true;el.planPhotoStatus.textContent="写真を表示用に最適化しています…";
+  planPhotoProcessing=true;el.planPhotoSelectBtn.disabled=true;el.planPhotoRemoveBtn.disabled=true;el.planPhotoInput.disabled=true;el.planSaveRunBtn.disabled=true;el.planPhotoStatus.textContent="写真を表示用に最適化しています…";
   try{
     const compressed=await compressPlanPhoto(file);if(editorVersion!==planPhotoEditorVersion)return;
     pendingPlanPhoto=compressed;pendingPlanPhotoRemoved=false;
     showPlanPhotoPreview(pendingPlanPhoto.fullBlob,`${pendingPlanPhoto.width} × ${pendingPlanPhoto.height}pxに最適化しました。撮影計画の保存時に登録されます。`);
     el.planPhotoSelectBtn.textContent="写真を変更";
-  }catch(e){el.planPhotoStatus.textContent=e.message||"写真を処理できませんでした。";}
-  finally{el.planPhotoSelectBtn.disabled=false;}
+  }catch(e){if(editorVersion===planPhotoEditorVersion)el.planPhotoStatus.textContent=e.message||"写真を処理できませんでした。";}
+  finally{
+    if(editorVersion===planPhotoEditorVersion){
+      planPhotoProcessing=false;setPlanSaveCommitting(planSaveCommitting);
+      el.planSaveRunBtn.disabled=planSaveCommitting||!!registerCurrentObservingPlan.busy;
+    }
+  }
 });
 el.planPhotoRemoveBtn.addEventListener("click",()=>{
   planPhotoEditorVersion++;pendingPlanPhoto=null;pendingPlanPhotoRemoved=true;revokeObjectUrl(planSavePhotoObjectUrl);planSavePhotoObjectUrl="";
@@ -28264,14 +28436,14 @@ el.planSaveRunBtn.addEventListener("click",async()=>{
   try{
     const result=await registerCurrentObservingPlan(el.planSaveName.value);
     if(!result) return;
-    await persistPlanPhotoForLocation(result.location);
+    await persistPlanPhotoForLocation(result.location,result.updated);
     activeLoadedPlanId=result.location.id;el.savedLocationName.value=result.location.title;
     syncQuickPhotoButton(result.location);
     renderSavedLocationSelect(result.location.id);renderSavedPlansList(el.planLoadSearch.value);
-    setPlanModalOpen("save",false);
+    setPlanSaveCommitting(false);setPlanModalOpen("save",false);
     alert(result.updated?"同じ撮影計画を最新内容へ更新しました。":"観測値・撮影計画を保存しました。");
   }catch(e){alert(`撮影計画または写真を保存できませんでした。\n${e?.message||"端末の保存容量をご確認ください。"}`);}
-  finally{el.planSaveRunBtn.disabled=false;syncPlanSaveModalMode();}
+  finally{setPlanSaveCommitting(false);el.planSaveRunBtn.disabled=planPhotoProcessing;syncPlanSaveModalMode();}
 });
 document.addEventListener("keydown",e=>{
   /* スライドショー中は左右で送り、空白で止める。 */
@@ -28447,7 +28619,7 @@ function computeState(){
 
   /* カメラ設定 */
   /* 【v924】カメラワークが残した小数の向きがあれば、そちらで作る。 */
-  const aimFine=aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
+  const aimFine=trainCameraFineAim()||aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
   const focalLength=aimFine?aimFine.focal:+el.focalLength.value;
   const aperture=+el.aperture.value;
   const iso=ISO_STEPS[+el.isoSlider.value];
@@ -30490,7 +30662,7 @@ try{
           return ws.map((w,i)=>{const pts=(w.points||[]).map(p=>[(p[1]-lon)*mLo,(p[0]-lat)*mLa]);let L=0;for(let k=0;k+1<pts.length;k++)L+=Math.hypot(pts[k+1][0]-pts[k][0],pts[k+1][1]-pts[k][1]);return {i,kind:w.kind||null,tags:w.tags||null,長さm:Math.round(L),始:pts[0]&&pts[0].map(Math.round),終:pts.length?pts[pts.length-1].map(Math.round):null,点:pts.length};});},
         /* 【v1182】鉄道シミュレーション。setup()でセット、at(分)で全列車の位置。 */
         /* 【v1186】追跡・LIVE。chase(番号) で追跡（-1で終了）、live(true/false) で切り替え。 */
-        chase:(i)=>{if(typeof i==="number")trainChaseSet(i);return {index:trainChaseIndex,台数:trainChaseSlots().length,label:trainChaseLabel()};},
+        chase:(i)=>{if(typeof i==="number")trainChaseSet(i);return {index:trainChaseOn?trainChaseSlots().indexOf(trainLockTarget()):-1,on:trainChaseOn,台数:trainChaseSlots().length,label:trainChaseLabel()};},
         live:(on)=>{if(typeof on==="boolean")setLive(on);return {on:liveOn,speed:el.animationSpeedSelect.value,playing:!!playbackTimer,minutes:+playbackVisualMinutes.toFixed(3)};},
         railSim:{pos:()=>kmzSlots.filter(sl=>sl.train&&sl.train.run&&sl.train.run.sim).map(sl=>{const c=kmzSlotSettings(sl);return {名:sl.train.name,lat:c.lat,lon:c.lon,alt:c.altitude,可視:sl.visible};}),
           setup:()=>railSimSetupHojo(),data:()=>RAIL_SIM_HOJO,dayType:(date)=>railSimDayType(date),holidays:(y)=>[...jpHolidaysOfYear(+y)].sort((a,b)=>a-b),
@@ -46240,8 +46412,13 @@ function updateCameraViewOnly(){
   if(scheduledUpdateRaf){cameraViewSkip.pending++;return;}
   if(scheduledCameraViewRaf){cancelAnimationFrame(scheduledCameraViewRaf);scheduledCameraViewRaf=0;}
   if(!state){cameraViewSkip.noState++;update();return;}
+  /* 【v1211】中心固定中の角度操作は視点を回り込ませ、座標も全状態へ反映する。 */
+  if(trainChaseOn&&lockAzToTrain){
+    const moved=trainChaseApply();trainLockApply();
+    if(moved){update();return;}
+  }
   /* 【v924】再生中の指定 → カメラワークが残した小数 → スライダー、の順で見る。 */
-  const aimFine=cameraMoveOverride||aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
+  const aimFine=trainCameraFineAim()||cameraMoveOverride||aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
   const focalLength=aimFine?aimFine.focal:+el.focalLength.value;
   const facingAz=aimFine?aimFine.az:+el.facingAz.value;
   const facingAlt=aimFine?aimFine.alt:+el.facingAlt.value;
@@ -46321,8 +46498,8 @@ function update(){
   el.mobileDateDisplay.textContent = el.dateInput.value ? `📅 ${el.dateInput.value.replace(/-/g,"/")}` : "📅 —";
   applyCanvasSize();
   railSimTick();   /* 【v1182】 */
-  trainLockApply();   /* 【v1178】列車を中心に固定 */
-  trainChaseApply();   /* 【v1186】列車を追跡（観測地点ごと列車の後ろへ） */
+  trainChaseApply();   /* 【v1211】現在の構図を保って選択列車へ追随 */
+  trainLockApply();   /* 移動後の視点から中心を合わせる */
   state=computeState();
   /* 【v888】水域レイ診断。診断したい方位（画面中央）をここで入れる。
 
@@ -46335,7 +46512,8 @@ function update(){
   syncDarumaTelephotoUi(state);
   updateOsmFovOverlay(state);
   syncDroneMap(state);
-  requestRealTerrainProfile(state.lat,state.lon);
+  if(trainChaseOn)trainChaseRefreshTerrain();
+  else requestRealTerrainProfile(state.lat,state.lon);
   requestMountainNames(state.lat,state.lon);
   drawDial(dialCtx,state);
   if(!suppressPhotoDrawForUpdate){const __d0=performance.now();drawPhoto(photoCtx,state);terrainStageProf.photo+=performance.now()-__d0;terrainStageProf.photoN++;}
@@ -46772,7 +46950,7 @@ function applyDroneAltitudeHold(){
   /* 【v1022】地面が保持高度より高い（尾根が迫る）ときは、地面の 10m 上へ押し上げ、**そこを新しい保持高度にする**。
      これまでは押し上げたあと地面が下がると元の保持高度へ戻っていたので、尾根を越えるたびに上下していた。
      押し上げられた先で水平に飛び続ける＝真っ直ぐ動く。下がるのは自分で下降したときだけ。 */
-  if(next<DRONE_GROUND_CLEARANCE_M){
+  if(next<DRONE_GROUND_CLEARANCE_M&&!trainChaseOn){
     next=Math.min(DRONE_GROUND_CLEARANCE_M,CAMERA_RISE_MAX_M);
     droneHoldElevation=ground+viewpointOffsetM+tripodHeightM+next;
   }
@@ -46963,7 +47141,9 @@ async function refreshTerrainWhileWalking(){
       const partial=walkSectorForBuild();   /* 【v988】見えている方位だけ */
       if(partial)walkSectorStats.partial++;else walkSectorStats.full++;
       const result=await buildRealTerrainProfile(lat,lon,token,partial);
-      if(result&&token===realTerrainState.requestToken){
+      if(result&&token===realTerrainState.requestToken&&
+          key===`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`){
+        /* 【v1211】解除・対象切替後に前の地点のDEMを採用しない。 */
         /* 【v847】1.1km四方の取得単位をまたいだときだけ白紙に戻す。
            同じ単位の中を歩いている間は、下の当て直しで前のポリゴンを使い回す。 */
         dropStaleWaterState(lat,lon);
