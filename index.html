@@ -1034,6 +1034,14 @@
   }
   .display-popup-section-title:first-of-type{margin-top:4px;}
   .display-control-btn{border-radius:8px;}
+  /* 【v1207】対象列車は表示メニュー内でも常に確認できる。 */
+  .train-lock-picker{flex:0 0 100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.07);}
+  .train-lock-picker-row{display:flex;align-items:center;gap:8px;min-width:0;}
+  .train-lock-picker-row label{flex:none;font-size:12px;color:var(--star-white);}
+  .train-lock-picker select{flex:1;min-width:0;width:100%;min-height:40px;padding:6px 8px;font-size:16px;border-radius:6px;background:#19223a;color:var(--star-white);border:1px solid var(--line);}
+  .train-lock-picker select:focus-visible{outline:2px solid var(--core-amber);outline-offset:2px;}
+  .train-lock-picker-note,.train-lock-picker-status{font-size:11px;line-height:1.5;margin:6px 0 0;color:var(--dim-2);overflow-wrap:anywhere;}
+  .train-lock-picker-status{color:var(--core-amber);}
   /* 雲海の高度スライダー。雲海がONのときだけ出す。 */
   .display-popup-slider{
     display:none;align-items:center;gap:7px;
@@ -5936,7 +5944,12 @@
                 <button id="popupLockGcBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川中心に固定</button>
                 <button id="popupLockSunBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽中心に固定</button>
                 <button id="popupLockMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">月中心に固定</button>
-                <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を中心に固定</button>
+                <button id="popupLockTrainBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">列車を中心に固定</button>
+                <div class="train-lock-picker" id="popupTrainLockPicker">
+                  <div class="train-lock-picker-row"><label for="popupTrainLockSelect">固定する列車</label><select id="popupTrainLockSelect" aria-describedby="popupTrainLockStatus popupTrainLockHint"><option value="">列車がありません</option></select></div>
+                  <p id="popupTrainLockStatus" class="train-lock-picker-status" role="status" aria-live="polite">先に列車を追加してください。</p>
+                  <p id="popupTrainLockHint" class="train-lock-picker-note">地図の列車タップ、設定のKMZ一覧からも選べます。</p>
+                </div>
                 <button id="popupChaseTrainBtn" type="button" class="constellation-toggle-btn display-control-btn">列車を追跡</button>
                 <button id="popupLiveBtn" type="button" class="constellation-toggle-btn display-control-btn">LIVE</button>
                 <button id="popupStarTrailBtn" type="button" class="constellation-toggle-btn display-control-btn">スタートレイル</button>
@@ -6920,7 +6933,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1206-kakogawa-truss";
+const APP_VERSION="1207-train-lock-selection";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8383,7 +8396,7 @@ const el={
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
   shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaDownBtn:$("cloudSeaDownBtn"), cloudSeaUpBtn:$("cloudSeaUpBtn"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupChaseTrainBtn:$("popupChaseTrainBtn"), popupLiveBtn:$("popupLiveBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupTrainLockSelect:$("popupTrainLockSelect"), popupTrainLockStatus:$("popupTrainLockStatus"), popupChaseTrainBtn:$("popupChaseTrainBtn"), popupLiveBtn:$("popupLiveBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -11913,6 +11926,7 @@ function kmzApplyReplace(newSlot){
   if(Number.isFinite(+old.nudgeForward))newSlot.nudgeForward=+old.nudgeForward;
   if(Number.isFinite(+old.nudgeRight))newSlot.nudgeRight=+old.nudgeRight;
   if(old.move)newSlot.move=old.move;
+  if(old.train&&newSlot.train)newSlot.cameraTrainKey=trainLockSlotKey(old);   /* 【v1207】置き直しても同じ列車を固定。 */
   if(savedNumber(old.fireworkHeight)!==null)newSlot.fireworkHeight=old.fireworkHeight;
   /* 一覧の並び（＝v1119 で自動にしたが、手で並べている人もいる）を崩さない。 */
   kmzSlots=kmzSlots.filter(s=>s.id!==old.id&&s.id!==newSlot.id);
@@ -12560,7 +12574,9 @@ function kmzLoadEditor(){
 /* 【v880】別の模型に切り替える。今の編集内容を取りこぼさないよう、
    **先に今のスロットへ書き戻してから**選択を移す。 */
 function kmzSelectSlot(id){
-  if(id===kmzActiveId)return;
+  const selected=kmzSlots.find(slot=>slot.id===id);
+  if(selected&&selected.train)trainLockRemember(selected);   /* 【v1207】列車だけが固定対象を変える。 */
+  if(id===kmzActiveId){if(selected&&selected.train&&lockAzToTrain)update();return;}
   kmzCommitEditor();
   kmzActiveId=id;
   kmzLoadEditor();
@@ -12694,6 +12710,7 @@ function kmzRemoveSlot(id){
     return;
   }
   kmzSlots.splice(index,1);
+  trainLockSlotRemoved(removed);   /* 【v1207】対象を削除したら固定を解除する。 */
   if(removed&&removed.builtin==="akashi"&&akashiBridgeHidden){   /* 【v1012】内蔵を消したら表示も OFF */
     akashiBridgeHidden=false;drawPhoto._terrainRenderKey=null;
     if(typeof syncDisplayPopupControls==="function")syncDisplayPopupControls();
@@ -15981,7 +15998,7 @@ function updateOsmKmzMarkers(){
         /* 【v1185】列車・駅は、赤丸ではなくアイコン（🚃／🚉）にする。 */
         m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,zIndexOffset:iconKind==="station"?600:0,   /* 【v1190】駅を列車より上に */
           icon:L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":"🚉"}</div>`,iconSize:iconKind==="train"?[36,36]:[24,24],iconAnchor:iconKind==="train"?[18,18]:[12,12]})}).addTo(osmMapInstance);
-        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();updateOsmFovOverlay();});
+        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();if(iconKind==="train")trainLockSelect(slot.id);updateOsmFovOverlay();});
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
           m._railStation=true;
@@ -16892,13 +16909,79 @@ let playbackLastRenderTime=0;
 let lockAzToGc=false;
 let lockAzToSun=false;
 let lockAzToMoon=false;
-/* 【v1178】列車を中心に固定。選んでいる列車（無ければ最初の列車）の真ん中を、方位も仰角も追いかけて画面の中央に置く。 */
+/* 【v1207】選んだ列車の真ん中を、観測地点を動かさず方位・仰角で追う。 */
 let lockAzToTrain=false;
-function trainLockTarget(){
-  const isTrain=(sl)=>sl&&sl.train&&sl.visible!==false&&trainSpecOf(sl.train);
-  const a=kmzActiveSlot();
-  return isTrain(a)?a:(kmzSlots.find(isTrain)||null);
+/* 【v1207】中心固定の対象は模型編集の選択とは別に保持する。
+   運行列車は路線+車両番号、手動列車は保存可能な個別キーで識別する。 */
+let trainLockTargetKey=null,trainLockKeySequence=0;
+function trainLockValidKey(value){
+  return typeof value==="string"&&value.length<=128&&/^(?:sim:(?:hojo|kakogawa):\d{1,3}|custom:[A-Za-z0-9-]+)$/.test(value)?value:null;
 }
+function trainLockSlotKey(slot){
+  if(!slot||!slot.train)return null;
+  const saved=trainLockValidKey(slot.cameraTrainKey);if(saved)return saved;
+  const sim=slot.train.run&&slot.train.run.sim;
+  if(sim&&["hojo","kakogawa"].includes(sim.route)&&Number.isInteger(sim.vehicle)&&sim.vehicle>=0&&sim.vehicle<1000)
+    slot.cameraTrainKey=`sim:${sim.route}:${sim.vehicle}`;
+  else slot.cameraTrainKey=`custom:${typeof crypto.randomUUID==="function"?crypto.randomUUID():`${Date.now().toString(36)}-${++trainLockKeySequence}-${Math.random().toString(36).slice(2)}`}`;
+  return slot.cameraTrainKey;
+}
+function trainLockTarget(){
+  if(trainLockTargetKey)return kmzSlots.find(slot=>slot&&slot.train&&trainLockSlotKey(slot)===trainLockTargetKey)||null;
+  const active=kmzActiveSlot(),slot=active&&active.train?active:
+    (kmzSlots.find(sl=>sl&&sl.train&&sl.visible!==false)||kmzSlots.find(sl=>sl&&sl.train)||null);
+  if(slot)trainLockTargetKey=trainLockSlotKey(slot);
+  return slot;
+}
+function trainLockRemember(slot){
+  const key=trainLockSlotKey(slot);if(!key)return false;
+  trainLockTargetKey=key;syncTrainLockControls();scheduleSaveSettings();return true;
+}
+function trainLockSelect(id){
+  const slot=kmzSlots.find(sl=>sl&&sl.id===id&&sl.train);if(!slot)return false;
+  trainLockRemember(slot);kmzSelectSlot(slot.id);
+  syncTrainLockControls();if(lockAzToTrain)update();return true;
+}
+function trainLockSlotRemoved(slot){
+  if(!slot||!slot.train||trainLockSlotKey(slot)!==trainLockTargetKey)return;
+  trainLockTargetKey=null;lockAzToTrain=false;syncTrainLockControls();scheduleSaveSettings();
+}
+function trainLockRestoreTarget(key){
+  const found=k=>k&&kmzSlots.some(slot=>slot&&slot.train&&trainLockSlotKey(slot)===k);
+  if(found(key))trainLockTargetKey=key;
+  else if(!found(trainLockTargetKey))trainLockTargetKey=null;
+  if(!kmzSlots.some(slot=>slot&&slot.train))lockAzToTrain=false;
+  syncTrainLockControls();
+}
+function syncTrainLockControls(){
+  const select=el.popupTrainLockSelect,status=el.popupTrainLockStatus;if(!select)return;
+  const target=trainLockTarget(),trains=kmzSlots.filter(slot=>slot&&slot.train);
+  const names=trains.map(slot=>String(slot.train.name||slot.fileName||"列車")),counts=new Map(),seen=new Map();
+  for(const name of names)counts.set(name,(counts.get(name)||0)+1);
+  const options=trains.map((slot,i)=>{const name=names[i],index=(seen.get(name)||0)+1;seen.set(name,index);
+    return {key:trainLockSlotKey(slot),label:name+(counts.get(name)>1?`（${index}）`:"")};});
+  if(!target)options.unshift({key:trainLockTargetKey||"",label:trainLockTargetKey?"選択した列車がありません":"列車がありません"});
+  const signature=JSON.stringify(options);
+  /* 更新コマごとに選択肢を作り直さず、iPhoneの選択操作と描画負荷を守る。 */
+  if(select._trainLockOptions!==signature){
+    select.replaceChildren(...options.map(row=>{const option=document.createElement("option");option.value=row.key;option.textContent=row.label;return option;}));
+    select._trainLockOptions=signature;
+  }
+  const value=target?trainLockSlotKey(target):(trainLockTargetKey||"");
+  if(select.value!==value)select.value=value;
+  if(select.disabled!==!trains.length)select.disabled=!trains.length;
+  const hidden=target&&target.visible===false,sim=target&&target.train.run&&target.train.run.sim;
+  const message=!target?(trains.length?"固定する列車を選んでください。":"先に列車を追加してください。"):
+    hidden?(sim?"運用待機中：表示再開後に同じ列車を固定します。":"非表示中：表示を戻すと同じ列車を固定します。"):
+    (lockAzToTrain?"選択した列車を中心に固定中":"この列車を固定するには、上のボタンをONにしてください。");
+  if(status&&status.textContent!==message)status.textContent=message;
+  if(el.popupLockTrainBtn){
+    const pressed=String(lockAzToTrain),title=target?`固定対象：${target.train.name||target.fileName||"列車"}`:"固定する列車を選んでください。";
+    if(el.popupLockTrainBtn.getAttribute("aria-pressed")!==pressed)el.popupLockTrainBtn.setAttribute("aria-pressed",pressed);
+    if(el.popupLockTrainBtn.title!==title)el.popupLockTrainBtn.title=title;
+  }
+}
+
 /* 【v1186】**列車を追跡**（後ろから追うカメラ）。ボタンを押すたびに 1台目 → 2台目 → …… → 終了。
    観測地点（カメラ）を、列車の進む向きの**後ろ TRAIN_CHASE_BACK_M** に置き、レールの **TRAIN_CHASE_HEIGHT_M 上**から
    列車の方を向く。毎回の更新で列車の位置に合わせ直すので、再生中も、時刻を動かしても追いかける。
@@ -17003,6 +17086,7 @@ function trainLockAim(){
   const slot=trainLockTarget();
   if(!slot||!state)return null;
   const cfg=kmzSlotSettings(slot);   /* 走らせていれば、いまの時刻の位置へ作り直す */
+  if(slot.visible===false)return null;   /* 【v1207】待機中は対象を保持して固定だけ一時停止。 */
   const spec=trainSpecOf(slot.train);
   const lay=trainLayout(spec,Number.isFinite(slot._runOffsetM)?slot._runOffsetM:0);
   if(!lay.length||!Number.isFinite(cfg.lat))return null;
@@ -17025,7 +17109,7 @@ function trainLockApply(){
 }
 // 天の川中心・太陽中心・月中心の固定は同時には使えないため、共通の処理でON/OFFと排他制御をまとめる。
 function setAzLockTarget(target){
-  // target: "gc" | "sun" | "moon" | null(すべてOFF)
+  // target: "gc" | "sun" | "moon" | "train" | null(すべてOFF)
   lockAzToGc = target==="gc";
   lockAzToSun = target==="sun";
   lockAzToMoon = target==="moon";
@@ -22542,6 +22626,7 @@ function syncDisplayPopupControls(){
   el.popupLockSunBtn.classList.toggle("active",lockAzToSun);
   el.popupLockMoonBtn.classList.toggle("active",lockAzToMoon);
   el.popupLockTrainBtn.classList.toggle("active",lockAzToTrain);   /* 【v1178】 */
+  syncTrainLockControls();   /* 【v1207】名前と固定対象の選択欄。 */
   el.popupChaseTrainBtn.classList.toggle("active",trainChaseIndex>=0);   /* 【v1186】 */
   if(el.popupChaseTrainBtn.textContent!==trainChaseLabel())el.popupChaseTrainBtn.textContent=trainChaseLabel();
   el.popupLiveBtn.classList.toggle("active",liveOn);
@@ -22826,6 +22911,10 @@ el.popupLockGcBtn.addEventListener("click",()=>el.lockAzToGcBtn.click());
 el.popupLockSunBtn.addEventListener("click",()=>el.lockAzToSunBtn.click());
 el.popupLockMoonBtn.addEventListener("click",()=>el.lockAzToMoonBtn.click());
 el.popupLockTrainBtn.addEventListener("click",()=>setAzLockTarget(lockAzToTrain?null:"train"));   /* 【v1178】 */
+el.popupTrainLockSelect.addEventListener("change",()=>{
+  const key=trainLockValidKey(el.popupTrainLockSelect.value),slot=key&&kmzSlots.find(sl=>sl&&sl.train&&trainLockSlotKey(sl)===key);
+  if(slot)trainLockSelect(slot.id);
+});
 el.popupChaseTrainBtn.addEventListener("click",trainChaseCycle);   /* 【v1186】 */
 el.popupLiveBtn.addEventListener("click",()=>setLive(!liveOn));
 el.popupStarTrailBtn.addEventListener("click",()=>el.starTrailBtn.click());
@@ -24695,7 +24784,7 @@ el.displayOptionsPopup.addEventListener("click",e=>{
   /* スライダーの行は閉じない。
      ツマを動かして指を離すとここへclickが届くので、
      高さを合わせるたびに窓が閉じてしまっていた。 */
-  if(e.target.closest(".display-popup-slider")){ scheduleSaveSettings(); return; }
+  if(e.target.closest(".display-popup-slider, .train-lock-picker")){ scheduleSaveSettings(); return; }
   /* ボタン以外（余白や見出し）を押したら閉じる。
      外側を押して閉じるのは別の処理で既にできているので、
      これで「ボタン以外のどこを押しても閉じる」になる。 */
@@ -24944,6 +25033,7 @@ function collectPersistedSettings(){
     lockAzToSun:lockAzToSun,
     lockAzToMoon:lockAzToMoon,
     lockAzToTrain:lockAzToTrain,   // 【v1178】
+    trainLockTargetKey:trainLockTargetKey,   /* 【v1207】再セット・復元で変わらない列車の識別子。 */
     starTrailMode:starTrailMode,
     starTrailTaper:starTrailTaper,
     simulationClockVisible:simulationClockVisible,
@@ -25493,6 +25583,7 @@ async function applyPersistedSettingsText(stored){
     lockAzToSun=!!(s.lockAzToSun&&!lockAzToGc); // 万一両方保存されていても、天の川固定を優先し同時ONにはしない
     lockAzToMoon=!!(s.lockAzToMoon&&!lockAzToGc&&!lockAzToSun); // 3つのうち1つだけがONになるようにする
     lockAzToTrain=!!(s.lockAzToTrain&&!lockAzToGc&&!lockAzToSun&&!lockAzToMoon);   // 【v1178】
+    trainLockTargetKey=trainLockValidKey(s.trainLockTargetKey);   /* 【v1207】古い設定では対象の既定選択を使う。 */
     starTrailMode=!!s.starTrailMode;
     starTrailTaper=!!s.starTrailTaper;
     starTrailGrowProgress=starTrailMode?1:0;
@@ -26137,7 +26228,7 @@ function captureKmzBuildingForPlan(){
       /* 【v1120】取り込んだ町のときだけ中身を書く。取り直さなくて済むように丸ごと入れる。 */
       ...(townSpecOf(slot.town)!==null?{town:townSpecOf(slot.town)}:{}),
       /* 【v1138】列車のときだけ中身を書く。線形も入れるので、読み直すときに線路を取りに行かなくて済む。 */
-      ...(trainSpecOf(slot.train)!==null?{train:trainSpecOf(slot.train)}:{}),
+      ...(trainSpecOf(slot.train)!==null?{train:trainSpecOf(slot.train),cameraTrainKey:trainLockSlotKey(slot),trainCenterTarget:trainLockSlotKey(slot)===trainLockTargetKey}:{}),
       lat:slot.lat,lon:slot.lon,altitude:slot.altitude||0,heading:slot.heading||0,
       scale:slot.scale||1,opacity:Number.isFinite(slot.opacity)?slot.opacity:1,
       visible:slot.visible!==false,silhouette:slot.silhouette===true,glow:slot.glow===true,
@@ -26158,10 +26249,11 @@ async function restoreKmzBuildingFromPlan(saved){
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
     setKmzBuildingStatus("この撮影計画にはKMZ建物が登録されていません。");
+    trainLockRestoreTarget(null);
     renderKmzList();refreshKmzBuildingControls();return false;
   }
   setKmzBuildingStatus(`KMZ建物 ${list.length}件 を撮影計画から復元しています…`);
-  let restored=0;
+  let restored=0,restoredTrainTargetKey=null;
   try{
     for(const item of list){
       /* 【v1099】ファイル（sourceDataUrl）があるものは必ずファイルから戻す。花火は「ファイルが無く、号数が 0 より大きい」ときだけ。
@@ -26198,6 +26290,10 @@ async function restoreKmzBuildingFromPlan(saved){
       }
       const slot=kmzActiveSlot();
       if(slot){
+        if(slot.train){
+          const key=trainLockValidKey(item.cameraTrainKey);if(key)slot.cameraTrainKey=key;
+          if(item.trainCenterTarget===true)restoredTrainTargetKey=trainLockSlotKey(slot);
+        }
         if(Number.isFinite(+item.lat))slot.lat=+item.lat;
         if(Number.isFinite(+item.lon))slot.lon=+item.lon;
         if(Number.isFinite(+item.altitude))slot.altitude=+item.altitude;
@@ -26225,6 +26321,7 @@ async function restoreKmzBuildingFromPlan(saved){
     // 最初の1つを選んだ状態にしておく。並び順どおりに見えるようにするため。
     if(kmzSlots.length){kmzActiveId=kmzSlots[0].id;}
     kmzLoadEditor();
+    trainLockRestoreTarget(restoredTrainTargetKey);   /* 【v1207】模型の全復元後に対象を確定。 */
     setKmzBuildingStatus(`KMZ建物 ${restored}件 を撮影計画から復元しました。`,"ready");
     renderKmzList();refreshKmzBuildingControls();return true;
   }catch(error){
