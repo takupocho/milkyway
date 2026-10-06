@@ -5029,6 +5029,9 @@
                 <div id="objectPickGrid" class="object-pick-grid"></div>
                 <button id="objectStudioOpenBtn" type="button" class="toggle-btn" style="margin-top:6px;"><span>✏️ 新しく作る・編集する</span><span>›</span></button>
               </div>
+              <!-- 【v1206】橋の中心・向き・高さを調整した標準トラス -->
+              <button id="kmzAddKakogawaTrussBtn" type="button" class="toggle-btn"><span>🌉 トラス（JR加古川線）を追加</span><span>›</span></button>
+              <p class="map-hint" style="margin:2px 0 6px;">加古川線の橋に合わせて配置します。追加後は通常のKMZと同じように位置の編集・非表示・削除ができます。</p>
               <!-- 【v1138】列車 -->
               <button id="kmzAddTrainBtn" type="button" class="toggle-btn"><span>🚃 列車を追加</span><span>›</span></button>
               <div id="trainPanel" hidden>
@@ -6917,7 +6920,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1205-kakogawa-103";
+const APP_VERSION="1206-kakogawa-truss";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10313,6 +10316,90 @@ function railSimKakogawaSyncSpec(slot,spec){
   delete slot._runOffsetM;return trainSpecOf(slot.train);
 }
 
+const KAKOGAWA_TRUSS_KMZ_BASE64="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";
+/* 【v1206】標準トラスは任意追加できる通常スロットとして保存する。
+   原KMZの11度焼込みを戻し、画像の中心を実際のJR線形へ寄せる。
+   橋面の高さは列車と同じ保存済み経路から取る。ネット再取得はしない。 */
+const STANDARD_KAKOGAWA_TRUSS_KEY="kakogawa-truss";
+const KAKOGAWA_TRUSS_REFERENCE={lat:34.79941666666667,lon:134.90952777777778,sourceHeading:349,trackLevel:.3325};
+const _kakogawaTrussPlacementCache=new Map(),_kakogawaTrussModelCache=new Map();
+let kakogawaTrussSourcePromise=null;
+function kakogawaTrussPlacement(lift=bridgeDeckLiftOn?1:0){
+  if(_kakogawaTrussPlacementCache.has(lift))return _kakogawaTrussPlacementCache.get(lift);
+  const profile=RAIL_SIM_KAKOGAWA_PROFILES[lift],station=RAIL_SIM_KAKOGAWA_ROUTE.stations[0];
+  const path=profile.pathLLZ.map(p=>[...trainXY(station.lat,station.lon,p[0],p[1]),p[2]-profile.baseElevationM]);
+  const geometry=railSimKakogawaGeometry(path),target=trainXY(station.lat,station.lon,KAKOGAWA_TRUSS_REFERENCE.lat,KAKOGAWA_TRUSS_REFERENCE.lon);
+  let best=null;
+  for(let i=0;i+1<path.length;i++){
+    const a=path[i],b=path[i+1],dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy);
+    if(length<1e-9)continue;
+    const u=clamp(((target[0]-a[0])*dx+(target[1]-a[1])*dy)/(length*length),0,1);
+    const distance=Math.hypot(a[0]+dx*u-target[0],a[1]+dy*u-target[1]);
+    if(!best||distance<best.distance)best={distance,s:geometry.cum[i]+u*length};
+  }
+  const centre=geometry.at(best.s),ll=trainLL(station.lat,station.lon,centre.x,centre.y);
+  const out={lat:ll[0],lon:ll[1],heading:centre.bearing,altitude:profile.baseElevationM+centre.z-KAKOGAWA_TRUSS_REFERENCE.trackLevel,
+    deckElevation:profile.baseElevationM+centre.z,s:best.s,geometry,centre,snapDistance:best.distance,lift};
+  _kakogawaTrussPlacementCache.set(lift,out);return out;
+}
+async function kakogawaTrussStandardModel(){
+  if(!kakogawaTrussSourcePromise){
+    kakogawaTrussSourcePromise=(async()=>{
+      const bytes=Uint8Array.from(atob(KAKOGAWA_TRUSS_KMZ_BASE64),c=>c.charCodeAt(0));
+      const entries=await readKmzEntries(bytes.buffer),name=[...entries.keys()].find(n=>n.toLowerCase().endsWith('.dae'));
+      if(!name)throw new Error("標準トラスの模型が見つかりません。");
+      const source=parseColladaBuilding(new TextDecoder('utf-8').decode(entries.get(name)));
+      const r=KAKOGAWA_TRUSS_REFERENCE.sourceHeading*D2R,cs=Math.cos(r),sn=Math.sin(r);
+      const canonical=source.triangles.map(tri=>tri.map(([x,y,z])=>[x*cs-y*sn,x*sn+y*cs,z]));
+      for(const lift of [0,1]){
+        const pose=kakogawaTrussPlacement(lift);
+        const triangles=canonical.map(tri=>tri.map(([x,y,z])=>[x,y,z+pose.geometry.at(pose.s+y).z-pose.centre.z]));
+        const lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+        for(const tri of triangles)for(const v of tri)for(let i=0;i<3;i++){lo[i]=Math.min(lo[i],v[i]);hi[i]=Math.max(hi[i],v[i]);}
+        _kakogawaTrussModelCache.set(lift,{...source,triangles,width:hi[0]-lo[0],depth:hi[1]-lo[1],height:hi[2]-lo[2],
+          fileName:"トラス（JR加古川線）",standardKmz:STANDARD_KAKOGAWA_TRUSS_KEY});
+      }
+      return source;
+    })().catch(error=>{kakogawaTrussSourcePromise=null;throw error;});
+  }
+  await kakogawaTrussSourcePromise;return _kakogawaTrussModelCache.get(bridgeDeckLiftOn?1:0);
+}
+function kakogawaTrussRefreshSlot(slot){
+  if(!slot||slot.standardKmz!==STANDARD_KAKOGAWA_TRUSS_KEY)return;
+  const lift=bridgeDeckLiftOn?1:0;
+  if(slot._trussLift===lift)return;
+  const model=_kakogawaTrussModelCache.get(lift);
+  if(!model)return;
+  const pose=kakogawaTrussPlacement(lift);
+  if(slot.railStructure===STANDARD_KAKOGAWA_TRUSS_KEY&&Number.isFinite(slot._trussAutoAltitude))
+    slot.altitude+=pose.altitude-slot._trussAutoAltitude;
+  slot.model=model;slot._trussLift=lift;slot._trussAutoAltitude=pose.altitude;
+}
+async function kakogawaTrussCreateSlot({automatic=false,select=true,refresh=true,canCommit=()=>true}={}){
+  if(!canCommit())return null;
+  if(refresh)kmzCommitEditor();
+  const model=await kakogawaTrussStandardModel(),pose=kakogawaTrussPlacement();
+  if(!canCommit())return null;
+  const slot={id:++kmzSlotSeq,model,standardKmz:STANDARD_KAKOGAWA_TRUSS_KEY,
+    ...(automatic?{railStructure:STANDARD_KAKOGAWA_TRUSS_KEY}:{}),
+    fileName:"トラス（JR加古川線）",lat:pose.lat,lon:pose.lon,altitude:pose.altitude,heading:pose.heading,
+    scale:1,opacity:1,visible:true,silhouette:false,glow:false,nudgeForward:0,nudgeRight:0,
+    move:{on:false,from:null,to:null},_trussLift:pose.lift,_trussAutoAltitude:pose.altitude};
+  kmzSlots.push(slot);
+  if(select){kmzActiveId=slot.id;kmzLoadEditor();}
+  if(refresh){renderKmzList();refreshKmzBuildingControls(false);scheduleSaveSettings();drawPhoto._terrainRenderKey=null;update();}
+  return slot;
+}
+async function ensureKakogawaTruss({refresh=false,canCommit=()=>true}={}){
+  if(!canCommit())return null;
+  const pose=kakogawaTrussPlacement();
+  const existing=kmzSlots.find(slot=>slot&&slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY&&
+    (slot.railStructure===STANDARD_KAKOGAWA_TRUSS_KEY||
+     Math.hypot(...trainXY(pose.lat,pose.lon,slot.lat,slot.lon))<1&&Math.abs((slot.scale||1)-1)<1e-9));
+  if(existing){kakogawaTrussRefreshSlot(existing);return existing;}
+  return kakogawaTrussCreateSlot({automatic:true,select:false,refresh,canCommit});
+}
+
 async function railSimSetupKakogawa(){
   if(railSimSetupKakogawa.busy)return null;
   railSimSetupKakogawa.busy=true;
@@ -10346,10 +10433,11 @@ async function railSimSetupKakogawa(){
       }
       const slot=objectCreateSlot(spec,s.lat,s.lon,base.base+pose.z);if(slot)slot.heading=pose.bearing;
     }
+    await ensureKakogawaTruss();
     railSimTick();for(const slot of kmzSlots)if(slot.train&&slot.train.run&&slot.train.run.sim&&slot.train.run.sim.route==="kakogawa")trainSyncRun(slot);
     kmzLoadEditor();renderKmzList();refreshKmzBuildingControls(false);
     scheduleSaveSettings();drawPhoto._terrainRenderKey=null;update();
-    note(`🚉 JR加古川線をセットしました：加古川〜谷川 48.6km・全21駅。${dayType==="holiday"?"土日祝":"平日"}ダイヤ ${RAIL_SIM_KAKOGAWA[dayType].length}便。103系2両編成で運行し、長時間の運用外待機は車庫待機として扱います。`);
+    note(`🚉 JR加古川線をセットしました：加古川〜谷川 48.6km・全21駅。${dayType==="holiday"?"土日祝":"平日"}ダイヤ ${RAIL_SIM_KAKOGAWA[dayType].length}便。103系2両編成で運行し、加古川の橋にトラスを配置します。長時間の運用外待機は車庫待機として扱います。`);
     return {route:"kakogawa",stations:21,vehicles:count,trips:RAIL_SIM_KAKOGAWA[dayType].length};
   }catch(error){note("JR加古川線をセットできませんでした。","error");throw error;}
   finally{railSimSetupKakogawa.busy=false;if(el.railSimKakogawaBtn)el.railSimKakogawaBtn.disabled=false;}
@@ -12298,6 +12386,7 @@ function trainSyncRun(slot){
   slot._runOffsetM=offsetM;slot.model=model;
 }
 function kmzSlotSettings(slot){
+  kakogawaTrussRefreshSlot(slot);   /* 【v1206】保存済み橋面の切替に追従。 */
   if(slot&&slot.train&&slot.train.run)trainSyncRun(slot);   /* 【v1155】 */
   /* 【v928】時間に合わせて動かす設定があれば、描く位置だけ差し替える。
      スロットのlat/lonは利用者が置いた位置そのものなので書き換えない。 */
@@ -13756,6 +13845,15 @@ el.kmzBuildingSelectBtn.addEventListener("click",()=>{
   box.hidden=!box.hidden;
   document.getElementById("fireworkSizePicker").hidden=true;
   document.getElementById("objectPickPanel").hidden=true;   /* 【v1107】 */
+});
+/* 【v1206】標準トラスを通常の編集可能なスロットとして追加する。 */
+document.getElementById("kmzAddKakogawaTrussBtn").addEventListener("click",async event=>{
+  const button=event.currentTarget;if(button.disabled)return;button.disabled=true;
+  try{
+    await kakogawaTrussCreateSlot();document.getElementById("kmzAddChooser").hidden=true;
+    setKmzBuildingStatus("🌉 トラスを加古川線の橋に合わせて追加しました。位置・向き・高さを編集できます。","ready");
+  }catch(error){setKmzBuildingStatus(`トラスを追加できませんでした：${error&&error.message||error}`,"error");}
+  finally{button.disabled=false;}
 });
 /* 【v1120】まわりの建物 */
 el.kmzAddTownBtn.addEventListener("click",()=>{
@@ -26023,9 +26121,11 @@ async function persistPlanPhotoForLocation(location){
 function captureKmzBuildingForPlan(){
   kmzCommitEditor();
   const saved=kmzSlots
-    .filter(slot=>slot.model&&(slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null||townSpecOf(slot.town)!==null||trainSpecOf(slot.train)!==null))   /* 【v1138】列車も */   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
+    .filter(slot=>slot.model&&(slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY||slot.sourceDataUrl||fireworkGoOf(slot.firework)!==null||objectSpecOf(slot.object)!==null||launchSiteSpecOf(slot.launchSite)!==null||townSpecOf(slot.town)!==null||trainSpecOf(slot.train)!==null))   /* 【v1138】列車も */   /* 【v1070】花火はファイル無しで号数だけ 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
     .map(slot=>({
       version:2,fileName:slot.fileName||"building.kmz",sourceDataUrl:slot.sourceDataUrl||"",
+      ...(slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY?{standardKmz:STANDARD_KAKOGAWA_TRUSS_KEY,
+        ...(slot.railStructure===STANDARD_KAKOGAWA_TRUSS_KEY?{railStructure:STANDARD_KAKOGAWA_TRUSS_KEY}:{})}:{}),
       /* 【v1099】花火のときだけ号数を書く（以前は花火でなくても firework:null を書き、読む側が 0 と解釈して化けた）。
          【v1107】オブジェクトも同じ考え方で、オブジェクトのときだけ寸法を書く。 */
       ...(fireworkGoOf(slot.firework)!==null?{firework:fireworkGoOf(slot.firework)}:{}),
@@ -26053,7 +26153,7 @@ function captureKmzBuildingForPlan(){
 async function restoreKmzBuildingFromPlan(saved){
   const token=++kmzBuildingRestoreToken;
   const list=(Array.isArray(saved)?saved:(saved?[saved]:[]))
-    .filter(item=>item&&(String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null||townSpecOf(item.town)!==null||trainSpecOf(item.train)!==null))   /* 【v1138】列車も */;   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
+    .filter(item=>item&&(item.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY||String(item.sourceDataUrl||"").startsWith("data:")||fireworkGoOf(item.firework)!==null||objectSpecOf(item.object)!==null||launchSiteSpecOf(item.launchSite)!==null||townSpecOf(item.town)!==null||trainSpecOf(item.train)!==null))   /* 【v1138】列車も */;   /* 【v1070】花火も 【v1099】判定を厳しく 【v1107】オブジェクトも 【v1120】町も */
   // 復元は総入れ替え。前の計画の建物が残らないようにする。【v1012】内蔵（明石海峡大橋）は残す。
   kmzSlots=kmzSlots.filter(slot=>slot&&slot.builtin);kmzActiveId=kmzSlots.length?kmzSlots[0].id:null;kmzLoadEditor();el.kmzBuildingInput.value="";
   if(!list.length){
@@ -26076,7 +26176,10 @@ async function restoreKmzBuildingFromPlan(saved){
       const townSpec=(hasFile||fireworkGo!==null||objectSpec!==null||siteSpec!==null)?null:townSpecOf(item.town);
       /* 【v1138】順番は ファイル → 花火 → オブジェクト → 筒場 → 町 → 列車。 */
       const trainSpec=(hasFile||fireworkGo!==null||objectSpec!==null||siteSpec!==null||townSpec!==null)?null:trainSpecOf(item.train);
-      if(trainSpec!==null){
+      if(!hasFile&&item.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY){
+        await kakogawaTrussCreateSlot({automatic:item.railStructure===STANDARD_KAKOGAWA_TRUSS_KEY,refresh:false,canCommit:()=>token===kmzBuildingRestoreToken});
+        if(token!==kmzBuildingRestoreToken)return false;
+      }else if(trainSpec!==null){
         trainCreateSlot(trainSpec,+item.lat,+item.lon,+item.altitude||0);
       }else if(townSpec!==null){
         townCreateSlot(townSpec);
@@ -26116,6 +26219,9 @@ async function restoreKmzBuildingFromPlan(saved){
       }
       restored++;
     }
+    /* 【v1206】旧保存の加古川線にも橋を一度追加する。描画ごとの自動再追加はしない。 */
+    if(kmzSlots.some(slot=>slot.train&&slot.train.run&&slot.train.run.sim&&slot.train.run.sim.route==="kakogawa"))await ensureKakogawaTruss({canCommit:()=>token===kmzBuildingRestoreToken});
+    if(token!==kmzBuildingRestoreToken)return false;
     // 最初の1つを選んだ状態にしておく。並び順どおりに見えるようにするため。
     if(kmzSlots.length){kmzActiveId=kmzSlots[0].id;}
     kmzLoadEditor();
@@ -34353,7 +34459,7 @@ const kmzOpaqueModelCache=new WeakMap();
 function kmzOpaqueGroupSlot(slot){
   if(!kmzSlotDepthSort||!slot||!slot.visible||!slot.model||slot.model.lines||slot.glow||slot.silhouette
     ||(Number.isFinite(slot.opacity)&&slot.opacity!==1)
-    ||!(slot.train||(slot.object&&String(slot.object.name||"").startsWith("駅・"))))return false;
+    ||!(slot.train||slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY||(slot.object&&String(slot.object.name||"").startsWith("駅・"))))return false;
   const model=slot.model,alphas=model.triangleAlphas;
   let cached=kmzOpaqueModelCache.get(model);
   if(!cached||cached.alphas!==alphas||cached.length!==(alphas?alphas.length:0)){
