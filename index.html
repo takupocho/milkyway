@@ -1034,6 +1034,10 @@
   }
   .display-popup-section-title:first-of-type{margin-top:4px;}
   .display-control-btn{border-radius:8px;}
+  /* 【v1208】地図・シミュレーションに共通のタップ列車名。 */
+  .train-tap-name{position:absolute;left:50%;bottom:calc(var(--sim-inset-y,0px) + 58px);transform:translateX(-50%);z-index:1180;max-width:calc(100% - 32px);padding:10px 16px;border:1px solid rgba(255,224,138,.65);border-radius:10px;background:rgba(16,23,42,.94);box-shadow:0 3px 14px rgba(0,0,0,.32);color:#fff4ce;font:700 14px/1.5 'Inter',sans-serif;text-align:center;overflow-wrap:anywhere;pointer-events:none;}
+  .train-tap-name[hidden]{display:none!important;}
+  .photo-canvas-wrap.osm-map-open .train-tap-name{bottom:68px;}
   /* 【v1207】対象列車は表示メニュー内でも常に確認できる。 */
   .train-lock-picker{flex:0 0 100%;min-width:0;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.07);}
   .train-lock-picker-row{display:flex;align-items:center;gap:8px;min-width:0;}
@@ -6531,6 +6535,7 @@
                 </div>
                 <p class="play-speed-hint">再生ボタンを長押しすると、いつでもここを開けます。</p>
               </div>
+              <div id="trainTapName" class="train-tap-name" hidden role="status" aria-live="polite" aria-atomic="true"></div>
               <div class="sky-search-popup" id="skySearchPopup"></div>
               <div class="sky-info-popup" id="skyInfoPopup">
                 <div class="sky-info-title" id="skyInfoTitle"></div>
@@ -6933,7 +6938,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1207-train-lock-selection";
+const APP_VERSION="1208-train-tap-name";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -8396,7 +8401,7 @@ const el={
   shotPlanSpeed:$("shotPlanSpeed"), shotPlanContacts:$("shotPlanContacts"), shotPlanRecording:$("shotPlanRecording"),
   shotPlanRecText:$("shotPlanRecText"), shotPlanStopBtn:$("shotPlanStopBtn"),
   shotPlanLines:$("shotPlanLines"), shotPlanSeconds:$("shotPlanSeconds"), shotPlanTarget:$("shotPlanTarget"), cloudSeaRow:$("cloudSeaRow"), cloudSeaSlider:$("cloudSeaSlider"), cloudSeaVal:$("cloudSeaVal"), cloudSeaDownBtn:$("cloudSeaDownBtn"), cloudSeaUpBtn:$("cloudSeaUpBtn"), cloudSeaOpacityRow:$("cloudSeaOpacityRow"), cloudSeaWindRow:$("cloudSeaWindRow"), cloudSeaGapRow:$("cloudSeaGapRow"), cloudSeaGapSlider:$("cloudSeaGapSlider"), cloudSeaGapVal:$("cloudSeaGapVal"), cloudSeaWindSlider:$("cloudSeaWindSlider"), cloudSeaWindVal:$("cloudSeaWindVal"), cloudSeaOpacitySlider:$("cloudSeaOpacitySlider"), cloudSeaOpacityVal:$("cloudSeaOpacityVal"),
-  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupTrainLockSelect:$("popupTrainLockSelect"), popupTrainLockStatus:$("popupTrainLockStatus"), popupChaseTrainBtn:$("popupChaseTrainBtn"), popupLiveBtn:$("popupLiveBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
+  popupLockGcBtn:$("popupLockGcBtn"), popupLockSunBtn:$("popupLockSunBtn"), popupLockMoonBtn:$("popupLockMoonBtn"), popupLockTrainBtn:$("popupLockTrainBtn"), popupTrainLockSelect:$("popupTrainLockSelect"), popupTrainLockStatus:$("popupTrainLockStatus"), trainTapName:$("trainTapName"), popupChaseTrainBtn:$("popupChaseTrainBtn"), popupLiveBtn:$("popupLiveBtn"), popupStarTrailBtn:$("popupStarTrailBtn"), popupTrailTaperBtn:$("popupTrailTaperBtn"),
   mobileDisplayOptionsBtn:$("mobileDisplayOptionsBtn"), iconInfoBtn:$("iconInfoBtn"), displayOptionsPopup:$("displayOptionsPopup"),
   monthTableToggleBtn:$("monthTableToggleBtn"), monthToggleArrow:$("monthToggleArrow"),
   monthTableCloseBtn:$("monthTableCloseBtn"),
@@ -15998,7 +16003,7 @@ function updateOsmKmzMarkers(){
         /* 【v1185】列車・駅は、赤丸ではなくアイコン（🚃／🚉）にする。 */
         m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,zIndexOffset:iconKind==="station"?600:0,   /* 【v1190】駅を列車より上に */
           icon:L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":"🚉"}</div>`,iconSize:iconKind==="train"?[36,36]:[24,24],iconAnchor:iconKind==="train"?[18,18]:[12,12]})}).addTo(osmMapInstance);
-        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();if(iconKind==="train")trainLockSelect(slot.id);updateOsmFovOverlay();});
+        m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();if(iconKind==="train")trainTapSelect(slot);updateOsmFovOverlay();});
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
           m._railStation=true;
@@ -16012,6 +16017,10 @@ function updateOsmKmzMarkers(){
         m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();updateOsmFovOverlay();});   /* 【v1067】選んだら向ける */
         mapKmzMarkers.set(slot.id,m);
       }else{const ll=m.getLatLng();if(Math.abs(ll.lat-cfg.lat)>1e-7||Math.abs(ll.lng-cfg.lon)>1e-7)m.setLatLng([cfg.lat,cfg.lon]);}   /* 【v1191】動いたときだけ */
+      if(iconKind==="train"){
+        const box=m.getElement&&m.getElement();
+        if(box){const name=trainDisplayName(slot);if(box.title!==name)box.title=name;box.setAttribute("aria-label",name);}
+      }
       const isTarget=slot.id===mapKmzTargetId;
       if(m.setRadius){
         m.setRadius(isTarget?11:9);
@@ -16911,6 +16920,105 @@ let lockAzToSun=false;
 let lockAzToMoon=false;
 /* 【v1207】選んだ列車の真ん中を、観測地点を動かさず方位・仰角で追う。 */
 let lockAzToTrain=false;
+/* 【v1208】地図と車体タップに共通の列車名。模型の保存名は変更しない。 */
+function trainDisplayName(slot){
+  return String(slot&&slot.train&&slot.train.name||slot&&slot.fileName||"列車")
+    .replace(/^JR加古川線\s*103系\s*/,"JR加古川線 103系 ");
+}
+let trainTapNameTimer=null;
+function hideTrainTapName(){
+  if(trainTapNameTimer!==null){clearTimeout(trainTapNameTimer);trainTapNameTimer=null;}
+  if(el.trainTapName)el.trainTapName.hidden=true;
+}
+function showTrainTapName(slot){
+  hideTrainTapName();
+  if(!slot||!slot.train||!el.trainTapName)return;
+  el.trainTapName.textContent=trainDisplayName(slot);el.trainTapName.hidden=false;
+  trainTapNameTimer=setTimeout(hideTrainTapName,6000);
+}
+function trainTapSelect(slot){
+  if(!slot||!slot.train||slot.visible===false||!kmzSlots.includes(slot))return false;
+  if(!trainLockSelect(slot.id))return false;
+  showTrainTapName(slot);return true;
+}
+
+/* 完成画面の投影済みの面を参照するだけ。反射・マスク・画像出力は記録しない。
+   三角形の判定と奥行き比較はタップ時だけ行い、描画中の再投影や画素走査を増やさない。 */
+let trainPhotoPickFrame=null;
+function trainPhotoPickView(s){
+  return [s.lat,s.lon,s.facingAz,s.facingAlt,s.fovH,s.focalLength,s.sensor&&s.sensor.crop,
+    mobileLensMode,eyeHeightAboveGroundM(),realTerrainState.observerElevation||0].join("|");
+}
+function beginTrainPhotoPickFrame(ctx,s,W,H){
+  if(ctx!==photoCtx)return;
+  trainPhotoPickFrame=kmzSlots.some(slot=>slot&&slot.train&&slot.visible!==false&&slot.model)?
+    {width:W,height:H,view:trainPhotoPickView(s),records:[]}:null;
+}
+function recordTrainPhotoPick(ctx,phase,slot,faces,nearSky,cfg){
+  const frame=trainPhotoPickFrame;
+  if(ctx!==photoCtx||phase!=="after"||!frame||!faces.length||cfg.opacity<=.01)return;
+  frame.records.push({slot,model:slot.model,faces,nearSky,opacity:cfg.opacity});
+}
+function trainPhotoFaceHit(face,x,y,pad=0){
+  if(face.alpha<=.01||!face.zs||face.zs.some(z=>!(z>0)))return null;
+  const p=face.points,a=p[0],b=p[1],c=p[2];
+  if(x<Math.min(a[0],b[0],c[0])-pad||x>Math.max(a[0],b[0],c[0])+pad||
+     y<Math.min(a[1],b[1],c[1])-pad||y>Math.max(a[1],b[1],c[1])+pad)return null;
+  const area=(b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]);
+  if(Math.abs(area)<1e-9)return null;
+  let wb=((x-a[0])*(c[1]-a[1])-(c[0]-a[0])*(y-a[1]))/area;
+  let wc=((b[0]-a[0])*(y-a[1])-(x-a[0])*(b[1]-a[1]))/area,wa=1-wb-wc;
+  let gap=0,qx=x,qy=y;
+  if(wa< -1e-7||wb< -1e-7||wc< -1e-7){
+    if(!pad)return null;
+    let best=Infinity,weights=null;
+    for(let i=0;i<3;i++){
+      const j=(i+1)%3,u=p[i],v=p[j],dx=v[0]-u[0],dy=v[1]-u[1],den=dx*dx+dy*dy;
+      const t=den>0?clamp(((x-u[0])*dx+(y-u[1])*dy)/den,0,1):0;
+      const px=u[0]+t*dx,py=u[1]+t*dy,d=(x-px)**2+(y-py)**2;
+      if(d<best){best=d;qx=px;qy=py;weights=[0,0,0];weights[i]=1-t;weights[j]=t;}
+    }
+    if(best>pad*pad)return null;
+    [wa,wb,wc]=weights;gap=Math.sqrt(best);
+  }
+  const inverseZ=wa/face.zs[0]+wb/face.zs[1]+wc/face.zs[2];
+  return inverseZ>0?{depth:1/inverseZ,gap,x:qx,y:qy}:null;
+}
+function trainPhotoHitAboveTerrain(record,hit){
+  const sky=record.nearSky;if(!sky||!sky.length)return true;
+  const x=clamp(hit.x,0,sky.length-1),i=Math.floor(x),j=Math.min(i+1,sky.length-1);
+  return hit.y<=lerp(sky[i],sky[j],x-i);
+}
+function trainPhotoPickAt(pos){
+  const frame=trainPhotoPickFrame;
+  if(!frame||!state||arActive||osmMapScreenOpen||frame.width!==el.photoCanvas.width||
+     frame.height!==el.photoCanvas.height||frame.view!==trainPhotoPickView(state)||
+     !pos||!pos.every(Number.isFinite)||pos[0]<0||pos[0]>frame.width||pos[1]<0||pos[1]>frame.height)return null;
+  let best=null,bestDepth=Infinity;
+  /* 他の車両・橋・駅舎も奥行き比較に入れ、手前の物体を貫通して選ばない。 */
+  const valid=frame.records.filter(r=>r.slot.visible!==false&&r.slot.model===r.model&&kmzSlots.includes(r.slot));
+  if(!valid.some(record=>record.slot.train))return null;
+  for(const record of valid)for(const face of record.faces){
+    const hit=trainPhotoFaceHit(face,pos[0],pos[1]);
+    if(hit&&hit.depth<bestDepth&&trainPhotoHitAboveTerrain(record,hit)){best=record;bestDepth=hit.depth;}
+  }
+  if(best)return best.slot.train?best.slot:null;
+  /* 小さく見える車体を指で押しやすくする。実際に見える輪郭の8CSS px以内だけ。 */
+  const rect=el.photoCanvas.getBoundingClientRect();
+  const pad=8*frame.width/Math.max(1,rect.width);let bestGap=Infinity;
+  for(const record of valid){
+    if(!record.slot.train)continue;
+    for(const face of record.faces){
+      const hit=trainPhotoFaceHit(face,pos[0],pos[1],pad);
+      if(hit&&trainPhotoHitAboveTerrain(record,hit)&&
+         (hit.gap<bestGap-1e-7||(Math.abs(hit.gap-bestGap)<1e-7&&hit.depth<bestDepth))){
+        best=record;bestGap=hit.gap;bestDepth=hit.depth;
+      }
+    }
+  }
+  return best?best.slot:null;
+}
+
 /* 【v1207】中心固定の対象は模型編集の選択とは別に保持する。
    運行列車は路線+車両番号、手動列車は保存可能な個別キーで識別する。 */
 let trainLockTargetKey=null,trainLockKeySequence=0;
@@ -16956,7 +17064,7 @@ function trainLockRestoreTarget(key){
 function syncTrainLockControls(){
   const select=el.popupTrainLockSelect,status=el.popupTrainLockStatus;if(!select)return;
   const target=trainLockTarget(),trains=kmzSlots.filter(slot=>slot&&slot.train);
-  const names=trains.map(slot=>String(slot.train.name||slot.fileName||"列車")),counts=new Map(),seen=new Map();
+  const names=trains.map(slot=>trainDisplayName(slot)),counts=new Map(),seen=new Map();
   for(const name of names)counts.set(name,(counts.get(name)||0)+1);
   const options=trains.map((slot,i)=>{const name=names[i],index=(seen.get(name)||0)+1;seen.set(name,index);
     return {key:trainLockSlotKey(slot),label:name+(counts.get(name)>1?`（${index}）`:"")};});
@@ -16976,7 +17084,7 @@ function syncTrainLockControls(){
     (lockAzToTrain?"選択した列車を中心に固定中":"この列車を固定するには、上のボタンをONにしてください。");
   if(status&&status.textContent!==message)status.textContent=message;
   if(el.popupLockTrainBtn){
-    const pressed=String(lockAzToTrain),title=target?`固定対象：${target.train.name||target.fileName||"列車"}`:"固定する列車を選んでください。";
+    const pressed=String(lockAzToTrain),title=target?`固定対象：${trainDisplayName(target)}`:"固定する列車を選んでください。";
     if(el.popupLockTrainBtn.getAttribute("aria-pressed")!==pressed)el.popupLockTrainBtn.setAttribute("aria-pressed",pressed);
     if(el.popupLockTrainBtn.title!==title)el.popupLockTrainBtn.title=title;
   }
@@ -23422,7 +23530,12 @@ function handlePhotoTap(pos){
     favPlaceLabelShownId=null;
     drawPhoto._terrainRenderKey=null;update();
   }
-  if(!hit) return;
+  if(!hit){
+    const train=trainPhotoPickAt(pos);
+    if(train&&trainTapSelect(train))return;
+    hideTrainTapName();return;
+  }
+  hideTrainTapName();
   if(hit.mountain){
     if(skySearchPopupTimer){ clearTimeout(skySearchPopupTimer); skySearchPopupTimer=null; }
     el.skySearchPopup.classList.remove("show");
@@ -23447,9 +23560,10 @@ function handlePhotoTap(pos){
   el.skyInfoPopup.classList.add("show");
 }
 function photoDragEnd(pos){
+  const wasDragging=photoDragging;   /* 【v1208】二本指操作の最後の指もタップから除く。 */
   photoDragging=false;
   el.photoCanvas.classList.remove("dragging");
-  if(pos && photoDragMaxDist<6) handlePhotoTap(pos);
+  if(wasDragging && pos && photoDragMaxDist<6 && photoPinchStartDist<=0) handlePhotoTap(pos);   /* 【v1208】ピンチ終了を列車タップと誤判定しない。 */
   else if(photoDragMaxDist>=6) scheduleCameraViewUpdate(); // 保持レイヤーを外し、停止位置を正確な水面で確定する
 }
 el.photoCanvas.addEventListener("mousedown",(e)=>{
@@ -34869,6 +34983,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
       projected.push({points:[clippedPoints[0],clippedPoints[i],clippedPoints[i+1]],zs:[clippedZs[0],clippedZs[i],clippedZs[i+1]],depth:depth/3,local,color,alpha,glow:triangleGlow?(triangleGlow[triIndex]||0):0});
     }
   }
+  recordTrainPhotoPick(targetCtx,phase,slot,projected,nearSky,cfg);   /* 【v1208】描画済み面をタップ時に使う。 */
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52];
   /* 【v931】シルエットの濃さ。0で今までどおり、100で真っ黒。 */
   const silhouetteKeep=1-clamp(kmzSilhouetteDarkness,0,100)/100;
@@ -36534,6 +36649,7 @@ function drawPhoto(ctx,s){
   actMon.draw++;   /* 【v983】 */
   if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
   const W=ctx.canvas.width, H=ctx.canvas.height;
+  beginTrainPhotoPickFrame(ctx,s,W,H);   /* 【v1208】本番画面の最新フレームだけ。 */
   if(highDetailViewChanged(s)&&!highDetailFallbackPending){
     highDetailFallbackPending=true;
     showHighDetailStatus("方位・仰角・焦点距離が変わったため、画面内高精細を終了しました。","info",5200);
