@@ -6955,7 +6955,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1212-meteor-sky-motion";
+const APP_VERSION="1213-meteor-direction-cadence";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -46684,6 +46684,40 @@ function meteorTrailAlpha(m,emittedMs,ageMs){
   const train=m.trainStrength*Math.pow(Math.max(0,1-ageMs/m.trailLifeMs),2);
   return Math.min(1,light*(wake+train));
 }
+/* 【v1213】生成時の画面では真横〜斜め下へ進む経路だけを選ぶ。
+   確定後は天球の経路を保ち、カメラ操作でも夜空との追従を維持する。 */
+function meteorPathMovesDown(start,tangent,arcRad,frame){
+  const initial=meteorProjectVector(start,frame);if(!initial)return false;
+  let previous=initial,first=null;
+  const count=Math.max(16,Math.ceil(arcRad*R2D*4));
+  for(let i=1;i<=count;i++){
+    const a=arcRad*i/count,v=start.map((p,k)=>p*Math.cos(a)+tangent[k]*Math.sin(a));
+    const p=meteorProjectVector(v,frame);if(!p)continue;
+    if(!first)first=p;
+    if(p[1]<previous[1]-1e-6)return false;
+    previous=p;
+  }
+  if(!first)return false;
+  const dx=Math.abs(first[0]-initial[0]),dy=first[1]-initial[1];
+  return dx>1e-6&&dy<=dx*Math.tan(65*D2R)+1e-6;
+}
+function meteorDownwardTangent(start,arcRad,frame){
+  const origin=meteorProjectVector(start,frame);if(!origin)return null;
+  for(let tries=0;tries<32;tries++){
+    /* 大半は10〜55度の斜め下。少数だけほぼ水平にし、左右とも流す。 */
+    const angle=(Math.random()<.12?Math.random()*5:10+Math.random()*45)*D2R;
+    const side=Math.random()<.5?-1:1;let target=null;
+    for(let hop=12;hop>=.75;hop/=2){
+      target=meteorFromPhotoXY(origin[0]+side*Math.cos(angle)*hop,origin[1]+Math.sin(angle)*hop,frame);
+      if(target)break;
+    }
+    if(!target)continue;
+    const d=dot(start,target),t=meteorUnit(target.map((v,k)=>v-d*start[k]));
+    if(t&&meteorPathMovesDown(start,t,arcRad,frame))return t;
+  }
+  return null;
+}
+
 function createMeteor(radiant,startDelayMs=0,options={}){
   const canvas=el.meteorCanvas;if(!canvas||canvas.width<=0||canvas.height<=0)return null;
   const s=meteorPhotoView||state,frame=meteorViewFrame(s,canvas.width,canvas.height);
@@ -46703,10 +46737,6 @@ function createMeteor(radiant,startDelayMs=0,options={}){
     const r=[cos(radiant.dec)*cos(radiant.ra),cos(radiant.dec)*sin(radiant.ra),sin(radiant.dec)];
     const d=dot(r,start);tangent=meteorUnit(start.map((v,k)=>v*d-r[k]));
   }
-  if(!tangent){
-    const axis=Math.abs(start[2])<.9?[0,0,1]:[1,0,0],a=meteorUnit(cross(axis,start)),b=cross(start,a),phi=Math.random()*Math.PI*2;
-    tangent=a.map((v,k)=>v*Math.cos(phi)+b[k]*Math.sin(phi));
-  }
   /* IMOの典型的な見かけ速度3～25°/秒を参考にした演出値。
      長さは画面幅に比例させず、天球角と飛翔時間から決める。 */
   const duration=fireball?1050+Math.random()*650:isLong?780+Math.random()*520:360+Math.random()*520;
@@ -46716,10 +46746,14 @@ function createMeteor(radiant,startDelayMs=0,options={}){
     speedDegSec*=clamp(Math.sin(radiantAngle),.25,1);
   }
   if(fireball)speedDegSec=12+Math.random()*11;
+  const arcRad=speedDegSec*(duration/1000)*D2R;
+  /* 放射点に沿う経路も、上向きなら下向きの演出へ置き換える。 */
+  if(!tangent||!meteorPathMovesDown(start,tangent,arcRad,frame))tangent=meteorDownwardTangent(start,arcRad,frame);
+  if(!tangent)return null;
   const peakPhase=.32+Math.random()*.42,wakeDecayMs=fireball?120:isLong?80:55;
   const persistent=fireball&&Math.random()<.35;
   const trailLifeMs=persistent?1400+Math.random()*1000:fireball?650:isLong?340:220;
-  const meteor={start,tangent,arcRad:speedDegSec*(duration/1000)*D2R,duration,isLong,fireball,
+  const meteor={start,tangent,arcRad,duration,isLong,fireball,
     peakPhase,peakBrightness:fireball?1.15:.55+Math.random()*.40,
     lightSeed:Math.random()*Math.PI*2,flarePhase:.68+Math.random()*.17,
     flareStrength:fireball?.45+Math.random()*.40:0,wakeDecayMs,trailLifeMs,
@@ -46843,39 +46877,26 @@ function meteorNightWindow(s){
 }
 function spawnMeteor(){
   const activeShower=getActiveMeteorShower();
-  scheduleNextMeteor(activeShower ? activeShower.intervalSec : null);
+  scheduleNextMeteor();
   if(!meteorNightWindow(state)) return; // 【v1015】日の入 1.5h 後〜日の出 1.5h 前だけ
   const canvas=el.meteorCanvas;
   const W=canvas.width, H=canvas.height;
   if(W<=0||H<=0) return;
 
-  // たまに複数発生させる。ただし完全な同時発生にはせず、先行する流星がまだ
-  // 流れている途中で次が始まるよう、各流星の表示時間を基準に少しずつ遅らせる。
-  let count=1;
-  const multiChance = activeShower ? 0.22 : 0.08;
-  if(Math.random()<multiChance) count = Math.random()<0.5 ? 2 : 3;
-  let startDelayMs=0;
-  for(let i=0;i<count;i++){
-    const meteor=createMeteor(activeShower ? activeShower.radiant : null,startDelayMs);
-    if(meteor)startDelayMs+=meteor.duration*(.30+Math.random()*.25);
-  }
+  // 【v1213】1回の自然発生につき1本。流星群でも頻度を増やさない。
+  createMeteor(activeShower ? activeShower.radiant : null);
 
   if(meteorStates.length&&!meteorAnimRunning){
     meteorAnimRunning=true;
     requestAnimationFrame(animateMeteors);
   }
 }
-function scheduleNextMeteor(showerIntervalSec){
-  let delay;
-  if(showerIntervalSec!==null && showerIntervalSec!==undefined){
-    // 流星群シーズンは、算出した間隔を基準に多少のランダム幅を持たせる
-    delay = showerIntervalSec*1000*(0.7+Math.random()*0.6);
-  } else {
-    delay = 10000 + Math.random()*20000; // 平均20秒程度でランダムに次を予約
-  }
-  setTimeout(spawnMeteor, delay);
+function scheduleNextMeteor(){
+  // 【v1213】実時間で平均2分に1本。初回・流星群も同じ100〜140秒。
+  setTimeout(spawnMeteor,100000+Math.random()*40000);
 }
-setTimeout(spawnMeteor, 3000+Math.random()*6000); // 初回も少し早めに(3〜9秒後)登場させる
+scheduleNextMeteor();
+
 
 /* =========================================================
    歩いて移動する（PCキーボード）
