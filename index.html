@@ -6955,7 +6955,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1211-train-follow-framing";
+const APP_VERSION="1212-meteor-sky-motion";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -34591,6 +34591,7 @@ let terrainSkylineYByX=null;
 // 別レイヤーのmeteorCanvasが同じ水面範囲だけをクリップして使う。
 let waterReflectionHorizonYByX=null;
 let meteorReflectionWaterPath=null;
+let meteorPhotoView=null;   /* 【v1212】最後に描いた星空の姿勢・時刻を共有する。 */
 
 /* ===== KMZ / COLLADA 建物レイヤー =====
    KMZは端末内で展開し、DAEの三角形メッシュを天球座標へ投影する。
@@ -45395,6 +45396,12 @@ function drawPhoto(ctx,s){
     }
     terrainSkylineYByX=buildSkylineYArray(skylineSamples,W,H);
   }
+  if(ctx===photoCtx){
+    /* stateは再生中にその場で更新されるため、参照ではなく必要な値を写す。 */
+    meteorPhotoView={jd:s.jd,lat:s.lat,lon:s.lon,facingAz:s.facingAz,facingAlt:s.facingAlt,
+      fovH:s.fovH,focalLength:s.focalLength,sensor:{crop:s.sensor.crop},
+      meteorFisheye:useDiagonalFisheye,width:W,height:H};
+  }
 }
 
 /* =========================================================
@@ -46617,47 +46624,190 @@ function getActiveMeteorShower(){
   return closest;
 }
 
-let meteorStates=[];
-let meteorAnimRunning=false;
-
-function createMeteor(radiant,startDelayMs=0,options={}){
-  const canvas=el.meteorCanvas;
-  const W=canvas.width, H=canvas.height;
-  const fireball=!!options.fireball;
-  const isLong = fireball||Math.random() < 0.15; // 約15%の確率でとても長い流れ星
-  const length = fireball
-    ? W*(.42+Math.random()*.24)
-    : isLong ? (W*.22+Math.random()*W*.28) : (W*.03+Math.random()*W*.07);
-  const duration = fireball
-    ? 1250+Math.random()*850
-    : isLong ? (900+Math.random()*900) : (300+Math.random()*350);
-
-  let startX,startY,endX,endY;
-  if(radiant && state){
-    // 流星群の放射点(画面外にあっても計算上は使う)から放射状に流す
-    const aa=raDecToAltAz(radiant.ra,radiant.dec,state.jd,state.lat,state.lon);
-    const radiantPt=projectToPhotoXY(aa.az,aa.alt,state,W,H) || [W*0.5,H*0.1];
-    const startDist=W*(0.04+Math.random()*0.22);
-    const angle=Math.random()*Math.PI*2;
-    startX=radiantPt[0]+Math.cos(angle)*startDist;
-    startY=radiantPt[1]+Math.sin(angle)*startDist;
-    endX=startX+Math.cos(angle)*length;
-    endY=startY+Math.sin(angle)*length;
-  } else {
-    const angleDeg = (15 + Math.random()*55) * (Math.random()<0.5?1:-1); // 対角線的な角度、左右ランダム
-    const rad = angleDeg*Math.PI/180;
-    const dirX = Math.cos(rad) * (Math.random()<0.5?1:-1);
-    const dirY = Math.sin(Math.abs(rad)); // だいたい斜め下方向へ
-    startX = W*(0.12+Math.random()*0.6);
-    startY = H*(0.04+Math.random()*0.32);
-    endX = startX + dirX*length;
-    endY = startY + dirY*length;
-  }
-
-  const meteor={startX,startY,endX,endY,duration,isLong,fireball,startTime:performance.now()+startDelayMs};
-  meteorStates.push(meteor);
-  return meteor;
+/* 【v1212】流星は画面pxではなく星と同じ赤道座標の単位ベクトルで保持。
+   実画面に最後に描いた空の姿勢から毎コマ投影し、移動・旋回・ズームに合わせる。
+   本体の飛翔と、通過済みの経路に残る淡い光を分けて扱う。 */
+let meteorStates=[],meteorAnimRunning=false,meteorLastPaintTime=-Infinity;
+const METEOR_MAX_ACTIVE=12;
+function meteorUnit(v){const n=Math.hypot(...v);return n>1e-10?v.map(x=>x/n):null;}
+function meteorSkyBasis(s){
+  const l=lstDeg(s.jd,s.lon)*D2R,p=s.lat*D2R,cl=Math.cos(l),sl=Math.sin(l),cp=Math.cos(p),sp=Math.sin(p);
+  return {E:[-sl,cl,0],N:[-sp*cl,-sp*sl,cp],U:[cp*cl,cp*sl,sp]};
 }
+function meteorViewFrame(s,W,H){
+  if(!s||![s.jd,s.lat,s.lon,s.facingAz,s.facingAlt,s.fovH,s.focalLength].every(Number.isFinite)||!s.sensor)return null;
+  const F=toVec(s.facingAz,s.facingAlt),R=[cos(s.facingAz),-sin(s.facingAz),0],U=cross(R,F);
+  const fisheye=s.meteorFisheye!==undefined?s.meteorFisheye:mobileLensMode==="fisheye"&&!arActive;
+  return {s,W,H,F,R,U,basis:meteorSkyBasis(s),fisheye,
+    scale:(W/2)/Math.tan(s.fovH*D2R/2),fishScale:fisheyeRadiusScalePx(W,H,s.focalLength,s.sensor.crop)};
+}
+function meteorFromPhotoXY(x,y,frame){
+  const {W,H,F,R,U,basis,fisheye,scale,fishScale}=frame;
+  const dx=x-W/2,dy=H/2-y;
+  let enu;
+  if(fisheye){
+    const r=Math.hypot(dx,dy);if(r>fishScale*Math.SQRT1_2)return null;
+    const theta=2*Math.asin(clamp(r/fishScale,0,1)),a=r>1e-8?Math.sin(theta)/r:0;
+    enu=F.map((v,k)=>v*Math.cos(theta)+(R[k]*dx+U[k]*dy)*a);
+  }else enu=meteorUnit(F.map((v,k)=>v+R[k]*dx/scale+U[k]*dy/scale));
+  return meteorUnit(basis.E.map((v,k)=>v*enu[0]+basis.N[k]*enu[1]+basis.U[k]*enu[2]));
+}
+function meteorProjectVector(v,frame,reflection=false){
+  const {basis,F,R,U,W,H}=frame;
+  const enu=[dot(v,basis.E),dot(v,basis.N),dot(v,basis.U)];
+  if(reflection){if(enu[2]<=0)return null;enu[2]=-enu[2];}
+  const z=dot(enu,F),x=dot(enu,R),y=dot(enu,U);
+  if(frame.fisheye){
+    const theta=Math.acos(clamp(z,-1,1));if(theta>Math.PI/2+1e-6)return null;
+    const st=Math.sin(theta);if(st<1e-8)return [W/2,H/2];
+    const r=frame.fishScale*Math.sin(theta/2);return [W/2+x/st*r,H/2-y/st*r];
+  }
+  if(z<=.02)return null;
+  return [W/2+x/z*frame.scale,H/2-y/z*frame.scale];
+}
+function meteorPosition(m,phase){
+  const a=m.arcRad*clamp(phase,0,1),c=Math.cos(a),s=Math.sin(a);
+  return m.start.map((v,k)=>v*c+m.tangent[k]*s);
+}
+function meteorLight(m,phase){
+  if(phase<=0||phase>=1)return 0;
+  const peak=m.peakPhase;
+  const profile=phase<peak?Math.pow(phase/peak,.58):Math.pow((1-phase)/(1-peak),.82);
+  const variation=1+.045*Math.sin(phase*22+m.lightSeed)+.025*Math.sin(phase*49+m.lightSeed*.7);
+  const flare=m.flareStrength*Math.exp(-Math.pow((phase-m.flarePhase)/.035,2));
+  return m.peakBrightness*profile*variation+flare;
+}
+function meteorTrailAlpha(m,emittedMs,ageMs){
+  if(ageMs<0||ageMs>m.trailLifeMs)return 0;
+  const light=meteorLight(m,emittedMs/m.duration);
+  const wake=Math.exp(-ageMs/m.wakeDecayMs);
+  const train=m.trainStrength*Math.pow(Math.max(0,1-ageMs/m.trailLifeMs),2);
+  return Math.min(1,light*(wake+train));
+}
+function createMeteor(radiant,startDelayMs=0,options={}){
+  const canvas=el.meteorCanvas;if(!canvas||canvas.width<=0||canvas.height<=0)return null;
+  const s=meteorPhotoView||state,frame=meteorViewFrame(s,canvas.width,canvas.height);
+  if(!frame||meteorStates.length>=METEOR_MAX_ACTIVE)return null;
+  const fireball=!!options.fireball,isLong=fireball||Math.random()<.12;
+  let start=null;
+  /* 空が写っていない構図では地面へ流星を置かない。魚眼の像円外も除く。 */
+  for(let tries=0;tries<28;tries++){
+    const x=canvas.width*(.12+Math.random()*.76),y=canvas.height*(.07+Math.random()*.58);
+    const v=meteorFromPhotoXY(x,y,frame);if(!v||dot(v,frame.basis.U)<sin(2))continue;
+    if(terrainSkylineYByX&&terrainSkylineYByX.length===canvas.width&&y>=terrainSkylineYByX[Math.round(x)]-2)continue;
+    start=v;break;
+  }
+  if(!start)return null;
+  let tangent=null;
+  if(radiant){
+    const r=[cos(radiant.dec)*cos(radiant.ra),cos(radiant.dec)*sin(radiant.ra),sin(radiant.dec)];
+    const d=dot(r,start);tangent=meteorUnit(start.map((v,k)=>v*d-r[k]));
+  }
+  if(!tangent){
+    const axis=Math.abs(start[2])<.9?[0,0,1]:[1,0,0],a=meteorUnit(cross(axis,start)),b=cross(start,a),phi=Math.random()*Math.PI*2;
+    tangent=a.map((v,k)=>v*Math.cos(phi)+b[k]*Math.sin(phi));
+  }
+  /* IMOの典型的な見かけ速度3～25°/秒を参考にした演出値。
+     長さは画面幅に比例させず、天球角と飛翔時間から決める。 */
+  const duration=fireball?1050+Math.random()*650:isLong?780+Math.random()*520:360+Math.random()*520;
+  let speedDegSec=8+Math.random()*15;
+  if(radiant){
+    const radiantAngle=Math.acos(clamp(dot(start,[cos(radiant.dec)*cos(radiant.ra),cos(radiant.dec)*sin(radiant.ra),sin(radiant.dec)]),-1,1));
+    speedDegSec*=clamp(Math.sin(radiantAngle),.25,1);
+  }
+  if(fireball)speedDegSec=12+Math.random()*11;
+  const peakPhase=.32+Math.random()*.42,wakeDecayMs=fireball?120:isLong?80:55;
+  const persistent=fireball&&Math.random()<.35;
+  const trailLifeMs=persistent?1400+Math.random()*1000:fireball?650:isLong?340:220;
+  const meteor={start,tangent,arcRad:speedDegSec*(duration/1000)*D2R,duration,isLong,fireball,
+    peakPhase,peakBrightness:fireball?1.15:.55+Math.random()*.40,
+    lightSeed:Math.random()*Math.PI*2,flarePhase:.68+Math.random()*.17,
+    flareStrength:fireball?.45+Math.random()*.40:0,wakeDecayMs,trailLifeMs,
+    trainStrength:persistent?.22:fireball?.09:isLong?.035:0,
+    width:fireball?1.7:isLong?1.05:.75,startTime:performance.now()+startDelayMs};
+  meteorStates.push(meteor);return meteor;
+}
+function meteorStrokeSegment(ctx,a,b,alphaA,alphaB,width,fireball,reflection=false){
+  if(!a||!b||Math.max(alphaA,alphaB)<.003||![...a,...b].every(Number.isFinite))return;
+  const W=ctx.canvas.width,H=ctx.canvas.height;
+  if((a[0]<-20&&b[0]<-20)||(a[0]>W+20&&b[0]>W+20)||(a[1]<-20&&b[1]<-20)||(a[1]>H+20&&b[1]>H+20))return;
+  /* 望遠では短い天球角も画面を横断する。長さで捨てず、画面へ切り取る。
+     前面外の投影はnullで分断済み。切り取った位置の明るさも補間する。 */
+  const dx=b[0]-a[0],dy=b[1]-a[1];let lo=0,hi=1;
+  for(const [p,q] of [[-dx,a[0]+20],[dx,W+20-a[0]],[-dy,a[1]+20],[dy,H+20-a[1]]]){
+    if(Math.abs(p)<1e-12){if(q<0)return;continue;}
+    const t=q/p;if(p<0)lo=Math.max(lo,t);else hi=Math.min(hi,t);if(lo>hi)return;
+  }
+  const alphaDelta=alphaB-alphaA;
+  b=[a[0]+dx*hi,a[1]+dy*hi];a=[a[0]+dx*lo,a[1]+dy*lo];
+  alphaB=alphaA+alphaDelta*hi;alphaA+=alphaDelta*lo;
+  const tint=fireball?"255,231,194":"209,225,247",core=reflection?"210,225,244":"251,251,247";
+  const stroke=(w,color,mul)=>{
+    const g=ctx.createLinearGradient(a[0],a[1],b[0],b[1]);
+    g.addColorStop(0,`rgba(${color},${clamp(alphaA*mul,0,1)})`);g.addColorStop(1,`rgba(${color},${clamp(alphaB*mul,0,1)})`);
+    ctx.strokeStyle=g;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();
+  };
+  stroke(width*2.6,tint,reflection?.10:.17);
+  stroke(width,core,reflection?.55:1);
+}
+function meteorTrailSamples(m,age,frame){
+  const endMs=Math.min(age,m.duration),startMs=Math.max(0,age-m.trailLifeMs);
+  if(endMs<=startMs)return [];
+  const count=Math.min(36,Math.max(8,Math.ceil((endMs-startMs)/18))),samples=[];
+  for(let i=0;i<=count;i++){
+    const emittedMs=startMs+(endMs-startMs)*i/count,v=meteorPosition(m,emittedMs/m.duration);
+    samples.push({v,p:meteorProjectVector(v,frame),alpha:meteorTrailAlpha(m,emittedMs,age-emittedMs)});
+  }
+  return samples;
+}
+function paintMeteorOverlay(now){
+  const canvas=el.meteorCanvas;if(!canvas)return;
+  const W=canvas.width,H=canvas.height,ctx=canvas.getContext("2d");ctx.clearRect(0,0,W,H);
+  meteorStates=meteorStates.filter(m=>now<m.startTime+m.duration+m.trailLifeMs);
+  const s=meteorPhotoView||state,frame=meteorViewFrame(s,W,H);
+  if(!frame||(meteorPhotoView&&(meteorPhotoView.width!==W||meteorPhotoView.height!==H)))return;
+  const scale=typeof renderSupersample==="number"?renderSupersample:1,active=[];
+  ctx.save();ctx.lineCap="butt";ctx.lineJoin="round";
+  if(terrainSkylineYByX&&terrainSkylineYByX.length===W){
+    ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(W,0);ctx.lineTo(W,terrainSkylineYByX[W-1]);
+    for(let x=W-1;x>=0;x-=4)ctx.lineTo(x,terrainSkylineYByX[x]);ctx.lineTo(0,terrainSkylineYByX[0]);ctx.closePath();ctx.clip();
+  }
+  if(frame.fisheye){ctx.beginPath();ctx.arc(W/2,H/2,frame.fishScale*Math.SQRT1_2,0,Math.PI*2);ctx.clip();}
+  for(const m of meteorStates){
+    const age=now-m.startTime;if(age<0)continue;
+    const samples=meteorTrailSamples(m,age,frame);active.push({m,samples});
+    for(let i=1;i<samples.length;i++)meteorStrokeSegment(ctx,samples[i-1].p,samples[i].p,samples[i-1].alpha,samples[i].alpha,m.width*scale,m.fireball);
+    /* 先端は短い細線で補う。大きな円形グローや停止した頭を残さない。 */
+    if(age<m.duration){
+      const phase=age/m.duration,a=meteorProjectVector(meteorPosition(m,Math.max(0,phase-.003)),frame),b=meteorProjectVector(meteorPosition(m,phase),frame),light=meteorLight(m,phase);
+      meteorStrokeSegment(ctx,a,b,light*.65,light,m.width*scale,m.fireball);
+    }
+  }
+  ctx.restore();
+  const mask=drawPhoto._waterSurfaceMaskCanvas;
+  if(waterReflectionEnabled&&meteorReflectionWaterPath&&mask&&mask.width===W&&mask.height===H&&active.length){
+    const buffer=paintMeteorOverlay._reflectionCanvas||(paintMeteorOverlay._reflectionCanvas=document.createElement("canvas"));
+    if(buffer.width!==W||buffer.height!==H){buffer.width=W;buffer.height=H;}
+    const rctx=buffer.getContext("2d");rctx.clearRect(0,0,W,H);rctx.save();rctx.clip(meteorReflectionWaterPath);rctx.lineCap="butt";
+    for(const {m,samples} of active){
+      let previous=null;
+      for(const sample of samples){
+        const p=meteorProjectVector(sample.v,frame,true);
+        if(previous&&p)meteorStrokeSegment(rctx,previous.p,p,previous.alpha*.55,sample.alpha*.55,m.width*scale*.85,m.fireball,true);
+        previous=p?{p,alpha:sample.alpha}:null;
+      }
+    }
+    rctx.restore();rctx.save();rctx.globalCompositeOperation="destination-in";rctx.drawImage(mask,0,0);rctx.restore();ctx.drawImage(buffer,0,0);
+  }
+}
+function animateMeteors(now){
+  if(!el.meteorCanvas){meteorStates=[];meteorAnimRunning=false;return;}
+  const frameMs=Math.max(1000/60,powerFrameMinMs());
+  if(now-meteorLastPaintTime>=frameMs-1){meteorLastPaintTime=now;paintMeteorOverlay(now);}
+  if(meteorStates.length)requestAnimationFrame(animateMeteors);
+  else meteorAnimRunning=false;
+}
+
 
 // 「今日のお月さま」の月相アイコンだけに仕込んだ隠し機能。
 // 通常の流星タイマーとは独立し、クリック／タップごとに必ず火球を1本だけ流す。
@@ -46667,7 +46817,7 @@ function spawnMoonFireball(){
   if(now-lastMoonFireballAt<700) return;
   lastMoonFireballAt=now;
   const canvas=el.meteorCanvas;if(!canvas||canvas.width<=0||canvas.height<=0)return;
-  createMeteor(null,0,{fireball:true});
+  if(!createMeteor(null,0,{fireball:true}))return;
   if(!meteorAnimRunning){meteorAnimRunning=true;requestAnimationFrame(animateMeteors);}
 }
 el.moonTodayIcon.addEventListener("pointerup",event=>{
@@ -46707,139 +46857,12 @@ function spawnMeteor(){
   let startDelayMs=0;
   for(let i=0;i<count;i++){
     const meteor=createMeteor(activeShower ? activeShower.radiant : null,startDelayMs);
-    startDelayMs+=meteor.duration*(.30+Math.random()*.25);
+    if(meteor)startDelayMs+=meteor.duration*(.30+Math.random()*.25);
   }
 
-  if(!meteorAnimRunning){
+  if(meteorStates.length&&!meteorAnimRunning){
     meteorAnimRunning=true;
     requestAnimationFrame(animateMeteors);
-  }
-}
-function animateMeteors(now){
-  const canvas=el.meteorCanvas;
-  if(!canvas){ meteorStates=[]; meteorAnimRunning=false; return; }
-  const ctx=canvas.getContext("2d");
-  const W=canvas.width, H=canvas.height;
-  ctx.clearRect(0,0,W,H);
-
-  // 流れ星が山より奥に隠れるよう、drawPhoto()側で求めておいた「空と地面の境目」より
-  // 下(地面側)には描かれないようクリップする(境目が無い/未計算の場合は制限しない)。
-  ctx.save();
-  if(terrainSkylineYByX && terrainSkylineYByX.length){
-    const n=terrainSkylineYByX.length;
-    const lastX=Math.min(n-1,Math.round(W-1));
-    ctx.beginPath();
-    ctx.moveTo(0,0);
-    ctx.lineTo(W,0);
-    ctx.lineTo(W,terrainSkylineYByX[lastX]);
-    for(let x=lastX-4;x>=0;x-=4) ctx.lineTo(x,terrainSkylineYByX[x]);
-    ctx.lineTo(0,terrainSkylineYByX[0]);
-    ctx.closePath();
-    ctx.clip();
-  }
-
-  const activeMeteorFrames=[];
-  meteorStates = meteorStates.filter(m=>{
-    const t=(now-m.startTime)/m.duration;
-    // 時差発生を予約した流星。開始時刻までは状態だけ保持して描画しない。
-    if(t<0) return true;
-    if(t>=1) return false;
-    let headFrac, tailFrac, alpha;
-    if(t<0.35){
-      headFrac=t/0.35; tailFrac=0; alpha=1;
-    } else {
-      headFrac=1;
-      const fadeT=(t-0.35)/0.65;
-      tailFrac=fadeT;
-      alpha=1-fadeT;
-    }
-    const hx=m.startX+(m.endX-m.startX)*headFrac, hy=m.startY+(m.endY-m.startY)*headFrac;
-    const tx=m.startX+(m.endX-m.startX)*tailFrac, ty=m.startY+(m.endY-m.startY)*tailFrac;
-
-    const grad=ctx.createLinearGradient(tx,ty,hx,hy);
-    grad.addColorStop(0,"rgba(255,255,255,0)");
-    grad.addColorStop(0.7,m.fireball?`rgba(255,220,166,${alpha*.82})`:`rgba(210,225,255,${alpha*.7})`);
-    grad.addColorStop(1,m.fireball?`rgba(255,252,235,${alpha})`:`rgba(255,255,255,${alpha})`);
-    ctx.strokeStyle=grad;
-    ctx.lineWidth=m.fireball?4.4:m.isLong?2.4:1.5;
-    ctx.lineCap="round";
-    ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(hx,hy); ctx.stroke();
-
-    const headR=m.fireball?5.2:m.isLong?2.6:1.7;
-    const g2=ctx.createRadialGradient(hx,hy,0,hx,hy,headR*3);
-    g2.addColorStop(0,`rgba(255,255,255,${alpha})`);
-    g2.addColorStop(1,"rgba(255,255,255,0)");
-    ctx.beginPath(); ctx.arc(hx,hy,headR*3,0,Math.PI*2); ctx.fillStyle=g2; ctx.fill();
-    activeMeteorFrames.push({m,hx,hy,tx,ty,alpha});
-    return true;
-  });
-  ctx.restore();
-
-  // 流れ星のリフレ：現在の水平線を軸に反転し、確認済み水域かつ山リフレより下だけへ描く。
-  // 本体より少し暗く、尾を18%短くして、水面上の光として控えめに見せる。
-  if(waterReflectionEnabled&&meteorReflectionWaterPath&&waterReflectionHorizonYByX&&activeMeteorFrames.length){
-    const reflectionCanvas=animateMeteors._reflectionCanvas||(animateMeteors._reflectionCanvas=document.createElement("canvas"));
-    if(reflectionCanvas.width!==W||reflectionCanvas.height!==H){reflectionCanvas.width=W;reflectionCanvas.height=H;}
-    const reflectionCtx=reflectionCanvas.getContext("2d");reflectionCtx.clearRect(0,0,W,H);
-    const horizonAt=x=>{
-      const i=clamp(Math.round(x),0,waterReflectionHorizonYByX.length-1);
-      return waterReflectionHorizonYByX[i];
-    };
-    reflectionCtx.save();reflectionCtx.clip(meteorReflectionWaterPath);reflectionCtx.lineCap="round";
-    activeMeteorFrames.forEach(({m,hx,hy,tx,ty,alpha})=>{
-      const headHorizon=horizonAt(hx),tailHorizon=horizonAt(tx);
-      if(!Number.isFinite(headHorizon)||!Number.isFinite(tailHorizon)) return;
-      // 元の線分を水平線との交点で切り、空側に残っている部分だけを反射する。
-      // 端点を個別に水平線へ固定すると、先端が水平線を越えた瞬間に反射の向きや
-      // 長さが不自然に変わるため、線分として連続的にクリップする。
-      const headDelta=hy-headHorizon,tailDelta=ty-tailHorizon;
-      const headVisible=headDelta<0,tailVisible=tailDelta<0;
-      if(!headVisible&&!tailVisible) return;
-      let sourceHeadX=hx,sourceHeadY=hy,sourceTailX=tx,sourceTailY=ty;
-      if(headVisible!==tailVisible){
-        const ratio=clamp(tailDelta/(tailDelta-headDelta),0,1); // 尾→先端の交点
-        const intersectionX=tx+(hx-tx)*ratio;
-        const intersectionY=horizonAt(intersectionX);
-        if(!Number.isFinite(intersectionY)) return;
-        if(headVisible){sourceTailX=intersectionX;sourceTailY=intersectionY;}
-        else{sourceHeadX=intersectionX;sourceHeadY=intersectionY;}
-      }
-      const sourceHeadHorizon=horizonAt(sourceHeadX),sourceTailHorizon=horizonAt(sourceTailX);
-      if(!Number.isFinite(sourceHeadHorizon)||!Number.isFinite(sourceTailHorizon)) return;
-      const reflectedHeadX=sourceHeadX,reflectedHeadY=2*sourceHeadHorizon-sourceHeadY;
-      const fullTailX=sourceTailX,fullTailY=2*sourceTailHorizon-sourceTailY;
-      const reflectedTailX=reflectedHeadX+(fullTailX-reflectedHeadX)*.82;
-      const reflectedTailY=reflectedHeadY+(fullTailY-reflectedHeadY)*.82;
-      const reflectionAlpha=alpha*.62*(headVisible?1:.55);
-      const grad=reflectionCtx.createLinearGradient(reflectedTailX,reflectedTailY,reflectedHeadX,reflectedHeadY);
-      grad.addColorStop(0,"rgba(255,255,255,0)");
-      grad.addColorStop(.7,`rgba(190,211,242,${reflectionAlpha*.65})`);
-      grad.addColorStop(1,`rgba(242,247,255,${reflectionAlpha})`);
-      reflectionCtx.strokeStyle=grad;reflectionCtx.lineWidth=(m.fireball?4.1:m.isLong?2.4:1.5)*.82;
-      reflectionCtx.beginPath();reflectionCtx.moveTo(reflectedTailX,reflectedTailY);reflectionCtx.lineTo(reflectedHeadX,reflectedHeadY);reflectionCtx.stroke();
-      // 先端がまだ空にある間だけヘッドの発光を描き、水平線を越えた後は尾だけを自然に消す。
-      if(headVisible){
-        const headR=(m.fireball?4.4:m.isLong?2.6:1.7)*.82;
-        const glow=reflectionCtx.createRadialGradient(reflectedHeadX,reflectedHeadY,0,reflectedHeadX,reflectedHeadY,headR*3);
-        glow.addColorStop(0,`rgba(242,247,255,${reflectionAlpha})`);glow.addColorStop(1,"rgba(255,255,255,0)");
-        reflectionCtx.beginPath();reflectionCtx.arc(reflectedHeadX,reflectedHeadY,headR*3,0,Math.PI*2);reflectionCtx.fillStyle=glow;reflectionCtx.fill();
-      }
-    });
-    reflectionCtx.restore();
-    // 方位から作った大まかな反射範囲に加え、地形描画で確定した画素単位の水面マスクを適用する。
-    // 入り江の陸地、島、足元地形など、水面以外には流れ星の反射を一切残さない。
-    const waterMaskCanvas=drawPhoto._waterSurfaceMaskCanvas;
-    if(waterMaskCanvas&&waterMaskCanvas.width===W&&waterMaskCanvas.height===H){
-      reflectionCtx.save();reflectionCtx.globalCompositeOperation="destination-in";
-      reflectionCtx.drawImage(waterMaskCanvas,0,0);reflectionCtx.restore();
-      ctx.drawImage(reflectionCanvas,0,0);
-    }
-  }
-
-  if(meteorStates.length>0){
-    requestAnimationFrame(animateMeteors);
-  } else {
-    meteorAnimRunning=false;
   }
 }
 function scheduleNextMeteor(showerIntervalSec){
