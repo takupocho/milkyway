@@ -6957,7 +6957,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1217-cab-windows-chase-position";
+const APP_VERSION="1218-bantan-tunnels";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -10942,6 +10942,191 @@ function railSimBantanState(sim,tMin,dateText){
 
 const _bantanBaseCache=new Map(),_bantanPlanCache=new Map(),_bantanBridgeCache=new WeakMap();
 const _bantanDeckSampleCache=new Map();
+/* 【v1218】地下の軌道を山肌へ描かない。保存済み地図の線も描画時に切り分ける。
+   列車の経路・標高、道路、地図タイルの画像は変更しない。 */
+const bantanTunnelSurfaceCache=new WeakMap();
+let bantanTunnelCorridorsCache=null;
+function bantanTunnelCorridors(){
+  if(bantanTunnelCorridorsCache)return bantanTunnelCorridorsCache;
+  bantanTunnelCorridorsCache=(RAIL_SIM_BANTAN_ROUTE.tunnels||[]).map(tunnel=>{
+    const points=tunnel.points||[],origin=points[0];if(points.length<2)return null;
+    const mLat=111320,mLon=111320*Math.cos(origin[0]*D2R),half=12;
+    const xy=points.map(p=>[(p[1]-origin[1])*mLon,(p[0]-origin[0])*mLat]);
+    const segments=[];
+    for(let i=0;i+1<xy.length;i++){
+      const a=xy[i],b=xy[i+1],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy);
+      if(len<1e-6)continue;
+      /* 節点の内側は重ね、曲がった坑内も途切れない。坑口の端は外へ延ばさない。 */
+      segments.push({a,tx:dx/len,ty:dy/len,lo:i===0?0:-half,hi:len+(i===xy.length-2?0:half),half});
+    }
+    return {origin,mLat,mLon,segments,bounds:[Math.min(...xy.map(p=>p[0]))-half*2,
+      Math.min(...xy.map(p=>p[1]))-half*2,Math.max(...xy.map(p=>p[0]))+half*2,Math.max(...xy.map(p=>p[1]))+half*2]};
+  }).filter(Boolean);
+  return bantanTunnelCorridorsCache;
+}
+function bantanTunnelHiddenIntervals(a,b){
+  const intervals=[];
+  for(const corridor of bantanTunnelCorridors()){
+    const x=(a[1]-corridor.origin[1])*corridor.mLon,y=(a[0]-corridor.origin[0])*corridor.mLat;
+    const bx=(b[1]-corridor.origin[1])*corridor.mLon,by=(b[0]-corridor.origin[0])*corridor.mLat;
+    const box=corridor.bounds;
+    if(Math.max(x,bx)<box[0]||Math.min(x,bx)>box[2]||Math.max(y,by)<box[1]||Math.min(y,by)>box[3])continue;
+    const dx=bx-x,dy=by-y;
+    for(const segment of corridor.segments){
+      const px=x-segment.a[0],py=y-segment.a[1];
+      const along=px*segment.tx+py*segment.ty,side=-px*segment.ty+py*segment.tx;
+      const da=dx*segment.tx+dy*segment.ty,ds=-dx*segment.ty+dy*segment.tx;
+      let lo=0,hi=1,hit=true;
+      const limits=[[along-segment.lo,da],[segment.hi-along,-da],[side+segment.half,ds],[segment.half-side,-ds]];
+      for(const [value,delta] of limits){
+        if(Math.abs(delta)<1e-12){if(value<0){hit=false;break;}}
+        else if(delta>0)lo=Math.max(lo,-value/delta);
+        else hi=Math.min(hi,-value/delta);
+      }
+      if(hit&&hi-lo>1e-10&&hi>0&&lo<1)intervals.push([Math.max(0,lo),Math.min(1,hi)]);
+    }
+  }
+  intervals.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const span of intervals){
+    const last=merged.at(-1);
+    if(last&&span[0]<=last[1]+1e-9)last[1]=Math.max(last[1],span[1]);else merged.push(span.slice());
+  }
+  return merged;
+}
+function bantanTunnelSurfacePieces(way){
+  if(!way||!Array.isArray(way.points)||way.points.length<2)return [way];
+  const cached=bantanTunnelSurfaceCache.get(way);if(cached&&cached.points===way.points)return cached.parts;
+  const pieces=[];let current=[],changed=false;
+  const same=(a,b)=>a&&b&&Math.abs(a[0]-b[0])<1e-11&&Math.abs(a[1]-b[1])<1e-11;
+  const finish=()=>{if(current.length>=2)pieces.push({...way,points:current});current=[];};
+  for(let i=0;i+1<way.points.length;i++){
+    const a=way.points[i],b=way.points[i+1],hidden=bantanTunnelHiddenIntervals(a,b);
+    if(!hidden.length){if(!current.length)current.push(a);current.push(b);continue;}
+    changed=true;
+    const at=u=>u<=0?a:u>=1?b:a.map((v,k)=>lerp(v,b[k],u));
+    let u=0;
+    for(const span of hidden){
+      if(span[0]-u>1e-9){const from=at(u);if(!same(current.at(-1),from))current.push(from);current.push(at(span[0]));}
+      finish();u=span[1];
+    }
+    if(1-u>1e-9)current.push(at(u),b);
+  }
+  finish();const parts=changed?pieces:[way];
+  bantanTunnelSurfaceCache.set(way,{points:way.points,parts});return parts;
+}
+
+/* 【v1218】川尻トンネルの推定坑口に、保存対象としない石造アーチを重ねる。
+   山を掘削する模型ではなく、既存の地形・列車と深度を共有する入口の演出。
+   +Y が外向き。入口は推定坑口の1m手前、暗い奥面は入口から1.5m奥。 */
+const _bantanTunnelPortalCache=new Map();
+function railSimBantanPortalClipPlanes(model,vertexToViewVector){
+  if(!model||!Array.isArray(model.portalMouthVertices))return null;
+  const mouth=model.portalMouthVertices.map(vertexToViewVector);
+  if(mouth.some(v=>!v||v.length!==3||!v.every(Number.isFinite)))return null;
+  const centre=[0,0,0];for(const v of mouth)for(let k=0;k<3;k++)centre[k]+=v[k]/mouth.length;
+  const planes=[];
+  for(let i=0;i<mouth.length;i++){
+    const a=mouth[i],b=mouth[(i+1)%mouth.length];
+    let n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+    if(Math.hypot(...n)<1e-10)continue;
+    if(n.reduce((sum,v,k)=>sum+v*centre[k],0)<0)n=n.map(v=>-v);
+    planes.push(v=>n[0]*v[0]+n[1]*v[1]+n[2]*v[2]);
+  }
+  return planes;
+}
+function railSimBantanTunnelPortalModel(floorAtY){
+  const triangles=[],triangleColors=[],triangleAlphas=[],trianglePortalInterior=[];
+  const R=2.8,T=.67,SPRING=3.6,FRONT=.35,BACK=-.65,DEPTH=-1.5,FOOT=-.65,SEGMENTS=10;
+  const point=(x,y,z)=>[x,y,z+floorAtY(y)];
+  const push=(A,B,C,rgb,normal)=>{
+    const u=B.map((v,i)=>v-A[i]),v=C.map((n,i)=>n-A[i]);
+    const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+    if(Math.hypot(...n)<1e-10)return;
+    if(normal&&n.reduce((s,q,i)=>s+q*normal[i],0)<0)[B,C]=[C,B];
+    triangles.push([point(...A),point(...B),point(...C)]);
+    triangleColors.push(rgb);triangleAlphas.push(1);trianglePortalInterior.push(Math.max(...rgb)<40);
+  };
+  const quad=(a,b,c,d,color,normal)=>{push(a,b,c,color,normal);push(a,c,d,color,normal);};
+  const ringPoint=(radius,angle,y)=>[radius*Math.cos(angle),y,SPRING+radius*Math.sin(angle)];
+  // A short open recess suggests depth without creating a visible tunnel building.
+  const recessPoint=(angle)=>ringPoint(R,angle,DEPTH);
+  const mortar=[94,101,97],inside=[27,29,28],outer=[119,126,120];
+  // Stone seams are geometry partitions; there is no overlay or transparent face.
+  for(let i=0;i<SEGMENTS;i++){
+    const a=i*Math.PI/SEGMENTS,b=(i+1)*Math.PI/SEGMENTS,j=a+.006,m=(a+b)/2;
+    const change=((i*7)%11)-5,color=[143+change,148+change,140+change];
+    for(const [u,v,col]of [[a,j,mortar],[j,b,color]])
+      quad(ringPoint(R,u,FRONT),ringPoint(R+T,u,FRONT),ringPoint(R+T,v,FRONT),ringPoint(R,v,FRONT),col,[0,1,0]);
+    quad(ringPoint(R,a,BACK),ringPoint(R+T,a,BACK),ringPoint(R+T,b,BACK),ringPoint(R,b,BACK),outer,[0,-1,0]);
+    quad(ringPoint(R+T,a,FRONT),ringPoint(R+T,a,BACK),ringPoint(R+T,b,BACK),ringPoint(R+T,b,FRONT),color,[Math.cos(m),0,Math.sin(m)]);
+    quad(ringPoint(R,a,FRONT),ringPoint(R,a,BACK),ringPoint(R,b,BACK),ringPoint(R,b,FRONT),inside,[-Math.cos(m),0,-Math.sin(m)]);
+    quad(ringPoint(R,a,BACK),recessPoint(a),recessPoint(b),ringPoint(R,b,BACK),inside,[-Math.cos(m),0,-Math.sin(m)]);
+  }
+  // Four courses on each jamb; the lower 65cm joins the existing terrain.
+  for(const side of [-1,1]){
+    const x0=side<0?-R-T:R,x1=side<0?-R:R+T;
+    for(let k=0;k<4;k++){
+      const z0=FOOT+(SPRING-FOOT)*k/4,z1=FOOT+(SPRING-FOOT)*(k+1)/4;
+      const n=((k*5+(side+1)*3)%9)-4,col=[141+n,147+n,139+n];
+      quad([x0,FRONT,z0],[x1,FRONT,z0],[x1,FRONT,z1],[x0,FRONT,z1],col,[0,1,0]);
+    }
+    quad([x0,BACK,FOOT],[x1,BACK,FOOT],[x1,BACK,SPRING],[x0,BACK,SPRING],outer,[0,-1,0]);
+    quad([x0,FRONT,FOOT],[x0,BACK,FOOT],[x0,BACK,SPRING],[x0,FRONT,SPRING],side<0?outer:inside,[-1,0,0]);
+    quad([x1,FRONT,FOOT],[x1,BACK,FOOT],[x1,BACK,SPRING],[x1,FRONT,SPRING],side>0?outer:inside,[1,0,0]);
+    quad([x0,FRONT,SPRING],[x1,FRONT,SPRING],[x1,BACK,SPRING],[x0,BACK,SPRING],outer,[0,0,1]);
+    quad([x0,FRONT,FOOT],[x1,FRONT,FOOT],[x1,BACK,FOOT],[x0,BACK,FOOT],outer,[0,0,-1]);
+    const x=side*R;
+    quad([x,BACK,0],[x,DEPTH,0],[x,DEPTH,SPRING],[x,BACK,SPRING],inside,[-side,0,0]);
+  }
+  quad([-R,BACK,-.06],[R,BACK,-.06],[R,DEPTH,-.06],[-R,DEPTH,-.06],[22,24,23],[0,0,1]);
+  // The background is 0.5m inside the estimated actual mouth, not across the frame.
+  const cap=[[-R,DEPTH,-.06],[R,DEPTH,-.06]];
+  for(let k=0;k<=SEGMENTS;k++)cap.push(recessPoint(k*Math.PI/SEGMENTS));
+  for(let k=1;k+1<cap.length;k++)push(cap[0],cap[k],cap[k+1],[13,15,14],[0,1,0]);
+  const low=[Infinity,Infinity,Infinity],high=[-Infinity,-Infinity,-Infinity];
+  for(const t of triangles)for(const p of t)for(let k=0;k<3;k++){low[k]=Math.min(low[k],p[k]);high[k]=Math.max(high[k],p[k]);}
+  return {triangles,triangleColors,triangleAlphas,trianglePortalInterior,coloredCount:triangles.length,
+    vertexCount:triangles.length*3,width:high[0]-low[0],depth:high[1]-low[1],height:high[2]-low[2],
+    tunnelPortal:true,portalOpening:{radiusM:R,springM:SPRING,widthM:2*R,heightM:SPRING+R,
+      frontY:FRONT,liningEndY:DEPTH,foundationBottomM:FOOT},
+    portalMouthVertices:[point(-R,FRONT,0),point(R,FRONT,0),
+      ...Array.from({length:SEGMENTS+1},(_,k)=>point(...ringPoint(R,k*Math.PI/SEGMENTS,FRONT)))],
+    portalBounds:{low,high}};
+}
+function railSimBantanTunnelPortals(){
+  const lift=bridgeDeckLiftOn?1:0;
+  if(_bantanTunnelPortalCache.has(lift))return _bantanTunnelPortalCache.get(lift);
+  const base=railSimBantanBase(),g=base.geometry,slots=[];
+  for(const tunnel of RAIL_SIM_BANTAN_ROUTE.tunnels||[]){
+    if(!(tunnel.way===1308481372||(tunnel.wayIds||[]).includes(1308481372)))continue;
+    const points=tunnel.points;if(!Array.isArray(points)||points.length<2)continue;
+    for(const [end,ll,sign]of [["start",points[0],-1],["end",points.at(-1),1]]){
+      // OSM's original startM/endM and profile cumulative S differ slightly.
+      // Project the exact geographic portal, then interpolate the same geometry as trains.
+      const mouth=base.project(trainXY(base.lat,base.lon,ll[0],ll[1]));
+      const anchorS=clamp(mouth.s+sign,0,g.total),p=g.at(anchorS),a=g.at(anchorS-1),b=g.at(anchorS+1);
+      const bearing=norm360(Math.atan2((b.x-a.x)*sign,(b.y-a.y)*sign)*R2D);
+      const position=trainLL(base.lat,base.lon,p.x,p.y);
+      const model=railSimBantanTunnelPortalModel(y=>g.at(anchorS+sign*y).z-p.z);
+      const title=`トンネル入口・播但線（川尻・${end==="start"?"南":"北"}）`;
+      slots.push({id:`bantan-tunnel-portal-${tunnel.way}-${end}`,fileName:title,
+        visible:true,lat:position[0],lon:position[1],altitude:base.base+p.z,heading:bearing,
+        scale:1,opacity:1,silhouette:false,glow:false,model,tunnelPortal:true,
+        object:{name:"トンネル入口・播但線"},
+        portalData:{way:tunnel.way,end,profileMode:lift,mouthS:mouth.s,anchorS,
+          mouthLL:ll,outwardShiftM:1,anchorRailM:base.base+p.z,
+          estimated:!!tunnel.estimatedPortals,accuracyM:tunnel.portalAccuracyM||null}});
+    }
+  }
+  _bantanTunnelPortalCache.set(lift,slots);return slots;
+}
+
+function railSimBantanVisibleTunnelPortals(s){
+  if(!railLinesVisible||arActive||!s||!Number.isFinite(s.lat)||!Number.isFinite(s.lon))return [];
+  return railSimBantanTunnelPortals().filter(slot=>terrainDistanceAndBearing(s.lat,s.lon,slot.lat,slot.lon).distanceKm<=1.2);
+}
+
 function railSimBantanDeckSamples(way){
   if(!way||way.kind!=="rail"||!Array.isArray(way.points)||!kmzSlots.some(slot=>slot.train&&slot.train.run&&slot.train.run.sim&&slot.train.run.sim.route==="bantan"))return null;
   const lift=bridgeDeckLiftOn?1:0;let lookup=_bantanDeckSampleCache.get(lift);
@@ -13199,11 +13384,12 @@ function kmzStationOrderKm(s,slot,trains){
   const platformSide=o.parts[0].x>=0?1:-1;
   return near.km+(lateral*platformSide>0?-1e-4:1e-4);   /* 小さい＝手前＝あとで描く */
 }
-function kmzSlotsInDrawOrder(s){
-  if(!kmzSlotDepthSort||!s||kmzSlots.length<2)return kmzSlots;
+function kmzSlotsInDrawOrder(s,extraSlots=[]){
+  const slots=extraSlots.length?kmzSlots.concat(extraSlots):kmzSlots;
+  if(!kmzSlotDepthSort||!s||slots.length<2)return slots;
   /* Infinity どうしを引くと NaN になって並びが壊れるので、有限の大きな値に置き換えてから比べる。
      sort は安定なので、距離が同じ物は一覧の並び順のまま残る。 */
-  const entries=kmzSlots.map((slot,index)=>({slot,index,km:kmzSlotDistanceKm(s,slot)}));
+  const entries=slots.map((slot,index)=>({slot,index,km:kmzSlotDistanceKm(s,slot)}));
   const trains=entries.filter(e=>e.slot&&e.slot.train&&e.slot.visible!==false);
   if(trains.length)for(const e of entries){const k=kmzStationOrderKm(s,e.slot,trains);if(k!==null)e.km=k;}
   return entries
@@ -35529,7 +35715,7 @@ const kmzOpaqueModelCache=new WeakMap();
 function kmzOpaqueGroupSlot(slot){
   if(!kmzSlotDepthSort||!slot||!slot.visible||!slot.model||slot.model.lines||slot.glow||slot.silhouette
     ||(Number.isFinite(slot.opacity)&&slot.opacity!==1)
-    ||!(slot.train||slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY||(slot.object&&String(slot.object.name||"").startsWith("駅・"))))return false;
+    ||!(slot.train||slot.tunnelPortal||slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY||(slot.object&&String(slot.object.name||"").startsWith("駅・"))))return false;
   const model=slot.model,alphas=model.triangleAlphas;
   let cached=kmzOpaqueModelCache.get(model);
   if(!cached||cached.alphas!==alphas||cached.length!==(alphas?alphas.length:0)){
@@ -35594,7 +35780,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     }
     return;
   }
-  const drawOrder=kmzSlotsInDrawOrder(s);
+  const drawOrder=kmzSlotsInDrawOrder(s,railSimBantanVisibleTunnelPortals(s));
   /* 【v1119】確かめる用に描いた順を控えておく。 */
   drawPhoto._kmzOrder={自動:kmzSlotDepthSort,順:drawOrder.map(slot=>({名:slot&&slot.fileName,km:+kmzSlotDistanceKm(s,slot).toFixed(3)}))};
   drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,drawOrder);
@@ -35793,6 +35979,23 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
      視点・模型位置・鏡面・画角の変更はすべてそのコマで反映する。 */
   const geometry=kmzModelGeometryIndex(slot.model),vertexProjectionCache=new Array(geometry.vertices.length);
   const headingCos=Math.cos(heading),headingSin=Math.sin(heading);
+  /* 【v1218】暗い凹みは目から見た開口の内側に限定する。入口の背面からは描かない。 */
+  let portalInteriorPlanes=null;
+  if(slot.tunnelPortal&&slot.model.portalOpening){
+    const viewer=terrainDistanceAndBearing(cfg.lat,cfg.lon,s.lat,s.lon);
+    const viewerY=viewer.distanceKm*1000*Math.cos((viewer.bearing-cfg.heading)*D2R);
+    if(viewerY>slot.model.portalOpening.frontY*cfg.scale){
+      portalInteriorPlanes=railSimBantanPortalClipPlanes(slot.model,vertex=>{
+        const east=(vertex[0]*headingCos+vertex[1]*headingSin)*cfg.scale,
+          north=(-vertex[0]*headingSin+vertex[1]*headingCos)*cfg.scale;
+        const placed=kmzDestinationPoint(cfg.lat,cfg.lon,Math.atan2(east,north)*R2D,Math.hypot(east,north)/1000);
+        const ray=terrainDistanceAndBearing(s.lat,s.lon,placed.lat,placed.lon),distanceM=ray.distanceKm*1000;
+        const h=cfg.altitude+vertex[2]*cfg.scale;
+        const rise=(reflectionPass?2*mirrorZ-Math.max(h,mirrorZ):h)-eye-distanceM*distanceM/(2*earthRadius);
+        return [Math.sin(ray.bearing*D2R)*distanceM,Math.cos(ray.bearing*D2R)*distanceM,rise];
+      });
+    }
+  }
   for(let triIndex=0;triIndex<slot.model.triangles.length;triIndex++){
     const triangle=slot.model.triangles[triIndex];
     /* 【v903】zs = 頂点ごとの「カメラの正面方向の奥行き」。
@@ -35821,6 +36024,14 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
       if(local)local.push([record.east,record.north,(reflectionPass?-1:1)*vertex[2]*cfg.scale]);
       if(inside){inside=record.inFrame;if(inside){points.push(record.point);zs.push(record.z);}}
     }
+    /* 【v1218】入口の内壁は内側からだけ描く。山の外へ黒い屋根や壁を見せない。 */
+    if(slot.tunnelPortal&&slot.model.trianglePortalInterior&&slot.model.trianglePortalInterior[triIndex]){
+      if(!portalInteriorPlanes)continue;
+      const a=vecs[0],b=vecs[1],c=vecs[2],ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2],
+        vx=c[0]-a[0],vy=c[1]-a[1],vz=c[2]-a[2];
+      if((reflectionPass?-1:1)*((uy*vz-uz*vy)*a[0]+(uz*vx-ux*vz)*a[1]+(ux*vy-uy*vx)*a[2])>=0)continue;
+      inside=false;   /* 開口の13境界で切るため、内面だけ高速経路を通さない。 */
+    }
     const color=triangleColors?triangleColors[triIndex]:null;
     const alpha=(triangleAlphas&&Number.isFinite(triangleAlphas[triIndex]))?triangleAlphas[triIndex]:1;
     if(inside&&points.length===3){
@@ -35829,6 +36040,10 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
     }
     /* 【v1050】一部が手前面・画面の外にはみ出す三角形：切り取ってから扇形に分ける。 */
     let poly=vecs;
+    if(slot.tunnelPortal&&slot.model.trianglePortalInterior&&slot.model.trianglePortalInterior[triIndex]){
+      for(const f of portalInteriorPlanes){poly=kmzClipByPlane(poly,f);if(poly.length<3){poly=null;break;}}
+      if(!poly)continue;
+    }
     for(const f of kmzClipPlanes){poly=kmzClipByPlane(poly,f);if(poly.length<3){poly=null;break;}}
     if(!poly)continue;
     const clippedPoints=[],clippedZs=[];let ok=true;
@@ -43384,6 +43599,8 @@ function drawPhoto(ctx,s){
                 ways=ways.filter(way=>!onBridgeLine(way.points));
               }
             }
+            /* 【v1218】タイルがトンネル属性を持たない場合も、地下区間だけ切り分ける。 */
+            ways=ways.flatMap(bantanTunnelSurfacePieces);
             buildRibbon(ways,railPaths,railTiePaths,"ties");
           }
           if(trailPaths){   /* 【v1101】登山道。林道は設定が ON のときだけ。 */
