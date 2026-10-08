@@ -5876,6 +5876,8 @@
             <label style="display:flex;align-items:center;gap:5px;margin:0;">累積標高は <input id="driveLogGainThreshold" type="number" min="1" max="30" step="1" value="5"> m 以上の変化だけ数える</label>
             <button id="driveLogFillEleBtn" type="button" class="ghost">標高が無い記録を補う</button>
           </div>
+          <div class="drive-log-tools"><button id="driveLogCloudBtn1224" type="button">☁ GPSログを同期</button><button id="driveLogCloudCodeBtn1224" class="ghost" type="button">同期コード</button></div>
+          <p id="driveLogCloudStatus1224" class="map-hint" role="status" aria-live="polite">撮影計画・日記と同じ同期コードで、走行・登山ログを端末間で同期します。</p>
           <p id="driveLogStatus" class="map-hint" style="margin:4px 0;" aria-live="polite"></p>
           <div class="drive-log-tabs">
             <button id="driveLogTabAll" type="button">すべて</button>
@@ -7410,7 +7412,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1223-gps-replay";
+const APP_VERSION="1224-gps-stable-sync";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19736,7 +19738,10 @@ let cameraRiseM=0;
 let droneHoldElevation=null;
 /* 観測地点の地面標高。初期化の途中ではまだ地形状態が無いので握りつぶす。 */
 function groundElevationM(){
-  try{ return Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:null; }
+  try{
+    const ground=terrainMotionGround1224(+el.lat.value,+el.lon.value);
+    return ground===null?0:(Number.isFinite(ground)?ground:(Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:null));
+  }
   catch(e){ return null; }
 }
 // 視点のDEM地面からの高さ。追加高さ・三脚・上昇量を使う箇所は必ずこれを通す。
@@ -22316,13 +22321,13 @@ async function memoEnterCode(){
   const code=memoNormalizeCode(raw);
   if(code.length!==16){memoSetSyncStatus("コードは英数字 16 文字です（0・O・1・I は使いません）",true);return;}
   if(code===memoSyncCode){memoSetSyncStatus("今と同じコードです");return;}
-  memoSyncCode=code;await persistentSet(MEMO_CODE_KEY,code);
+  memoSyncCode=code;await persistentSet(MEMO_CODE_KEY,code);driveLogCloudSchedule1224();
   memoEl("memoSyncCode").textContent=memoCodePretty(code);
   memoSync();
 }
 async function memoRenewCode(){
   if(!window.confirm("新しい同期コードを作ります。今のメモは新しいコードの側へ引き継ぎますが、他の端末で同じメモを見るには新しいコードを入れ直す必要があります。\nよろしいですか？"))return;
-  memoSyncCode=memoNewCode();await persistentSet(MEMO_CODE_KEY,memoSyncCode);
+  memoSyncCode=memoNewCode();await persistentSet(MEMO_CODE_KEY,memoSyncCode);driveLogCloudSchedule1224();
   memoEl("memoSyncCode").textContent=memoCodePretty(memoSyncCode);
   memoSync();
 }
@@ -22347,7 +22352,7 @@ async function memoRenewCode(){
   /* 節を開いたときにも同期（開きっぱなしの端末で他方の変更を拾う）。 */
   const sec=memoEl("memoSection");
   if(sec)sec.querySelector(".ctrl-group-toggle").addEventListener("click",()=>{setTimeout(()=>{if(!sec.classList.contains("collapsed"))memoSync();},0);});
-  memoLoadLocal().then(()=>{memoRenderList();memoSync();});
+  memoLoadLocal().then(()=>{memoRenderList();memoSync();driveLogCloudSchedule1224();});
 })();
 /* ═════ 【v1080】走行ログ ═════
    記録は「1 回の記録（開始〜停止）＝1 本」。iPhone は画面を離れると位置情報が止まるので、細かく分かれる前提で日付ごとにまとめて見せる。
@@ -22423,9 +22428,11 @@ function driveLogDayTitle(key){
   const date=new Date(y,m-1,d);
   return `${m}月${d}日（${"日月火水木金土"[date.getDay()]}）`;
 }
-async function driveLogLoad(){
-  if(driveLogLoaded)return;
-  driveLogLoaded=true;
+let driveLogLoadPromise1224=null;
+function driveLogLoad(){
+  if(driveLogLoaded)return Promise.resolve();
+  if(driveLogLoadPromise1224)return driveLogLoadPromise1224;
+  driveLogLoadPromise1224=(async()=>{
   try{
     const raw=await planKvGet(DRIVE_LOG_KEY);
     const v=raw?JSON.parse(raw):null;
@@ -22437,16 +22444,21 @@ async function driveLogLoad(){
       if(driveLogRecording&&driveLogTrack)driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks.concat([driveLogTrack]),...extra};
       else driveLogData={version:1,autoPause:v.autoPause!==false,tracks:v.tracks,...extra};
     }
-  }catch(e){}
+  }catch(e){driveLogCloudSay1224("保存済みのGPSログを読み込めません。上書きせず保持しています。",true);return false;}
   const box=driveLogEl("driveLogAutoPause");if(box)box.checked=driveLogData.autoPause!==false;
-  driveLogRenderList();
+  driveLogLoaded=true;driveLogRenderList();
+  })().finally(()=>{driveLogLoadPromise1224=null;});
+  return driveLogLoadPromise1224;
 }
 async function driveLogSave(){
   try{
-    if(driveLogData.tracks.length>DRIVE_LOG_MAX_TRACKS)driveLogData.tracks=driveLogData.tracks.slice(-DRIVE_LOG_MAX_TRACKS);
-    await planKvSet(DRIVE_LOG_KEY,JSON.stringify(driveLogData));
+    if(!driveLogLoaded){await driveLogLoad();if(!driveLogLoaded)throw new Error("保存済みログを読み込めないため上書きを停止しました");}
+    await driveLogCloudLocalWrite1224();
+    if(!driveLogRecording)driveLogCloudSchedule1224();
+    return true;
   }catch(e){
     if(driveLogEl("driveLogStatus"))driveLogEl("driveLogStatus").textContent="保存できませんでした："+String(e&&e.message||e);
+    return false;
   }
 }
 function driveLogScheduleSave(){
@@ -22845,8 +22857,9 @@ function driveLogRenderList(){
     const mapBtn=document.createElement("button");mapBtn.type="button";mapBtn.textContent="地図で見る";
     mapBtn.addEventListener("click",()=>driveLogShowOnMap(tracks,`${driveLogDayTitle(key)} ${sum.km.toFixed(1)}km`));
     const delBtn=document.createElement("button");delBtn.type="button";delBtn.className="ghost";delBtn.style.color="#ff9a9a";delBtn.textContent="削除";
-    delBtn.addEventListener("click",()=>{
+    delBtn.addEventListener("click",async()=>{
       if(!window.confirm(`${driveLogDayTitle(key)} の記録 ${tracks.length}本（${sum.km.toFixed(1)}km）を削除します。よろしいですか？`))return;
+      try{await driveLogCloudMarkDeleted1224(tracks);}catch(error){driveLogCloudSay1224("削除情報を保存できませんでした。ログは保持しています。",true);return;}
       driveLogData.tracks=driveLogData.tracks.filter(tr=>!tracks.includes(tr));
       driveLogFlush();driveLogRenderList();
     });
@@ -22868,8 +22881,9 @@ function driveLogRenderList(){
       const one=document.createElement("button");one.type="button";one.textContent="地図";
       one.addEventListener("click",()=>driveLogShowOnMap([track],`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)} ${s.km.toFixed(1)}km`));
       const del=document.createElement("button");del.type="button";del.className="ghost";del.style.color="#ff9a9a";del.textContent="×";
-      del.addEventListener("click",()=>{
+      del.addEventListener("click",async()=>{
         if(!window.confirm(`${driveLogTimeText(s.start)}–${driveLogTimeText(s.end)}（${s.km.toFixed(1)}km）を削除します。よろしいですか？`))return;
+        try{await driveLogCloudMarkDeleted1224([track]);}catch(error){driveLogCloudSay1224("削除情報を保存できませんでした。ログは保持しています。",true);return;}
         driveLogData.tracks=driveLogData.tracks.filter(x=>x!==track);
         driveLogFlush();driveLogRenderList();
       });
@@ -30918,7 +30932,11 @@ function loadGsiDemTile(tile){
     .then(r=>{if(!r.ok) throw new Error(`DEM ${r.status}`);return r.blob();})
     .then(imageBlobToPixels).catch(()=>null)
     // 通信失敗や画像展開失敗を固定キャッシュにしない。次回の再試行を可能にする。
-    .then(pixels=>{if(!pixels)gsiDemTileCache.delete(tile.key);return pixels;});
+    .then(pixels=>{
+      if(!pixels)gsiDemTileCache.delete(tile.key);
+      else if(terrainMotionPixels1224.get(tile.key)!==pixels){terrainMotionPixels1224.set(tile.key,pixels);terrainMotionInvalidate1224();}
+      return pixels;
+    });
   gsiDemTileCache.set(tile.key,promise);
   return promise;
 }
@@ -35098,7 +35116,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
-    rowCentre,   /* 【v1018】 */
+    rowCentre,_sampleOrigin1224:[lat,lon],   /* v1224 explicit world origin */
     _selectEyeM:selectEye,   /* 【v1024】稜線の点を選んだときの目の海抜。大きく違う高さから見るときは作り直す */
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
     _freshAz:partial?partial.azSet:null   /* 【v988】今回作った方位。【v1018】他の方位は point._fresh の点だけ当て直す */
@@ -35467,6 +35485,7 @@ let terrainSettleTimer=0,terrainSettleArmed=false,terrainSettlePendingKey="";
 function requestRealTerrainProfile(lat,lon){
   if(arActive) return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  terrainRequestTargetSet1224(key);
   /* 【v902】**KMZの位置では作り直さない。**
      模型の足元の高密度点は `ensureKmzDetailGrid` が独立に用意するので、
      地形そのものを取り直す理由が無い。 */
@@ -35475,6 +35494,7 @@ function requestRealTerrainProfile(lat,lon){
   if(realTerrainState.failedKey===key){setExternalDataStatus("elevation","error","通信エラー");setExternalDataStatus("water","error","標高取得失敗");setExternalDataStatus("fuji","error","標高取得失敗");return;}
   const cached=realTerrainProfileCache.get(key);
   if(cached&&terrainCacheUsableForEye(cached)){   /* 【v1024】 */
+    ++realTerrainState.requestToken;terrainRequestActive1224="";
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
     Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
@@ -35493,6 +35513,7 @@ function requestRealTerrainProfile(lat,lon){
      この値を見ているので、空のままだと標高を使わない初期版の景色へ落ちる。
      初回（まだ地形が1つも無い）だけは待たずに始める。 */
   if(realTerrainState.profile&&!terrainSettleArmed){
+    if(terrainRequestActive1224===key)return;
     realTerrainState.loadingKey=key;
     syncSimLoadingLabel();
     setExternalDataStatus("elevation","loading","移動が止まってから読み込み");
@@ -35513,7 +35534,8 @@ function requestRealTerrainProfile(lat,lon){
     }
     return;
   }
-  if(realTerrainState.loadingKey===key) return;
+  if(terrainRequestActive1224===key) return;
+  terrainRequestActive1224=key;
   const token=++realTerrainState.requestToken;
   realTerrainState.loadingKey=key;
   realTerrainState.failedKey="";
@@ -35522,7 +35544,7 @@ function requestRealTerrainProfile(lat,lon){
   setExternalDataStatus("elevation","loading",forceRefresh?"再取得中":"保存済みキャッシュ確認中");
   setExternalDataStatus("water","loading",forceRefresh?"標高データ待ち":"保存済みキャッシュ確認中");
   setExternalDataStatus("fuji","loading","標高データ待ち");
-  document.body.classList.remove("real-terrain-visible");
+  if(!realTerrainState.profile)document.body.classList.remove("real-terrain-visible");
   (async()=>{
     let result=null,fromPersistent=false;
     if(!forceRefresh){
@@ -35541,12 +35563,13 @@ function requestRealTerrainProfile(lat,lon){
       }
     }
     if(!result) result=await buildRealTerrainProfile(lat,lon,token);
-    if(token!==realTerrainState.requestToken) return;
+    if(token!==realTerrainState.requestToken||key!==terrainRequestTarget1224||key!==`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`) return;
+    terrainRequestActive1224="";
     realTerrainState.loadingKey="";
     syncSimLoadingLabel();
     if(!result){
-      realTerrainState.key=key;realTerrainState.failedKey=key;realTerrainState.profile=null;realTerrainState.observerElevation=null;
-      document.body.classList.remove("real-terrain-visible");
+      realTerrainState.failedKey=key;
+      if(!realTerrainState.profile)document.body.classList.remove("real-terrain-visible");
       setExternalDataStatus("elevation","error","通信エラー");
       setExternalDataStatus("water","error","標高取得失敗");
       setExternalDataStatus("fuji","error","標高取得失敗");
@@ -35572,7 +35595,11 @@ function requestRealTerrainProfile(lat,lon){
       refineTerrainWaterWithOsm(lat,lon,key,result);
       if(!fromPersistent) externalGeoCacheSet(terrainCacheId(key),result);
     }
-  })();
+  })().catch(()=>{
+    if(token!==realTerrainState.requestToken)return;
+    terrainRequestActive1224="";realTerrainState.loadingKey="";realTerrainState.failedKey=key;
+    setExternalDataStatus("elevation","error","直前の地形を保持・通信待ち");syncSimLoadingLabel();
+  });
 }
 let currentEyeTerrainProfileCache={grid:null,observerElevation:null,eyeHeight:null,profile:null,layerProfiles:null,blockingProfile:null};
 function invalidateCurrentEyeTerrainProfile(){
@@ -35630,6 +35657,8 @@ function currentEyeTerrainLayerProfiles(){
   return currentEyeTerrainProfileCache.layerProfiles;
 }
 function realTerrainAltitudeAt(az){
+  const altitude=terrainRenderAltitudeAt1224(az);
+  if(altitude!==null)return altitude;
   const profile=currentEyeTerrainProfile();
   if(!profile) return null;
   const wrapped=((az%360)+360)%360,i0=Math.floor(wrapped),i1=(i0+1)%360,t=wrapped-i0;
@@ -36793,7 +36822,10 @@ function requestMountainNames(lat,lon){
    地図と同じ並び（favPlaces）と同じ表示の入り切り（favKindVisible）を使う。
    高さは rayGrid の実標高（baseElevation）を方位・距離で補間して求め、手前の地形に隠れる点は出さない。 */
 function favSceneElevationAt(bearing,distanceKm){
-  const grid=realTerrainState.rayGrid;
+  const position=terrainDestination(+el.lat.value,+el.lon.value,bearing,distanceKm);
+  const sampled=terrainMotionElevation1224(position[0],position[1],distanceKm);
+  if(Number.isFinite(sampled))return sampled;
+  const grid=terrainRenderGrid1224();
   if(!grid)return null;
   const wrapped=((bearing%360)+360)%360,i0=Math.floor(wrapped)%360,i1=(i0+1)%360,tt=wrapped-Math.floor(wrapped);
   const pick=row=>{
@@ -36816,7 +36848,7 @@ function favSceneElevationAt(bearing,distanceKm){
 }
 /* 手前の地形に隠れていないか。その方位の列を、その地点より手前まで見て、視線より上へ出る所があれば隠れている。 */
 function favSceneVisible(bearing,distanceKm,apparentAlt,eyeElevation){
-  const grid=realTerrainState.rayGrid;
+  const grid=terrainRenderGrid1224();
   if(!grid)return true;
   const row=grid[Math.round(((bearing%360)+360)%360)%360];
   if(!row||!row.length)return true;
@@ -37212,7 +37244,7 @@ function reloadCurrentExternalSimulationData(){
     if(terrainKey) forcedTerrainRefreshKeys.add(terrainKey);
     if(waterCacheKey) forcedWaterRefreshKeys.add(waterCacheKey);
     if(coastlineCacheKey) forcedCoastlineRefreshKeys.add(coastlineCacheKey);
-    gsiDemTileCache.clear();realTerrainProfileCache.clear();osmCoastlineCache.clear();
+    gsiDemTileCache.clear();terrainMotionPixels1224.clear();terrainMotionInvalidate1224();realTerrainProfileCache.clear();osmCoastlineCache.clear();
     /* 【v836】全部緑のときはこちらを通る。ここでも取得中のタイルPromiseを捨てる。
        消さないと、固まっている取得をそのまま待ち直すことになる。 */
     resetWaterFetchState(waterCacheKey,coastlineCacheKey,null);
@@ -37237,7 +37269,7 @@ function reloadCurrentExternalSimulationData(){
       if(coastlineCacheKey) forcedCoastlineRefreshKeys.add(coastlineCacheKey);
       osmWaterCache.clear();osmCoastlineCache.clear();
       // 通常は起きないが、地形本体が失われていれば依存する3項目をまとめて復旧する。
-      gsiDemTileCache.clear();realTerrainProfileCache.clear();
+      gsiDemTileCache.clear();terrainMotionPixels1224.clear();terrainMotionInvalidate1224();realTerrainProfileCache.clear();
       realTerrainState.requestToken++;
       Object.assign(realTerrainState,{key:"",loadingKey:"",failedKey:"",profile:null,terrainLayers:null,observerElevation:null});
       targets.add("elevation");targets.add("fuji");
@@ -37358,7 +37390,7 @@ if(externalReloadBtn){
 }
 
 window.addEventListener("online",()=>{
-  gsiDemTileCache.clear();
+  gsiDemTileCache.clear();terrainMotionPixels1224.clear();terrainMotionInvalidate1224();
   realTerrainState.failedKey="";
   mountainNameState.failedKey="";
   if(state&&!arActive) requestRealTerrainProfile(state.lat,state.lon);
@@ -38215,6 +38247,7 @@ const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fi
   });
 })();
 function drawPhoto(ctx,s){
+  terrainMotionPrepare1224();
   powerCountFrame();   /* 【v982】実測コマ数 */
   actMon.draw++;   /* 【v983】 */
   if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
@@ -39375,8 +39408,7 @@ function drawPhoto(ctx,s){
        取得中であることは「地形データ読み込み中…」の表示で分かる。
        初回起動（profileがまだ無い）と取得失敗（loadingKeyが消える）は、
        これまでどおり初期版の景色になる。 */
-    const realTerrainReady=!!activeTerrainProfile
-      &&(realTerrainState.key===`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`||!!realTerrainState.loadingKey);
+    const realTerrainReady=!!activeTerrainProfile; /* v1224 keep the last valid terrain across key boundaries and network failures */
     if(realTerrainReady){
       // 距離帯別の稜線を遠方から手前へ重ね、夜の大気遠近法で奥行きを表現する。
       // 5層はそれぞれ稜線側を暗く、画面下側を少し明るい縦グラデーションで描く。
@@ -39441,7 +39473,7 @@ function drawPhoto(ctx,s){
          「移動すると陸、方位を触ると戻る」の正体がこれ。
          位置そのものを鍵に入れて、1歩でも動いたら作り直す。 */
       const terrainGeometryKey=[
-        W,H,realTerrainState.key,realTerrainState._renderRevision||0,flowerFieldSceneKey1220(),
+        W,H,realTerrainState.key,realTerrainState._renderRevision||0,terrainMotionState1224().revision,flowerFieldSceneKey1220(),
         s.lat.toFixed(6),s.lon.toFixed(6),
         s.facingAz.toFixed(3),s.facingAlt.toFixed(3),s.fovH.toFixed(3),
         mobileLensMode,s.focalLength,s.sensor.crop,
@@ -40877,7 +40909,7 @@ function drawPhoto(ctx,s){
           if(!Number.isFinite(km)) return null;
           // 水面の標高が分かる場合はそれを基準にする(湖沼)。分からなければ海面0mとみなす。
           let waterElevation=0;
-          const grid=realTerrainState.nearSurfaceGrid;
+          const grid=terrainRenderNearGrid1224();
           if(grid&&grid[idx]){
             const waterPoint=grid[idx].find(point=>point&&point.water&&Number.isFinite(point.baseElevation));
             if(waterPoint) waterElevation=waterPoint.baseElevation;
@@ -41939,7 +41971,7 @@ function drawPhoto(ctx,s){
       const layers=activeTerrainLayers.length
         ? [...activeTerrainLayers].reverse()
         : [{key:"immediate",profile:activeTerrainProfile,waterProfile:null}];
-      const hasDepthMesh=!!(realTerrainState.nearSurfaceGrid&&realTerrainState.nearSurfaceGrid.length);
+      const hasDepthMesh=!!(terrainRenderNearGrid1224()&&terrainRenderNearGrid1224().length);
       // 遠景を先に描き、近距離メッシュが成立しなければ従来のimmediate層へ自動的に戻す。
       // 確定水面を最下層へ敷き、その後から遠景・近景の地形を重ねて遮蔽する。
       let meshDrawn=!!drawPhoto._terrainMeshDrawn;
@@ -42100,7 +42132,7 @@ function drawPhoto(ctx,s){
         return (previous&&!skipped)?previous.baseElevation:null;
       }
       function rayBaseElevationAt(azDeg,distanceKm){
-        const grid=realTerrainState.rayGrid;
+        const grid=terrainRenderGrid1224();
         if(!grid) return null;
         const wrapped=((azDeg%360)+360)%360;
         const i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
@@ -42116,7 +42148,7 @@ function drawPhoto(ctx,s){
       }
       /* 任意の方位・任意の距離における見かけ高度。方位は隣接2列を補間する。 */
       function rayAltAt(azDeg,distanceKm){
-        const grid=realTerrainState.rayGrid;
+        const grid=terrainRenderGrid1224();
         if(!grid) return null;
         const wrapped=((azDeg%360)+360)%360;
         const i0=Math.floor(wrapped)%360,i1=(i0+1)%360,t=wrapped-Math.floor(wrapped);
@@ -42151,9 +42183,9 @@ function drawPhoto(ctx,s){
             worldMapTiles,realTerrainState._osmWaterRingsRadiusKm,W,s.fovH,
             normalWaterFineLevelValue(),waterDrawRadiusKm(),seaHorizonRealistic?1:0].join("|");
         }
-        if(memo.signature!==normalWaterBandFrameSignature||memo.grid!==realTerrainState.rayGrid||
+        if(memo.signature!==normalWaterBandFrameSignature||memo.grid!==terrainRenderGrid1224()||
            memo.rings!==realTerrainState._osmWaterRings||memo.near!==realTerrainState.waterNearKm){
-          memo.signature=normalWaterBandFrameSignature;memo.grid=realTerrainState.rayGrid;
+          memo.signature=normalWaterBandFrameSignature;memo.grid=terrainRenderGrid1224();
           memo.rings=realTerrainState._osmWaterRings;memo.near=realTerrainState.waterNearKm;
           memo.values.clear();memo.bands=0;memo.resets++;
           // 下位の走査/水判定メモも更新する。丸めた旧署名が同じでも持ち越さない。
@@ -42191,7 +42223,7 @@ function drawPhoto(ctx,s){
         return bands.length?bands:null;
       }
       function azimuthVisibleBands(azDeg,bottomAlt,skylineOnly,rawBands){
-        const grid=realTerrainState.rayGrid;
+        const grid=terrainRenderGrid1224();
         if(!grid) return azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands);
         const rings=realTerrainState._osmWaterRings;
         if(visibleBandsCacheGrid!==grid||visibleBandsCacheRings!==rings){
@@ -42246,7 +42278,7 @@ function drawPhoto(ctx,s){
         return result;
       }
       function azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands){
-        const grid=realTerrainState.rayGrid;
+        const grid=terrainRenderGrid1224();
         const wrapped=((azDeg%360)+360)%360;
         /* v752: 夜側の各列にある大量の帯オブジェクトは保持しない。
            層描画の完成した数値格子だけを型付き配列に圧縮し、昼側はそちらを再利用する。 */
@@ -43408,7 +43440,7 @@ function drawPhoto(ctx,s){
           /* 標高が等高線の間隔の倍数をまたぐ位置を、レイ上で拾って線にする。
              隣り合う方位の同じ標高どうしを繋ぐ。距離が大きく離れる組は繋がない
              （谷を挟んだ別の斜面と誤って結ばないため）。 */
-          const grid=realTerrainState.rayGrid;
+          const grid=terrainRenderGrid1224();
           const azStart=Math.floor(columnStart),azEnd=Math.ceil(columns[columns.length-1].az);
           let previousCrossings=null;
           for(let azInt=azStart;azInt<=azEnd;azInt++){
@@ -44873,7 +44905,7 @@ function drawPhoto(ctx,s){
         return painted>0;
       }
       function drawLayeredTerrain(){
-        const rayGrid=realTerrainState.rayGrid;
+        const rayGrid=terrainRenderGrid1224();
         if(!rayGrid||!rayGrid.length) return false;
         const bottomAlt=clamp(s.facingAlt-(useDiagonalFisheye?95:halfDiagonalDegForBottom()+8),-89,80);
         let layerKm=waterLayerDistancesForCurrentMode();
@@ -45622,7 +45654,7 @@ function drawPhoto(ctx,s){
       }
 
       function drawRayMarchTerrain(){
-        const rayGrid=realTerrainState.rayGrid;
+        const rayGrid=terrainRenderGrid1224();
         if(!rayGrid||!rayGrid.length) return false;
         /* 帯を積み上げ始める高度。画面に写る最も低い方向より、さらに下から始める必要がある。
            以前は垂直画角の半分だけを見ていたが、長方形の画面では「下端の中央」より
@@ -45932,7 +45964,7 @@ function drawPhoto(ctx,s){
         fillGroundFloor();
         drawConfirmedWaterSurface();
         layers.forEach(layer=>{if(layer.key!=="immediate") fillTerrainBand(layer,terrainBandColors(layer.key));});
-        const variantMeshDrawn=hasDepthMesh&&drawNearSurfaceMesh(realTerrainState.nearSurfaceGrid);
+        const variantMeshDrawn=hasDepthMesh&&drawNearSurfaceMesh(terrainRenderNearGrid1224());
         if(!variantMeshDrawn){
           const immediate=layers.find(layer=>layer.key==="immediate");
           if(immediate) fillTerrainBand(immediate,terrainBandColors("immediate"));
@@ -48900,6 +48932,7 @@ function driveLogReplayDate1223(timestamp){
 function driveLogReplayPosition1223(focus,pose){
   const point=kmzDestinationPoint(focus.lat,focus.lon,pose.bearing,pose.distanceM/1000);
   el.lat.value=point.lat.toFixed(10);el.lon.value=point.lon.toFixed(10);if(el.citySelect)el.citySelect.value='0';
+  terrainMotionPrepare1224();
   const ground=groundElevationM(),desired=focus.elevationM+pose.heightM;
   if(ground!==null){const rise=clamp(desired-ground-viewpointOffsetM-tripodHeightM,0,CAMERA_RISE_MAX_M);if(Math.abs(cameraRiseM-rise)>.001){cameraRiseM=rise;drawPhoto._terrainRenderKey=null;syncTripodHeightControl();}}
   droneHoldElevation=desired;
@@ -48927,14 +48960,14 @@ function driveLogReplayFollowApply1223(){
 function driveLogReplayRefreshTerrain1223(now=performance.now()){
   const replay=driveLogReplayState1223;if(!replay)return;
   const key=`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
-  if(realTerrainState.key===key)return;
+  if(realTerrainState.key===key&&terrainMotionPixels1224.size)return;
   realTerrainState.loadingKey=key;
   if(now-replay.terrainAt<750)return;replay.terrainAt=now;refreshTerrainWhileWalking();
 }
 function driveLogReplayRender1223(full=false){
   const replay=driveLogReplayState1223;if(!replay)return;
   const dateChanged=replay.sample?driveLogReplayDate1223(replay.sample.timestampMs):false;
-  if(replay.follow)driveLogReplayFollowApply1223();
+  if(replay.follow){driveLogReplayFollowApply1223();driveLogReplayRefreshTerrain1223();}
   if(full||dateChanged||!state){update();}
   else{
     state.lat=+el.lat.value;state.lon=+el.lon.value;const fine=aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
@@ -48942,7 +48975,7 @@ function driveLogReplayRender1223(full=false){
     const now=performance.now();if(now-replay.celestialAt>=200){replay.celestialAt=now;const jd=toJulianDay(new Date(replay.sample?.timestampMs??Date.now()));refreshPlaybackCelestialState(jd,state.facingAz);}
     updatePlaybackClockLabel(+el.timeSlider.value);drawPhoto(photoCtx,state);drawCompassStrip(compassCtx,state);updateSimInfoPanel();
   }
-  if(replay.follow)driveLogReplayRefreshTerrain1223();driveLogReplaySync1223();
+  driveLogReplaySync1223();
 }
 function driveLogReplaySync1223(){
   const replay=driveLogReplayState1223,ui=driveLogReplayUi1223();if(!ui.Panel)return;ui.Panel.hidden=!replay;if(!replay)return;
@@ -49010,6 +49043,562 @@ function driveLogReplayUiInit1223(){
   document.addEventListener('visibilitychange',()=>{if(document.hidden)driveLogReplayPause1223(false,'画面を離れたため一時停止しました。');});
 }
 driveLogReplayUiInit1223();
+/* v1224: immutable geographic DEM -> lazy current-observer polar rendering view.
+   Publish successfully decoded RGBA buffers here from loadGsiDemTile, then call
+   terrainMotionInvalidate1224(). This module never requests tiles or mutates a
+   source terrain profile. Insert the declaration before initial update(). */
+const terrainMotionPixels1224=new Map();
+
+function terrainMotionState1224(){
+  return terrainMotionState1224._state||(terrainMotionState1224._state={
+    revision:0,view:null,near:null,source:null,signature:null,rings:null,
+    lastRows:new Array(360),lastOrigin:null,rowsBuilt:0,rowsFallback:0,samples:0
+  });
+}
+function terrainMotionInvalidate1224(){
+  const memo=terrainMotionState1224();memo.revision++;memo.signature=null;
+}
+/* undefined = at least one required tile has not arrived; null = loaded nodata.
+   Preserve normal terrain's pixel-center and nodata rules, including neighbors. */
+function terrainMotionElevation1224(lat,lon,distanceKm,zoomOverride){
+  let cache;
+  try{cache=terrainMotionPixels1224;}catch(e){return undefined;}
+  if(!cache||!Number.isFinite(lat)||!Number.isFinite(lon))return undefined;
+  const first=zoomOverride||((distanceKm<=3)?14:(distanceKm<=15)?12:10);
+  const zooms=first===14?[14,12,10]:first===12?[12,10]:[10];
+  for(const z of zooms){
+    const ref=terrainTilePoint(lat,lon,z);
+    if(!cache.has(ref.key)||!cache.get(ref.key))return undefined;
+    const neighbours=terrainTileNeighbourRefs(ref);
+    for(const nb of neighbours)if(!cache.has(nb.key)||!cache.get(nb.key))return undefined;
+    const elevation=decodeGsiElevationBilinear(cache.get(ref.key),ref.pixelX,ref.pixelY,
+      (dx,dy)=>cache.get(terrainTileNeighbourKey(ref,dx,dy))||null);
+    terrainMotionState1224().samples++;
+    if(Number.isFinite(elevation))return elevation;
+  }
+  return null;
+}
+function terrainMotionGround1224(lat,lon){
+  const memo=terrainMotionState1224(),hit=memo.ground;
+  if(hit&&hit.lat===lat&&hit.lon===lon&&hit.revision===memo.revision)return hit.value;
+  const value=terrainMotionElevation1224(lat,lon,0);
+  memo.ground={lat,lon,revision:memo.revision,value};
+  return value;
+}
+function terrainMotionEye1224(ground){
+  try{
+    if(Number.isFinite(droneHoldElevation)&&cameraRiseM>0)return droneHoldElevation;
+    return ground+eyeHeightAboveGroundM();
+  }catch(e){return ground+1.6;}
+}
+function terrainMotionWater1224(lat,lon,distanceKm,elevation,isNoData,isKnown){
+  let water=isNoData||isKnown;
+  const mapWater=typeof worldMapWaterForDistance==='function'
+    ?worldMapWaterForDistance(lat,lon,distanceKm*1000):null;
+  if(mapWater===true)return true;
+  if(mapWater===false)return water;
+  const terrain=realTerrainState,rings=terrain._osmWaterRings;
+  if(Array.isArray(rings)&&rings.length&&typeof pointInWaterRings==='function'){
+    const centre=terrain._osmWaterRingsCentre;
+    const radius=terrain._osmWaterRingsRadiusKm;
+    const inRange=!Number.isFinite(radius)||
+      (Array.isArray(centre)?terrainDistanceAndBearing(centre[0],centre[1],lat,lon).distanceKm<=radius:distanceKm<=radius);
+    if(inRange&&pointInWaterRings(lat,lon,rings))water=true;
+  }
+  return water;
+}
+/* A complete row is published only after every ordinary/peak/special sample is
+   known. A missing tile cannot produce a new near half attached to an old far half. */
+function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
+  const distances=TERRAIN_DISTANCES_KM,n=distances.length;
+  const base=new Array(n),ridge=new Array(n),coords=new Array(n),selected=new Array(n);
+  const earth=2*6371000*(7/6),toAlt=(e,d,eye)=>Math.atan2(e-eye-d*d/earth,d)*R2D;
+  let previousKm=0;
+  for(let d=0;d<n;d++){
+    const distanceKm=distances[d],coord=terrainDestination(lat,lon,az,distanceKm);
+    const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
+    if(elevation===undefined)return null;
+    base[d]=elevation;coords[d]=coord;
+    let peak=elevation,peakAt=null;
+    let peakAlt=Number.isFinite(elevation)?toAlt(elevation,distanceKm*1000,selectEye):-Infinity;
+    const gapKm=distanceKm-previousKm;
+    if(distanceKm>1.2&&gapKm>.05){
+      const count=distanceKm<=6?clamp(Math.round(gapKm*1000/40),1,5):clamp(Math.round(gapKm*1000/200),2,3);
+      // The primary ring determines zoom for all its peak candidates, as in buildRealTerrainProfile.
+      const zoom=distanceKm<=3?14:distanceKm<=15?12:10;
+      for(let k=1;k<=count;k++){
+        const subKm=distanceKm-gapKm*k/(count+1),subCoord=terrainDestination(lat,lon,az,subKm);
+        const subElevation=terrainMotionElevation1224(subCoord[0],subCoord[1],subKm,zoom);
+        if(subElevation===undefined)return null;
+        if(!Number.isFinite(subElevation))continue;
+        const alt=toAlt(subElevation,subKm*1000,selectEye);
+        if(alt>peakAlt){peak=subElevation;peakAlt=alt;peakAt={distanceKm:subKm,lat:subCoord[0],lon:subCoord[1]};}
+      }
+    }
+    ridge[d]=peak;selected[d]=peakAt;previousKm=distanceKm;
+  }
+  const row=new Array(n);
+  for(let d=0;d<n;d++){
+    const elevation=base[d],point=selected[d];
+    const distanceKm=point?point.distanceKm:distances[d];
+    const sample=coords[d],pointLat=point?point.lat:sample[0],pointLon=point?point.lon:sample[1];
+    const noDataRaw=!Number.isFinite(elevation);
+    const noData=noDataRaw&&((d>0&&!Number.isFinite(base[d-1]))||(d<n-1&&!Number.isFinite(base[d+1])));
+    const known=distanceKm<=LAND_WATER_MAX_KM&&typeof isInKnownWaterBody==='function'
+      &&isInKnownWaterBody(sample[0],sample[1],elevation);
+    let alt=Number.isFinite(elevation)?toAlt(ridge[d],distanceKm*1000,ground+1.6)
+      :noData?-Math.atan2(1.6,distanceKm*1000)*R2D:null;
+    if(!Number.isFinite(alt)){row[d]=null;continue;}
+    row[d]={distanceKm,lat:pointLat,lon:pointLon,alt,
+      water:terrainMotionWater1224(pointLat,pointLon,distanceKm,elevation,noData,known),
+      baseNoData:noData,baseKnown:!!known,
+      baseElevation:Number.isFinite(ridge[d])?ridge[d]:null,_fresh:true};
+  }
+  /* Preserve Fuji's 250m high-density rays and exact summit anchor. */
+  const extras=[];
+  let fuji=false;
+  try{fuji=fujiDetailEnabled;}catch(e){}
+  if(fuji&&typeof FUJI_VISUAL_PROFILE!=='undefined'){
+    const info=terrainDistanceAndBearing(lat,lon,FUJI_VISUAL_PROFILE.lat,FUJI_VISUAL_PROFILE.lon);
+    if(info.distanceKm>=4&&info.distanceKm<=92){
+      const radius=Math.min(8,Math.max(2.5,info.distanceKm*.45));
+      const offset=((az-info.bearing+540)%360)-180,rad=offset*D2R;
+      const lateral=Math.abs(info.distanceKm*Math.sin(rad));
+      if(lateral<=radius){
+        const along=info.distanceKm*Math.cos(rad),half=Math.sqrt(Math.max(0,radius*radius-lateral*lateral));
+        const begin=Math.max(1,along-half),end=along+half;
+        for(let distanceKm=begin;distanceKm<=end+.001;distanceKm+=.25){
+          const coord=terrainDestination(lat,lon,az,distanceKm);
+          const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm,12);
+          if(elevation===undefined)return null;
+          if(Number.isFinite(elevation))extras.push({distanceKm,lat:coord[0],lon:coord[1],
+            alt:toAlt(elevation,distanceKm*1000,ground+1.6),water:false,baseElevation:elevation,
+            baseNoData:false,baseKnown:false,_fresh:true});
+        }
+      }
+      const summitAz=Math.floor(info.bearing);
+      if(az===summitAz||az===(summitAz+1)%360){
+        const elevation=FUJI_VISUAL_PROFILE.summitM;
+        extras.push({distanceKm:info.distanceKm,lat:FUJI_VISUAL_PROFILE.lat,lon:FUJI_VISUAL_PROFILE.lon,
+          alt:toAlt(elevation,info.distanceKm*1000,ground+1.6),water:false,baseElevation:elevation,
+          baseNoData:false,baseKnown:false,_fresh:true});
+      }
+    }
+  }
+  // Older saved rows can contain special samples even when Fuji detail is now
+  // off. Preserve their additional distance candidates, resampling from DEM at
+  // the new origin rather than attaching old geographic heights to new rays.
+  const sourceRow=realTerrainState.rayGrid&&realTerrainState.rayGrid[az];
+  if(!fuji&&sourceRow&&sourceRow.length!==n){
+    const ordinary=new Set(distances),seen=new Set();
+    for(const point of sourceRow){
+      if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<=0||ordinary.has(point.distanceKm)||seen.has(point.distanceKm))continue;
+      const distanceKm=point.distanceKm;seen.add(distanceKm);
+      const coord=terrainDestination(lat,lon,az,distanceKm);
+      const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
+      if(elevation===undefined)return null;
+      if(!Number.isFinite(elevation))continue;
+      extras.push({distanceKm,lat:coord[0],lon:coord[1],alt:toAlt(elevation,distanceKm*1000,ground+1.6),
+        water:terrainMotionWater1224(coord[0],coord[1],distanceKm,elevation,false,false),
+        baseElevation:elevation,baseNoData:false,baseKnown:false,_fresh:true});
+    }
+  }
+  if(extras.length)return row.concat(extras).filter(Boolean).sort((a,b)=>a.distanceKm-b.distanceKm);
+  return row;
+}
+function terrainMotionOriginNear1224(a,b){
+  if(!a||!b)return false;
+  return terrainDistanceAndBearing(a[0],a[1],b[0],b[1]).distanceKm<=.12;
+}
+function terrainRenderGrid1224(){
+  const source=realTerrainState.rayGrid;
+  if(!Array.isArray(source)||source.length!==360)return source;
+  let lat,lon;
+  try{lat=+el.lat.value;lon=+el.lon.value;}catch(e){return source;}
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return source;
+  const memo=terrainMotionState1224();
+  const sampledGround=terrainMotionGround1224(lat,lon);
+  if(sampledGround===undefined)return memo.view&&terrainMotionOriginNear1224(memo.lastOrigin,[lat,lon])?memo.view:source;
+  const ground=sampledGround===null?0:sampledGround,eye=terrainMotionEye1224(ground);
+  const rings=realTerrainState._osmWaterRings;
+  let mapCount=0;try{mapCount=worldMapTiles;}catch(e){}
+  let fuji=false;try{fuji=fujiDetailEnabled;}catch(e){}
+  const signature=[lat,lon,ground,eye,memo.revision,realTerrainState._renderRevision||0,mapCount,fuji?1:0].join('|');
+  if(memo.source===source&&memo.signature===signature&&memo.rings===rings&&memo.view)return memo.view;
+  if(memo.source!==source&&!terrainMotionOriginNear1224(memo.lastOrigin,[lat,lon]))memo.lastRows=new Array(360);
+  memo.source=source;memo.signature=signature;memo.rings=rings;memo.lastOrigin=[lat,lon];
+  const view=new Array(360),near=new Array(360),done=new Uint8Array(360),values=new Array(360),nearValues=new Array(360);
+  // Keep fallback references from the previous completed view; constructing a
+  // new Array getter view does not visit any row or touch every DEM point.
+  for(let az=0;az<360;az++){
+    const resolve=()=>{
+      if(done[az])return values[az];
+      done[az]=1;
+      const built=terrainMotionBuildRow1224(az,lat,lon,ground,eye);
+      if(built){
+        values[az]=built;memo.lastRows[az]={row:built,lat,lon};memo.rowsBuilt++;
+      }else{
+        const previous=memo.lastRows[az];
+        values[az]=previous&&terrainMotionOriginNear1224([previous.lat,previous.lon],[lat,lon])?previous.row:source[az];
+        memo.rowsFallback++;
+      }
+      return values[az];
+    };
+    Object.defineProperty(view,az,{enumerable:true,configurable:false,get:resolve});
+    Object.defineProperty(near,az,{enumerable:true,configurable:false,get:()=>{
+      if(!nearValues[az])nearValues[az]=(resolve()||[]).filter((p,i)=>p?p.distanceKm<=1:(TERRAIN_DISTANCES_KM[i]||Infinity)<=1);
+      return nearValues[az];
+    }});
+  }
+  memo.view=view;memo.near=near;
+  return view;
+}
+function terrainRenderNearGrid1224(){
+  const grid=terrainRenderGrid1224(),memo=terrainMotionState1224();
+  if(grid===memo.view)return memo.near;
+  return realTerrainState.nearSurfaceGrid;
+}
+/* Individual skyline users can obtain the same geometric altitude without
+   asking currentEyeTerrainProfile to eagerly visit all 360 resampled rows. */
+function terrainRenderAltitudeAt1224(azDeg){
+  const grid=terrainRenderGrid1224();
+  if(!Array.isArray(grid))return null;
+  const wrapped=((azDeg%360)+360)%360,a0=Math.floor(wrapped),a1=(a0+1)%360,t=wrapped-a0;
+  const ground=terrainMotionGround1224(+el.lat.value,+el.lon.value);
+  const base=Number.isFinite(ground)?ground:Number.isFinite(realTerrainState.observerElevation)?realTerrainState.observerElevation:0;
+  const eye=base+eyeHeightAboveGroundM(),earth=2*6371000*(7/6);
+  const highest=az=>{
+    let max=0;
+    for(const point of grid[az]||[]){
+      if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<=0)continue;
+      const metres=point.distanceKm*1000;
+      const altitude=Number.isFinite(point.baseElevation)
+        ?Math.atan2(point.baseElevation-eye-metres*metres/earth,metres)*R2D
+        :!point.water&&Number.isFinite(point.alt)?point.alt-Math.atan2(eyeHeightAboveGroundM()-1.6,metres)*R2D:null;
+      if(Number.isFinite(altitude)&&altitude>max)max=altitude;
+    }
+    return clamp(max,0,45);
+  };
+  return lerp(highest(a0),highest(a1),t);
+}
+/* v1224: a world-fixed, synchronous terrain view; network work is separate from motion frames. */
+let terrainMoveLastDraw1224=-Infinity,terrainMoveLastBuild1224=-Infinity,terrainMoveBuildOrigin1224=null;
+let terrainRequestTarget1224='',terrainRequestActive1224='';
+function terrainMotionPrepare1224(){
+  const lat=+el.lat.value,lon=+el.lon.value;
+  const sample=terrainMotionGround1224(lat,lon),ground=sample===null?0:sample;
+  if(Number.isFinite(ground)&&ground!==realTerrainState.observerElevation){
+    realTerrainState.observerElevation=ground;
+    applyDroneAltitudeHold();
+    invalidateCurrentEyeTerrainProfile();
+  }
+}
+function terrainMotionDraw1224(force=false){
+  if(!state)return;
+  const now=performance.now();
+  if(!force&&now-terrainMoveLastDraw1224<33)return;
+  terrainMoveLastDraw1224=now;
+  state.lat=+el.lat.value;state.lon=+el.lon.value;
+  const fine=aimFineResolve(+el.facingAz.value,+el.facingAlt.value,+el.focalLength.value);
+  state.facingAz=fine?fine.az:+el.facingAz.value;state.facingAlt=fine?fine.alt:+el.facingAlt.value;
+  terrainMotionPrepare1224();
+  drawPhoto(photoCtx,state);drawCompassStrip(compassCtx,state);updateSimInfoPanel();
+}
+function terrainRequestTargetSet1224(key){
+  if(terrainRequestTarget1224!==key){
+    terrainRequestTarget1224=key;
+    ++realTerrainState.requestToken;
+    terrainRequestActive1224='';
+  }
+}
+/* Fetch a complete source grid occasionally. Never combine near and far rows from different origins. */
+async function refreshTerrainWhileWalking(){
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||arActive)return;
+  const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
+  terrainRequestTargetSet1224(key);
+  if(realTerrainState.key!==key)realTerrainState.loadingKey=key;
+  if(!driveLogReplayState1223?.playing)terrainMotionDraw1224();
+  if(walkBusy){walkPending=true;return;}
+  const now=performance.now();
+  const travel=terrainMoveBuildOrigin1224?terrainDistanceAndBearing(lat,lon,...terrainMoveBuildOrigin1224).distanceKm*1000:Infinity;
+  if(realTerrainState.profile&&terrainMotionPixels1224.size&&now-terrainMoveLastBuild1224<1200)return;
+  if(realTerrainState.profile&&terrainMotionPixels1224.size&&travel<40&&realTerrainState.failedKey!==key)return;
+  terrainMoveLastBuild1224=now;terrainMoveBuildOrigin1224=[lat,lon];
+  clearTimeout(terrainSettleTimer);terrainSettlePendingKey='';
+  walkBusy=true;walkPending=false;syncSimLoadingLabel();
+  const token=++realTerrainState.requestToken;
+  try{
+    walkSectorStats.full++;
+    const result=await buildRealTerrainProfile(lat,lon,token);
+    const currentKey=`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
+    if(result&&token===realTerrainState.requestToken&&key===currentKey&&key===terrainRequestTarget1224){
+      dropStaleWaterState(lat,lon);applyCachedWaterRings(result);
+      Object.assign(realTerrainState,{key,loadingKey:'',failedKey:'',...result});
+      terrainMotionInvalidate1224();terrainMotionPrepare1224();
+      applyDroneAltitudeHold();document.body.classList.add('real-terrain-visible');
+      drawPhoto._terrainRenderKey=null;invalidateCurrentEyeTerrainProfile();
+      if((!realTerrainState._osmWaterRings?.length||realTerrainState._osmWaterRingsStale)&&!realTerrainState._osmRefinePending){
+        try{refineTerrainWaterWithOsm(lat,lon,key,realTerrainState);}catch(error){}
+      }
+      terrainMotionDraw1224(true);
+    }
+  }catch(error){
+    if(token===realTerrainState.requestToken){realTerrainState.failedKey=key;setExternalDataStatus('elevation','error','直前の地形を保持・通信待ち');}
+  }finally{
+    walkBusy=false;syncSimLoadingLabel();
+    /* A new animation frame will request the latest position. No recursive build storm. */
+    walkPending=false;
+  }
+}
+/* v1224 GPS cloud sync. Uses separately derived 16-character root documents accepted
+   by the existing sync-code rules; never writes the memo document or subcollections.
+   Local tracks remain authoritative until a complete validated revision is durable. */
+const DRIVE_LOG_CLOUD_STATE_KEY1224='starchase-gps-cloud-v1';
+const DRIVE_LOG_CLOUD_CHUNK_BYTES1224=180*1024;
+const DRIVE_LOG_CLOUD_DOC_BYTES1224=280*1024;
+function driveLogCloudBytes1224(value){return new TextEncoder().encode(typeof value==='string'?value:JSON.stringify(value)).length;}
+async function driveLogCloudHash1224(value){const bytes=new TextEncoder().encode(typeof value==='string'?value:JSON.stringify(value));return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');}
+function driveLogCloudError1224(code){const error=new Error(code);error.code=code;return error;}
+function driveLogCloudNormalize1224(track){
+  if(!track||!['string','number'].includes(typeof track.id)||!String(track.id)||String(track.id).length>1024||!Array.isArray(track.points)||track.points.length<2||track.points.length>2000000)throw driveLogCloudError1224('INVALID_TRACK');
+  const points=track.points.map(point=>{
+    if(!Array.isArray(point)||typeof point[0]!=='number'||!Number.isFinite(point[0])||Math.abs(point[0])>864e13||typeof point[1]!=='number'||!Number.isFinite(point[1])||Math.abs(point[1])>90||typeof point[2]!=='number'||!Number.isFinite(point[2])||Math.abs(point[2])>180)throw driveLogCloudError1224('INVALID_POINT');
+    return [point[0],point[1],point[2],typeof point[3]==='number'&&Number.isFinite(point[3])?point[3]:null,typeof point[4]==='number'&&Number.isFinite(point[4])?point[4]:null];
+  });
+  const text=value=>{const result=String(value||'');if(driveLogCloudBytes1224(result)>16000)throw driveLogCloudError1224('INVALID_METADATA');return result;};
+  const meta={startAt:typeof track.startAt==='number'&&Number.isFinite(track.startAt)?track.startAt:points[0][0],endAt:typeof track.endAt==='number'&&Number.isFinite(track.endAt)?track.endAt:points.at(-1)[0],
+    kind:track.kind==='hike'?'hike':'drive',place:text(track.place),source:text(track.source),imported:track.imported===true};
+  if(track.cloudConflictOf)meta.cloudConflictOf=text(track.cloudConflictOf);
+  return {id:String(track.id),meta,points};
+}
+async function driveLogCloudPack1224(track){
+  const clean=driveLogCloudNormalize1224(track),pointsHash=await driveLogCloudHash1224(clean.points),chunks=[];let points=[],bytes=2;
+  const flush=()=>{if(points.length){chunks.push({schema:1,pointsHash,index:chunks.length,points});points=[];bytes=2;}};
+  for(const point of clean.points){const size=driveLogCloudBytes1224(point)+1;if(bytes+size>DRIVE_LOG_CLOUD_CHUNK_BYTES1224)flush();points.push(point);bytes+=size;}flush();
+  const revision={schema:1,id:clean.id,meta:clean.meta,pointCount:clean.points.length,pointsHash,chunkCount:chunks.length};
+  const rev=await driveLogCloudHash1224(revision),manifest={...revision,rev,deleted:false};
+  return {...clean,rev,manifest,chunks};
+}
+function driveLogCloudManifest1224(value){
+  const hash=v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v);
+  if(!value||value.schema!==1||typeof value.id!=='string'||!value.id||value.id.length>1024||!hash(value.rev))throw driveLogCloudError1224('UNSUPPORTED_MANIFEST');
+  if(!Number.isSafeInteger(value.updatedAt)||value.updatedAt<1||value.updatedAt>864e13)throw driveLogCloudError1224('INVALID_MANIFEST');
+  if(value.deleted===true){if(!/^[a-f0-9]{24}$/.test(value.device)||!(value.parentRev===null||hash(value.parentRev)))throw driveLogCloudError1224('INVALID_TOMBSTONE');return value;}
+  if(value.deleted!==false||!value.meta||typeof value.meta!=='object'||!hash(value.pointsHash)||!Number.isInteger(value.pointCount)||value.pointCount<2||value.pointCount>2000000||!Number.isInteger(value.chunkCount)||value.chunkCount<1||value.chunkCount>8192)throw driveLogCloudError1224('INVALID_MANIFEST');
+  const keys=['startAt','endAt','kind','place','source','imported','cloudConflictOf'];if(Object.keys(value.meta).some(key=>!keys.includes(key))||!['hike','drive'].includes(value.meta.kind)||!Number.isFinite(value.meta.startAt)||!Number.isFinite(value.meta.endAt)||typeof value.meta.place!=='string'||typeof value.meta.source!=='string'||typeof value.meta.imported!=='boolean')throw driveLogCloudError1224('INVALID_METADATA');
+  return value;
+}
+async function driveLogCloudDocId1224(id){return 't_'+await driveLogCloudHash1224(String(id));}
+function driveLogCloudChunkId1224(manifest,index){return 'p1_'+manifest.pointsHash+'_'+String(index).padStart(6,'0');}
+function driveLogCloudTrack1224(pack){return {id:pack.id,...pack.meta,points:pack.points.map(p=>[p[0],p[1],p[2],p[3]===null?NaN:p[3],p[4]===null?NaN:p[4]])};}
+function createDriveLogCloud1224(adapter){
+  let state=null,loadPromise=null,busy=null,queued=false,writeChain=Promise.resolve();
+  const now=()=>adapter.now?adapter.now():Date.now(),active=id=>String(adapter.activeTrackId?.()||'')===String(id),sameCode=code=>!adapter.currentCode||adapter.currentCode()===code;
+  const persist=()=>{const text=JSON.stringify(state);writeChain=writeChain.catch(()=>{}).then(()=>adapter.writeState(text));return writeChain;};
+  const load=()=>loadPromise||(loadPromise=(async()=>{const raw=await adapter.readState();if(raw){try{state=JSON.parse(raw);}catch(e){throw driveLogCloudError1224('INVALID_LOCAL_STATE');}if(state?.schema!==1||!state.accounts||typeof state.accounts!=='object'||Array.isArray(state.accounts)||!/^[a-f0-9]{24}$/.test(state.device))throw driveLogCloudError1224('UNSUPPORTED_LOCAL_STATE');}
+    else state={schema:1,accounts:{},device:Array.from(crypto.getRandomValues(new Uint8Array(12)),v=>v.toString(16).padStart(2,'0')).join('')};
+    for(const value of Object.values(state.accounts)){if(!value||!value.records||typeof value.records!=='object')throw driveLogCloudError1224('INVALID_LOCAL_STATE');value.records=Object.assign(Object.create(null),value.records);}return state;})());
+  const account=code=>state.accounts[code]||(state.accounts[code]={records:Object.create(null)});
+  const guard=code=>{if(!sameCode(code))throw driveLogCloudError1224('CODE_CHANGED');};
+  async function localPack(id){const track=adapter.getTracks().find(t=>String(t?.id)===id);if(!track)return null;const sourceSignature=JSON.stringify(track),pack=await driveLogCloudPack1224(track);return {...pack,sourceSignature};}
+  function unchanged(pack,id){const current=adapter.getTracks().find(t=>String(t?.id)===id);return pack?!!current&&JSON.stringify(current)===pack.sourceSignature:!current;}
+  async function observe(code){
+    guard(code);const records=account(code).records;const invalid=new Set(),seen=new Set();
+    for(const track of adapter.getTracks()){
+      const id=String(track?.id??'');if(seen.has(id)){invalid.add(id);continue;}seen.add(id);if(active(id))continue;
+      try{const pack=await driveLogCloudPack1224(track);guard(code);let record=records[id];
+        if(!record)record=records[id]={baseRev:null,observedRev:pack.rev,dirty:true,deleted:false,updatedAt:now()};
+        else if(!record.deleted&&record.observedRev!==pack.rev){record.observedRev=pack.rev;record.dirty=true;record.updatedAt=Math.max(now(),(+record.updatedAt||0)+1);}
+      }catch(error){if(error.code==='CODE_CHANGED')throw error;invalid.add(id);}
+    }
+    await persist();return invalid;
+  }
+  async function replace(code,id,expectedRev,incoming){
+    guard(code);if(active(id))throw driveLogCloudError1224('LOCAL_CHANGED');const record=account(code).records[id];
+    const check=()=>{guard(code);if(active(id)||account(code).records[id]!==record||(incoming&&record?.deleted))throw driveLogCloudError1224('LOCAL_CHANGED');};
+    const current=await localPack(id);guard(code);
+    if((current?.rev||null)!==expectedRev||!unchanged(current,id))throw driveLogCloudError1224('LOCAL_CHANGED');check();
+    const tracks=adapter.getTracks().slice(),index=tracks.findIndex(t=>String(t?.id)===id);
+    if(incoming){if(index>=0)tracks[index]=incoming;else tracks.push(incoming);}else if(index>=0)tracks.splice(index,1);
+    // The adapter persists first, then publishes in memory, without discarding other new local tracks.
+    await adapter.saveTracks(tracks,check);check();adapter.changed?.();return record;
+  }
+  async function download(code,manifest){
+    const points=[];
+    for(let index=0;index<manifest.chunkCount;index++){
+      const doc=await adapter.transport.get(code,'gpsChunks',driveLogCloudChunkId1224(manifest,index));guard(code);const chunk=doc?.value;
+      if(!chunk||chunk.schema!==1||chunk.index!==index||chunk.pointsHash!==manifest.pointsHash||!Array.isArray(chunk.points)||!chunk.points.length||driveLogCloudBytes1224(chunk)>DRIVE_LOG_CLOUD_DOC_BYTES1224)throw driveLogCloudError1224('INCOMPLETE_CHUNKS');
+      for(const point of chunk.points)points.push(point);if(points.length>manifest.pointCount)throw driveLogCloudError1224('INVALID_CHUNKS');
+    }
+    if(points.length!==manifest.pointCount||await driveLogCloudHash1224(points)!==manifest.pointsHash)throw driveLogCloudError1224('INVALID_CHUNKS');
+    const candidate={...manifest.meta,id:manifest.id,points},pack=await driveLogCloudPack1224(candidate);
+    if(pack.id!==manifest.id||pack.rev!==manifest.rev)throw driveLogCloudError1224('INVALID_REVISION');return driveLogCloudTrack1224(pack);
+  }
+  async function conflict(code,pack,stat){
+    const id='gps_conflict_'+await driveLogCloudHash1224(pack.id+':'+pack.rev),current=await localPack(pack.id);guard(code);
+    const record=account(code).records[pack.id],check=()=>{guard(code);if(account(code).records[pack.id]!==record||record?.deleted)throw driveLogCloudError1224('LOCAL_CHANGED');};
+    if(active(pack.id)||current?.rev!==pack.rev||!unchanged(current,pack.id))throw driveLogCloudError1224('LOCAL_CHANGED');check();
+    if(!adapter.getTracks().some(track=>String(track?.id)===id)){
+      const track=driveLogCloudTrack1224(pack);track.id=id;track.cloudConflictOf=pack.id;track.source=(track.source||'GPSログ')+'（競合コピー）';
+      await adapter.saveTracks(adapter.getTracks().concat([track]),check);check();const copy=await driveLogCloudPack1224(track);
+      account(code).records[id]={baseRev:null,observedRev:copy.rev,dirty:true,deleted:false,updatedAt:now()};await persist();adapter.changed?.();stat.conflicts++;
+    }
+  }
+  async function remoteConflict(code,manifest,stat){
+    const track=await download(code,manifest);guard(code);const pack=await driveLogCloudPack1224(track),id='gps_conflict_'+await driveLogCloudHash1224(pack.id+':'+pack.rev);
+    if(!adapter.getTracks().some(t=>String(t?.id)===id)){
+      const record=account(code).records[manifest.id],check=()=>{guard(code);if(account(code).records[manifest.id]!==record)throw driveLogCloudError1224('LOCAL_CHANGED');};
+      track.id=id;track.cloudConflictOf=pack.id;track.source=(track.source||'GPSログ')+'（競合コピー）';await adapter.saveTracks(adapter.getTracks().concat([track]),check);check();
+      const copy=await driveLogCloudPack1224(track);account(code).records[id]={baseRev:null,observedRev:copy.rev,dirty:true,deleted:false,updatedAt:now()};await persist();adapter.changed?.();stat.conflicts++;
+    }
+  }
+  async function upload(code,id,record,pack,remote,stat){
+    guard(code);let manifest;
+    if(record.deleted){manifest={schema:1,id,deleted:true,updatedAt:record.updatedAt,parentRev:remote?.value?.rev||record.baseRev||null,device:state.device,
+      rev:await driveLogCloudHash1224({deleted:true,id,at:record.updatedAt,device:state.device})};}
+    else{
+      for(const chunk of pack.chunks){
+        guard(code);const chunkId=driveLogCloudChunkId1224(pack.manifest,chunk.index);
+        try{await adapter.transport.put(code,'gpsChunks',chunkId,chunk,record.updatedAt,{exists:false});stat.chunkWrites++;}
+        catch(error){if(error.code!=='PRECONDITION')throw error;const old=await adapter.transport.get(code,'gpsChunks',chunkId);guard(code);if(!old||JSON.stringify(old.value)!==JSON.stringify(chunk))throw driveLogCloudError1224('CHUNK_COLLISION');}
+      }
+      const latest=await localPack(id);guard(code);if(active(id)||latest?.rev!==pack.rev||!unchanged(latest,id)||account(code).records[id].deleted)throw driveLogCloudError1224('LOCAL_CHANGED');
+      manifest={...pack.manifest,updatedAt:record.updatedAt};
+    }
+    guard(code);if(account(code).records[id]!==record)throw driveLogCloudError1224('LOCAL_CHANGED');if(remote&&!remote.updateTime)throw driveLogCloudError1224('INVALID_REMOTE_VERSION');
+    await adapter.transport.put(code,'gpsTracks',await driveLogCloudDocId1224(id),manifest,record.updatedAt,remote?{updateTime:remote.updateTime}:{exists:false});guard(code);
+    record.baseRev=manifest.rev;record.observedRev=pack?.rev||record.observedRev;record.dirty=false;record.deleted=manifest.deleted;await persist();stat.uploaded++;return manifest;
+  }
+  async function run(code){
+    const stat={ok:true,uploaded:0,downloaded:0,deleted:0,conflicts:0,chunkWrites:0,skipped:0,errors:[]};
+    if(!/^[A-Z2-9]{16}$/.test(String(code||'')))throw driveLogCloudError1224('NO_CODE');
+    await adapter.loadTracks();await load();guard(code);const invalid=await observe(code),records=account(code).records;
+    const docs=await adapter.transport.list(code,'gpsTracks');guard(code);const remote=new Map(),blocked=new Set();
+    for(const doc of docs){try{const m=driveLogCloudManifest1224(doc.value),revision=m.deleted?{deleted:true,id:m.id,at:m.updatedAt,device:m.device}:{schema:1,id:m.id,meta:m.meta,pointCount:m.pointCount,pointsHash:m.pointsHash,chunkCount:m.chunkCount};
+      if(doc.id!==await driveLogCloudDocId1224(m.id)||remote.has(m.id)||m.rev!==await driveLogCloudHash1224(revision))throw driveLogCloudError1224('INVALID_MANIFEST');remote.set(m.id,{...doc,value:m});}
+      catch(error){stat.ok=false;stat.skipped++;stat.errors.push(error.code||'INVALID_MANIFEST');if(doc.value?.id)blocked.add(String(doc.value.id));}}
+    const ids=new Set([...Object.keys(records),...remote.keys(),...adapter.getTracks().map(t=>String(t?.id??''))]);
+    for(const id of ids){
+      try{
+        guard(code);if(active(id)||invalid.has(id)||blocked.has(id)){stat.skipped++;continue;}
+        let local=await localPack(id),record=records[id],doc=remote.get(id),m=doc?.value;guard(code);
+        if(local&&!record)record=records[id]={baseRev:null,observedRev:local.rev,dirty:true,deleted:false,updatedAt:now()};
+        if(local&&record&&!record.deleted&&record.observedRev!==local.rev){record.observedRev=local.rev;record.dirty=true;record.updatedAt=Math.max(now(),(+record.updatedAt||0)+1);await persist();}
+        if(!doc){if(record?.deleted||local)await upload(code,id,record,local,null,stat);continue;}
+        if(m.deleted){
+          if(local&&!record?.deleted&&record?.dirty)await conflict(code,local,stat);
+          const previous=local?await replace(code,id,local.rev,null):record;if(records[id]!==previous)throw driveLogCloudError1224('LOCAL_CHANGED');
+          records[id]={baseRev:m.rev,observedRev:local?.rev||record?.observedRev||null,deleted:true,dirty:false,updatedAt:m.updatedAt||now()};await persist();stat.deleted+=local?1:0;continue;
+        }
+        if(record?.deleted){
+          if((record.baseRev||record.observedRev)!==m.rev)await remoteConflict(code,m,stat);
+          // Explicit deletion targets the original ID; concurrent remote edits survive as a copy.
+          if(local)await replace(code,id,local.rev,null);
+          await upload(code,id,record,null,doc,stat);continue;
+        }
+        if(local?.rev===m.rev){if(record?.baseRev!==m.rev)await download(code,m);records[id]={baseRev:m.rev,observedRev:local.rev,deleted:false,dirty:false,updatedAt:m.updatedAt||now()};await persist();continue;}
+        if(local&&record?.baseRev===m.rev){await upload(code,id,record,local,doc,stat);continue;}
+        const incoming=await download(code,m);guard(code);
+        if(local&&(!record?.baseRev||record.dirty))await conflict(code,local,stat);
+        const previous=await replace(code,id,local?.rev||null,incoming);if(records[id]!==previous)throw driveLogCloudError1224('LOCAL_CHANGED');records[id]={baseRev:m.rev,observedRev:m.rev,deleted:false,dirty:false,updatedAt:m.updatedAt||now()};await persist();stat.downloaded++;
+      }catch(error){if(error.code==='CODE_CHANGED')throw error;stat.ok=false;stat.skipped++;stat.errors.push(error.code||'SYNC_FAILED');}
+    }
+    if(stat.conflicts)adapter.reschedule?.();return stat;
+  }
+  return {
+    async sync(code){if(busy){queued=true;return busy;}busy=run(code).catch(error=>({ok:false,uploaded:0,downloaded:0,deleted:0,conflicts:0,chunkWrites:0,skipped:0,errors:[error.code||'SYNC_FAILED']}));
+      try{return await busy;}finally{busy=null;if(queued){queued=false;adapter.reschedule?.();}}},
+    async markDeleted(code,items){await load();const records=account(code).records;
+      for(const item of items||[]){const id=String(typeof item==='object'?item?.id:item);if(!id||id==='undefined')continue;
+        const old=records[id]||{},pack=await localPack(id);records[id]={...old,baseRev:old.baseRev||null,observedRev:pack?.rev||old.observedRev||null,deleted:true,dirty:true,updatedAt:Math.max(now(),(+old.updatedAt||0)+1)};}
+      await persist();},
+    inspect:()=>state
+  };
+}
+async function driveLogCloudRootKey1224(code,kind,id){
+  if(!/^[A-Z2-9]{16}$/.test(String(code||'')))throw driveLogCloudError1224('NO_CODE');
+  const hash=await driveLogCloudHash1224('StarChase GPS root document v1\0'+code+'\0'+kind+'\0'+id),alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let buffer=0,bits=0,key='';
+  for(let i=0;i<20;i+=2){buffer=(buffer<<8)|parseInt(hash.slice(i,i+2),16);bits+=8;while(bits>=5){bits-=5;key+=alphabet[(buffer>>>bits)&31];}}
+  if(key===code)throw driveLogCloudError1224('NAMESPACE_COLLISION');return key;
+}
+function createDriveLogCloudRootTransport1224(options){
+  const keyCache=new Map(),ownerCache=new Map();
+  const key=(code,kind,id)=>{const cacheId=code+'\0'+kind+'\0'+id;if(!keyCache.has(cacheId))keyCache.set(cacheId,driveLogCloudRootKey1224(code,kind,id));return keyCache.get(cacheId);};
+  const owner=code=>{if(!ownerCache.has(code))ownerCache.set(code,driveLogCloudHash1224('StarChase GPS owner v1\0'+code));return ownerCache.get(code);};
+  const url=async(code,kind,id)=>`https://firestore.googleapis.com/v1/projects/${options.projectId}/databases/(default)/documents/sync/${await key(code,kind,id)}?key=${options.apiKey}`;
+  const check=response=>{if(!response.ok)throw driveLogCloudError1224(response.status===403?'RULES':response.status===409||response.status===412?'PRECONDITION':'HTTP_'+response.status);};
+  async function decode(code,kind,id,doc){
+    let wrapper;try{wrapper=JSON.parse(doc.fields?.data?.stringValue||'null');}catch(error){throw driveLogCloudError1224('INVALID_REMOTE_DOCUMENT');}
+    if(!wrapper||wrapper.namespace!=='starchase-gps-v1'||wrapper.owner!==await owner(code)||wrapper.kind!==kind||wrapper.id!==id)throw driveLogCloudError1224('NAMESPACE_COLLISION');
+    return {id,value:wrapper.value,updateTime:doc.updateTime||''};
+  }
+  async function get(code,kind,id){const response=await options.fetch(await url(code,kind,id),{cache:'no-store'},{kind:'read',docs:1});if(response.status===404)return null;check(response);return decode(code,kind,id,response.json());}
+  async function write(code,kind,id,value,at,precondition){
+    const wrapper={namespace:'starchase-gps-v1',owner:await owner(code),kind,id,value},text=JSON.stringify(wrapper),body={fields:{data:{stringValue:text},updatedAt:{integerValue:String(Math.max(1,Math.round(+at||Date.now())))},app:{stringValue:'starchase'}}};
+    if(driveLogCloudBytes1224(text)>DRIVE_LOG_CLOUD_DOC_BYTES1224||driveLogCloudBytes1224(text)>=300000||driveLogCloudBytes1224(body)>900*1024)throw driveLogCloudError1224('DOCUMENT_TOO_LARGE');
+    const condition=precondition?.updateTime?'&currentDocument.updateTime='+encodeURIComponent(precondition.updateTime):'&currentDocument.exists=false';
+    const response=await options.fetch(await url(code,kind,id)+condition,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},{kind:'write',docs:1});check(response);return decode(code,kind,id,response.json());
+  }
+  function registryIds(doc){
+    if(!doc)return [];const value=doc.value;
+    if(!value||value.schema!==1||!Array.isArray(value.ids)||value.ids.length>3500||value.ids.some(id=>typeof id!=='string'||!/^t_[a-f0-9]{64}$/.test(id))||new Set(value.ids).size!==value.ids.length)throw driveLogCloudError1224('INVALID_REGISTRY');
+    return value.ids;
+  }
+  async function register(code,id){
+    if(!/^t_[a-f0-9]{64}$/.test(id))throw driveLogCloudError1224('INVALID_MANIFEST_ID');
+    for(let attempt=0;attempt<12;attempt++){
+      const registry=await get(code,'registry','gpsTracks'),ids=registryIds(registry);if(ids.includes(id))return;
+      if(ids.length>=3500)throw driveLogCloudError1224('REGISTRY_FULL');
+      if(registry&&!registry.updateTime)throw driveLogCloudError1224('INVALID_REMOTE_VERSION');
+      try{await write(code,'registry','gpsTracks',{schema:1,ids:ids.concat([id])},Date.now(),registry?{updateTime:registry.updateTime}:{exists:false});return;}
+      catch(error){if(error.code!=='PRECONDITION')throw error;}
+    }throw driveLogCloudError1224('REGISTRY_CONFLICT');
+  }
+  return {
+    async list(code,kind){if(kind!=='gpsTracks')throw driveLogCloudError1224('INVALID_COLLECTION');const ids=registryIds(await get(code,'registry','gpsTracks')),result=[];let index=0;
+      await Promise.all(Array.from({length:Math.min(4,ids.length)},async()=>{while(index<ids.length){const id=ids[index++],doc=await get(code,kind,id);if(doc)result.push(doc);}}));return result;},
+    get,
+    async put(code,kind,id,value,at,precondition){if(kind==='gpsTracks')await register(code,id);else if(kind!=='gpsChunks')throw driveLogCloudError1224('INVALID_COLLECTION');return write(code,kind,id,value,at,precondition);}
+  };
+}
+function driveLogCloudTransport1224(){
+  return createDriveLogCloudRootTransport1224({projectId:MEMO_FIREBASE.projectId,apiKey:MEMO_FIREBASE.apiKey,fetch:cloudFetch});
+}
+let driveLogCloudService1224=null,driveLogCloudTimer1224=0;
+let driveLogCloudLocalWriteChain1224=Promise.resolve();
+function driveLogCloudLocalWrite1224(text){driveLogCloudLocalWriteChain1224=driveLogCloudLocalWriteChain1224.catch(()=>{}).then(()=>planKvSet(DRIVE_LOG_KEY,text===undefined?JSON.stringify(driveLogData):text));return driveLogCloudLocalWriteChain1224;}
+function driveLogCloudSay1224(text,bad=false){const box=document.getElementById('driveLogCloudStatus1224');if(box){box.textContent=text;box.classList.toggle('error',bad);}}
+function driveLogCloudServiceGet1224(){return driveLogCloudService1224||(driveLogCloudService1224=createDriveLogCloud1224({
+  loadTracks:async()=>{await driveLogLoad();if(!driveLogLoaded)throw driveLogCloudError1224('LOCAL_READ_FAILED');},getTracks:()=>driveLogData.tracks,activeTrackId:()=>driveLogRecording?driveLogTrack?.id:null,currentCode:()=>memoSyncCode,
+  readState:()=>planKvGet(DRIVE_LOG_CLOUD_STATE_KEY1224),writeState:text=>planKvSet(DRIVE_LOG_CLOUD_STATE_KEY1224,text),transport:driveLogCloudTransport1224(),
+  async saveTracks(tracks,check){check?.();const before=JSON.stringify(driveLogData),candidate={...driveLogData,tracks};await driveLogCloudLocalWrite1224(JSON.stringify(candidate));
+    try{check?.();if(JSON.stringify(driveLogData)!==before)throw driveLogCloudError1224('LOCAL_CHANGED');}catch(error){await driveLogCloudLocalWrite1224();throw error;}driveLogData=candidate;},
+  changed:()=>{driveLogRenderList();if(typeof driveLogReplayValidate1223==='function')driveLogReplayValidate1223();if(driveLogSceneVisible)update();},reschedule:()=>driveLogCloudSchedule1224()
+}));}
+function driveLogCloudSchedule1224(){if(driveLogCloudTimer1224)clearTimeout(driveLogCloudTimer1224);driveLogCloudTimer1224=setTimeout(()=>{driveLogCloudTimer1224=0;if(!driveLogRecording)driveLogCloudSync1224();},10000);}
+async function driveLogCloudMarkDeleted1224(items){if(!memoSyncCode)await memoLoadLocal();await driveLogCloudServiceGet1224().markDeleted(memoSyncCode,items);}
+async function driveLogCloudSync1224(){
+  if(!memoSyncCode||!/^[A-Z2-9]{16}$/.test(memoSyncCode)){driveLogCloudSay1224('メモの「端末間の同期」で同期コードを設定してください。',true);const section=document.getElementById('memoSection');section?.classList.remove('collapsed');const details=section?.querySelector('details');if(details)details.open=true;section?.scrollIntoView({block:'center'});document.getElementById('memoCodeEnterBtn')?.focus();return {ok:false,errors:['NO_CODE']};}
+  if(driveLogRecording){driveLogCloudSay1224('記録中のログは終了後に同期します。端末内には保存しています。');return {ok:false,errors:['RECORDING']};}
+  const button=document.getElementById('driveLogCloudBtn1224');if(button)button.disabled=true;driveLogCloudSay1224('GPSログを同期しています…');
+  try{const result=await driveLogCloudServiceGet1224().sync(memoSyncCode);const errors=result.errors||[];
+    let text=`GPSログ：送信${result.uploaded||0}・受信${result.downloaded||0}・削除${result.deleted||0}${result.conflicts?'・競合コピー'+result.conflicts:''}`;
+    if(errors.includes('RULES'))text='GPSログをクラウドが許可しませんでした。既存同期コードとクラウド側の設定を確認してください。端末内のログは保持しています。';
+    else if(errors.includes('REGISTRY_FULL'))text='GPSログのクラウド一覧が上限に達しました。追加のログは端末内に保持しています。';
+    else if(!result.ok)text+='。一部を同期できませんでした。端末内のログは保持し、次回再試行します。';
+    else if(result.skipped)text+='。不正または記録中のログは端末内に保持しました。';
+    driveLogCloudSay1224(text,!result.ok);return result;
+  }catch(error){driveLogCloudSay1224('GPSログを同期できませんでした。端末内のログは保持しています。',true);return {ok:false,errors:['SYNC_FAILED']};}
+  finally{if(button)button.disabled=false;}
+}
+document.getElementById('driveLogCloudBtn1224')?.addEventListener('click',()=>driveLogCloudSync1224());
+document.getElementById('driveLogCloudCodeBtn1224')?.addEventListener('click',()=>{
+  const section=document.getElementById('memoSection');section?.classList.remove('collapsed');section?.scrollIntoView({behavior:'smooth',block:'start'});
+  document.getElementById('memoCodeEnterBtn')?.focus();
+});
+document.getElementById('driveLogSection')?.querySelector('.ctrl-group-toggle')?.addEventListener('click',()=>{setTimeout(()=>{if(!document.getElementById('driveLogSection').classList.contains('collapsed'))driveLogCloudSync1224();},0);});
+window.addEventListener('online',()=>driveLogCloudSchedule1224());
 const moonTodayCtx=el.moonTodayIcon.getContext("2d");
 function renderMoonToday(s){
   moonCalendarSyncObservation1219(s);
@@ -50157,47 +50746,7 @@ function walkSectorForBuild(){
   return {azSet,previous:prev};
 }
 /* 移動先の地形を作り直す。多重実行を避け、実行中に来た要求は1回だけ後追いする。 */
-async function refreshTerrainWhileWalking(){
-  if(walkBusy){ walkPending=true; return; }
-  walkBusy=true;
-  syncSimLoadingLabel();
-  try{
-    const lat=+el.lat.value, lon=+el.lon.value;
-    if(Number.isFinite(lat)&&Number.isFinite(lon)){
-      const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
-      const token=++realTerrainState.requestToken;
-      const partial=walkSectorForBuild();   /* 【v988】見えている方位だけ */
-      if(partial)walkSectorStats.partial++;else walkSectorStats.full++;
-      const result=await buildRealTerrainProfile(lat,lon,token,partial);
-      if(result&&token===realTerrainState.requestToken&&
-          key===`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`){
-        /* 【v1211】解除・対象切替後に前の地点のDEMを採用しない。 */
-        /* 【v847】1.1km四方の取得単位をまたいだときだけ白紙に戻す。
-           同じ単位の中を歩いている間は、下の当て直しで前のポリゴンを使い回す。 */
-        dropStaleWaterState(lat,lon);
-        applyCachedWaterRings(result);
-        Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...result});
-        /* 【v1019】升目をまたいでリングを捨てた直後（または未取得）は、新しい升目の水域を取りに行く。
-           取得中は _osmRefinePending が二重起動を止める。届いたら realTerrainState の格子へ当てて描き直す。 */
-        if((!(Array.isArray(realTerrainState._osmWaterRings)&&realTerrainState._osmWaterRings.length)||realTerrainState._osmWaterRingsStale)&&!realTerrainState._osmRefinePending){   /* 【v1038】古い形状を持ったままでも取りに行く */
-          try{refineTerrainWaterWithOsm(lat,lon,key,realTerrainState);}catch(e){}
-        }
-        applyDroneAltitudeHold(); // 新しい地面標高に合わせて飛行高度を保つ
-        document.body.classList.add("real-terrain-visible");
-        drawPhoto._terrainRenderKey=null;
-        update();
-      }else{
-        /* resultがnull＝必要なDEMタイルが未取得。地形は直前のものを保つが、
-           描き直しまで止めると「操作しても画面が動かない=効いていない」ように見える。
-           位置と向きは確定しているので、そのぶんだけでも描き直す。 */
-        update();
-      }
-    }
-  }catch(e){}
-  walkBusy=false;
-  syncSimLoadingLabel();
-  if(walkPending){ walkPending=false; refreshTerrainWhileWalking(); }
-}
+
 
 /* 観測地点を前後左右へずらす。方位はカメラの向きを基準にする。 */
 function stepObserver(forwardM,strafeM){
@@ -50280,7 +50829,6 @@ function endWalk(){
   walkMoved=false;
   const lat=+el.lat.value, lon=+el.lon.value;
   if(Number.isFinite(lat)&&Number.isFinite(lon)){
-    realTerrainState.key=""; // 同じキーで早期returnされないようにする
     requestRealTerrainProfile(lat,lon);
     requestMountainNames(lat,lon);
     reverseGeocodeAndShow(lat,lon);
