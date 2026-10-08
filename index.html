@@ -4966,9 +4966,16 @@
     .moon-cal-dialog{background:linear-gradient(145deg,rgba(24,29,58,.91),rgba(11,16,36,.91));}
   }
 
-/* 【v1220】既存の最終CSSの後へ挿入。すべてflower1220専用。 */
+/* 【v1221】既存の最終CSSの後へ挿入。v1220 DOM/API互換。 */
 .flower1220-draw-bar[hidden],.flower1220-error[hidden]{display:none!important;}
-.flower1220-draw-bar{position:fixed;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));margin:0 auto;z-index:10010;width:auto;max-width:560px;padding:12px;border:1px solid rgba(220,182,125,.64);border-radius:14px;background:rgba(15,21,43,.96);color:#f1efe5;box-shadow:0 8px 35px rgba(0,0,0,.45);}
+.flower1220-draw-bar{position:absolute;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));margin:0 auto;z-index:1100;width:auto;max-width:560px;padding:12px;border:1px solid rgba(220,182,125,.64);border-radius:14px;background:rgba(15,21,43,.96);color:#f1efe5;box-shadow:0 8px 35px rgba(0,0,0,.45);}
+/* 作図中だけ地図をbodyへ移して全画面化。終了後はDOM/overflow/scrollを復旧する。 */
+.osm-map-panel.flower1221-map-fullscreen{display:block!important;position:fixed!important;inset:0!important;z-index:10070!important;width:auto!important;height:auto!important;max-width:none!important;max-height:none!important;margin:0!important;border:0!important;border-radius:0!important;isolation:isolate;}
+.flower1221-map-fullscreen>.osm-map{position:absolute!important;inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);width:auto!important;height:auto!important;}
+.flower1221-map-fullscreen .leaflet-bottom{bottom:145px;}
+.flower1221-vertex-hit{display:flex;align-items:center;justify-content:center;border:0;background:transparent;touch-action:none;cursor:grab;}
+.flower1221-vertex-hit:active{cursor:grabbing;}
+.flower1221-vertex-hit:focus-visible{outline:2px solid #bbb0fc;outline-offset:1px;border-radius:50%;}
 .flower1220-draw-copy{display:flex;flex-direction:column;gap:5px;margin:0 3px 10px;}
 .flower1220-draw-copy strong{font:600 12px/1.4 'Inter',sans-serif;color:#e5c494;}
 .flower1220-draw-copy span{font:400 11px/1.5 'Inter',sans-serif;color:#c0c5df;}
@@ -4989,7 +4996,8 @@
 .flower1220-form{display:flex;flex-direction:column;min-width:0;min-height:0;margin:0;}
 .flower1220-form-body{min-height:0;padding:17px 22px 18px;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#57547f transparent;}
 .flower1220-help{margin:0 0 15px;color:#aab2d0;font:400 10px/1.7 'Inter',sans-serif;}
-.flower1220-range-summary{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 17px;padding:9px 10px;border:1px solid rgba(161,165,218,.19);border-radius:10px;background:rgba(37,41,75,.35);}
+.flower1220-range-summary{display:flex;flex-direction:column;align-items:stretch;gap:9px;margin:0 0 17px;padding:9px 10px;border:1px solid rgba(161,165,218,.19);border-radius:10px;background:rgba(37,41,75,.35);}
+.flower1221-range-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
 .flower1220-range-summary>span{color:#d0d4e7;font:500 10px/1.5 'IBM Plex Mono',monospace;}
 .flower1220-overlay .flower1220-range-summary button{flex:none;min-height:44px;padding:7px 9px;font-size:10px;}
 .flower1220-field{display:flex;flex-direction:column;gap:7px;min-width:0;margin:0 0 17px;}
@@ -5047,12 +5055,12 @@
     </header>
     <form id="flowerFieldForm1220" class="flower1220-form" novalidate>
       <div class="flower1220-form-body">
-        <p id="flowerFieldHelp1220" class="flower1220-help">地形の起伏に沿って花畑を描きます。草丈は地面から花の上端までの高さです。</p>
-        <div class="flower1220-range-summary"><span id="flowerFieldRangeSummary1220"></span><button id="flowerFieldRedrawBtn1220" type="button">範囲を描き直す</button></div>
+        <p id="flowerFieldHelp1220" class="flower1220-help">地形の起伏に沿って、地面から草丈まで厚みのある花畑を描きます。番号の点は地図上でドラッグして調整できます。</p>
+        <div class="flower1220-range-summary"><span id="flowerFieldRangeSummary1220"></span><div class="flower1221-range-actions"><button id="flowerFieldAdjustBtn1220" type="button">範囲を調整</button><button id="flowerFieldRedrawBtn1220" type="button">範囲を描き直す</button></div></div>
         <label class="flower1220-field" for="flowerFieldName1220"><span>花畑の名前</span><input id="flowerFieldName1220" type="text" maxlength="60" autocomplete="off" value="彼岸花畑"></label>
         <div class="flower1220-two-cols">
           <label class="flower1220-field" for="flowerFieldKind1220"><span>花の種類</span><select id="flowerFieldKind1220"><option value="higanbana">彼岸花</option><option value="cosmos">コスモス</option><option value="sunflower">ひまわり</option><option value="custom">自由な色</option></select></label>
-          <label class="flower1220-field" for="flowerFieldHeight1220"><span>草丈 <small>m</small></span><input id="flowerFieldHeight1220" type="number" min="0" max="5" step="0.05" inputmode="decimal" value="0.5"></label>
+          <label class="flower1220-field" for="flowerFieldHeight1220"><span>草丈 <small>m</small></span><input id="flowerFieldHeight1220" type="number" min="0" max="5" step="0.05" inputmode="decimal" value="0.5" aria-describedby="flowerFieldHeightHelp1221"><small id="flowerFieldHeightHelp1221">地面から花の上端までの高さ。0mでは地表の模様になります。</small></label>
         </div>
         <div class="flower1220-field"><span id="flowerFieldColorLabel1220">花の色</span><div class="flower1220-color-row"><input id="flowerFieldColor1220" type="color" value="#c8323e" aria-labelledby="flowerFieldColorLabel1220"><input id="flowerFieldColorHex1220" type="text" value="#c8323e" maxlength="7" spellcheck="false" autocomplete="off" aria-label="花の色を16進数で指定" placeholder="#c8323e"></div></div>
         <label class="flower1220-field" for="flowerFieldOpacity1220"><span>色の濃さ <output id="flowerFieldOpacityValue1220" for="flowerFieldOpacity1220">65%</output></span><input id="flowerFieldOpacity1220" type="range" min="10" max="100" step="1" value="65"></label>
@@ -7285,7 +7293,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1220-flower-fields";
+const APP_VERSION="1221-flower-volume";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -43640,7 +43648,7 @@ function drawPhoto(ctx,s){
             return ground;
           };
           if(flowerFieldHasVisible1220())flowerFieldRecords1220=flowerFieldProject1220({
-            lat:originLat,lon:originLon,elevation:drawnElevationAtXY,vector:groundVec,planes:clipPlanes,project:projectGround,
+            lat:originLat,lon:originLon,elevation:drawnElevationAtXY,vector:groundVec,planes:clipPlanes,project:projectGround,frontFacesOnly:true,
             clearance:(east,north,elevation)=>{
               const distance=Math.hypot(east,north);
               const surface=visibleAltAt(norm360(atan2d(east,north)),distance/1000);
@@ -47326,7 +47334,7 @@ document.addEventListener("keydown",event=>{
 document.addEventListener("keyup",event=>{if(moonCalendarOpen1219)event.stopImmediatePropagation();},true);
 window.addEventListener("resize",()=>{if(moonCalendarOpen1219)moonCalendarScheduleChart1219();});
 
-/* 【v1220】花畑の境界・地形用2Dメッシュ・持ち運び用KMZ。
+/* 【v1221】花畑の境界・地形用2Dメッシュ・草丈の立体KMZ。
    地形取得や描画は呼び出し側が担当する。保存する境界と設定が正本。 */
 const FLOWER_FIELD_PRESETS1220={
   higanbana:{color:"#d54348",heightM:.5},cosmos:{color:"#e78fba",heightM:.8},
@@ -47496,6 +47504,34 @@ function flowerFieldVertexLatLon1220(mesh,vertex){
   const point=typeof vertex==="number"?mesh.vertices[vertex]:vertex;
   return [mesh.origin.lat+point[1]/mesh.metresPerDegreeLat,flowerFieldWrappedLon1220(mesh.origin.lon+point[0]/mesh.metresPerDegreeLon)];
 }
+function flowerFieldVolumeMesh1221(specOrMesh){
+  const mesh=specOrMesh&&Array.isArray(specOrMesh.vertices)&&Array.isArray(specOrMesh.triangles)?specOrMesh:flowerFieldMesh1220(specOrMesh);
+  const edges=new Map();
+  if(!mesh.spec||!mesh.vertices.length||!mesh.triangles.length||mesh.triangles.length>FLOWER_FIELD_MAX_TRIANGLES1220)throw flowerFieldError1220("立体の上面を読み取れません。");
+  for(const triangle of mesh.triangles){
+    if(!Array.isArray(triangle)||triangle.length!==3||triangle.some(i=>!Number.isInteger(i)||i<0||i>=mesh.vertices.length)||
+      flowerFieldCross1220(...triangle.map(i=>mesh.vertices[i]))<=0)throw flowerFieldError1220("立体の上面が不正です。");
+    for(let k=0;k<3;k++){
+      const a=triangle[k],b=triangle[(k+1)%3],key=a<b?`${a}:${b}`:`${b}:${a}`,edge=edges.get(key);
+      if(!edge)edges.set(key,{a,b,count:1});
+      else{if(edge.count!==1||edge.a!==b||edge.b!==a)throw flowerFieldError1220("立体の上面に重複した辺があります。");edge.count++;}
+    }
+  }
+  // CCW面の一度だけ現れる有向辺。内部は左、水平の外向きは (dy,-dx)。
+  const outgoing=new Map(),incoming=new Set();
+  for(const edge of edges.values())if(edge.count===1){
+    if(outgoing.has(edge.a)||incoming.has(edge.b))throw flowerFieldError1220("立体の境界が連続していません。");
+    outgoing.set(edge.a,edge.b);incoming.add(edge.b);
+  }
+  if(outgoing.size<3)throw flowerFieldError1220("立体の境界を読み取れません。");
+  const first=Math.min(...outgoing.keys()),boundaryEdges=[];let a=first;
+  do{
+    const b=outgoing.get(a);if(b===undefined||boundaryEdges.length>=outgoing.size)throw flowerFieldError1220("立体の境界が閉じていません。");
+    boundaryEdges.push([a,b]);a=b;
+  }while(a!==first);
+  if(boundaryEdges.length!==outgoing.size)throw flowerFieldError1220("複数の立体境界には対応していません。");
+  return {...mesh,boundaryEdges};
+}
 function flowerFieldXml1220(value){return String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"}[c]));}
 function flowerFieldZipStore1220(entries){
   const encoder=new TextEncoder(),parts=[],directory=[];
@@ -47523,7 +47559,7 @@ function flowerFieldZipStore1220(entries){
   return output;
 }
 async function flowerFieldExportKmz1220(rawSpec,elevationSampler,options={}){
-  const spec=flowerFieldNormalize1220(rawSpec),mesh=flowerFieldMesh1220(spec);
+  const spec=flowerFieldNormalize1220(rawSpec),mesh=flowerFieldVolumeMesh1221(spec),closed=spec.heightM>0;
   if(typeof elevationSampler!=="function")throw flowerFieldError1220("地形の標高が必要です。地形を取得してから書き出してください。");
   const texture=options.texturePngBytes?new Uint8Array(options.texturePngBytes):null,withTexture=spec.style==="texture";
   if(withTexture&&(!texture||texture.length<24||texture.length>8*1024*1024||![137,80,78,71,13,10,26,10].every((b,i)=>texture[i]===b))){
@@ -47531,8 +47567,8 @@ async function flowerFieldExportKmz1220(rawSpec,elevationSampler,options={}){
   }
   const repeatM=options.textureRepeatM===undefined?1:Number(options.textureRepeatM);
   if(!Number.isFinite(repeatM)||repeatM<.05||repeatM>100)throw flowerFieldError1220("模様の大きさを確認してください。");
-  const positions=new Array(mesh.vertices.length),points3d=new Array(mesh.vertices.length),uvs=new Array(mesh.vertices.length);let next=0;
-  const number=value=>Number(value.toFixed(6));
+  const vertexCount=mesh.vertices.length,points3d=new Array(vertexCount),groundPoints=new Array(vertexCount),uvs=new Array(vertexCount);let next=0;
+  const number=value=>Number(value.toPrecision(15));
   const worker=async()=>{
     while(next<mesh.vertices.length){
       const index=next++,v=mesh.vertices[index],[lat,lon]=flowerFieldVertexLatLon1220(mesh,v);
@@ -47540,8 +47576,9 @@ async function flowerFieldExportKmz1220(rawSpec,elevationSampler,options={}){
       if(typeof elevation!=="number"||!Number.isFinite(elevation)){
         throw flowerFieldError1220(`標高を取得できない場所があります（${lat.toFixed(6)}, ${lon.toFixed(6)}）。地形を取得してから書き出してください。`);
       }
+      // 標高は基部の各頂点で一度だけ取得し、同じ値から上面・底面を作る。
+      groundPoints[index]=[v[0],v[1],elevation];
       points3d[index]=[v[0],v[1],elevation+spec.heightM];
-      positions[index]=points3d[index].map(number).join(" ");
       uvs[index]=`${number(v[0]/repeatM)} ${number(v[1]/repeatM)}`;
     }
   };
@@ -47552,21 +47589,42 @@ async function flowerFieldExportKmz1220(rawSpec,elevationSampler,options={}){
     const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
     for(const index of triangle)for(let k=0;k<3;k++)normals[index][k]+=n[k];
   }
-  const normalValues=normals.map(n=>{const length=Math.hypot(...n)||1;return n.map(value=>number(value/length)).join(" ");});
+  const unitNormals=normals.map(n=>{const length=Math.hypot(...n)||1;return n.map(value=>value/length);});
+  const allPositions=closed?points3d.concat(groundPoints):points3d;
+  const allNormals=closed?unitNormals.concat(unitNormals.map(n=>n.map(v=>-v))):unitNormals.slice();
+  const sideFaces=[];
+  if(closed)mesh.boundaryEdges.forEach(([i,j])=>{
+    const a=mesh.vertices[i],b=mesh.vertices[j],dx=b[0]-a[0],dy=b[1]-a[1],length=Math.hypot(dx,dy),normalIndex=allNormals.length;
+    allNormals.push([dy/length,-dx/length,0]);
+    sideFaces.push({positions:[i,i+vertexCount,j+vertexCount],normals:[normalIndex,normalIndex,normalIndex]},
+      {positions:[i,j+vertexCount,j],normals:[normalIndex,normalIndex,normalIndex]});
+  });
+  const positions=allPositions.map(p=>p.map(number).join(" ")),normalValues=allNormals.map(n=>n.map(number).join(" "));
   const rgb=[1,3,5].map(i=>parseInt(spec.color.slice(i,i+2),16)/255),escapedName=flowerFieldXml1220(spec.name);
   const timestamp=new Date(options.createdAt||Date.now()).toISOString();
   const imageLibrary=withTexture?'<library_images><image id="fieldImage"><init_from>../textures/flowers.png</init_from></image></library_images>':"";
   const sampler=withTexture?'<newparam sid="fieldSurface"><surface type="2D"><init_from>fieldImage</init_from></surface></newparam><newparam sid="fieldSampler"><sampler2D><source>fieldSurface</source><wrap_s>WRAP</wrap_s><wrap_t>WRAP</wrap_t><minfilter>LINEAR_MIPMAP_LINEAR</minfilter><magfilter>LINEAR</magfilter></sampler2D></newparam>':"";
-  const diffuse=withTexture?'<texture texture="fieldSampler" texcoord="UVSET0"/>':`<color>${rgb.join(" ")} ${spec.opacity}</color>`;
+  const diffuse=withTexture?'<texture texture="fieldSampler" texcoord="UVSET0"/>':`<color>${rgb.join(" ")} 1</color>`;
   const transparent=withTexture?'<texture texture="fieldSampler" texcoord="UVSET0"/>':`<color>1 1 1 1</color>`;
-  const vertexCount=mesh.vertices.length,triangleCount=mesh.triangles.length;
   const uvSource=withTexture?`<source id="field-uv"><float_array id="field-uv-array" count="${vertexCount*2}">${uvs.join(" ")}</float_array><technique_common><accessor source="#field-uv-array" count="${vertexCount}" stride="2"><param name="S" type="float"/><param name="T" type="float"/></accessor></technique_common></source>`:"";
-  const normalSource=`<source id="field-normal"><float_array id="field-normal-array" count="${vertexCount*3}">${normalValues.join(" ")}</float_array><technique_common><accessor source="#field-normal-array" count="${vertexCount}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>`;
-  const triangleInputs='<input semantic="NORMAL" source="#field-normal" offset="1"/>'+(withTexture?'<input semantic="TEXCOORD" source="#field-uv" offset="2" set="0"/>':"");
-  const indices=mesh.triangles.flatMap(tri=>withTexture?tri.flatMap(index=>[index,index,index]):tri.flatMap(index=>[index,index])).join(" ");
+  const normalSource=`<source id="field-normal"><float_array id="field-normal-array" count="${allNormals.length*3}">${normalValues.join(" ")}</float_array><technique_common><accessor source="#field-normal-array" count="${allNormals.length}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>`;
+  const triangleXml=(symbol,faces,textured)=>{
+    const inputs='<input semantic="VERTEX" source="#field-vertices" offset="0"/><input semantic="NORMAL" source="#field-normal" offset="1"/>'+(textured?'<input semantic="TEXCOORD" source="#field-uv" offset="2" set="0"/>':"");
+    const indices=faces.flatMap(face=>face.positions.flatMap((position,k)=>textured?[position,face.normals[k],position]:[position,face.normals[k]])).join(" ");
+    return `<triangles material="${symbol}" count="${faces.length}">${inputs}<p>${indices}</p></triangles>`;
+  };
+  const topFaces=mesh.triangles.map(tri=>({positions:tri,normals:tri}));
+  const bottomFaces=closed?mesh.triangles.map(([i,j,k])=>{const reversed=[i+vertexCount,k+vertexCount,j+vertexCount];return {positions:reversed,normals:reversed};}):[];
+  const geometryFaces=triangleXml("fieldSymbol",topFaces,withTexture)+(closed?triangleXml("sideSymbol",sideFaces,false)+triangleXml("bottomSymbol",bottomFaces,false):"");
   const binding=withTexture?'<bind_vertex_input semantic="UVSET0" input_semantic="TEXCOORD" input_set="0"/>':"";
+  const effect=(id,diffuseXml,transparentXml,params="")=>`<effect id="${id}"><profile_COMMON>${params}<technique sid="common"><lambert><diffuse>${diffuseXml}</diffuse><transparent opaque="A_ONE">${transparentXml}</transparent><transparency><float>${spec.opacity}</float></transparency></lambert></technique></profile_COMMON><extra><technique profile="GOOGLEEARTH"><double_sided>1</double_sided></technique></extra></effect>`;
+  const sideRgb=rgb.map((v,i)=>number(v*.22+[.08,.20,.05][i])),bottomRgb=sideRgb.map(v=>number(v*.65));
+  const effects=effect("fieldEffect",diffuse,transparent,sampler)+(closed?effect("sideEffect",`<color>${sideRgb.join(" ")} 1</color>`,"<color>1 1 1 1</color>")+effect("bottomEffect",`<color>${bottomRgb.join(" ")} 1</color>`,"<color>1 1 1 1</color>"):"");
+  const material=(id,effectId,name)=>`<material id="${id}" name="${name}"><instance_effect url="#${effectId}"/></material>`;
+  const materials=material("fieldMaterial","fieldEffect",escapedName)+(closed?material("sideMaterial","sideEffect",`${escapedName} vegetation`)+material("bottomMaterial","bottomEffect",`${escapedName} base`):"");
+  const bindings=`<instance_material symbol="fieldSymbol" target="#fieldMaterial">${binding}</instance_material>`+(closed?'<instance_material symbol="sideSymbol" target="#sideMaterial"/><instance_material symbol="bottomSymbol" target="#bottomMaterial"/>':"");
   const dae=`<?xml version="1.0" encoding="UTF-8"?>
-<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><contributor><authoring_tool>StarChase flower field v1220</authoring_tool></contributor><created>${timestamp}</created><modified>${timestamp}</modified><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>${imageLibrary}<library_effects><effect id="fieldEffect"><profile_COMMON>${sampler}<technique sid="common"><lambert><diffuse>${diffuse}</diffuse><transparent opaque="A_ONE">${transparent}</transparent><transparency><float>${spec.opacity}</float></transparency></lambert></technique></profile_COMMON><extra><technique profile="GOOGLEEARTH"><double_sided>1</double_sided></technique></extra></effect></library_effects><library_materials><material id="fieldMaterial" name="${escapedName}"><instance_effect url="#fieldEffect"/></material></library_materials><library_geometries><geometry id="fieldGeometry"><mesh><source id="field-position"><float_array id="field-position-array" count="${vertexCount*3}">${positions.join(" ")}</float_array><technique_common><accessor source="#field-position-array" count="${vertexCount}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>${normalSource}${uvSource}<vertices id="field-vertices"><input semantic="POSITION" source="#field-position"/></vertices><triangles material="fieldSymbol" count="${triangleCount}"><input semantic="VERTEX" source="#field-vertices" offset="0"/>${triangleInputs}<p>${indices}</p></triangles></mesh></geometry></library_geometries><library_visual_scenes><visual_scene id="fieldScene"><node id="fieldNode"><instance_geometry url="#fieldGeometry"><bind_material><technique_common><instance_material symbol="fieldSymbol" target="#fieldMaterial">${binding}</instance_material></technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes><scene><instance_visual_scene url="#fieldScene"/></scene></COLLADA>`;
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1"><asset><contributor><authoring_tool>StarChase flower field v1221</authoring_tool></contributor><created>${timestamp}</created><modified>${timestamp}</modified><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>${imageLibrary}<library_effects>${effects}</library_effects><library_materials>${materials}</library_materials><library_geometries><geometry id="fieldGeometry"><mesh><source id="field-position"><float_array id="field-position-array" count="${allPositions.length*3}">${positions.join(" ")}</float_array><technique_common><accessor source="#field-position-array" count="${allPositions.length}" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>${normalSource}${uvSource}<vertices id="field-vertices"><input semantic="POSITION" source="#field-position"/></vertices>${geometryFaces}</mesh></geometry></library_geometries><library_visual_scenes><visual_scene id="fieldScene"><node id="fieldNode"><instance_geometry url="#fieldGeometry"><bind_material><technique_common>${bindings}</technique_common></bind_material></instance_geometry></node></visual_scene></library_visual_scenes><scene><instance_visual_scene url="#fieldScene"/></scene></COLLADA>`;
   const resourceMap=withTexture?'<ResourceMap><Alias><targetHref>textures/flowers.png</targetHref><sourceHref>../textures/flowers.png</sourceHref></Alias></ResourceMap>':"";
   const kml=`<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${escapedName}</name><description>StarChase 花畑。形状は書き出し時の地形標高に固定。再編集用の境界と設定は flower-field.json に保存。</description><Placemark><name>${escapedName}</name><Model><altitudeMode>absolute</altitudeMode><Location><longitude>${mesh.origin.lon}</longitude><latitude>${mesh.origin.lat}</latitude><altitude>0</altitude></Location><Orientation><heading>0</heading><tilt>0</tilt><roll>0</roll></Orientation><Scale><x>1</x><y>1</y><z>1</z></Scale><Link><href>models/field.dae</href></Link>${resourceMap}</Model></Placemark></Document></kml>`;
@@ -47575,7 +47633,7 @@ async function flowerFieldExportKmz1220(rawSpec,elevationSampler,options={}){
   return flowerFieldZipStore1220(entries);
 }
 
-/* 【v1220】花畑は境界と設定だけを持ち、描画中の地形面に合わせて投影する。 */
+/* 【v1221】地形から草丈までの上面・側面を持つ花畑。形状と作業レイヤーを再利用する。 */
 const flowerFieldMeshCache1220=new WeakMap(),flowerFieldTextureCache1220=new Map();
 let flowerFieldRevision1220=0;
 let flowerFieldPaintLayer1220=null;
@@ -47588,7 +47646,7 @@ function flowerFieldRenderInvalidate1220(){
 function flowerFieldSpecOf1220(value){try{return value?flowerFieldNormalize1220(value):null;}catch(error){return null;}}
 function flowerFieldGeometry1220(spec){
   let mesh=flowerFieldMeshCache1220.get(spec);
-  if(!mesh){mesh=flowerFieldMesh1220(spec);flowerFieldMeshCache1220.set(spec,mesh);}
+  if(!mesh){mesh=flowerFieldVolumeMesh1221(spec);flowerFieldMeshCache1220.set(spec,mesh);}
   return mesh;
 }
 function flowerFieldCommit1220(value,existingSlot=null,{refresh=true}={}){
@@ -47601,7 +47659,7 @@ function flowerFieldCommit1220(value,existingSlot=null,{refresh=true}={}){
     model:{triangles:[],width:mesh.bounds.maxEast-mesh.bounds.minEast,depth:mesh.bounds.maxNorth-mesh.bounds.minNorth,
       height:spec.heightM,fileName:spec.name,flowerField:true}});
   kmzActiveId=slot.id;flowerFieldRenderInvalidate1220();kmzLoadEditor();
-  if(refresh){renderKmzList();refreshKmzBuildingControls(false);setKmzBuildingStatus(`${spec.name}：${Math.round(mesh.areaM2).toLocaleString()}㎡・地形に沿って表示。撮影計画またはKMZで保存できます。`,'ready');update();}
+  if(refresh){renderKmzList();refreshKmzBuildingControls(false);setKmzBuildingStatus(`${spec.name}：${Math.round(mesh.areaM2).toLocaleString()}㎡・厚み${spec.heightM}mで地形に沿って表示。撮影計画またはKMZで保存できます。`,'ready');update();}
   return slot;
 }
 function flowerFieldSyncControls1220(){
@@ -47663,37 +47721,88 @@ function flowerFieldProject1220(env){
     const baseEast=flowerFieldWrappedLon1220(mesh.origin.lon-env.lon)*mLon,baseNorth=(mesh.origin.lat-env.lat)*111320;
     const radius=Math.hypot(Math.max(Math.abs(mesh.bounds.minEast),Math.abs(mesh.bounds.maxEast)),Math.max(Math.abs(mesh.bounds.minNorth),Math.abs(mesh.bounds.maxNorth)));
     if(Math.hypot(baseEast,baseNorth)-radius>2000)continue;
-    const vertices=mesh.vertices.map(([e,n])=>{
+    const boundaryVertices=new Set(spec.heightM>0?mesh.boundaryEdges.flat():[]);
+    const vertices=mesh.vertices.map(([e,n],index)=>{
       const [lat,lon]=flowerFieldVertexLatLon1220(mesh,[e,n]);
       const east=flowerFieldWrappedLon1220(lon-env.lon)*mLon,north=(lat-env.lat)*111320,distance=Math.hypot(east,north);
       const ground=env.elevation(east,north);if(!Number.isFinite(ground))return null;
       const elevation=ground+spec.heightM+.015,vec=env.vector(east,north,elevation),clearance=env.clearance(east,north,elevation);
-      return {vec,uv:[e*128,n*128],clearance,distance}; // 256px repeat over 2m, fixed to the field.
+      const vertex={vec,uv:[e*128,n*128],clearance,distance,level:1}; // 模様の実寸は2m。
+      if(boundaryVertices.has(index)){
+        vertex.bottom={vec:env.vector(east,north,ground+.015),uv:vertex.uv,
+          clearance:env.clearance(east,north,ground+.015),distance,level:0};
+      }
+      return vertex;
     });
-    const record={slot,path:new Path2D(),tintPath:new Path2D(),triangles:[],near:Infinity};
-    for(const indices of mesh.triangles){
-      let poly=indices.map(i=>vertices[i]);if(poly.some(v=>!v))continue;
-      poly=flowerFieldClip1220(poly,v=>v.clearance);if(poly.length<3)continue;
+    const record={slot,path:new Path2D(),volumePath:new Path2D(),tintPath:new Path2D(),triangles:[],sideFaces:[],near:Infinity};
+    const clipProject=poly=>{
+      if(poly.some(v=>!v))return null;
+      poly=flowerFieldClip1220(poly,v=>v.clearance);if(poly.length<3)return null;
       for(const plane of env.planes){poly=flowerFieldClip1220(poly,v=>plane(v.vec));if(poly.length<3)break;}
-      if(poly.length<3)continue;
-      const screen=poly.map(v=>env.project(v.vec));if(screen.some(p=>!p||!p.every(Number.isFinite)))continue;
-      record.path.moveTo(...screen[0]);for(let i=1;i<screen.length;i++)record.path.lineTo(...screen[i]);record.path.closePath();
+      if(poly.length<3)return null;
+      const screen=poly.map(v=>env.project(v.vec));if(screen.some(p=>!p||!p.every(Number.isFinite)))return null;
       const distance=poly.reduce((sum,v)=>sum+v.distance,0)/poly.length;record.near=Math.min(record.near,distance);
       let screenArea=0;for(let i=0;i<screen.length;i++){const p=screen[i],q=screen[(i+1)%screen.length];screenArea+=p[0]*q[1]-q[0]*p[1];}
+      if(Math.abs(screenArea)<1e-7)return null;
+      return {poly,screen,distance,screenArea};
+    };
+    for(const indices of mesh.triangles){
+      const original=indices.map(i=>vertices[i]);if(original.some(v=>!v))continue;
+      if(env.frontFacesOnly&&!flowerFieldFrontFace1221(original))continue;
+      const face=clipProject(original);if(!face)continue;
+      const {poly,screen,distance,screenArea}=face;
+      flowerFieldPathPolygon1221(record.path,screen);flowerFieldPathPolygon1221(record.volumePath,screen);
       if(spec.style==='texture'&&distance<350&&Math.abs(screenArea)>12){
         for(let i=1;i<poly.length-1;i++)record.triangles.push({screen:[screen[0],screen[i],screen[i+1]],uv:[poly[0].uv,poly[i].uv,poly[i+1].uv],distance});
       }else{
-        record.tintPath.moveTo(...screen[0]);for(let i=1;i<screen.length;i++)record.tintPath.lineTo(...screen[i]);record.tintPath.closePath();
+        flowerFieldPathPolygon1221(record.tintPath,screen);
       }
     }
+    if(spec.heightM>0)for(const [i,j] of mesh.boundaryEdges){
+      const a=vertices[i],b=vertices[j];if(!a?.bottom||!b?.bottom)continue;
+      // 内側が左の境界。外向きの側面だけ描き、背後の壁が上面を貫かないようにする。
+      const dx=b.vec[0]-a.vec[0],dy=b.vec[1]-a.vec[1],length=Math.hypot(dx,dy);
+      if(env.frontFacesOnly&&dx*a.vec[1]-dy*a.vec[0]<=0)continue;
+      const face=clipProject([a,a.bottom,b.bottom,b]);if(!face)continue;
+      const {poly,screen}=face;
+      flowerFieldPathPolygon1221(record.volumePath,screen);
+      const pointAtLevel=upper=>{
+        let weight=0,x=0,y=0;
+        for(let k=0;k<poly.length;k++){const w=upper?poly[k].level:1-poly[k].level;weight+=w;x+=screen[k][0]*w;y+=screen[k][1]*w;}
+        return weight>1e-8?[x/weight,y/weight]:screen[0];
+      };
+      const path=new Path2D();flowerFieldPathPolygon1221(path,screen);
+      const gradient=flowerFieldSideGradient1221(poly,screen)||{bottom:pointAtLevel(false),top:pointAtLevel(true)};
+      record.sideFaces.push({path,screen,...gradient,shade:.68+.17*(length>0?Math.abs(dx)/length:0),distance:face.distance});
+    }
+    record.sideFaces.sort((a,b)=>b.distance-a.distance);
     records.push(record);
   }
   return records;
 }
+function flowerFieldPathPolygon1221(path,screen){
+  let area=0;for(let i=0;i<screen.length;i++){const p=screen[i],q=screen[(i+1)%screen.length];area+=p[0]*q[1]-q[0]*p[1];}
+  const points=area<0?[...screen].reverse():screen;
+  path.moveTo(...points[0]);for(let i=1;i<points.length;i++)path.lineTo(...points[i]);path.closePath();
+}
+function flowerFieldFrontFace1221(poly){
+  const [a,b,c]=poly.map(v=>v.vec),u=b.map((v,i)=>v-a[i]),v=c.map((v,i)=>v-a[i]);
+  const n=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];
+  return n[0]*a[0]+n[1]*a[1]+n[2]*a[2]<0;
+}
+function flowerFieldSideGradient1221(poly,screen){
+  // 画面上の草丈座標を面へ当てはめる。底辺が斜めでも隣の側面と色がつながる。
+  const count=poly.length,cx=screen.reduce((s,p)=>s+p[0],0)/count,cy=screen.reduce((s,p)=>s+p[1],0)/count,ch=poly.reduce((s,p)=>s+p.level,0)/count;
+  let xx=0,xy=0,yy=0,xh=0,yh=0;
+  for(let i=0;i<count;i++){const x=screen[i][0]-cx,y=screen[i][1]-cy,h=poly[i].level-ch;xx+=x*x;xy+=x*y;yy+=y*y;xh+=x*h;yh+=y*h;}
+  const det=xx*yy-xy*xy;if(Math.abs(det)<1e-12)return null;
+  const gx=(xh*yy-yh*xy)/det,gy=(yh*xx-xh*xy)/det,size=gx*gx+gy*gy;if(!(size>1e-18))return null;
+  const bottom=[cx-gx*ch/size,cy-gy*ch/size];return {bottom,top:[bottom[0]+gx/size,bottom[1]+gy/size]};
+}
 function flowerFieldClip1220(poly,value){
   const out=[];if(!poly.length)return out;let a=poly.at(-1),fa=value(a);
   for(const b of poly){const fb=value(b),insideA=fa>=0,insideB=fb>=0;
-    if(insideA!==insideB){const t=fa/(fa-fb);out.push({vec:a.vec.map((v,i)=>v+(b.vec[i]-v)*t),uv:a.uv.map((v,i)=>v+(b.uv[i]-v)*t),distance:a.distance+(b.distance-a.distance)*t,clearance:a.clearance+(b.clearance-a.clearance)*t});}
+    if(insideA!==insideB){const t=fa/(fa-fb);out.push({vec:a.vec.map((v,i)=>v+(b.vec[i]-v)*t),uv:a.uv.map((v,i)=>v+(b.uv[i]-v)*t),distance:a.distance+(b.distance-a.distance)*t,clearance:a.clearance+(b.clearance-a.clearance)*t,level:a.level+(b.level-a.level)*t});}
     if(insideB)out.push(b);a=b;fa=fb;
   }return out;
 }
@@ -47702,14 +47811,23 @@ function flowerFieldPaint1220(ctx,records,dayFactor){
     const spec=record.slot.flowerField;if(record.slot.visible===false)continue;
     const light=.16+.84*Math.max(0,Math.min(1,dayFactor)),rgb=spec.color.match(/\w\w/g).map(n=>Math.round(parseInt(n,16)*light));
     const tint=`rgb(${rgb.join(',')})`;
-    if(spec.style==='texture'&&record.triangles.length){
+    if((spec.style==='texture'&&record.triangles.length)||record.sideFaces.length){
       // 透明度は畑全体に一度だけ掛ける。三角形ごとの合成では共有辺が白い網目になる。
       const layer=flowerFieldPaintLayer1220||(flowerFieldPaintLayer1220=document.createElement('canvas'));
       if(layer.width!==ctx.canvas.width||layer.height!==ctx.canvas.height){layer.width=ctx.canvas.width;layer.height=ctx.canvas.height;}
       const paint=layer.getContext('2d');paint.setTransform(1,0,0,1,0,0);paint.clearRect(0,0,layer.width,layer.height);
-      paint.globalAlpha=1;paint.fillStyle=`rgb(${[50,78,38].map(v=>Math.round(v*light)).join(',')})`;paint.fill(record.path);
+      paint.globalAlpha=1;paint.fillStyle=tint;paint.fill(record.volumePath);
+      for(const side of record.sideFaces){
+        const color=values=>`rgb(${values.map(v=>Math.round(v*light*side.shade)).join(',')})`;
+        const base=spec.style==='texture'?[45,74,34]:spec.color.match(/\w\w/g).map(n=>parseInt(n,16));
+        const flower=spec.color.match(/\w\w/g).map(n=>parseInt(n,16));
+        const gradient=paint.createLinearGradient(...side.bottom,...side.top);
+        gradient.addColorStop(0,color(base));gradient.addColorStop(.6,color(base.map((v,i)=>v*.65+flower[i]*.35)));gradient.addColorStop(1,color(flower));
+        paint.fillStyle=gradient;paint.fill(side.path);
+      }
+      paint.fillStyle=spec.style==='texture'?`rgb(${[50,78,38].map(v=>Math.round(v*light)).join(',')})`:tint;paint.fill(record.path);
       paint.fillStyle=tint;paint.fill(record.tintPath);
-      const texture=flowerFieldTexture1220(spec,light),pattern=paint.createPattern(texture,'repeat');
+      const pattern=record.triangles.length?paint.createPattern(flowerFieldTexture1220(spec,light),'repeat'):null;
       for(const tri of record.triangles){
         const d=tri.screen,u=tri.uv,den=u[0][0]*(u[1][1]-u[2][1])+u[1][0]*(u[2][1]-u[0][1])+u[2][0]*(u[0][1]-u[1][1]);if(Math.abs(den)<1e-8)continue;
         const row=axis=>[(d[0][axis]*(u[1][1]-u[2][1])+d[1][axis]*(u[2][1]-u[0][1])+d[2][axis]*(u[0][1]-u[1][1]))/den,
@@ -47721,7 +47839,7 @@ function flowerFieldPaint1220(ctx,records,dayFactor){
         paint.setTransform(x[0],y[0],x[1],y[1],x[2],y[2]);paint.fillStyle=pattern;
         const left=Math.min(...u.map(p=>p[0])),top=Math.min(...u.map(p=>p[1]));paint.fillRect(left-8,top-8,Math.max(...u.map(p=>p[0]))-left+16,Math.max(...u.map(p=>p[1]))-top+16);paint.restore();
       }
-      ctx.save();ctx.globalAlpha=spec.opacity;ctx.clip(record.path);ctx.drawImage(layer,0,0);ctx.restore();
+      ctx.save();ctx.globalAlpha=spec.opacity;ctx.clip(record.volumePath);ctx.drawImage(layer,0,0);ctx.restore();
     }else{
       ctx.save();ctx.globalAlpha=spec.opacity;ctx.fillStyle=tint;ctx.fill(record.tintPath);ctx.restore();
     }
@@ -47752,7 +47870,7 @@ async function flowerFieldExportActive1220(){
   finally{if(button)button.disabled=false;}
 }
 
-/* 【v1220】花畑の作図・編集UI。DOM設置後、既存script末尾へ挿入。 */
+/* 【v1221】花畑の作図・編集UI。既存v1220 API/DOM契約を維持。 */
 const flowerFieldPresets1220={
   higanbana:{name:"彼岸花畑",color:"#c8323e",heightM:.5},
   cosmos:{name:"コスモス畑",color:"#d878b2",heightM:.8},
@@ -47766,16 +47884,21 @@ let flowerFieldInert1220=[],flowerFieldBodyOverflow1220="",flowerFieldReturnFocu
 const flowerFieldUi1220=Object.fromEntries([
   "DrawBar","DrawStatus","DrawError","UndoBtn","FinishBtn","DrawCancelBtn","Overlay","Dialog","Title","CloseBtn",
   "Form","RangeSummary","Name","Kind","Height","Color","ColorHex","Opacity","OpacityValue","Swatch","SwatchName",
-  "FormError","RedrawBtn","BackBtn","ApplyBtn","AddBtn","SlotPanel","EditBtn","ExportBtn"
+  "FormError","AdjustBtn","RedrawBtn","BackBtn","ApplyBtn","AddBtn","SlotPanel","EditBtn","ExportBtn"
 ].map(key=>[key,document.getElementById(`flowerField${key}1220`)]));
 
 function flowerFieldCopyPoints1220(points){return Array.isArray(points)?points.map(point=>[+point[0],+point[1]]):[];}
 function flowerFieldDefaultDraft1220(){return {name:"彼岸花畑",kind:"higanbana",color:"#c8323e",heightM:.5,opacity:.65,style:"texture",points:[]};}
 function flowerFieldUiError1220(node,message){if(!node)return;node.textContent=message||"";node.hidden=!message;}
+function flowerFieldWrappedLon1221(lon){return ((lon+180)%360+360)%360-180;}
+function flowerFieldDisplayPoints1221(points){
+  if(!points.length)return [];
+  const origin=points[0][1];return points.map(point=>[point[0],origin+flowerFieldWrappedLon1221(point[1]-origin)]);
+}
 function flowerFieldLocalPoints1220(points){
   if(!points.length)return [];
   const origin=points[0],mLon=Math.max(.01,111320*Math.cos(origin[0]*Math.PI/180));
-  return points.map(point=>[(point[1]-origin[1])*mLon,(point[0]-origin[0])*111320]);
+  return points.map(point=>[flowerFieldWrappedLon1221(point[1]-origin[1])*mLon,(point[0]-origin[0])*111320]);
 }
 function flowerFieldArea1220(points){
   const xy=flowerFieldLocalPoints1220(points);let sum=0;
@@ -47791,22 +47914,79 @@ function flowerFieldSegmentsCross1220(a,b,c,d){
 function flowerFieldValidatePoints1220(points){
   if(!Array.isArray(points)||points.length<3)return "3点以上で花畑を囲んでください。";
   if(points.length>128)return "囲みの点は128個までです。点を戻して減らしてください。";
-  if(points.some(point=>!Array.isArray(point)||!Number.isFinite(point[0])||!Number.isFinite(point[1])||Math.abs(point[0])>90||Math.abs(point[1])>180))return "範囲の座標を確認してください。";
+  if(points.some(point=>!Array.isArray(point)||!Number.isFinite(point[0])||!Number.isFinite(point[1])||Math.abs(point[0])>85.05112878||Math.abs(point[1])>180))return "範囲の座標を確認してください。";
   const xy=flowerFieldLocalPoints1220(points);
+  for(let i=0;i<xy.length;i++){const a=xy[i],b=xy[(i+1)%xy.length];if(Math.hypot(a[0]-b[0],a[1]-b[1])<.01)return "番号の点が重なっています。ドラッグして少し離してください。";}
   for(let i=0;i<xy.length;i++)for(let j=i+1;j<xy.length;j++){
     if(j===i+1||(i===0&&j===xy.length-1))continue;
-    if(flowerFieldSegmentsCross1220(xy[i],xy[(i+1)%xy.length],xy[j],xy[(j+1)%xy.length]))return "輪郭の線が交差しています。「1つ戻す」で点を戻してください。";
+    if(flowerFieldSegmentsCross1220(xy[i],xy[(i+1)%xy.length],xy[j],xy[(j+1)%xy.length]))return "輪郭の線が交差しています。番号の点をドラッグするか、「1つ戻す」で整えてください。";
   }
-  if(flowerFieldArea1220(points)<.1)return "範囲が小さすぎます。地図上で少し広く囲んでください。";
+  if(flowerFieldArea1220(points)<.25)return "範囲が小さすぎます。地図上で少し広く囲んでください（0.25m²以上）。";
   return "";
 }
 function flowerFieldAreaLabel1220(points){
   const area=flowerFieldArea1220(points);
-  return `${points.length}点 · 約${area>=10000?(area/10000).toLocaleString("ja-JP",{maximumFractionDigits:2})+" ha":Math.round(area).toLocaleString("ja-JP")+" m²"}`;
+  return `${points.length}点 · 約${area>=10000?(area/10000).toLocaleString("ja-JP",{maximumFractionDigits:2})+" ha":area.toLocaleString("ja-JP",{maximumFractionDigits:area<10?2:0})+" m²"}`;
 }
 function flowerFieldClearMap1220(){
   if(flowerFieldMapLayer1220&&typeof osmMapInstance!=="undefined"&&osmMapInstance)try{osmMapInstance.removeLayer(flowerFieldMapLayer1220);}catch(error){}
   flowerFieldMapLayer1220=null;
+  flowerFieldDrawMap1220._boundary=null;flowerFieldDrawMap1220._markers=[];
+}
+function flowerFieldMapPanel1221(){return typeof el!=="undefined"&&el.osmMapPanel?el.osmMapPanel:document.getElementById("osmMapPanel");}
+function flowerFieldEnterMapLayout1221(){
+  const panel=flowerFieldMapPanel1221();if(!panel)return;
+  const bar=flowerFieldUi1220.DrawBar;if(bar.parentElement!==panel)panel.appendChild(bar);
+  if(flowerFieldEnterMapLayout1221._state||!window.matchMedia("(max-width:900px), (hover:none) and (pointer:coarse)").matches)return;
+  const state={panel,parent:panel.parentNode,next:panel.nextSibling,hadClass:panel.classList.contains("flower1221-map-fullscreen"),overflow:document.body.style.overflow,x:window.scrollX,y:window.scrollY};
+  flowerFieldEnterMapLayout1221._state=state;
+  document.body.appendChild(panel);panel.classList.add("flower1221-map-fullscreen");document.body.style.overflow="hidden";
+}
+function flowerFieldExitMapLayout1221(){
+  const state=flowerFieldEnterMapLayout1221._state;if(!state)return;
+  flowerFieldEnterMapLayout1221._state=null;
+  const {panel,parent,next}=state;if(!state.hadClass)panel.classList.remove("flower1221-map-fullscreen");
+  if(parent?.isConnected){if(next?.parentNode===parent)parent.insertBefore(panel,next);else parent.appendChild(panel);}else document.body.appendChild(panel);
+  document.body.style.overflow=state.overflow;window.scrollTo(state.x,state.y);
+  if(typeof osmMapInstance!=="undefined"&&osmMapInstance)osmMapInstance.invalidateSize({pan:false,animate:false});
+}
+function flowerFieldEnterMapZoom1221(){
+  if(typeof osmMapInstance==="undefined"||!osmMapInstance)return;
+  if(flowerFieldEnterMapZoom1221._state?.map===osmMapInstance)return;
+  flowerFieldExitMapZoom1221();
+  const map=osmMapInstance,options=map.options||(map.options={});
+  const state={map,hadMax:Object.hasOwn(options,"maxZoom"),max:options.maxZoom,effectiveMax:Number.isFinite(map.getMaxZoom?.())?map.getMaxZoom():19,layers:[],layerAdded:null};
+  flowerFieldEnterMapZoom1221._state=state;
+  const include=layer=>{
+    if(!layer?.options||state.layers.some(item=>item.layer===layer))return;
+    const opts=layer.options;if(!Number.isFinite(opts.maxZoom)&&!Number.isFinite(opts.maxNativeZoom)&&!layer._url)return;
+    state.layers.push({layer,hadMax:Object.hasOwn(opts,"maxZoom"),max:opts.maxZoom,hadNative:Object.hasOwn(opts,"maxNativeZoom"),native:opts.maxNativeZoom});
+    // 既存のネイティブズームを維持し、衛星画像の未指定値だけ19で補う。
+    if(!Number.isFinite(opts.maxNativeZoom))opts.maxNativeZoom=Number.isFinite(opts.maxZoom)?Math.min(19,opts.maxZoom):19;
+    opts.maxZoom=23;
+  };
+  for(const layer of [typeof osmStreetLayer!=="undefined"?osmStreetLayer:null,typeof osmSatelliteLayer!=="undefined"?osmSatelliteLayer:null,typeof osmLightPollutionLayer!=="undefined"?osmLightPollutionLayer:null,typeof osmTileLayer!=="undefined"?osmTileLayer:null])include(layer);
+  map.eachLayer?.(include);state.layerAdded=event=>include(event.layer);map.on("layeradd",state.layerAdded);
+  if(typeof map.setMaxZoom==="function")map.setMaxZoom(23);else options.maxZoom=23;
+}
+function flowerFieldExitMapZoom1221(){
+  const state=flowerFieldEnterMapZoom1221._state;if(!state)return;flowerFieldEnterMapZoom1221._state=null;
+  const {map}=state;map.off("layeradd",state.layerAdded);
+  for(const item of state.layers){
+    const options=item.layer.options;if(!options)continue;
+    if(item.hadMax)options.maxZoom=item.max;else delete options.maxZoom;
+    if(item.hadNative)options.maxNativeZoom=item.native;else delete options.maxNativeZoom;
+  }
+  if(state.hadMax)map.options.maxZoom=state.max;else delete map.options.maxZoom;
+  // ベース地図を編集中に切り替えた場合もLeafletの派生上限を更新する。
+  if(typeof map._updateZoomLevels==="function")map._updateZoomLevels();
+  const restoredMax=Number.isFinite(map.getMaxZoom?.())?map.getMaxZoom():state.effectiveMax;
+  if(map.getZoom()>restoredMax)map.setZoom(restoredMax,{animate:false});
+}
+function flowerFieldLeaveDrawing1221(){
+  flowerFieldPlacementActive1220=false;flowerFieldUi1220.DrawBar.hidden=true;
+  ++flowerFieldOpenToken1220;flowerFieldUnhookMap1220();flowerFieldClearMap1220();
+  flowerFieldExitMapZoom1221();flowerFieldExitMapLayout1221();
 }
 function flowerFieldUnhookMap1220(){
   const hook=flowerFieldMapHooks1220;if(!hook)return;
@@ -47820,16 +48000,38 @@ function flowerFieldHookMap1220(){
   hook.start=()=>{hook.dragging=true;};hook.end=()=>{hook.dragging=false;hook.lastDrag=performance.now();};
   hook.map.on("dragstart",hook.start);hook.map.on("dragend",hook.end);flowerFieldMapHooks1220=hook;return true;
 }
-function flowerFieldDrawMap1220(){
+function flowerFieldDrawStatus1221(){
   const ui=flowerFieldUi1220,points=flowerFieldDraft1220?.points||[];
   ui.UndoBtn.disabled=!points.length||flowerFieldBusy1220;ui.FinishBtn.disabled=points.length<3||flowerFieldBusy1220;
-  ui.DrawStatus.textContent=points.length?`${flowerFieldAreaLabel1220(points)} · ${points.length<3?"あと"+(3-points.length)+"点以上をタップ":"囲み終わったら「囲み終わり」"}`:"角を順番にタップしてください（3〜128点）。地図はドラッグで動かせます。";
+  ui.DrawStatus.textContent=points.length?`${flowerFieldAreaLabel1220(points)} · ${points.length<3?"あと"+(3-points.length)+"点以上をタップ":"番号の点をドラッグして調整できます"}`:"角を順番にタップしてください（3〜128点）。地図はドラッグで動かせます。";
+}
+function flowerFieldUpdateVertex1221(marker,index){
+  const position=marker.getLatLng(),points=flowerFieldDraft1220?.points;
+  if(!points||index>=points.length||!Number.isFinite(position.lat)||!Number.isFinite(position.lng))return;
+  points[index]=[position.lat,flowerFieldWrappedLon1221(position.lng)];
+  flowerFieldDrawMap1220._boundary?.setLatLngs(flowerFieldDisplayPoints1221(points));
+  flowerFieldDrawStatus1221();flowerFieldUiError1220(flowerFieldUi1220.DrawError,"");
+}
+function flowerFieldDrawMap1220(){
+  const points=flowerFieldDraft1220?.points||[];flowerFieldDrawStatus1221();
   flowerFieldClearMap1220();
   if(!points.length||typeof L==="undefined"||typeof osmMapInstance==="undefined"||!osmMapInstance)return;
   const layer=L.layerGroup().addTo(osmMapInstance);flowerFieldMapLayer1220=layer;
   const options={color:"#e7c08a",weight:2,opacity:1,fillColor:flowerFieldDraft1220.color||"#c8323e",fillOpacity:.28,interactive:false};
-  if(points.length>=3)L.polygon(points,options).addTo(layer);else if(points.length===2)L.polyline(points,options).addTo(layer);
-  points.forEach((point,index)=>L.marker(point,{interactive:false,keyboard:false,icon:L.divIcon({className:"",html:`<span class="flower1220-vertex">${index+1}</span>`,iconSize:[20,20],iconAnchor:[10,10]})}).addTo(layer));
+  const display=flowerFieldDisplayPoints1221(points);
+  if(points.length>=3)flowerFieldDrawMap1220._boundary=L.polygon(display,options).addTo(layer);else if(points.length===2)flowerFieldDrawMap1220._boundary=L.polyline(display,options).addTo(layer);
+  flowerFieldDrawMap1220._markers=display.map((point,index)=>{
+    const marker=L.marker(point,{draggable:true,interactive:true,keyboard:true,bubblingMouseEvents:false,title:`花畑の点 ${index+1}（ドラッグで移動）`,alt:`花畑の点 ${index+1}`,icon:L.divIcon({className:"flower1221-vertex-hit",html:`<span class="flower1220-vertex">${index+1}</span>`,iconSize:[44,44],iconAnchor:[22,22]})}).addTo(layer);
+    marker.on("dragstart",()=>{flowerFieldDrawMap1220._dragging=index;});
+    marker.on("drag",()=>flowerFieldUpdateVertex1221(marker,index));
+    marker.on("dragend",()=>{
+      flowerFieldUpdateVertex1221(marker,index);flowerFieldDrawMap1220._dragging=null;flowerFieldDrawMap1220._lastDrag=performance.now();
+      const token=flowerFieldOpenToken1220;
+      // Leafletのdrag終了処理後に作り直す。ドラッグ中のmarkerは削除しない。
+      requestAnimationFrame(()=>{if(token===flowerFieldOpenToken1220&&flowerFieldPlacementActive1220)flowerFieldDrawMap1220();});
+    });
+    return marker;
+  });
 }
 function flowerFieldReadForm1220(strict=true){
   const ui=flowerFieldUi1220,draft=flowerFieldDraft1220||flowerFieldDefaultDraft1220();
@@ -47888,15 +48090,16 @@ function flowerFieldCancelOtherPlacement1220(){
 function flowerFieldShowDrawing1220(fitPoints=null){
   flowerFieldSetFormOpen1220(false);flowerFieldPlacementActive1220=true;
   const ui=flowerFieldUi1220;ui.DrawBar.hidden=false;flowerFieldUiError1220(ui.DrawError,"");
-  if(ui.DrawBar.parentElement!==document.body)document.body.appendChild(ui.DrawBar);
   document.getElementById("kmzAddChooser")?.setAttribute("hidden","");
   if(typeof mobileSettingsOpen!=="undefined"&&mobileSettingsOpen&&typeof setMobileSettingsOpen==="function")setMobileSettingsOpen(false);
   if(typeof osmMapScreenOpen!=="undefined"&&!osmMapScreenOpen&&typeof setOsmMapScreenOpen==="function")setOsmMapScreenOpen(true);
+  flowerFieldEnterMapLayout1221();
   const token=++flowerFieldOpenToken1220;
   requestAnimationFrame(()=>requestAnimationFrame(()=>{
     if(token!==flowerFieldOpenToken1220||!flowerFieldPlacementActive1220)return;
     if(!flowerFieldHookMap1220()){flowerFieldUiError1220(ui.DrawError,"地図を開けませんでした。地図が表示されてから、もう一度お試しください。");return;}
-    if(fitPoints?.length>=3)osmMapInstance.fitBounds(fitPoints,{padding:[45,80],maxZoom:19,animate:false});
+    flowerFieldEnterMapZoom1221();osmMapInstance.invalidateSize({pan:false,animate:false});
+    if(fitPoints?.length>=3)osmMapInstance.fitBounds(flowerFieldDisplayPoints1221(fitPoints),{paddingTopLeft:[45,45],paddingBottomRight:[45,170],maxZoom:23,animate:false});
     flowerFieldDrawMap1220();ui.FinishBtn.focus({preventScroll:true});
   }));
   flowerFieldDrawMap1220();
@@ -47911,13 +48114,14 @@ function flowerFieldMapClick1220(latlng){
   if(!flowerFieldPlacementActive1220||flowerFieldFormOpen1220)return false;
   const hook=flowerFieldMapHooks1220;
   if(hook&&(hook.dragging||performance.now()-hook.lastDrag<180))return true;
-  const lat=+latlng?.lat,lon=+(latlng?.lng??latlng?.lon);
-  if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return true;
+  if(flowerFieldDrawMap1220._dragging!=null||(flowerFieldDrawMap1220._lastDrag!=null&&performance.now()-flowerFieldDrawMap1220._lastDrag<250))return true;
+  const lat=+latlng?.lat,rawLon=+(latlng?.lng??latlng?.lon),lon=flowerFieldWrappedLon1221(rawLon);
+  if(!Number.isFinite(lat)||!Number.isFinite(rawLon)||Math.abs(lat)>90)return true;
   const points=flowerFieldDraft1220?.points;if(!points)return true;
   if(points.length>=128){flowerFieldUiError1220(flowerFieldUi1220.DrawError,"囲みの点は128個までです。「1つ戻す」で減らすか、囲みを完成させてください。");return true;}
   if(points.length){
     const previous=points[points.length-1],mLon=111320*Math.cos(lat*Math.PI/180);
-    if(Math.hypot((lat-previous[0])*111320,(lon-previous[1])*mLon)<.15)return true;
+    if(Math.hypot((lat-previous[0])*111320,flowerFieldWrappedLon1221(lon-previous[1])*mLon)<.15)return true;
   }
   points.push([lat,lon]);flowerFieldUiError1220(flowerFieldUi1220.DrawError,"");flowerFieldDrawMap1220();return true;
 }
@@ -47925,7 +48129,9 @@ function flowerFieldFinish1220(){
   if(!flowerFieldDraft1220||flowerFieldBusy1220)return;
   const error=flowerFieldValidatePoints1220(flowerFieldDraft1220.points);
   if(error){flowerFieldUiError1220(flowerFieldUi1220.DrawError,error);return;}
-  flowerFieldPlacementActive1220=false;flowerFieldUi1220.DrawBar.hidden=true;
+  // 保存側と同じ2km上限などを、地図を閉じる前に確認する。
+  if(typeof flowerFieldNormalize1220==="function")try{flowerFieldNormalize1220({...flowerFieldDefaultDraft1220(),points:flowerFieldDraft1220.points});}catch(error){flowerFieldUiError1220(flowerFieldUi1220.DrawError,error?.message||"花畑の範囲を確認してください。");return;}
+  flowerFieldLeaveDrawing1221();
   flowerFieldPopulateForm1220();flowerFieldSetFormOpen1220(true);
 }
 function flowerFieldEdit1220(slot){
@@ -47939,17 +48145,23 @@ function flowerFieldBackToMap1220(){
   flowerFieldDraft1220=flowerFieldReadForm1220(false);flowerFieldRedrawBackup1220=null;
   flowerFieldShowDrawing1220(flowerFieldDraft1220.points);
 }
+function flowerFieldAdjustRange1221(){
+  if(flowerFieldBusy1220)return;
+  flowerFieldDraft1220=flowerFieldReadForm1220(false);flowerFieldRedrawBackup1220=flowerFieldCopyPoints1220(flowerFieldDraft1220.points);
+  flowerFieldShowDrawing1220(flowerFieldDraft1220.points);
+}
 function flowerFieldCancelDrawing1220(){
   if(flowerFieldBusy1220)return;
   if(flowerFieldRedrawBackup1220){
     flowerFieldDraft1220.points=flowerFieldCopyPoints1220(flowerFieldRedrawBackup1220);flowerFieldRedrawBackup1220=null;
-    flowerFieldPlacementActive1220=false;flowerFieldUi1220.DrawBar.hidden=true;flowerFieldDrawMap1220();flowerFieldPopulateForm1220();flowerFieldSetFormOpen1220(true);
+    flowerFieldLeaveDrawing1221();flowerFieldPopulateForm1220();flowerFieldSetFormOpen1220(true);
   }else flowerFieldClose1220();
 }
 function flowerFieldClose1220(){
   ++flowerFieldOpenToken1220;flowerFieldPlacementActive1220=false;
   if(flowerFieldBusy1220)flowerFieldSetBusy1220(false);
-  flowerFieldSetFormOpen1220(false);flowerFieldClearMap1220();flowerFieldUnhookMap1220();
+  flowerFieldSetFormOpen1220(false);flowerFieldLeaveDrawing1221();
+  flowerFieldDrawMap1220._dragging=null;flowerFieldDrawMap1220._lastDrag=null;
   flowerFieldUi1220.DrawBar.hidden=true;flowerFieldUiError1220(flowerFieldUi1220.DrawError,"");flowerFieldUiError1220(flowerFieldUi1220.FormError,"");
   flowerFieldDraft1220=null;flowerFieldEditingSlot1220=null;flowerFieldRedrawBackup1220=null;
   const target=flowerFieldReturnFocus1220;flowerFieldReturnFocus1220=null;
@@ -47983,6 +48195,7 @@ function flowerFieldUiInit1220(){
   ui.UndoBtn.addEventListener("click",()=>{if(!flowerFieldDraft1220||flowerFieldBusy1220)return;flowerFieldDraft1220.points.pop();flowerFieldUiError1220(ui.DrawError,"");flowerFieldDrawMap1220();});
   ui.FinishBtn.addEventListener("click",flowerFieldFinish1220);ui.DrawCancelBtn.addEventListener("click",flowerFieldCancelDrawing1220);
   ui.CloseBtn.addEventListener("click",flowerFieldBackToMap1220);ui.BackBtn.addEventListener("click",flowerFieldBackToMap1220);
+  ui.AdjustBtn?.addEventListener("click",flowerFieldAdjustRange1221);
   ui.RedrawBtn.addEventListener("click",()=>{if(flowerFieldBusy1220)return;flowerFieldDraft1220=flowerFieldReadForm1220(false);flowerFieldRedrawBackup1220=flowerFieldCopyPoints1220(flowerFieldDraft1220.points);flowerFieldDraft1220.points=[];flowerFieldShowDrawing1220(flowerFieldRedrawBackup1220);});
   ui.Form.addEventListener("submit",flowerFieldApply1220);
   ui.Kind.addEventListener("change",()=>{
