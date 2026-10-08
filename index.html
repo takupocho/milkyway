@@ -4792,6 +4792,180 @@
   @media (prefers-reduced-motion:reduce){
     .power-circuit{display:none !important;}
   }
+  /* 【v1219】月齢カレンダー。最終CSSの後に挿入し、既存button装飾をここで上書き。 */
+  #moonTodayName[role="button"]{cursor:pointer;border-radius:5px;transition:color .16s;}
+  #moonTodayName[role="button"]:hover{color:#e6c797;}
+  #moonTodayName[role="button"]:focus-visible{outline:2px solid var(--violet);outline-offset:5px;}
+  body.moon-calendar-open{overflow:hidden;}
+  .moon-cal-overlay{
+    --mc-ink:#f2f0f9;--mc-muted:#a6abc7;--mc-gold:#d9b67c;--mc-violet:#aaa0ff;
+    display:none;position:fixed;inset:0;z-index:10080;align-items:center;justify-content:center;
+    padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));
+    background:rgba(4,7,19,.56);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+    color:var(--mc-ink);overscroll-behavior:contain;
+  }
+  .moon-cal-overlay.show{display:flex;}
+  .moon-cal-dialog{
+    position:relative;isolation:isolate;display:flex;flex-direction:column;
+    width:min(1280px,100%);height:100%;max-height:940px;min-width:0;min-height:0;
+    overflow:hidden;border:1px solid rgba(167,168,223,.38);border-radius:22px;
+    background:linear-gradient(135deg,rgba(22,27,57,.86),rgba(12,16,37,.86));
+    box-shadow:0 24px 100px rgba(0,0,0,.56),inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .moon-cal-header{flex:none;padding:24px 30px 19px;border-bottom:1px solid rgba(168,174,221,.19);background:rgba(19,23,49,.52);}
+  .moon-cal-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;}
+  .moon-cal-eyebrow{margin:0 0 7px;color:var(--mc-gold);font:500 9px/1.3 'IBM Plex Mono',monospace;letter-spacing:.24em;}
+  .moon-cal-title{margin:0;color:var(--mc-ink);font:600 22px/1.35 'Inter',sans-serif;letter-spacing:.06em;}
+  .moon-cal-subtitle{margin:6px 0 0;color:var(--mc-muted);font:400 11px/1.6 'Inter',sans-serif;}
+  .moon-cal-overlay .moon-cal-btn{
+    display:inline-flex;align-items:center;justify-content:center;flex:none;
+    width:auto;min-width:44px;min-height:44px;padding:10px 14px;border:1px solid rgba(158,164,215,.27);
+    border-radius:11px;background:rgba(37,43,79,.56);color:var(--mc-ink);font:600 12px/1.2 'Inter',sans-serif;
+    box-shadow:none;cursor:pointer;touch-action:manipulation;transition:background .15s,border-color .15s;
+  }
+  .moon-cal-overlay .moon-cal-btn:hover{background:rgba(71,70,125,.56);border-color:rgba(179,168,255,.75);}
+  .moon-cal-overlay .moon-cal-btn:active{transform:none;box-shadow:none;background:rgba(87,79,149,.6);}
+  .moon-cal-overlay .moon-cal-btn:disabled{opacity:.35;cursor:default;box-shadow:none;}
+  .moon-cal-overlay .moon-cal-btn:focus-visible,.moon-cal-day:focus-visible{outline:2px solid #bbb3ff;outline-offset:3px;}
+  .moon-cal-overlay .moon-cal-close{width:44px;height:44px;padding:0;border-radius:50%;background:rgba(27,31,62,.4);color:#ced1e5;font-size:25px;font-weight:400;line-height:1;}
+  .moon-cal-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-top:22px;}
+  .moon-cal-month-nav{display:flex;align-items:center;gap:16px;min-width:0;}
+  .moon-cal-overlay .moon-cal-nav-btn{width:44px;padding:0;font-size:25px;font-weight:400;}
+  .moon-cal-month-label{margin:0;min-width:190px;text-align:center;color:#f7f2e8;font:500 30px/1.25 'Fraunces','Inter',serif;letter-spacing:.035em;}
+  .moon-cal-month-label small{font:500 13px/1 'Inter',sans-serif;color:var(--mc-muted);}
+  .moon-cal-overlay .moon-cal-return{color:var(--mc-gold);border-color:rgba(217,182,124,.34);background:rgba(217,182,124,.045);font-size:11px;}
+  .moon-cal-body{min-height:0;flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:20px 30px 26px;scrollbar-width:thin;scrollbar-color:#555784 transparent;}
+  .moon-cal-meta{display:flex;align-items:center;justify-content:space-between;gap:10px 18px;flex-wrap:wrap;margin:0 0 14px;}
+  .moon-cal-basis{margin:0;color:var(--mc-muted);font:400 10px/1.5 'Inter',sans-serif;}
+  .moon-cal-legend{display:flex;flex-wrap:wrap;align-items:center;gap:13px;color:var(--mc-muted);font:500 10px/1.5 'Inter',sans-serif;}
+  .moon-cal-legend-item{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
+  .moon-cal-legend-swatch{display:inline-block;width:8px;height:8px;flex:none;border-radius:3px;background:#aca1fc;}
+  .moon-cal-legend-swatch.observation{background:transparent;border:1px solid var(--mc-gold);}
+  .moon-cal-legend-swatch.today{width:5px;height:5px;border-radius:50%;background:#c5c8eb;}
+  .moon-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;padding:0 0 9px;}
+  .moon-cal-weekday{color:#979ec0;text-align:center;font:500 11px/1.5 'Inter',sans-serif;}
+  .moon-cal-weekday:first-child{color:#d596aa;}
+  .moon-cal-weekday:last-child{color:#95aed8;}
+  .moon-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;isolation:isolate;}
+  .moon-cal-overlay .moon-cal-day{
+    position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    width:100%;min-width:0;min-height:117px;margin:0;padding:9px 5px 8px;overflow:hidden;
+    border:1px solid rgba(147,156,210,.18);border-radius:12px;
+    background:rgba(19,24,50,.52);color:var(--mc-ink);box-shadow:none;
+    font-family:'Inter',sans-serif;cursor:pointer;touch-action:manipulation;
+    transition:background .15s,border-color .15s;
+  }
+  .moon-cal-overlay .moon-cal-day:hover{background:rgba(56,58,103,.55);border-color:rgba(171,162,242,.58);}
+  .moon-cal-overlay .moon-cal-day:active{transform:none;box-shadow:none;}
+  .moon-cal-overlay .moon-cal-day.is-outside{background:rgba(13,17,37,.23);color:#8c94ba;border-color:rgba(147,156,210,.085);}
+  .moon-cal-day.is-outside .moon-cal-moon,.moon-cal-day.is-outside .moon-cal-age,.moon-cal-day.is-outside .moon-cal-phase{opacity:.42;}
+  .moon-cal-overlay .moon-cal-day.is-major{background:linear-gradient(150deg,rgba(60,51,83,.47),rgba(24,28,54,.5));}
+  .moon-cal-overlay .moon-cal-day.is-selected{border-color:#aaa0ed;background:rgba(92,80,160,.27);box-shadow:inset 0 0 0 1px rgba(176,165,255,.22);}
+  .moon-cal-overlay .moon-cal-day.is-observation{border-color:rgba(222,186,126,.82);box-shadow:inset 0 0 0 1px rgba(222,186,126,.12);}
+  .moon-cal-overlay .moon-cal-day.is-observation.is-selected{background:linear-gradient(155deg,rgba(146,112,68,.22),rgba(92,80,160,.24));}
+  .moon-cal-day-number{display:block;align-self:flex-start;margin-left:4px;color:inherit;font:500 13px/1.1 'IBM Plex Mono',monospace;}
+  .moon-cal-day[data-weekday="0"]:not(.is-outside) .moon-cal-day-number{color:#dda0b3;}
+  .moon-cal-day[data-weekday="6"]:not(.is-outside) .moon-cal-day-number{color:#a3bce3;}
+  .moon-cal-day.is-today .moon-cal-day-number::after{display:inline-block;content:"";width:4px;height:4px;margin-left:4px;border-radius:50%;background:#d1d3ed;vertical-align:middle;}
+  .moon-cal-tag{position:absolute;right:7px;top:9px;color:var(--mc-gold);font:600 8px/1.1 'Inter',sans-serif;white-space:nowrap;}
+  .moon-cal-moon{display:block;flex:none;width:43px;height:43px;aspect-ratio:1;margin:5px 0 6px;border-radius:50%;filter:drop-shadow(0 2px 4px rgba(0,0,0,.25));}
+  .moon-cal-moon svg,.moon-cal-moon canvas{display:block;width:100%;height:100%;border-radius:50%;}
+  .moon-cal-age{display:block;color:#c3c7de;font:400 10px/1.35 'IBM Plex Mono',monospace;white-space:nowrap;}
+  .moon-cal-phase{display:block;min-height:13px;margin-top:4px;color:#e3c79d;font:500 10px/1.3 'Inter',sans-serif;text-align:center;overflow-wrap:anywhere;}
+  .moon-cal-day.is-outside .moon-cal-phase{color:#b5b8d1;}
+  .moon-cal-events{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:15px 0 0;padding:0;list-style:none;}
+  .moon-cal-event{display:inline-flex;align-items:center;gap:6px;color:#afb5d4;font:400 10px/1.5 'Inter',sans-serif;}
+  .moon-cal-event b{color:var(--mc-gold);font-weight:500;}
+  .moon-cal-event time{color:#e1e2ed;font-family:'IBM Plex Mono',monospace;}
+  .moon-cal-details{margin-top:22px;padding:17px 19px;border:1px solid rgba(165,165,223,.24);border-radius:15px;background:rgba(35,37,69,.35);}
+  .moon-cal-section-heading{margin:0;color:#e6e4f4;font:600 13px/1.4 'Inter',sans-serif;letter-spacing:.03em;}
+  .moon-cal-section-eyebrow{margin:0 0 5px;color:#8e95b8;font:500 8px/1.3 'IBM Plex Mono',monospace;letter-spacing:.18em;}
+  .moon-cal-selected-summary{margin:9px 0 0;color:#bdc2dc;font:400 12px/1.75 'Inter',sans-serif;overflow-wrap:anywhere;}
+  .moon-cal-detail-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px 18px;}
+  .moon-cal-detail-item{display:block;}
+  .moon-cal-detail-item small{display:block;color:var(--mc-muted);font-size:9px;line-height:1.6;}
+  .moon-cal-detail-item strong{display:block;color:#ece7d9;font:500 14px/1.7 'IBM Plex Mono',monospace;}
+  .moon-cal-distance{margin-top:17px;padding:18px 19px 14px;border:1px solid rgba(153,161,218,.2);border-radius:15px;background:rgba(14,19,44,.4);}
+  .moon-cal-distance-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .moon-cal-distance-summary{margin:0;color:#b3b9d6;text-align:right;font:400 10px/1.5 'IBM Plex Mono',monospace;}
+  .moon-cal-distance-graph{width:100%;margin-top:13px;min-height:145px;}
+  .moon-cal-distance-graph svg{display:block;width:100%;height:auto;max-height:230px;overflow:visible;}
+  .moon-cal-distance-graph canvas{display:block;width:100%;height:180px;}
+  .moon-cal-distance-note{margin:6px 0 0;color:#969dbb;font:400 10px/1.6 'Inter',sans-serif;}
+  .moon-cal-footnote{margin:14px 2px 0;color:#8992b4;font:400 10px/1.6 'Inter',sans-serif;}
+  .moon-cal-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+
+  @media(max-width:700px){
+    .moon-cal-overlay{padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:rgba(4,7,19,.64);-webkit-backdrop-filter:none;backdrop-filter:none;}
+    .moon-cal-dialog{border-radius:17px;background:linear-gradient(145deg,rgba(24,29,58,.91),rgba(11,16,36,.91));}
+    .moon-cal-header{padding:17px 15px 13px;}
+    .moon-cal-title-row{gap:12px;}
+    .moon-cal-eyebrow{font-size:8px;margin-bottom:5px;}
+    .moon-cal-title{font-size:18px;}
+    .moon-cal-subtitle{font-size:10px;line-height:1.55;max-width:240px;}
+    .moon-cal-toolbar{flex-wrap:wrap;gap:8px;justify-content:center;margin-top:14px;}
+    .moon-cal-month-nav{gap:7px;justify-content:space-between;flex:1;}
+    .moon-cal-month-label{min-width:0;flex:1;font-size:24px;}
+    .moon-cal-overlay .moon-cal-return{width:100%;min-height:44px;padding:7px 12px;font-size:10px;}
+    .moon-cal-body{padding:13px 12px 19px;}
+    .moon-cal-meta{gap:6px;margin-bottom:11px;}
+    .moon-cal-basis{font-size:9px;}
+    .moon-cal-legend{gap:10px;font-size:9px;}
+    .moon-cal-weekdays{gap:4px;padding-bottom:6px;}
+    .moon-cal-weekday{font-size:10px;}
+    .moon-cal-grid{gap:4px;}
+    .moon-cal-overlay .moon-cal-day{min-height:91px;padding:7px 2px 6px;border-radius:8px;}
+    .moon-cal-day-number{margin-left:3px;font-size:11px;}
+    .moon-cal-moon{width:31px;height:31px;margin:6px 0 5px;filter:none;}
+    .moon-cal-age{font-size:8.5px;letter-spacing:-.025em;}
+    .moon-cal-phase{margin-top:4px;min-height:12px;font-size:8.5px;line-height:1.2;}
+    .moon-cal-tag{right:4px;top:8px;font-size:6px;}
+    .moon-cal-day.is-today .moon-cal-day-number::after{width:3px;height:3px;margin-left:2px;}
+    .moon-cal-events{gap:5px 10px;margin-top:12px;}
+    .moon-cal-event{font-size:9px;gap:4px;}
+    .moon-cal-details{margin-top:17px;padding:13px 12px;border-radius:12px;}
+    .moon-cal-section-heading{font-size:12px;}
+    .moon-cal-selected-summary{margin-top:7px;font-size:11px;}
+    .moon-cal-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 12px;}
+    .moon-cal-detail-item strong{font-size:12px;}
+    .moon-cal-distance{margin-top:12px;padding:13px 12px 11px;border-radius:12px;}
+    .moon-cal-distance-heading{align-items:flex-start;gap:8px;flex-wrap:wrap;}
+    .moon-cal-distance-summary{font-size:9px;text-align:left;}
+    .moon-cal-distance-graph{margin-top:9px;min-height:115px;}
+    .moon-cal-distance-graph svg{min-height:115px;}
+    .moon-cal-distance-note,.moon-cal-footnote{font-size:9px;}
+  }
+  @media(max-width:360px){
+    .moon-cal-header{padding:14px 12px 11px;}
+    .moon-cal-title{font-size:17px;}
+    .moon-cal-subtitle{font-size:9px;}
+    .moon-cal-body{padding-right:8px;padding-left:8px;}
+    .moon-cal-grid,.moon-cal-weekdays{gap:3px;}
+    .moon-cal-overlay .moon-cal-day{min-height:86px;padding-left:1px;padding-right:1px;border-radius:6px;}
+    .moon-cal-moon{width:29px;height:29px;}
+    .moon-cal-age{font-size:8px;}
+    .moon-cal-phase{font-size:8px;}
+    .moon-cal-tag{top:5px;right:2px;font-size:5.5px;}
+  }
+  @media(max-height:550px){
+    .moon-cal-header{padding-top:10px;padding-bottom:10px;}
+    .moon-cal-subtitle{display:none;}
+    .moon-cal-toolbar{margin-top:9px;}
+    .moon-cal-overlay .moon-cal-return{width:auto;}
+    .moon-cal-title{font-size:17px;}
+    .moon-cal-month-label{font-size:23px;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    #moonTodayName[role="button"],.moon-cal-overlay .moon-cal-btn,.moon-cal-overlay .moon-cal-day{transition:none;}
+  }
+
+  .moon-cal-error{grid-column:1/-1;color:#e6bcc7;padding:20px;}
+  .moon-cal-footnote a{color:#b8acef;}
+  @media(pointer:coarse){
+    .moon-cal-overlay{-webkit-backdrop-filter:none;backdrop-filter:none;}
+    .moon-cal-dialog{background:linear-gradient(145deg,rgba(24,29,58,.91),rgba(11,16,36,.91));}
+  }
+
 </style>
 </head>
 <body>
@@ -4799,6 +4973,59 @@
   <span class="icon" aria-hidden="true">📱</span>
   <p>このツールは縦向きでの利用を想定しています。<br>お手数ですが端末を縦向きに戻してください。</p>
 </div>
+<!-- 【v1219】body末尾付近に挿入。既存モーダル内へネストしない。 -->
+<div id="moonCalendarOverlay" class="moon-cal-overlay" aria-hidden="true">
+  <section id="moonCalendarDialog" class="moon-cal-dialog" role="dialog" aria-modal="true" aria-labelledby="moonCalendarTitle" aria-describedby="moonCalendarHelp" tabindex="-1">
+    <header class="moon-cal-header">
+      <div class="moon-cal-title-row">
+        <div>
+          <p class="moon-cal-eyebrow" aria-hidden="true">LUNAR CALENDAR</p>
+          <h2 id="moonCalendarTitle" class="moon-cal-title">月齢カレンダー</h2>
+          <p id="moonCalendarHelp" class="moon-cal-subtitle">移りゆく月の形を、ひと月まとめて。日付を押すと詳細が見られます。</p>
+        </div>
+        <button id="moonCalendarCloseBtn" type="button" class="moon-cal-btn moon-cal-close" aria-label="月齢カレンダーを閉じる">×</button>
+      </div>
+      <div class="moon-cal-toolbar">
+        <div class="moon-cal-month-nav">
+          <button id="moonCalendarPrevBtn" type="button" class="moon-cal-btn moon-cal-nav-btn" aria-label="前の月を見る">‹</button>
+          <h3 id="moonCalendarMonthLabel" class="moon-cal-month-label" aria-live="polite" aria-atomic="true"></h3>
+          <button id="moonCalendarNextBtn" type="button" class="moon-cal-btn moon-cal-nav-btn" aria-label="次の月を見る">›</button>
+        </div>
+        <button id="moonCalendarCurrentBtn" type="button" class="moon-cal-btn moon-cal-return">観測日の月へ戻る</button>
+      </div>
+    </header>
+    <div class="moon-cal-body">
+      <div class="moon-cal-meta">
+        <p id="moonCalendarBasis" class="moon-cal-basis"></p>
+        <div class="moon-cal-legend" aria-label="カレンダーの凡例">
+          <span class="moon-cal-legend-item"><i class="moon-cal-legend-swatch observation" aria-hidden="true"></i>観測日</span>
+          <span class="moon-cal-legend-item"><i class="moon-cal-legend-swatch" aria-hidden="true"></i>詳細表示中</span>
+          <span class="moon-cal-legend-item"><i class="moon-cal-legend-swatch today" aria-hidden="true"></i>今日</span>
+        </div>
+      </div>
+      <div class="moon-cal-weekdays" aria-hidden="true">
+        <span class="moon-cal-weekday">日</span><span class="moon-cal-weekday">月</span><span class="moon-cal-weekday">火</span><span class="moon-cal-weekday">水</span><span class="moon-cal-weekday">木</span><span class="moon-cal-weekday">金</span><span class="moon-cal-weekday">土</span>
+      </div>
+      <div id="moonCalendarGrid" class="moon-cal-grid" role="group" aria-label="日ごとの月齢"></div>
+      <ul id="moonCalendarEvents" class="moon-cal-events" aria-label="今月の主な月相"></ul>
+      <section class="moon-cal-details" aria-labelledby="moonCalendarDetailTitle">
+        <p class="moon-cal-section-eyebrow" aria-hidden="true">DAILY MOON</p>
+        <h3 id="moonCalendarDetailTitle" class="moon-cal-section-heading">日付の詳細</h3>
+        <div id="moonCalendarSelectedSummary" class="moon-cal-selected-summary" aria-live="polite" aria-atomic="true"></div>
+      </section>
+      <section class="moon-cal-distance" aria-labelledby="moonCalendarDistanceTitle">
+        <div class="moon-cal-distance-heading">
+          <h3 id="moonCalendarDistanceTitle" class="moon-cal-section-heading">地球と月の距離</h3>
+          <p id="moonCalendarDistanceSummary" class="moon-cal-distance-summary"></p>
+        </div>
+        <div id="moonCalendarDistanceGraph" class="moon-cal-distance-graph"></div>
+        <p class="moon-cal-distance-note">距離は地球と月の中心間。月が近づくほど、見かけの大きさは少し大きくなります。</p>
+      </section>
+      <p class="moon-cal-footnote">月齢は直前の新月からの経過日数。月齢・月相時刻・距離は簡易天文計算による目安です。日付を押しても観測日時は変わりません。<br>月齢の定義：<a href="https://eco.mtk.nao.ac.jp/koyomi/faq/moon.html" target="_blank" rel="noopener noreferrer">国立天文台・暦計算室</a></p>
+    </div>
+  </section>
+</div>
+
 <div class="app">
 
   <!-- 【v956】全画面モードの器。中身は入るときに引っ越してくる。 -->
@@ -5842,7 +6069,7 @@
                 <span class="moon-today-label">今日のお月さま</span>
                 <div class="moon-today-body">
                   <canvas id="moonTodayIcon" width="72" height="72"></canvas>
-                  <ruby class="moon-today-name" id="moonTodayName">月<rt>つき</rt></ruby>
+                  <ruby class="moon-today-name" id="moonTodayName" role="button" tabindex="0" aria-label="月齢カレンダーを開く" aria-controls="moonCalendarOverlay" aria-expanded="false">月<rt>つき</rt></ruby>
                 </div>
               </div>
               </div>
@@ -6957,7 +7184,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1218-bantan-tunnels";
+const APP_VERSION="1219-moon-calendar";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -46650,8 +46877,325 @@ function renderBestTime(s){
   el.bestTimeRange.innerHTML = `${startHM} - ${endHM}<span class="best-time-duration">（${durationLabel}）</span>`;
 }
 
+/* 【v1219】月齢カレンダー。既存の地心太陽・月位置を用いたローカル概算。
+   日々の値は指定UTCオフセットの正午（既定は日本標準時）。月齢は平均朔望月の比例値ではなく、
+   計算した直前の新月（太陽と月の黄経差0度）からの経過日数。
+   基礎の簡易天文モデルの精度を超える暦・食の予報には用いない。 */
+const MOON_CALENDAR_TZ1219=9;
+const MOON_CALENDAR_CACHE1219=new Map();
+const MOON_CALENDAR_PHASES1219=[
+  {type:"new",label:"新月",angle:0},
+  {type:"firstQuarter",label:"上弦",angle:90},
+  {type:"full",label:"満月",angle:180},
+  {type:"lastQuarter",label:"下弦",angle:270}
+];
+
+function moonCalendarCivilMs1219(year,month,day,hour=0,tz=MOON_CALENDAR_TZ1219){
+  // Date.UTC(0..99,...) は1900年代に補正するため、年を明示的に設定する。
+  const date=new Date(0);
+  date.setUTCFullYear(year,month-1,day);
+  date.setUTCHours(hour,0,0,0);
+  return date.getTime()-tz*3600000;
+}
+function moonCalendarCivilJd1219(year,month,day,hour=0,tz=MOON_CALENDAR_TZ1219){
+  return moonCalendarCivilMs1219(year,month,day,hour,tz)/86400000+2440587.5;
+}
+function moonCalendarDateParts1219(jd,tz=MOON_CALENDAR_TZ1219){
+  const date=new Date((jd-2440587.5)*86400000+tz*3600000);
+  const year=date.getUTCFullYear(),month=date.getUTCMonth()+1,day=date.getUTCDate();
+  const pad=value=>String(value).padStart(2,"0");
+  return {year,month,day,date:`${String(year).padStart(4,"0")}-${pad(month)}-${pad(day)}`,
+    time:`${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`};
+}
+function moonCalendarSnapshot1219(jd){
+  const sun=sunPosition(jd),moon=moonPosition(jd);
+  const rad=Math.PI/180,ra=moon.ra*rad,dec=moon.dec*rad;
+  // moonPosition.elong は平均黄経差。摂動を含む赤道座標から黄経を復元する。
+  const eps=(23.439-0.0000004*(jd-2451543.5))*rad;
+  const lunarLongitude=Math.atan2(
+    Math.cos(dec)*Math.sin(ra)*Math.cos(eps)+Math.sin(dec)*Math.sin(eps),
+    Math.cos(dec)*Math.cos(ra))/rad;
+  const elong=((lunarLongitude-sun.lambda)%360+360)%360;
+  const distanceKm=moon.distanceER*6378.14;
+  const cosSeparation=Math.max(-1,Math.min(1,
+    Math.sin(sun.dec*rad)*Math.sin(dec)+Math.cos(sun.dec*rad)*Math.cos(dec)*Math.cos((sun.ra-moon.ra)*rad)));
+  const separation=Math.acos(cosSeparation),sunDistanceKm=sun.distAU*149597870.7;
+  // 太陽―月―地球の三角形から月での位相角を求め、有限の太陽距離も含める。
+  const phaseAngle=Math.atan2(sunDistanceKm*Math.sin(separation),distanceKm-sunDistanceKm*cosSeparation);
+  const illum=Math.max(0,Math.min(1,(1+Math.cos(phaseAngle))/2));
+  // 既存描画関数の cos(離角) に渡す角度を輝面比に合わせる。黄経差はイベント探索用に保持。
+  const shapeAngle=Math.acos(Math.max(-1,Math.min(1,1-2*illum)))/rad;
+  const shapeElong=elong<=180?shapeAngle:360-shapeAngle;
+  return {jd,elong,shapeElong,illum,distanceKm,separationDeg:separation/rad};
+}
+function moonCalendarPhaseRoot1219(left,right,angle){
+  const error=jd=>((moonCalendarSnapshot1219(jd).elong-angle+540)%360)-180;
+  let low=left,high=right;
+  for(let k=0;k<28;k++){
+    const middle=(low+high)/2;
+    if(error(middle)<0)low=middle;else high=middle;
+  }
+  return (low+high)/2;
+}
+function moonCalendarMonthData1219(year,month,tz=MOON_CALENDAR_TZ1219){
+  if(!Number.isInteger(year)||year<1||year>9999||!Number.isInteger(month)||month<1||month>12){
+    throw new RangeError("月齢カレンダーの年月が範囲外です");
+  }
+  if(!Number.isFinite(tz)||Math.abs(tz)>24)throw new RangeError("月齢カレンダーのUTCオフセットが範囲外です");
+  const key=`${year}-${month}-${tz}`;
+  if(MOON_CALENDAR_CACHE1219.has(key)){
+    const cached=MOON_CALENDAR_CACHE1219.get(key);
+    MOON_CALENDAR_CACHE1219.delete(key);MOON_CALENDAR_CACHE1219.set(key,cached);
+    return cached;
+  }
+  const startJd=moonCalendarCivilJd1219(year,month,1,0,tz);
+  const endJd=moonCalendarCivilJd1219(year,month+1,1,0,tz);
+  const daysInMonth=Math.round(endJd-startJd),scanStart=startJd-35;
+  const allEvents=[];
+  let previousJd=scanStart,previousElong=moonCalendarSnapshot1219(scanStart).elong;
+  let unwrapped=previousElong;
+  // 半日おきに黄経差をほどき、0/90/180/270度の通過を各区間で二分探索する。
+  for(let jd=scanStart+0.5;jd<=endJd+0.5;jd+=0.5){
+    const elong=moonCalendarSnapshot1219(jd).elong;
+    const advance=((elong-previousElong+540)%360)-180;
+    const nextUnwrapped=unwrapped+advance;
+    for(let quarter=Math.floor(unwrapped/90)+1;quarter*90<=nextUnwrapped;quarter++){
+      const phase=MOON_CALENDAR_PHASES1219[((quarter%4)+4)%4];
+      const eventJd=moonCalendarPhaseRoot1219(previousJd,jd,phase.angle);
+      allEvents.push({...phase,jd:eventJd,...moonCalendarDateParts1219(eventJd,tz)});
+    }
+    previousJd=jd;previousElong=elong;unwrapped=nextUnwrapped;
+  }
+  const events=allEvents.filter(event=>event.jd>=startJd&&event.jd<endJd);
+  const newMoons=allEvents.filter(event=>event.type==="new");
+  const days=[];
+  for(let day=1;day<=daysInMonth;day++){
+    const jd=startJd+day-1+0.5,snapshot=moonCalendarSnapshot1219(jd);
+    let lastNewMoon=null;
+    for(const event of newMoons){if(event.jd<=jd)lastNewMoon=event;else break;}
+    if(!lastNewMoon)throw new Error("直前の新月を探索できませんでした");
+    const date=moonCalendarDateParts1219(jd,tz).date;
+    const weekday=new Date((jd-2440587.5)*86400000+tz*3600000).getUTCDay();
+    days.push({...snapshot,day,date,weekday,age:Math.max(0,jd-lastNewMoon.jd),
+      lastNewMoonJd:lastNewMoon.jd,phaseEvents:events.filter(event=>event.date===date)});
+  }
+  const distanceMinKm=Math.min(...days.map(day=>day.distanceKm));
+  const distanceMaxKm=Math.max(...days.map(day=>day.distanceKm));
+  const timezoneLabel=tz===9?"JST":`UTC${tz<0?"−":"+"}${Math.abs(tz)}`;
+  const data={year,month,tz,timezoneLabel,startJd,endJd,daysInMonth,days,events,
+    distanceMinKm,distanceMaxKm,approximate:true,
+    note:`各日の月齢・月の形・距離は正午（${timezoneLabel}）。新月を探索した既存の簡易天文計算による概算です。`};
+  MOON_CALENDAR_CACHE1219.set(key,data);
+  while(MOON_CALENDAR_CACHE1219.size>12)MOON_CALENDAR_CACHE1219.delete(MOON_CALENDAR_CACHE1219.keys().next().value);
+  return data;
+}
+
+/* 【v1219】月相名から開く月齢カレンダー。閲覧だけで撮影日時を変えない。
+   月単位でのみ表と月形を作り直し、再生中の秒ごとの更新では再計算しない。 */
+const moonCalendarUi1219=Object.fromEntries([
+  "Overlay","Dialog","Title","MonthLabel","PrevBtn","NextBtn","CurrentBtn","CloseBtn",
+  "Grid","Basis","Events","DetailTitle","SelectedSummary","DistanceGraph","DistanceSummary"
+].map(name=>[name,document.getElementById("moonCalendar"+name)]));
+let moonCalendarOpen1219=false,moonCalendarFollow1219=true,moonCalendarData1219=null,
+  moonCalendarYear1219=2026,moonCalendarMonth1219=1,moonCalendarDay1219=1,
+  moonCalendarObservationKey1219="",moonCalendarReturnFocus1219=null,moonCalendarChartRaf1219=0;
+let moonCalendarBackground1219=[];
+
+function moonCalendarObservation1219(s=null){
+  const tzValue=+el.tz.value,tz=Number.isFinite(tzValue)&&Math.abs(tzValue)<=24?tzValue:9;
+  let jd=s&&Number.isFinite(s.jd)?s.jd:null;
+  if(jd===null){
+    const [year,month,day]=(el.dateInput.value||"").split("-").map(Number);
+    const minutes=playbackTimer?playbackVisualMinutes:+el.timeSlider.value;
+    jd=year&&month&&day?moonCalendarCivilJd1219(year,month,day,0,tz)+(Number.isFinite(minutes)?minutes:0)/1440
+      :Date.now()/86400000+2440587.5;
+  }
+  return {...moonCalendarDateParts1219(jd,tz),tz};
+}
+function moonCalendarDrawIcon1219(canvas,day){
+  const ctx=canvas.getContext("2d"),W=canvas.width,c=W/2,r=W*.42;
+  ctx.clearRect(0,0,W,W);
+  drawMoonPhaseShape(ctx,c,c,r,day.shapeElong,"#eee8ce","#242942");
+  ctx.save();ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);ctx.clip();
+  const shade=ctx.createRadialGradient(c-r*.28,c-r*.35,r*.12,c,c,r);
+  shade.addColorStop(0,"rgba(255,255,255,.06)");shade.addColorStop(.7,"rgba(3,6,18,0)");shade.addColorStop(1,"rgba(3,6,18,.3)");
+  ctx.fillStyle=shade;ctx.fillRect(0,0,W,W);
+  ctx.fillStyle="rgba(51,56,79,.09)";
+  for(const [x,y,size]of [[-.3,-.22,.14],[.24,-.35,.1],[.25,.23,.16],[-.16,.4,.085],[-.48,.14,.075]]){
+    ctx.beginPath();ctx.arc(c+x*r,c+y*r,size*r,0,Math.PI*2);ctx.fill();
+  }
+  ctx.restore();ctx.strokeStyle="rgba(226,231,255,.24)";ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.arc(c,c,r,0,Math.PI*2);ctx.stroke();
+}
+function moonCalendarSelectDay1219(day,focus=false){
+  if(!moonCalendarData1219)return;
+  moonCalendarDay1219=clamp(Math.round(day),1,moonCalendarData1219.daysInMonth);
+  const value=moonCalendarData1219.days[moonCalendarDay1219-1];
+  for(const button of moonCalendarUi1219.Grid.querySelectorAll("button[data-day]")){
+    const selected=+button.dataset.day===moonCalendarDay1219;
+    button.classList.toggle("is-selected",selected);button.setAttribute("aria-pressed",String(selected));button.tabIndex=selected?0:-1;
+    if(selected&&focus)button.focus({preventScroll:false});
+  }
+  moonCalendarUi1219.DetailTitle.textContent=`${value.date.replaceAll("-","/")}（${WEEKDAY_JA[value.weekday]}）`;
+  const phase=value.phaseEvents.length?value.phaseEvents.map(e=>e.label).join("・")
+    :value.elong<180?"満ちていく月":"欠けていく月";
+  moonCalendarUi1219.SelectedSummary.innerHTML=`<div class="moon-cal-detail-grid">
+    <span class="moon-cal-detail-item"><small>月齢</small><strong>${value.age.toFixed(1)}</strong></span>
+    <span class="moon-cal-detail-item"><small>輝面比</small><strong>${(value.illum*100).toFixed(1)}%</strong></span>
+    <span class="moon-cal-detail-item"><small>地心距離</small><strong>${Math.round(value.distanceKm).toLocaleString("ja-JP")} km</strong></span>
+    <span class="moon-cal-detail-item"><small>月の満ち欠け</small><strong>${phase}</strong></span>
+  </div>`;
+  moonCalendarScheduleChart1219();
+}
+function moonCalendarRender1219(){
+  if(!moonCalendarOpen1219)return;
+  const ui=moonCalendarUi1219,observation=moonCalendarObservation1219();
+  ui.MonthLabel.textContent=`${moonCalendarYear1219}年 ${moonCalendarMonth1219}月`;
+  ui.PrevBtn.disabled=moonCalendarYear1219===1&&moonCalendarMonth1219===1;
+  ui.NextBtn.disabled=moonCalendarYear1219===9999&&moonCalendarMonth1219===12;
+  try{
+    const data=moonCalendarMonthData1219(moonCalendarYear1219,moonCalendarMonth1219,observation.tz);
+    moonCalendarData1219=data;
+    ui.Basis.textContent=`各日12:00（${data.timezoneLabel}）の月齢・月の形。簡易天文計算による目安。`;
+    const today=moonCalendarDateParts1219(Date.now()/86400000+2440587.5,data.tz).date;
+    const fragment=document.createDocumentFragment();
+    const blanks=data.days[0].weekday;
+    for(let i=0;i<blanks;i++){
+      const blank=document.createElement("div");blank.className="moon-cal-day is-outside";blank.setAttribute("aria-hidden","true");fragment.append(blank);
+    }
+    for(const day of data.days){
+      const button=document.createElement("button");button.type="button";button.className="moon-cal-day";
+      button.dataset.day=day.day;button.dataset.weekday=day.weekday;
+      button.classList.toggle("is-major",day.phaseEvents.length>0);
+      button.classList.toggle("is-observation",day.date===observation.date);button.classList.toggle("is-today",day.date===today);
+      button.setAttribute("aria-label",`${data.year}年${data.month}月${day.day}日 ${WEEKDAY_JA[day.weekday]}曜日、月齢${day.age.toFixed(1)}、輝面比${(day.illum*100).toFixed(0)}%${day.phaseEvents.map(e=>"、"+e.label).join("")}${day.date===observation.date?"、観測日":""}`);
+      const number=document.createElement("span");number.className="moon-cal-day-number";number.textContent=day.day;
+      const canvas=document.createElement("canvas");canvas.className="moon-cal-moon";canvas.width=96;canvas.height=96;canvas.setAttribute("aria-hidden","true");
+      const age=document.createElement("span");age.className="moon-cal-age";age.textContent=`月齢 ${day.age.toFixed(1)}`;
+      const phase=document.createElement("span");phase.className="moon-cal-phase";phase.textContent=day.phaseEvents.map(e=>e.label).join("・");
+      button.append(number,canvas,age,phase);fragment.append(button);moonCalendarDrawIcon1219(canvas,day);
+    }
+    const padding=(7-(blanks+data.days.length)%7)%7;
+    for(let i=0;i<padding;i++){
+      const blank=document.createElement("div");blank.className="moon-cal-day is-outside";blank.setAttribute("aria-hidden","true");fragment.append(blank);
+    }
+    ui.Grid.replaceChildren(fragment);
+    ui.Events.replaceChildren(...data.events.map(event=>{
+      const row=document.createElement("li");row.className="moon-cal-event";
+      const label=document.createElement("b");label.textContent=event.label;
+      const time=document.createElement("time");time.dateTime=event.date;time.textContent=`${event.month}/${event.day}`;
+      const detail=document.createElement("span");detail.textContent=`計算目安 ${event.time}`;
+      row.append(label,time,detail);return row;
+    }));
+    moonCalendarSelectDay1219(moonCalendarDay1219);
+  }catch(error){
+    moonCalendarData1219=null;ui.Grid.innerHTML='<p class="moon-cal-error" role="status">この年月の月齢を計算できませんでした。前後の月を選んでください。</p>';
+    ui.Events.replaceChildren();ui.SelectedSummary.textContent="";ui.DistanceGraph.replaceChildren();ui.DistanceSummary.textContent="";
+  }
+}
+function moonCalendarDrawChart1219(){
+  if(!moonCalendarOpen1219||!moonCalendarData1219)return;
+  const ui=moonCalendarUi1219,data=moonCalendarData1219;
+  const W=Math.max(220,Math.round(ui.DistanceGraph.clientWidth)),H=165,left=37,right=13,top=14,bottom=30;
+  const low=Math.floor(data.distanceMinKm/10000)*10000,high=Math.ceil(data.distanceMaxKm/10000)*10000;
+  const x=day=>left+(day-1)/(data.daysInMonth-1)*(W-left-right);
+  const y=km=>top+(high-km)/Math.max(10000,high-low)*(H-top-bottom);
+  const path=data.days.map((day,index)=>(index?"L":"M")+x(day.day).toFixed(2)+","+y(day.distanceKm).toFixed(2)).join(" ");
+  const ticks=[...new Set([1,Math.ceil(data.daysInMonth/3),Math.ceil(data.daysInMonth*2/3),data.daysInMonth])];
+  const selected=data.days[moonCalendarDay1219-1];
+  let grid="";
+  for(let i=0;i<=3;i++){
+    const km=low+(high-low)*i/3,py=y(km);
+    grid+=`<line x1="${left}" x2="${W-right}" y1="${py}" y2="${py}" stroke="rgba(177,182,222,.13)"/><text x="${left-7}" y="${py+4}" text-anchor="end">${(km/10000).toFixed(1)}</text>`;
+  }
+  ui.DistanceSummary.textContent=`${(data.distanceMinKm/10000).toFixed(2)}〜${(data.distanceMaxKm/10000).toFixed(2)} 万km`;
+  ui.DistanceGraph.innerHTML=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${data.month}月の月までの距離。各日正午、最小${Math.round(data.distanceMinKm).toLocaleString("ja-JP")}キロメートル、最大${Math.round(data.distanceMaxKm).toLocaleString("ja-JP")}キロメートル。">
+    <g fill="#a6abc7" font-size="10" font-family="sans-serif">${grid}<text x="${left}" y="10">万km</text>
+    ${ticks.map(day=>`<text x="${x(day)}" y="${H-7}" text-anchor="middle">${day}日</text>`).join("")}</g>
+    <path d="${path} L${x(data.daysInMonth)},${H-bottom} L${x(1)},${H-bottom} Z" fill="rgba(153,135,233,.1)"/>
+    <path d="${path}" fill="none" stroke="#b0a2ec" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <line x1="${x(selected.day)}" x2="${x(selected.day)}" y1="${top}" y2="${H-bottom}" stroke="#dfbe8e" stroke-opacity=".3" stroke-dasharray="3 4"/>
+    <circle cx="${x(selected.day)}" cy="${y(selected.distanceKm)}" r="4" fill="#dfbe8e" stroke="#222640" stroke-width="2"/>
+  </svg>`;
+}
+function moonCalendarScheduleChart1219(){
+  if(moonCalendarChartRaf1219)return;
+  moonCalendarChartRaf1219=requestAnimationFrame(()=>{moonCalendarChartRaf1219=0;moonCalendarDrawChart1219();});
+}
+function moonCalendarSyncObservation1219(s){
+  if(!moonCalendarOpen1219)return;
+  const observation=moonCalendarObservation1219(s),key=`${observation.date}|${observation.tz}`;
+  if(key===moonCalendarObservationKey1219)return;
+  moonCalendarObservationKey1219=key;
+  if(moonCalendarFollow1219){
+    moonCalendarYear1219=observation.year;moonCalendarMonth1219=observation.month;moonCalendarDay1219=observation.day;
+  }
+  moonCalendarRender1219();
+}
+function moonCalendarShift1219(delta){
+  const parts=moonCalendarDateParts1219(moonCalendarCivilJd1219(moonCalendarYear1219,moonCalendarMonth1219+delta,1,12,0),0);
+  if(parts.year<1||parts.year>9999)return;
+  moonCalendarFollow1219=false;moonCalendarYear1219=parts.year;moonCalendarMonth1219=parts.month;moonCalendarDay1219=1;
+  moonCalendarRender1219();moonCalendarUi1219.Dialog.querySelector(".moon-cal-body").scrollTop=0;
+}
+function moonCalendarSetOpen1219(open){
+  open=!!open;if(open===moonCalendarOpen1219)return;
+  moonCalendarOpen1219=open;
+  const ui=moonCalendarUi1219;
+  ui.Overlay.classList.toggle("show",open);ui.Overlay.setAttribute("aria-hidden",String(!open));
+  document.body.classList.toggle("moon-calendar-open",open);el.moonTodayName.setAttribute("aria-expanded",String(open));
+  if(open){
+    moonCalendarReturnFocus1219=document.activeElement;
+    moonCalendarBackground1219=[...document.body.children].filter(node=>node!==ui.Overlay&&!['SCRIPT','STYLE','LINK'].includes(node.tagName)).map(node=>({node,inert:node.inert}));
+    for(const item of moonCalendarBackground1219)item.node.inert=true;
+    walkForward=0;walkStrafe=0;walkTurn=0;walkPitch=0;walkRise=0;
+    if(walkRaf)endWalk();
+    moonCalendarFollow1219=true;moonCalendarObservationKey1219="";moonCalendarSyncObservation1219();
+    ui.Dialog.querySelector(".moon-cal-body").scrollTop=0;ui.CloseBtn.focus({preventScroll:true});
+  }else{
+    if(moonCalendarChartRaf1219){cancelAnimationFrame(moonCalendarChartRaf1219);moonCalendarChartRaf1219=0;}
+    for(const item of moonCalendarBackground1219)item.node.inert=item.inert;moonCalendarBackground1219=[];
+    const target=moonCalendarReturnFocus1219;
+    if(target&&target.isConnected&&typeof target.focus==="function")target.focus({preventScroll:true});
+    else el.moonTodayName.focus({preventScroll:true});
+  }
+}
+el.moonTodayName.addEventListener("click",()=>moonCalendarSetOpen1219(true));
+el.moonTodayName.addEventListener("keydown",event=>{
+  if(event.key==="Enter"||event.key===" "){event.preventDefault();event.stopPropagation();moonCalendarSetOpen1219(true);}
+});
+moonCalendarUi1219.CloseBtn.addEventListener("click",()=>moonCalendarSetOpen1219(false));
+moonCalendarUi1219.PrevBtn.addEventListener("click",()=>moonCalendarShift1219(-1));
+moonCalendarUi1219.NextBtn.addEventListener("click",()=>moonCalendarShift1219(1));
+moonCalendarUi1219.CurrentBtn.addEventListener("click",()=>{
+  moonCalendarFollow1219=true;moonCalendarObservationKey1219="";moonCalendarSyncObservation1219();
+  moonCalendarUi1219.Dialog.querySelector(".moon-cal-body").scrollTop=0;
+});
+moonCalendarUi1219.Overlay.addEventListener("click",event=>{if(event.target===moonCalendarUi1219.Overlay)moonCalendarSetOpen1219(false);});
+moonCalendarUi1219.Grid.addEventListener("click",event=>{const button=event.target.closest("button[data-day]");if(button)moonCalendarSelectDay1219(+button.dataset.day);});
+for(const type of ["wheel","touchstart","touchmove","pointerdown","mousedown","dblclick"])
+  moonCalendarUi1219.Overlay.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+document.addEventListener("keydown",event=>{
+  if(!moonCalendarOpen1219)return;
+  event.stopImmediatePropagation();
+  if(event.key==="Escape"){event.preventDefault();moonCalendarSetOpen1219(false);return;}
+  if(event.key==="Tab"){
+    const controls=[...moonCalendarUi1219.Dialog.querySelectorAll('button:not(:disabled),a[href],[tabindex="0"]')].filter(node=>node.tabIndex>=0);
+    const first=controls[0],last=controls.at(-1),active=document.activeElement;
+    if(event.shiftKey&&active===first){event.preventDefault();last?.focus();}
+    else if(!event.shiftKey&&active===last){event.preventDefault();first?.focus();}
+    return;
+  }
+  const dayButton=event.target.closest?.("button[data-day]");
+  const steps={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7};
+  if(dayButton&&Object.hasOwn(steps,event.key)){event.preventDefault();moonCalendarSelectDay1219(+dayButton.dataset.day+steps[event.key],true);}
+},true);
+document.addEventListener("keyup",event=>{if(moonCalendarOpen1219)event.stopImmediatePropagation();},true);
+window.addEventListener("resize",()=>{if(moonCalendarOpen1219)moonCalendarScheduleChart1219();});
+
 const moonTodayCtx=el.moonTodayIcon.getContext("2d");
 function renderMoonToday(s){
+  moonCalendarSyncObservation1219(s);
   const info=moonPhaseInfo(s.moon.elong);
   el.moonTodayName.innerHTML = `${info.kanji}<rt>${info.kana}</rt>`;
 
