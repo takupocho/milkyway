@@ -5368,6 +5368,17 @@ body.fs-sim.drone-mode .gps1223-replay{
 .gps1227-destination-times label:first-child{color:#ffe3a3;}
 .gps1227-destination-times label:last-child{color:#a5dcff;}
 @media(max-width:380px){.gps1229-destination-scrub{grid-template-columns:1fr;padding:8px;gap:7px;}.gps1229-destination-assign button{flex:1;}.gps1229-destination-scrub output{font-size:18px;}.gps1227-destination-picked{min-height:0;}}
+/* v1230: modest right-side photographs leave the route visible. */
+.gps1228-photo-popup-card{left:auto;right:8px;top:14%;transform:none;width:38%;max-width:220px;min-width:100px;padding:5px;border-radius:9px}
+.gps1228-photo-popup-card>img{width:100%;height:auto;max-height:199px;border-radius:5px}
+.gps1228-photo-popup-caption{font-size:11px;margin-top:4px;line-height:1.25}
+.gps1228-photo-popup-caption>div+div{font-size:9px;margin-top:2px}
+.gps1228-photo-popup-actions{gap:3px;margin-top:4px}
+.gps1228-photo-popup-actions button{min-width:28px;min-height:28px;height:28px;margin:0;padding:0 4px;font-size:20px;line-height:26px}
+.gps1228-photo-popup-card.is-compact{left:auto;right:8px;transform:none;width:min(200px,calc(60% - 16px));min-width:0;max-width:200px}
+.gps1228-photo-popup-card.is-compact>img{width:32px;height:32px;max-height:32px;object-fit:contain}
+.gps1228-photo-popup-card.is-compact .gps1228-photo-popup-caption{font-size:9px}
+.gps1228-photo-popup-card.is-compact .gps1228-photo-popup-actions button{min-width:24px;min-height:28px;padding:0 2px}
 </style>
 </head>
 <body>
@@ -7711,7 +7722,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1229-gps-destination-times";
+const APP_VERSION="1230-gps-photo-pause";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -49431,6 +49442,8 @@ function driveLogReplayCameraYaw1226(camera,target,dt){
 }
 function driveLogReplayFollowApply1223(){
   const replay=driveLogReplayState1223;if(!replay||!replay.follow||!replay.sample||replay.story1227?.holdCamera)return;
+  const photoHold=driveLogPhotosHolding1230(replay);
+  if(photoHold&&replay.photos1228.holdRendered1230){driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);return;}
   if(!replay.camera1226?.ready)driveLogReplayCameraBegin1226(replay);
   const camera=replay.camera1226,now=performance.now();
   if(!replay.playing&&!camera.seekPending){
@@ -49474,6 +49487,7 @@ function driveLogReplayFollowApply1223(){
   }
   driveLogReplayPosition1223(focus,pose);
   camera.seekPending=false;
+  if(photoHold){replay.photos1228.holdRendered1230=true;driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);}
 }
 function driveLogReplayRefreshTerrain1223(now=performance.now()){
   const replay=driveLogReplayState1223;if(!replay)return;
@@ -49840,10 +49854,12 @@ function driveLogStoryAdvance1227(replay,wallMs){
     const rate=replay.prepared.activeMs*Math.max(.01,replay.speed)/Math.max(1,replay.baseDurationMs);
     const destination=story.hasDestination&&!story.arrivalShown&&active<=story.plan.arrivalActiveMs;
     const target=destination?story.plan.arrivalActiveMs:replay.prepared.activeMs;
-    const until=Math.max(0,(target-active)/rate),used=Math.min(remaining,until);
+    const photo=driveLogPhotosNext1230(replay,active,target),stop=photo?photo.activeMs:target;
+    const until=Math.max(0,(stop-active)/rate),used=Math.min(remaining,until);
     if(story.fadeKind)story.fadeMs=Math.min(700,story.fadeMs+used);
-    driveLogStorySetActive1227(replay,Math.min(target,active+used*rate));remaining-=used;
+    driveLogStorySetActive1227(replay,Math.min(stop,active+used*rate));remaining-=used;
     if(used<until-1e-7)break;
+    if(photo){driveLogStorySetActive1227(replay,stop,photo.sample);driveLogPhotosQueue1228(replay.photos1228,photo.items);break;}
     if(destination){
       driveLogStorySetActive1227(replay,target,story.plan.arrivalSample);story.arrivalShown=true;story.phase='destination';story.elapsedMs=0;story.fadeKind=null;
     }else{driveLogStorySetActive1227(replay,target);story.phase='finish';story.elapsedMs=0;story.fadeKind=null;}
@@ -49988,10 +50004,12 @@ function driveLogStoryHint1227(replay){
   if(story?.phase==='destination')return `${replay.playing?'目的地で5秒停止':'一時停止中'} · 到着と下山の時刻を表示`;
   if(story?.phase==='finish')return `${replay.playing?'到着地点で停止':'一時停止中'} · 到着時刻を表示`;
   if(story?.phase==='summary')return '往路・復路・全行程の所要時間';
+  if(driveLogPhotosHolding1230(replay))return replay.playing?'写真を表示 · 3秒静止':'一時停止中 · 写真を表示';
   const plan=driveLogStoryPlanFor1227(replay),active=replay.prepared.activeMs;
   const stay=plan.hasDestination?clamp(plan.departureActiveMs-plan.arrivalActiveMs,0,active):0;
   const seconds=active>0?Math.round(replay.baseDurationMs/Math.max(.01,replay.speed)*(1-stay/active)/1000):0;
-  return `移動 約${seconds}秒 + 時刻演出 ${plan.hasDestination?12:7}秒`;
+  const photos=replay.photos1228?.items.length||0;
+  return `移動 約${seconds}秒 + 時刻演出 ${plan.hasDestination?12:7}秒${photos?` + 写真${photos}枚 × 3秒`:''}`;
 }
 function driveLogStorySync1227(replay){
   if(replay&&typeof driveLogReplayUi1223==='function'){const hint=driveLogReplayUi1223().Hint;if(hint)hint.textContent=driveLogStoryHint1227(replay);}
@@ -50010,6 +50028,7 @@ function driveLogStorySync1227(replay){
 function driveLogReplayPlay1223(){
   const replay=driveLogReplayState1223;if(!replay||!replay.prepared.activeMs)return;
   if(replay.playing){driveLogReplayPause1223();return;}
+  if(replay.photos1228?.showing?.manual)driveLogPhotosHide1228(replay);
   stopPlayback(false);endWalk();if(driveActive)stopDriveMode();if(arActive)stopArMode();trainChaseSet(false,{restore:false,render:false});setAzLockTarget(null);cameraPano.playing=false;cameraPanoClear();
   if(replay.progress>=1&&(!replay.story1227||replay.story1227.phase==='summary'||!replay.story1227.cardsVisible)){
     driveLogReplayOverview1223();replay.progress=0;replay.hasStarted=false;driveLogReplayMotionReset1225(replay);
@@ -50029,7 +50048,7 @@ function driveLogReplayPlay1223(){
     if(document.hidden){driveLogReplayPause1223(false,'画面を離れたため一時停止しました。');return;}
     const elapsed=replay.lastNow===null?0:Math.max(0,now-replay.lastNow),dt=elapsed>500?0:Math.min(250,elapsed);replay.lastNow=now;
     if(elapsed>500){driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);}
-    const current=driveLogStoryAdvance1227(replay,dt);driveLogPhotosTick1228(replay,dt);
+    const current=driveLogPhotosAdvance1230(replay,dt);
     if(driveLogReplayDrawDue1225(replay,now)){
       if(current.holdCamera&&!current.renderPending)driveLogReplaySync1223();else driveLogReplayRender1223();current.renderPending=false;
     }
@@ -50616,7 +50635,13 @@ function driveLogPhotosPopupUi1228(create=false){
   let popup=document.getElementById('driveLogPhotosPopup1228');if(popup||!create||!el.photoCanvasWrap)return popup;
   popup=document.createElement('div');popup.id='driveLogPhotosPopup1228';popup.className='gps1228-photo-popup';popup.hidden=true;popup.setAttribute('role','status');popup.setAttribute('aria-live','polite');
   const card=document.createElement('div');card.id='driveLogPhotosPopupCard1228';card.className='gps1228-photo-popup-card';
-  const image=document.createElement('img');image.id='driveLogPhotosPopupImage1228';image.alt='撮影地点の写真';card.appendChild(image);
+  const image=document.createElement('img');image.id='driveLogPhotosPopupImage1228';image.alt='撮影地点の写真';image.addEventListener('load',()=>{if(!popup.hidden)driveLogPhotosLayout1228();});card.appendChild(image);
+  image.addEventListener('error',()=>{
+    const replay=driveLogReplayState1223,showing=replay?.photos1228?.showing;
+    if(!showing||image.src!==showing.url||!image.complete||image.naturalWidth)return;
+    if(showing.index+1<showing.ids.length)driveLogPhotosStep1228(replay,1);else driveLogPhotosHide1228(replay);
+    driveLogPhotosPopupSync1228(replay);
+  });
   const caption=document.createElement('div');caption.className='gps1228-photo-popup-caption';const time=document.createElement('div');time.id='driveLogPhotosPopupTime1228';caption.appendChild(time);
   const count=document.createElement('div');count.id='driveLogPhotosPopupCount1228';caption.appendChild(count);card.appendChild(caption);
   const actions=document.createElement('div');actions.className='gps1228-photo-popup-actions';
@@ -50631,15 +50656,46 @@ function driveLogPhotosPopupUi1228(create=false){
 }
 function driveLogPhotosLayout1228(){
   const popup=driveLogPhotosPopupUi1228(),card=document.getElementById('driveLogPhotosPopupCard1228');if(!popup||popup.hidden||!card)return;
-  let area;if(typeof driveLogStoryArea1228==='function')area=driveLogStoryArea1228(popup,8);else{
-    const bounds=popup.getBoundingClientRect(),top=8,bottom=Math.max(top,bounds.height-8),panel=typeof driveLogReplayUi1223==='function'?driveLogReplayUi1223().Panel:null;area={bounds,top,bottom};
-    if(panel&&!panel.hidden){const controls=panel.getBoundingClientRect();if(controls.width>0&&controls.height>0&&controls.right>bounds.left&&controls.left<bounds.right&&controls.bottom>bounds.top&&controls.top<bounds.bottom){
-      const above={top,bottom:Math.max(top,Math.min(bottom,controls.top-bounds.top-8))},below={top:Math.max(top,Math.min(bottom,controls.bottom-bounds.top+8)),bottom};area={bounds,...(above.bottom-above.top>=below.bottom-below.top?above:below)};
-    }}
+  const bounds=popup.getBoundingClientRect(),visible=node=>{
+    if(!node||node.hidden||!node.getClientRects().length)return null;
+    const style=getComputedStyle(node),rect=node.getBoundingClientRect();
+    return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0?rect:null;
+  };
+  // Keep the photograph at the right edge, leaving the route's center clear.
+  let right=8;
+  const width=Math.min(220,Math.max(100,bounds.width*.38)),stripWidth=Math.min(200,bounds.width*.6-16);
+  const controls=['driveLogReplayPanel1223','droneStickRight','droneStickLeft','fsExitBtn','droneBadge','simAddressLabel','simulationClockOverlay'].map(id=>document.getElementById(id));
+  controls.push(...el.photoCanvasWrap.querySelectorAll('.sim-right-help'));
+  const free=inset=>{
+    const left=bounds.right-inset-Math.max(width,stripWidth),edge=bounds.right-inset;
+    let gaps=[{top:8,bottom:Math.max(8,bounds.height-8)}];
+    for(const node of controls){
+      const rect=visible(node);if(!rect||rect.bottom<=bounds.top||rect.top>=bounds.bottom)continue;
+      if(node.id!=='driveLogReplayPanel1223'&&(rect.right<=left||rect.left>=edge))continue;
+      const start=rect.top-bounds.top-8,end=rect.bottom-bounds.top+8,next=[];
+      for(const gap of gaps){if(end<=gap.top||start>=gap.bottom)next.push(gap);else{if(start>gap.top)next.push({top:gap.top,bottom:start});if(end<gap.bottom)next.push({top:end,bottom:gap.bottom});}}
+      gaps=next;
+    }
+    return gaps.reduce((best,gap)=>gap.bottom-gap.top>best.bottom-best.top?gap:best,{top:8,bottom:8});
+  };
+  let gap=free(right);
+  if(gap.bottom-gap.top<48){
+    // In a short normal view, a small strip beside the toolbar can still fit.
+    let beside=right;
+    for(const node of el.photoCanvasWrap.querySelectorAll('.sim-right-help')){const rect=visible(node);if(rect&&rect.left>bounds.left+bounds.width*.7&&rect.bottom>bounds.top&&rect.top<bounds.bottom)beside=Math.max(beside,bounds.right-rect.left+8);}
+    const alternate=free(beside);if(alternate.bottom-alternate.top>gap.bottom-gap.top){gap=alternate;right=beside;}
   }
-  const {bounds,top,bottom}=area,available=Math.max(1,bottom-top),compact=available<130||bounds.width<260;card.className=`gps1228-photo-popup-card${compact?' is-compact':''}`;
-  card.style.maxHeight=`${available}px`;const image=document.getElementById('driveLogPhotosPopupImage1228');image.style.maxHeight=`${Math.max(1,available-(compact?0:65))}px`;
-  const height=Math.min(available,card.getBoundingClientRect().height),center=Math.max(top+height/2,Math.min(bounds.height*.35,bottom-height/2));card.style.top=`${center}px`;
+  card.style.right=`${right}px`;
+  const {top,bottom}=gap,available=Math.max(1,bottom-top);
+  // Keep portrait photos small too: the free height is a ceiling, not a target.
+  const budget=Math.min(260,bounds.height*.4,available),compact=budget<110||bounds.width<260;
+  card.className=`gps1228-photo-popup-card${compact?' is-compact':''}`;
+  card.style.maxHeight=`${available}px`;
+  const image=document.getElementById('driveLogPhotosPopupImage1228');
+  const chrome=card.getBoundingClientRect().height-image.getBoundingClientRect().height;
+  image.style.maxHeight=`${Math.max(1,Math.min(compact?32:199,budget-chrome))}px`;
+  const height=Math.min(available,card.getBoundingClientRect().height);
+  card.style.top=`${Math.max(top,Math.min(bounds.height*.14,bottom-height))}px`;
 }
 function driveLogPhotosHide1228(replay){
   const state=replay?.photos1228;if(state?.showing?.url)URL.revokeObjectURL(state.showing.url);if(state)state.showing=null;
@@ -50647,10 +50703,10 @@ function driveLogPhotosHide1228(replay){
 }
 function driveLogPhotosShow1228(replay,ids,selected,manual=false){
   const state=driveLogPhotosState1228(replay);if(typeof ids==='string')ids=[ids];const valid=ids.filter(id=>state.items.some(item=>item.key===id||item.id===id)).map(id=>state.items.find(item=>item.key===id||item.id===id).key);
-  if(!valid.length)return;driveLogPhotosHide1228(replay);state.showing={ids:valid,index:Math.max(0,valid.indexOf(selected)),remainingMs:2800,manual,url:null,itemKey:null};driveLogPhotosPopupSync1228(replay);
+  if(!valid.length)return;driveLogPhotosHide1228(replay);state.showing={ids:valid,index:Math.max(0,valid.indexOf(selected)),remainingMs:3000,manual,url:null,itemKey:null};driveLogPhotosPopupSync1228(replay);
 }
 function driveLogPhotosStep1228(replay,direction){
-  const showing=replay.photos1228?.showing;if(!showing)return;showing.index=(showing.index+direction+showing.ids.length)%showing.ids.length;showing.remainingMs=2800;driveLogPhotosPopupSync1228(replay);
+  const showing=replay.photos1228?.showing;if(!showing)return;showing.index=(showing.index+direction+showing.ids.length)%showing.ids.length;showing.remainingMs=3000;driveLogPhotosPopupSync1228(replay);
 }
 function driveLogPhotosPopupSync1228(replay){
   const state=replay?.photos1228,showing=state?.showing,phase=replay?.story1227?.phase;
@@ -50669,6 +50725,54 @@ function driveLogPhotosQueue1228(state,items,priority=false){
   const group={ids:fresh.map(item=>item.key)};
   if(priority)state.pending.unshift(group);else if(state.pending.length<8)state.pending.push(group);else state.pending[state.pending.length-1].ids.push(...group.ids);
 }
+/* Photo stops use wall time; the original GPS sampler and recording gaps stay intact. */
+function driveLogPhotosNext1230(replay,active,target){
+  const state=replay?.photos1228;if(!state?.loaded||state.disposed)return null;
+  const plan=replay.story1227?.plan||replay.plan1227;
+  let next=Infinity,items=[];
+  for(const item of state.items){
+    if(state.seen.has(item.key)||!Number.isFinite(item.activeMs)||item.activeMs<active-1e-5||item.activeMs>target+1e-5)continue;
+    // The destination cards retain priority. Its photos are already queued as a
+    // group for departure, so a skipped stay never invents camera travel.
+    if(plan?.hasDestination&&item.shotMs>=plan.arrivalMs&&item.shotMs<=plan.departureMs)continue;
+    if(item.activeMs<next-1e-5){next=item.activeMs;items=[item];}
+    else if(Math.abs(item.activeMs-next)<=1e-5)items.push(item);
+  }
+  if(!items.length)return null;
+  const first=items[0],location=driveLogStoryLocations1227(replay.prepared,first.shotMs,first.segmentIndex).find(value=>Math.abs(value.activeMs-next)<=1e-5);
+  return {activeMs:clamp(next,active,target),items,sample:location?.sample};
+}
+function driveLogPhotosHolding1230(replay){
+  const state=replay?.photos1228,phase=replay?.story1227?.phase||'travel';
+  return !!(state?.loaded&&!state.disposed&&!['intro','destination','finish','summary'].includes(phase)
+    &&((state.showing&&!state.showing.manual)||state.pending.length));
+}
+function driveLogPhotosAdvance1230(replay,wallMs){
+  const dt=Math.max(0,Math.min(250,Number.isFinite(wallMs)?wallMs:0)),state=replay?.photos1228;
+  const story=driveLogStoryEnsure1227(replay);
+  if(driveLogPhotosHolding1230(replay)){
+    // Finish only the existing time-card fade at this fixed GPS position. The
+    // photo countdown starts once its image is decoded and actually visible.
+    const card=driveLogStoryCard1227(replay);
+    if(card?.opacity>.01&&story.fadeKind)story.fadeMs=Math.min(700,story.fadeMs+dt);
+    else if(state.showing&&!state.showing.manual){
+      const popup=driveLogPhotosPopupUi1228(),image=document.getElementById('driveLogPhotosPopupImage1228');
+      if(popup&&!popup.hidden&&image?.complete&&image.naturalWidth>0){
+        state.showing.remainingMs-=dt;
+        if(state.showing.remainingMs<=1e-7){
+          if(state.showing.index+1<state.showing.ids.length)driveLogPhotosStep1228(replay,1);
+          else driveLogPhotosHide1228(replay);
+        }
+      }
+    }
+    driveLogPhotosTick1228(replay,0);
+    return story;
+  }
+  if(state)state.holdRendered1230=false;
+  const current=driveLogStoryAdvance1227(replay,dt);
+  driveLogPhotosTick1228(replay,0);
+  return current;
+}
 function driveLogPhotosTick1228(replay,wallDt){
   if(!replay)return;const state=driveLogPhotosState1228(replay),active=replay.sample?.activeMs??0,phase=replay.story1227?.phase||'travel';
   if(!state.loaded||state.disposed){state.cursor=active;state.phase=phase;return;}
@@ -50685,7 +50789,6 @@ function driveLogPhotosTick1228(replay,wallDt){
   state.cursor=active;state.phase=phase;
   const card=typeof driveLogStoryCard1227==='function'?driveLogStoryCard1227(replay):null,blocked=['intro','destination','finish','summary'].includes(phase)||card?.opacity>.01;
   if(replay.playing&&!blocked){
-    if(state.showing){state.showing.remainingMs-=Math.max(0,Math.min(250,Number.isFinite(wallDt)?wallDt:0));if(state.showing.remainingMs<=0)driveLogPhotosHide1228(replay);}
     if(!state.showing&&state.pending.length)driveLogPhotosShow1228(replay,state.pending.shift().ids);
   }
   driveLogPhotosPopupSync1228(replay);
