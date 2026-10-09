@@ -7786,7 +7786,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1233-stable-terrain";
+const APP_VERSION="1234-terrain-ready";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -35927,7 +35927,8 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
-    _demComplete1233:terrainTiles.length>0&&loadedTileCount===terrainTiles.length,
+    // Optional fallback tiles and offshore HTTP 404 are settled, not pending.
+    _demComplete1233:terrainTiles.length>0&&terrainTiles.every((tile,index)=>loadedTilePixels[index]||terrainDemTileAbsent1233(tile.key)),
     rowCentre,_sampleOrigin1224:[lat,lon],   /* v1224 explicit world origin */
     _selectEyeM:selectEye,   /* 【v1024】稜線の点を選んだときの目の海抜。大きく違う高さから見るときは作り直す */
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
@@ -36308,7 +36309,7 @@ function requestRealTerrainProfile(lat,lon){
   if(cached&&terrainCacheUsableForEye(cached)){   /* 【v1024】 */
     ++realTerrainState.requestToken;terrainRequestActive1224="";
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
-    Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",...cached});
+    Object.assign(realTerrainState,{key,loadingKey:"",failedKey:"",_demComplete1233:undefined,_sampleOrigin1224:undefined,rowCentre:undefined,...cached});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmTrails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
     prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
@@ -36390,7 +36391,7 @@ function requestRealTerrainProfile(lat,lon){
     realTerrainProfileCache.set(key,result);
     while(realTerrainProfileCache.size>terrainProfileCacheLimit()) realTerrainProfileCache.delete(realTerrainProfileCache.keys().next().value);
     dropStaleWaterState(lat,lon);   // 【v847】前の地点の水域を持ち越さない
-    Object.assign(realTerrainState,{key,failedKey:"",...result});
+    Object.assign(realTerrainState,{key,failedKey:"",_demComplete1233:undefined,_sampleOrigin1224:undefined,rowCentre:undefined,...result});
     applyDroneAltitudeHold(); // 飛行中なら新しい地面標高に合わせて高度を保つ
     requestOsmRoads(lat,lon);requestOsmRails(lat,lon);requestOsmTrails(lat,lon);requestOsmBridges(lat,lon);updateSimAddress(lat,lon);
     prepareSeaMasks(lat,lon);   // 地点が確定した時点で海マスクを用意し始める
@@ -51526,13 +51527,13 @@ function terrainMotionElevation1224(lat,lon,distanceKm,zoomOverride){
   if(!cache||!Number.isFinite(lat)||!Number.isFinite(lon))return undefined;
   const first=zoomOverride||((distanceKm<=3)?14:(distanceKm<=15)?12:10);
   const zooms=first===14?[14,12,10]:first===12?[12,10]:[10];
-  let sampled=false;
+  let sampled=false,definitelyAbsent=false;
   for(const z of zooms){
     const ref=terrainTilePoint(lat,lon,z);
     const neighbours=terrainTileNeighbourRefs(ref),needed=[ref,...neighbours];
     const missing=needed.filter(tile=>!cache.has(tile.key)||!cache.get(tile.key));
     if(missing.length){
-      if(missing.every(tile=>terrainDemTileAbsent1233(tile.key)))continue;
+      if(missing.every(tile=>terrainDemTileAbsent1233(tile.key))){definitelyAbsent=true;continue;}
       return undefined;
     }
     sampled=true;
@@ -51541,7 +51542,9 @@ function terrainMotionElevation1224(lat,lon,distanceKm,zoomOverride){
     terrainMotionState1224().samples++;
     if(Number.isFinite(elevation))return elevation;
   }
-  return sampled?null:undefined;
+  // A chain of definite HTTP 404 results is known nodata, not a pending request.
+  // An unknown or in-flight raster still returns undefined above.
+  return sampled||definitelyAbsent?null:undefined;
 }
 function terrainMotionGround1224(lat,lon){
   const memo=terrainMotionState1224(),hit=memo.ground;
@@ -51681,20 +51684,36 @@ function terrainMotionOriginNear1224(a,b){
   return terrainDistanceAndBearing(a[0],a[1],b[0],b[1]).distanceKm<=.12;
 }
 /* v1233: publish only terrain that belongs to the current observer origin. */
+/* v1234: validate the completed geographic profile independently of raw tile
+   hydration. Pre-v1233 saved profiles have no tile-completion flag. */
 function terrainMotionSourceCurrent1233(source,lat,lon){
   if(!Array.isArray(source)||source.length!==360)return false;
-  // The native builder can return a partial profile after failed fetches.
-  // Origin agreement alone cannot prove that such a profile is complete.
-  if(realTerrainState._demComplete1233!==true)return false;
+  // A newly built profile with an actual communication failure is not complete.
+  if(realTerrainState._demComplete1233===false)return false;
   const origin=realTerrainState._sampleOrigin1224,centres=realTerrainState.rowCentre;
-  if(!Array.isArray(origin)||!Number.isFinite(origin[0])||!Number.isFinite(origin[1])||Math.abs(origin[0]-lat)>1e-10||Math.abs(origin[1]-lon)>1e-10||
-     !Array.isArray(centres)||centres.length!==360)return false;
+  if(origin!==undefined&&(!Array.isArray(origin)||!Number.isFinite(origin[0])||!Number.isFinite(origin[1])||
+     Math.abs(origin[0]-lat)>1e-10||Math.abs(origin[1]-lon)>1e-10))return false;
+  if(!Array.isArray(centres)||centres.length!==360||!Number.isFinite(realTerrainState.observerElevation))return false;
   for(let az=0;az<360;az++){
     const centre=centres[az];
     if(!Array.isArray(centre)||!Number.isFinite(centre[0])||!Number.isFinite(centre[1])||Math.abs(centre[0]-lat)>1e-10||Math.abs(centre[1]-lon)>1e-10)return false;
   }
-  return true;
+  // Check legacy geometry once per immutable grid. Unknown/new profiles never
+  // gain this permission merely because their rounded location key matches.
+  const verified=terrainMotionSourceCurrent1233._verified||(terrainMotionSourceCurrent1233._verified=new WeakMap());
+  if(verified.has(source))return verified.get(source);
+  let valid=true;
+  for(const row of source){
+    if(!Array.isArray(row)||row.length<4||!row.some(p=>p&&p.distanceKm>0&&p.distanceKm<=.1)){valid=false;break;}
+    for(const p of row){
+      if(p&&(!Number.isFinite(p.distanceKm)||p.distanceKm<=0||!Number.isFinite(p.lat)||!Number.isFinite(p.lon)||!Number.isFinite(p.alt)||
+         (!Number.isFinite(p.baseElevation)&&!p.baseNoData&&!p.baseKnown&&!p.baseCoastlineSea))){valid=false;break;}
+    }
+    if(!valid)break;
+  }
+  verified.set(source,valid);return valid;
 }
+
 function terrainMotionRenderRange1233(s,W,H){
   const fovH=clamp(Number.isFinite(s?.fovH)?s.fovH:60,1,179);
   const fovV=clamp(Number.isFinite(s?.fovV)?s.fovV:fovH,1,179);
@@ -51740,7 +51759,7 @@ function terrainMotionFrameStatus1233(s,W,H){
     const row=grid[az];report.rowsChecked++;
     const missing=row?row._firstMissingKm1233:0;
     const rowOrigin=row?row._terrainOrigin1233:null;
-    const current=sourceSafe||(Array.isArray(rowOrigin)&&Math.abs(rowOrigin[0]-lat)<=1e-10&&Math.abs(rowOrigin[1]-lon)<=1e-10);
+    const current=sourceSafe||(report.sourceCurrent&&row===realTerrainState.rayGrid[az])||(Array.isArray(rowOrigin)&&Math.abs(rowOrigin[0]-lat)<=1e-10&&Math.abs(rowOrigin[1]-lon)<=1e-10);
     if(!current||!row||(Number.isFinite(missing)&&missing<=range.requiredKm+1e-9)){
       report.missingRows++;report.pending=true;
       const at=Number.isFinite(missing)?missing:0;
@@ -51762,10 +51781,11 @@ function terrainRenderGrid1224(){
   try{lat=+el.lat.value;lon=+el.lon.value;}catch(e){return null;}
   if(!Number.isFinite(lat)||!Number.isFinite(lon))return null;
   const memo=terrainMotionState1224(),sampledGround=terrainMotionGround1224(lat,lon);
+  const sourceCurrent=terrainMotionSourceCurrent1233(source,lat,lon);
   if(sampledGround===undefined){
     // Cached profiles can be used before raw DEM buffers are hydrated only
     // when their explicit full-row origins exactly match this observer.
-    if(terrainMotionSourceCurrent1233(source,lat,lon))return source;
+    if(sourceCurrent)return source;
     const signature=`unloaded|${lat}|${lon}|${memo.revision}`;
     if(memo.signature===signature&&memo.view)return memo.view;
     const view=new Array(360),near=new Array(360);
@@ -51789,7 +51809,10 @@ function terrainRenderGrid1224(){
     const resolve=()=>{
       if(done[az])return values[az];
       done[az]=1;
-      const row=terrainMotionBuildRow1224(az,lat,lon,ground,eye);
+      let row=terrainMotionBuildRow1224(az,lat,lon,ground,eye);
+      // A validated complete cached row may supply unhydrated raw DEM only
+      // at its exact original observer. No row from a previous position is used.
+      if(!row._complete1233&&sourceCurrent)row=source[az];
       values[az]=row;memo.rowsBuilt++;
       if(!row._complete1233)memo.rowsFallback++;
       return row;
