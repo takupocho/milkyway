@@ -7786,7 +7786,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1232-favorite-mountains";
+const APP_VERSION="1233-stable-terrain";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -20609,7 +20609,9 @@ function setSimLoadingShown(next){
    少し続いてから出し、消すときも一拍おく。 */
 function syncSimLoadingLabel(){
   if(!el.simLoadingLabel) return;
-  const busy=()=>!!walkBusy||!!(realTerrainState&&realTerrainState.loadingKey);
+  const frame=terrainFrameState1233();
+  el.simLoadingLabel.textContent=frame.pending?(frame.completed?'地形を準備中 · 景色を保持しています':'地形データを準備しています'):'地形データ読み込み中…';
+  const busy=()=>terrainFramePending1233()||!!walkBusy||!!(realTerrainState&&realTerrainState.loadingKey);
   if(busy()){
     clearTimeout(simLoadingOffTimer);simLoadingOffTimer=0;
     if(!simLoadingShown&&!simLoadingOnTimer){
@@ -21132,6 +21134,7 @@ function setHighDetailPhotoPicking(on,{returnToSettings=false}={}){
   return true;
 }
 function pickHighDetailTargetFromPhoto(pos){
+  if(terrainFramePending1233()){setHighDetailPhotoPickHint("地形の準備が終わってから選択してください",true);return false;}
   const picked=highDetailTerrainPickAt(pos);
   if(!picked){
     setHighDetailPhotoPickHint("空ではなく地形をタップ",true);
@@ -25643,6 +25646,7 @@ for(const sel of ["#bestTimeDateNav",".dt-nav-row",".dt-date-row","#sliderTimeli
   document.querySelectorAll(sel).forEach(guardDoubleTapZoom);
 }
 function handlePhotoTap(pos){
+  if(terrainFramePending1233())return; // Held image belongs to its last completed pose.
   // 後から描いたラベルを優先し、山名と星空名称が重なっても見た目どおりに反応させる。
   const hit=[...photoClickRegions].reverse().find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
   if(hit?.gpsPhoto1228&&driveLogPhotosHit1228(pos[0],pos[1]))return;
@@ -31730,9 +31734,10 @@ async function imageBlobToPixels(blob){
   }
 }
 function loadGsiDemTile(tile){
+  if(terrainDemTileAbsent1233(tile.key))return Promise.resolve(null);
   if(gsiDemTileCache.has(tile.key)) return gsiDemTileCache.get(tile.key);
   const promise=fetch(`https://cyberjapandata.gsi.go.jp/xyz/dem_png/${tile.z}/${tile.x}/${tile.y}.png`,{mode:"cors",cache:"force-cache"})
-    .then(r=>{if(!r.ok) throw new Error(`DEM ${r.status}`);return r.blob();})
+    .then(r=>{if(!r.ok){if(r.status===404)terrainDemTileAbsent1233(tile.key,true);throw new Error(`DEM ${r.status}`);}terrainDemTileAbsent1233(tile.key,false);return r.blob();})
     .then(imageBlobToPixels).catch(()=>null)
     // 通信失敗や画像展開失敗を固定キャッシュにしない。次回の再試行を可能にする。
     .then(pixels=>{
@@ -33235,6 +33240,7 @@ function darumaSilhouetteRightXForSpan(leftX,leftAz,targetSpan){
   return lo;
 }
 function darumaSilhouetteDragBegin(pos){
+  if(terrainFramePending1233())return false;
   const s=darumaSilhouetteSelection;
   const target=darumaSilhouetteGrabTarget(pos[0]);
   if(target){
@@ -35921,6 +35927,7 @@ async function buildRealTerrainProfile(lat,lon,token,partial){
     observerWaterNearby:observerAtSea||initialMeshObserverWater.water,
     observerWaterEvidence:{mesh:initialMeshObserverWater},
     waterNearKm,waterFarKm,noDataWaterNearKm,noDataWaterFarKm,nearSurfaceGrid,rayGrid,
+    _demComplete1233:terrainTiles.length>0&&loadedTileCount===terrainTiles.length,
     rowCentre,_sampleOrigin1224:[lat,lon],   /* v1224 explicit world origin */
     _selectEyeM:selectEye,   /* 【v1024】稜線の点を選んだときの目の海抜。大きく違う高さから見るときは作り直す */
     /* 【v902】KMZ関連の値はここに持たない。地形はKMZから独立している。 */
@@ -38819,6 +38826,16 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
   /* 1巡目：層ごとに run を切り、対 (c,c+1) の稜線（run の端は min に丸める）と投影を控える。
      Canvas と同じく、alt が全列でひとつ遠い層と同じ層は「無い」ものとして飛ばす。 */
   const {use,pxA,pyA,pxB,pyB,ok,pairWater,pairCloud,pairAlt}=work;
+  /* 矩形投影の近クリップをまたぐ升目は、角度を保持してカメラ空間で切る。 */
+  const rectilinear=projector.rectilinear===true;
+  const canClipRect=rectilinear&&typeof projector.homogeneous==='function';
+  const canClipFish=projector.rectilinear===false&&typeof projector.homogeneous==='function';
+  const keepClipAngles=canClipRect||canClipFish;
+  const pairCount=layerCount*P;
+  if(keepClipAngles&&(!work.clipAltA||work.clipAltA.length<pairCount)){
+    work.clipAltA=new Float64Array(pairCount);work.clipAltB=new Float64Array(pairCount);
+  }
+  const clipAltA=work.clipAltA,clipAltB=work.clipAltB;
   for(let k=layerCount-1;k>=0;k--){
     if(k<layerCount-1){
       let changed=false;
@@ -38847,6 +38864,7 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
         pairWater[i]=runWater?1:0;pairCloud[i]=runCloud?1:0;pairAlt[i]=meanAlt;
         const a0=altGrid[c*layerCount+k];
         const a1=(c+1<=runEnd)?altGrid[(c+1)*layerCount+k]:Math.min(altGrid[(c+1)*layerCount+k],ownLastAlt);
+        if(keepClipAngles){clipAltA[i]=a0;clipAltB[i]=a1;}
         let good=1;
         if(previousColumn===c&&Object.is(previousAlt,a0)&&!Number.isNaN(a0)){
           if(previousValid){pxA[i]=previousX;pyA[i]=previousY;}else good=0;
@@ -38856,7 +38874,9 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
           previousValid=!!projector.project(colSin[c+1],colCos[c+1],a1,tmp)&&Number.isFinite(tmp[0])&&Number.isFinite(tmp[1]);
           if(previousValid){previousX=tmp[0];previousY=tmp[1];pxB[i]=tmp[0];pyB[i]=tmp[1];}else good=0;
         }else{previousColumn=-1;previousValid=false;}
-        if(good&&Math.abs(pxB[i]-pxA[i])>maxJumpX)good=0;
+        /* 矩形投影では、画面外へ延びる有限な辺も通常の地面。幅だけで切らない。
+           魚眼などの投影では、既存の継ぎ目の幅判定を維持する。 */
+        if(good&&!rectilinear&&Math.abs(pxB[i]-pxA[i])>maxJumpX)good=0;
         ok[i]=good;
       }
       runs++;runStart=runEnd+1;
@@ -38874,7 +38894,65 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
   /* 2巡目：奥から順に、層 k の稜線（遠）と、ひとつ近い「使う層」の稜線（近）に挟まれた四角形を色 k で。
      いちばん近い層の下は画面下端まで（見下ろしているときは真下の点まで）。 */
   const put=(x,y,d,a,w,mx,my)=>{data[n++]=x;data[n++]=y;data[n++]=d;data[n++]=a;data[n++]=w;data[n++]=mx;data[n++]=my;};
-  const tri=(x1,y1,m1x,m1y,x2,y2,m2x,m2y,x3,y3,m3x,m3y,d,a,w)=>{need(GL_STRIDE*3);put(x1,y1,d,a,w,m1x,m1y);put(x2,y2,d,a,w,m2x,m2y);put(x3,y3,d,a,w,m3x,m3y);};
+  const tri=(x1,y1,m1x,m1y,x2,y2,m2x,m2y,x3,y3,m3x,m3y,d,a,w)=>{
+    /* Float32 へ変換しても有限な三角形だけを送る。 */
+    const magnitude=(x1<0?-x1:x1)+(y1<0?-y1:y1)+(m1x<0?-m1x:m1x)+(m1y<0?-m1y:m1y)+(x2<0?-x2:x2)+(y2<0?-y2:y2)+(m2x<0?-m2x:m2x)+(m2y<0?-m2y:m2y)+(x3<0?-x3:x3)+(y3<0?-y3:y3)+(m3x<0?-m3x:m3x)+(m3y<0?-m3y:m3y)+(d<0?-d:d)+(a<0?-a:a)+(w<0?-w:w);
+    if(!(magnitude<=3.4028234663852886e38))return;
+    need(GL_STRIDE*3);put(x1,y1,d,a,w,m1x,m1y);put(x2,y2,d,a,w,m2x,m2y);put(x3,y3,d,a,w,m3x,m3y);
+  };
+  const clipCameraTmp=[0,0,0];
+  const cameraVertex=(column,alt,distanceKm)=>{
+    if(!projector.homogeneous(colSin[column],colCos[column],alt,clipCameraTmp,distanceKm))return null;
+    return [clipCameraTmp[0],clipCameraTmp[1],clipCameraTmp[2],merc.x(colSin[column],distanceKm),merc.y(colCos[column],distanceKm)];
+  };
+  const fishNearVertex=(column,nearAlt,farAlt,nearKm,farKm)=>{
+    const sn=colSin[column],cs=colCos[column];
+    if(projector.project(sn,cs,nearAlt,tmp))return [tmp[0],tmp[1],nearKm];
+    if(!projector.homogeneous(sn,cs,nearAlt,clipCameraTmp,nearKm))return null;
+    const nearDepth=clipCameraTmp[2];
+    if(!projector.homogeneous(sn,cs,farAlt,clipCameraTmp,farKm))return null;
+    const farDepth=clipCameraTmp[2];
+    if(!(nearDepth<0&&farDepth>0))return null;
+    const t=Math.min(1,Math.max(0,-nearDepth/(farDepth-nearDepth)+1e-8));
+    const distanceKm=nearKm+(farKm-nearKm)*t;
+    const height=nearKm*Math.tan(nearAlt*D2R)+(farKm*Math.tan(farAlt*D2R)-nearKm*Math.tan(nearAlt*D2R))*t;
+    const alt=Math.atan2(height,distanceKm)/D2R;
+    return projector.project(sn,cs,alt,tmp)?[tmp[0],tmp[1],distanceKm]:null;
+  };
+  const clipRectTriangle=(vertices,d,a,w)=>{
+    if(vertices.some(vertex=>!vertex||vertex.some(value=>!Number.isFinite(value))))return;
+    const viewportWidth=projector.viewportWidth||maxJumpX*2,viewportHeight=projector.viewportHeight||bottomY-4;
+    const nearDepth=projector.nearDepth||.02;
+    let poly=vertices;
+    /* 同次座標のまま近面と画面の4辺で切る。画面外の巨大な座標を先に除く。 */
+    for(let plane=0;plane<5&&poly.length;plane++){
+      const distance=plane===0?(v)=>v[2]-nearDepth:plane===1?(v)=>v[0]:plane===2?(v)=>viewportWidth*v[2]-v[0]:plane===3?(v)=>v[1]:(v)=>viewportHeight*v[2]-v[1];
+      const out=[];
+      let previous=poly[poly.length-1],pd=distance(previous);
+      for(const current of poly){
+        const cd=distance(current);
+        if((pd>=0)!==(cd>=0)){
+          const t=pd/(pd-cd);out.push(previous.map((value,index)=>value+(current[index]-value)*t));
+        }
+        if(cd>=0)out.push(current);
+        previous=current;pd=cd;
+      }
+      poly=out;
+    }
+    if(poly.length<3)return;
+    const first=poly[0];
+    for(let j=1;j<poly.length-1;j++){
+      const second=poly[j],third=poly[j+1];
+      tri(first[0]/first[2],first[1]/first[2],first[3],first[4],second[0]/second[2],second[1]/second[2],second[3],second[4],third[0]/third[2],third[1]/third[2],third[3],third[4],d,a,w);
+    }
+  };
+  /* 交差は y の大小だけでは決めない。実際に辺が交わる時だけ2つの小面へ分ける。 */
+  const edgeIntersection=(ax,ay,bx,by,cx,cy,dx,dy)=>{
+    const abx=bx-ax,aby=by-ay,cdx=dx-cx,cdy=dy-cy,den=abx*cdy-aby*cdx;
+    if(Math.abs(den)<1e-9)return null;
+    const acx=cx-ax,acy=cy-ay,t=(acx*cdy-acy*cdx)/den,u=(acx*aby-acy*abx)/den;
+    return t>1e-7&&t<1-1e-7&&u>1e-7&&u<1-1e-7?{x:ax+abx*t,y:ay+aby*t,t,u}:null;
+  };
   for(let k=layerCount-1;k>=0;k--){
     if(!use[k])continue;
     let near=k-1;while(near>=0&&!use[near])near--;
@@ -38882,7 +38960,13 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
     const nearKm=near>=0?layerKm[near]:0;
     for(let c=0;c<P;c++){
       const i=base+c;
-      if(!ok[i]||pairCloud[i])continue;
+      if(pairCloud[i])continue;
+      const validNear=nbase>=0&&!!ok[nbase+c];
+      const needsRectClip=canClipRect&&(!ok[i]||(nbase>=0&&!validNear));
+      const needsFishClip=canClipFish&&ok[i]&&nbase>=0&&!validNear;
+      if(!ok[i]&&!needsRectClip)continue;
+      /* 投影不可・継ぎ目で欠けた近い層を「最内周」と取り違えない。 */
+      if(nbase>=0&&!validNear&&!needsRectClip&&!needsFishClip)continue;
       let w=pairWater[i];const a=pairAlt[i];
       /* 【v1044】遠い稜線と近い稜線の地面の高さ差（m）。WATER_ATLAS_STEEP_M を超える升目は「急」（aWater に +2）。
          水面は平らなので、急な升目に水域アトラスを貼ると斜面を這い上がる。 */
@@ -38895,23 +38979,41 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
            （外すと升目の形のバケツが海に並ぶ。垂水区西舞子で実測）。 */
         if(!w&&rise>WATER_ATLAS_STEEP_M)w+=2;
       }
+      if(needsRectClip){
+        const farA=cameraVertex(c,clipAltA[i],distanceKm),farB=cameraVertex(c+1,clipAltB[i],distanceKm);
+        const nearA=nbase>=0?cameraVertex(c,clipAltA[nbase+c],nearKm):cameraVertex(c,-90,0);
+        const nearB=nbase>=0?cameraVertex(c+1,clipAltB[nbase+c],nearKm):cameraVertex(c+1,-90,0);
+        clipRectTriangle([farA,farB,nearB],distanceKm,a,w);
+        clipRectTriangle([farA,nearB,nearA],distanceKm,a,w);
+        continue;
+      }
       const x1=pxA[i],y1=pyA[i],x2=pxB[i],y2=pyB[i];
       /* 【v1129】いちばん近い層の内側。見下ろしているときは真下の点へ収束させる（＝扇の三角形）。 */
       let x3=nadirCap?nadirX:x2,y3=nadirCap?nadirY:bottomY,x4=nadirCap?nadirX:x1,y4=nadirCap?nadirY:bottomY;
-      if(nbase>=0&&ok[nbase+c]){x3=pxB[nbase+c];y3=pyB[nbase+c];x4=pxA[nbase+c];y4=pyA[nbase+c];}
+      let nearUvKmA=nearKm,nearUvKmB=nearKm;
+      if(validNear){x3=pxB[nbase+c];y3=pyB[nbase+c];x4=pxA[nbase+c];y4=pyA[nbase+c];}
+      else if(needsFishClip){
+        const nearA=fishNearVertex(c,clipAltA[nbase+c],clipAltA[i],nearKm,distanceKm);
+        const nearB=fishNearVertex(c+1,clipAltB[nbase+c],clipAltB[i],nearKm,distanceKm);
+        if(!nearA||!nearB||Math.abs(nearA[0]-nearB[0])>maxJumpX)continue;
+        x4=nearA[0];y4=nearA[1];nearUvKmA=nearA[2];
+        x3=nearB[0];y3=nearB[1];nearUvKmB=nearB[2];
+      }
       if(y1===y4&&y2===y3&&x1===x4&&x2===x3)continue;
       /* 四隅の地面の位置（列 c／c+1 × 距離 遠／近）。 */
       const m1x=merc.x(colSin[c],distanceKm),m1y=merc.y(colCos[c],distanceKm);
       const m2x=merc.x(colSin[c+1],distanceKm),m2y=merc.y(colCos[c+1],distanceKm);
-      const m3x=merc.x(colSin[c+1],nearKm),m3y=merc.y(colCos[c+1],nearKm);
-      const m4x=merc.x(colSin[c],nearKm),m4y=merc.y(colCos[c],nearKm);
-      const dl=y4-y1,dr=y3-y2;
-      if(dl*dr<0){
-        const tt=dl/(dl-dr);
-        const xi=x1+(x2-x1)*tt,yi=y1+(y2-y1)*tt;
-        const mix_=m1x+(m2x-m1x)*tt,miy=m1y+(m2y-m1y)*tt;
-        tri(x1,y1,m1x,m1y,xi,yi,mix_,miy,x4,y4,m4x,m4y,distanceKm,a,w);
-        tri(x2,y2,m2x,m2y,xi,yi,mix_,miy,x3,y3,m3x,m3y,distanceKm,a,w);
+      const m3x=merc.x(colSin[c+1],nearUvKmB),m3y=merc.y(colCos[c+1],nearUvKmB);
+      const m4x=merc.x(colSin[c],nearUvKmA),m4y=merc.y(colCos[c],nearUvKmA);
+      /* 同じ方位の半直線で遠近が順序通りなら、矩形投影の升目は交差しない。 */
+      const orderedRect=canClipRect&&(nbase<0||(clipAltA[i]>=clipAltA[nbase+c]&&clipAltB[i]>=clipAltB[nbase+c]));
+      const crossing=orderedRect?null:edgeIntersection(x1,y1,x2,y2,x4,y4,x3,y3);
+      if(crossing){
+        const mxFar=m1x+(m2x-m1x)*crossing.t,myFar=m1y+(m2y-m1y)*crossing.t;
+        const mxNear=m4x+(m3x-m4x)*crossing.u,myNear=m4y+(m3y-m4y)*crossing.u;
+        const mx=(mxFar+mxNear)*.5,my=(myFar+myNear)*.5;
+        tri(x1,y1,m1x,m1y,crossing.x,crossing.y,mx,my,x4,y4,m4x,m4y,distanceKm,a,w);
+        tri(x2,y2,m2x,m2y,crossing.x,crossing.y,mx,my,x3,y3,m3x,m3y,distanceKm,a,w);
       }else{
         tri(x1,y1,m1x,m1y,x2,y2,m2x,m2y,x3,y3,m3x,m3y,distanceKm,a,w);
         tri(x1,y1,m1x,m1y,x3,y3,m3x,m3y,x4,y4,m4x,m4y,distanceKm,a,w);
@@ -39005,8 +39107,106 @@ const terrainStageProf={bands:0,bandsN:0,columns:0,paint:0,overlays:0,water:0,fi
     set(v){if(v===null&&value!==null)actMonNullBy();value=v;}
   });
 })();
+/* v1233: an incomplete scene never replaces a completed scene. One retained
+   canvas also survives the implicit clear caused by a viewport resize. */
+function terrainFrameState1233(){
+  return terrainFrameState1233._state||(terrainFrameState1233._state={
+    pending:false,reason:'',status:null,canvas:null,context:null,origin:null,
+    completed:0,held:0,retryTimer:0,lastErrorAt:-Infinity
+  });
+}
+function terrainFramePending1233(){return terrainFrameState1233().pending;}
+/* A definite absent raster can fall back to an available coarser raster at
+   the same coordinates. Timeouts and in-flight requests remain unknown. */
+function terrainDemTileAbsent1233(key,absent){
+  const cache=terrainDemTileAbsent1233._cache||(terrainDemTileAbsent1233._cache=new Map()),now=Date.now();
+  if(absent===true){cache.set(key,now+300000);return true;}
+  if(absent===false){cache.delete(key);return false;}
+  const until=cache.get(key);if(until&&until>now)return true;
+  if(until)cache.delete(key);return false;
+}
+function terrainFrameRestore1233(ctx){
+  const frame=terrainFrameState1233(),W=ctx.canvas.width,H=ctx.canvas.height;
+  ctx.save();
+  try{
+    ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='copy';ctx.filter='none';
+    if(frame.canvas&&frame.completed){ctx.drawImage(frame.canvas,0,0,W,H);}
+    else{
+      const background=ctx.createLinearGradient(0,0,0,H);
+      background.addColorStop(0,'#111c30');background.addColorStop(1,'#263b4a');
+      ctx.fillStyle=background;ctx.fillRect(0,0,W,H);
+      ctx.globalCompositeOperation='source-over';ctx.fillStyle='#e4edf4';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font=`600 ${Math.max(13,Math.min(21,W/26))}px sans-serif`;
+      ctx.fillText('地形データを準備しています',W/2,H/2);
+    }
+  }finally{ctx.restore();}
+}
+function terrainFrameRequest1233(){
+  const frame=terrainFrameState1233();
+  if(frame.retryTimer||!frame.pending)return;
+  frame.retryTimer=setTimeout(()=>{
+    frame.retryTimer=0;
+    if(!frame.pending||arActive||document.hidden||osmMapScreenOpen)return;
+    // Recheck the same pose; DEM decoding may have completed without a new
+    // source profile. Retry the existing bounded loader only if still needed.
+    terrainMotionDraw1224(true);
+    if(frame.pending){refreshTerrainWhileWalking();terrainFrameRequest1233();}
+  },250);
+}
+function terrainFrameBegin1233(ctx,s){
+  const frame=terrainFrameState1233(),primary=ctx===photoCtx;
+  if(arActive||TERRAIN_RENDERER!=='layered'){
+    if(primary){frame.pending=false;frame.reason='';syncSimLoadingLabel();}
+    return true;
+  }
+  const report=terrainMotionFrameStatus1233(s,ctx.canvas.width,ctx.canvas.height);
+  if(primary){
+    frame.status=report;frame.pending=report.pending;frame.reason=report.pending?'dem':'';
+    drawPhoto._terrainFrameStable={pending:report.pending,origin:report.origin,completed:frame.completed,held:frame.held};
+    syncSimLoadingLabel();
+  }
+  if(!report.pending)return true;
+  terrainFrameRestore1233(ctx);
+  if(primary){frame.held++;terrainFrameRequest1233();}
+  return false;
+}
+function terrainFrameComplete1233(ctx,s){
+  if(ctx!==photoCtx||arActive||TERRAIN_RENDERER!=='layered')return;
+  const frame=terrainFrameState1233(),W=ctx.canvas.width,H=ctx.canvas.height;
+  if(!frame.canvas){frame.canvas=document.createElement('canvas');frame.context=frame.canvas.getContext('2d');}
+  if(frame.canvas.width!==W)frame.canvas.width=W;
+  if(frame.canvas.height!==H)frame.canvas.height=H;
+  frame.context.save();
+  try{
+    frame.context.setTransform(1,0,0,1,0,0);frame.context.globalAlpha=1;
+    frame.context.globalCompositeOperation='copy';frame.context.drawImage(ctx.canvas,0,0);
+  }finally{frame.context.restore();}
+  frame.origin=[s.lat,s.lon];frame.completed++;frame.pending=false;frame.reason='';
+  clearTimeout(frame.retryTimer);frame.retryTimer=0;
+  drawPhoto._terrainFrameStable={pending:false,origin:frame.origin,completed:frame.completed,held:frame.held};
+  syncSimLoadingLabel();
+}
+function terrainFrameFailed1233(ctx,error){
+  // A render exception must not publish a half-painted scene. The next normal
+  // frame rebuilds its caches; keep the most recent complete picture meanwhile.
+  const frame=terrainFrameState1233();
+  if(ctx!==photoCtx)throw error;
+  // A failed renderer may have left a saved clipping region on the context.
+  // Reset the primary context before restoring the entire completed picture.
+  ctx.canvas.width=ctx.canvas.width;terrainFrameRestore1233(ctx);
+  frame.pending=true;frame.reason='render';frame.held++;
+  drawPhoto._terrainRenderKey=null;glTerrain.uploadedKey=null;
+  drawPhoto._terrainFrameStable={pending:true,origin:frame.origin,completed:frame.completed,held:frame.held};
+  syncSimLoadingLabel();terrainFrameRequest1233();
+  const now=performance.now();
+  if(now-frame.lastErrorAt>5000){frame.lastErrorAt=now;console.warn('Completed terrain scene retained after render failure.',error);}
+}
+
 function drawPhoto(ctx,s){
   terrainMotionPrepare1224();
+  if(!terrainFrameBegin1233(ctx,s))return;
+  try{
   powerCountFrame();   /* 【v982】実測コマ数 */
   actMon.draw++;   /* 【v983】 */
   if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
@@ -39070,6 +39270,16 @@ function drawPhoto(ctx,s){
     const cx=W/2,cy=H/2,fisheyeRadiusScale=fisheyeRadiusScalePx(W,H,s.focalLength,s.sensor.crop);   /* 【v1103】 */
     const fisheye=useDiagonalFisheye;
     return {
+      rectilinear:!fisheye,viewportWidth:W,viewportHeight:H,nearDepth:.00001,
+      /* 地形の一部が近クリップをまたぐ時だけ使用する同次画面座標。 */
+      homogeneous(sinAz,cosAz,altDeg,out,distanceKm){
+        /* 方向の単位ベクトルではなく、UV と同じ水平距離 km の地面座標で切る。 */
+        const angle=altDeg*D2R,px=distanceKm*sinAz,py=distanceKm*cosAz;
+        const pz=distanceKm>0?distanceKm*Math.tan(angle):-Math.max(.001,eyeHeightAboveGroundM()/1000);
+        const zc=px*F0+py*F1+pz*F2,xc=px*R0+py*R1+pz*R2,yc=px*U0+py*U1+pz*U2;
+        out[0]=cx*zc+xc*scale;out[1]=cy*zc-yc*scale;out[2]=zc;
+        return Number.isFinite(out[0])&&Number.isFinite(out[1])&&Number.isFinite(zc);
+      },
       azSin:(az)=>Math.sin(az*D2R),azCos:(az)=>Math.cos(az*D2R),
       /* out[0],out[1] に書く。見えない向きなら false。 */
       project(sinAz,cosAz,altDeg,out){
@@ -45937,6 +46147,7 @@ function drawPhoto(ctx,s){
             atlasCanvasOf("_waterAtlasColorCanvas").drawImage(glTerrain.canvas,0,0);
           }
           glTerrain.lastDrawMs=performance.now()-gd0;glTerrain.frames++;
+          if(glTerrain.gl.isContextLost()){glTerrain.lost=true;throw new Error("Terrain WebGL context lost during rendering");}
           painted=geom.runs;glDrawn=true;
         }
         if(!glDrawn)for(let k=layerCount-1;k>=0;k--){
@@ -47320,6 +47531,8 @@ function drawPhoto(ctx,s){
       fovH:s.fovH,focalLength:s.focalLength,sensor:{crop:s.sensor.crop},
       meteorFisheye:useDiagonalFisheye,width:W,height:H};
   }
+  terrainFrameComplete1233(ctx,s);
+  }catch(error){terrainFrameFailed1233(ctx,error);}
 }
 
 /* =========================================================
@@ -49938,7 +50151,7 @@ function driveLogReplayFollowApply1223(){
 function driveLogReplayRefreshTerrain1223(now=performance.now()){
   const replay=driveLogReplayState1223;if(!replay)return;
   const key=`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
-  if(realTerrainState.key===key&&terrainMotionPixels1224.size)return;
+  if(realTerrainState.key===key&&terrainMotionPixels1224.size&&!terrainFramePending1233())return;
   realTerrainState.loadingKey=key;
   if(now-replay.terrainAt<750)return;replay.terrainAt=now;refreshTerrainWhileWalking();
 }
@@ -50494,6 +50707,15 @@ function driveLogReplayPlay1223(){
     if(document.hidden){driveLogReplayPause1223(false,'画面を離れたため一時停止しました。');return;}
     const elapsed=replay.lastNow===null?0:Math.max(0,now-replay.lastNow),dt=elapsed>500?0:Math.min(250,elapsed);replay.lastNow=now;
     if(elapsed>500){driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);}
+    if(terrainFramePending1233()){
+      // Preserve every sample and every story/photo second while the scene is
+      // waiting. Reset camera clocks so resumption cannot integrate this wait.
+      driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);
+      if(!Number.isFinite(replay.terrainRetryAt1233)||now-replay.terrainRetryAt1233>=120){
+        replay.terrainRetryAt1233=now;driveLogReplayRender1223();
+      }
+      replay.raf=requestAnimationFrame(tick);return;
+    }
     const current=driveLogPhotosAdvance1230(replay,dt);
     if(driveLogReplayDrawDue1225(replay,now)){
       if(current.holdCamera&&!current.renderPending)driveLogReplaySync1223();else driveLogReplayRender1223();current.renderPending=false;
@@ -51304,17 +51526,22 @@ function terrainMotionElevation1224(lat,lon,distanceKm,zoomOverride){
   if(!cache||!Number.isFinite(lat)||!Number.isFinite(lon))return undefined;
   const first=zoomOverride||((distanceKm<=3)?14:(distanceKm<=15)?12:10);
   const zooms=first===14?[14,12,10]:first===12?[12,10]:[10];
+  let sampled=false;
   for(const z of zooms){
     const ref=terrainTilePoint(lat,lon,z);
-    if(!cache.has(ref.key)||!cache.get(ref.key))return undefined;
-    const neighbours=terrainTileNeighbourRefs(ref);
-    for(const nb of neighbours)if(!cache.has(nb.key)||!cache.get(nb.key))return undefined;
+    const neighbours=terrainTileNeighbourRefs(ref),needed=[ref,...neighbours];
+    const missing=needed.filter(tile=>!cache.has(tile.key)||!cache.get(tile.key));
+    if(missing.length){
+      if(missing.every(tile=>terrainDemTileAbsent1233(tile.key)))continue;
+      return undefined;
+    }
+    sampled=true;
     const elevation=decodeGsiElevationBilinear(cache.get(ref.key),ref.pixelX,ref.pixelY,
       (dx,dy)=>cache.get(terrainTileNeighbourKey(ref,dx,dy))||null);
     terrainMotionState1224().samples++;
     if(Number.isFinite(elevation))return elevation;
   }
-  return null;
+  return sampled?null:undefined;
 }
 function terrainMotionGround1224(lat,lon){
   const memo=terrainMotionState1224(),hit=memo.ground;
@@ -51351,11 +51578,14 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
   const distances=TERRAIN_DISTANCES_KM,n=distances.length;
   const base=new Array(n),ridge=new Array(n),coords=new Array(n),selected=new Array(n);
   const earth=2*6371000*(7/6),toAlt=(e,d,eye)=>Math.atan2(e-eye-d*d/earth,d)*R2D;
-  let previousKm=0;
+  let previousKm=0,firstMissingKm=Infinity;
+  const missingAt=km=>{firstMissingKm=Math.min(firstMissingKm,km);};
   for(let d=0;d<n;d++){
     const distanceKm=distances[d],coord=terrainDestination(lat,lon,az,distanceKm);
     const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
-    if(elevation===undefined)return null;
+    if(elevation===undefined){
+      missingAt(distanceKm);base[d]=undefined;ridge[d]=null;coords[d]=coord;selected[d]=null;previousKm=distanceKm;continue;
+    }
     base[d]=elevation;coords[d]=coord;
     let peak=elevation,peakAt=null;
     let peakAlt=Number.isFinite(elevation)?toAlt(elevation,distanceKm*1000,selectEye):-Infinity;
@@ -51367,7 +51597,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
       for(let k=1;k<=count;k++){
         const subKm=distanceKm-gapKm*k/(count+1),subCoord=terrainDestination(lat,lon,az,subKm);
         const subElevation=terrainMotionElevation1224(subCoord[0],subCoord[1],subKm,zoom);
-        if(subElevation===undefined)return null;
+        if(subElevation===undefined){missingAt(subKm);continue;}
         if(!Number.isFinite(subElevation))continue;
         const alt=toAlt(subElevation,subKm*1000,selectEye);
         if(alt>peakAlt){peak=subElevation;peakAlt=alt;peakAt={distanceKm:subKm,lat:subCoord[0],lon:subCoord[1]};}
@@ -51378,6 +51608,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
   const row=new Array(n);
   for(let d=0;d<n;d++){
     const elevation=base[d],point=selected[d];
+    if(elevation===undefined){row[d]=null;continue;}
     const distanceKm=point?point.distanceKm:distances[d];
     const sample=coords[d],pointLat=point?point.lat:sample[0],pointLon=point?point.lon:sample[1];
     const noDataRaw=!Number.isFinite(elevation);
@@ -51408,7 +51639,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
         for(let distanceKm=begin;distanceKm<=end+.001;distanceKm+=.25){
           const coord=terrainDestination(lat,lon,az,distanceKm);
           const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm,12);
-          if(elevation===undefined)return null;
+          if(elevation===undefined){missingAt(distanceKm);continue;}
           if(Number.isFinite(elevation))extras.push({distanceKm,lat:coord[0],lon:coord[1],
             alt:toAlt(elevation,distanceKm*1000,ground+1.6),water:false,baseElevation:elevation,
             baseNoData:false,baseKnown:false,_fresh:true});
@@ -51434,53 +51665,134 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
       const distanceKm=point.distanceKm;seen.add(distanceKm);
       const coord=terrainDestination(lat,lon,az,distanceKm);
       const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
-      if(elevation===undefined)return null;
+      if(elevation===undefined){missingAt(distanceKm);continue;}
       if(!Number.isFinite(elevation))continue;
       extras.push({distanceKm,lat:coord[0],lon:coord[1],alt:toAlt(elevation,distanceKm*1000,ground+1.6),
         water:terrainMotionWater1224(coord[0],coord[1],distanceKm,elevation,false,false),
         baseElevation:elevation,baseNoData:false,baseKnown:false,_fresh:true});
     }
   }
-  if(extras.length)return row.concat(extras).filter(Boolean).sort((a,b)=>a.distanceKm-b.distanceKm);
-  return row;
+  const completeRow=extras.length?row.concat(extras).filter(Boolean).sort((a,b)=>a.distanceKm-b.distanceKm):row;
+  Object.defineProperties(completeRow,{_terrainOrigin1233:{value:[lat,lon]},_firstMissingKm1233:{value:firstMissingKm},_complete1233:{value:!Number.isFinite(firstMissingKm)}});
+  return completeRow;
 }
 function terrainMotionOriginNear1224(a,b){
   if(!a||!b)return false;
   return terrainDistanceAndBearing(a[0],a[1],b[0],b[1]).distanceKm<=.12;
 }
+/* v1233: publish only terrain that belongs to the current observer origin. */
+function terrainMotionSourceCurrent1233(source,lat,lon){
+  if(!Array.isArray(source)||source.length!==360)return false;
+  // The native builder can return a partial profile after failed fetches.
+  // Origin agreement alone cannot prove that such a profile is complete.
+  if(realTerrainState._demComplete1233!==true)return false;
+  const origin=realTerrainState._sampleOrigin1224,centres=realTerrainState.rowCentre;
+  if(!Array.isArray(origin)||!Number.isFinite(origin[0])||!Number.isFinite(origin[1])||Math.abs(origin[0]-lat)>1e-10||Math.abs(origin[1]-lon)>1e-10||
+     !Array.isArray(centres)||centres.length!==360)return false;
+  for(let az=0;az<360;az++){
+    const centre=centres[az];
+    if(!Array.isArray(centre)||!Number.isFinite(centre[0])||!Number.isFinite(centre[1])||Math.abs(centre[0]-lat)>1e-10||Math.abs(centre[1]-lon)>1e-10)return false;
+  }
+  return true;
+}
+function terrainMotionRenderRange1233(s,W,H){
+  const fovH=clamp(Number.isFinite(s?.fovH)?s.fovH:60,1,179);
+  const fovV=clamp(Number.isFinite(s?.fovV)?s.fovV:fovH,1,179);
+  const pitch=Number.isFinite(s?.facingAlt)?s.facingAlt:0;
+  const tanH=Math.tan(fovH*.5*D2R),tanV=Math.tan(fovV*.5*D2R);
+  const diagonal=Math.atan(Math.hypot(tanH,tanV))*R2D;
+  const cosP=Math.cos(pitch*D2R),sinP=Math.sin(pitch*D2R);
+  const dA=cosP-tanV*sinP,dB=cosP+tanV*sinP;
+  let fisheye=false;try{fisheye=mobileLensMode==='fisheye'&&!arActive;}catch(e){}
+  const corner=!(dB>0)?180:!(dA>0)?120:Math.atan2(tanH,Math.min(dA,dB))*R2D;
+  const edgePad=clamp(fovH*.15,.6,7);
+  const half=Math.min(180,Math.max(fisheye?89.5:fovH/2+edgePad,corner+Math.min(3,edgePad)));
+  let distances;
+  try{distances=waterLayerDistancesForCurrentMode();}catch(e){distances=TERRAIN_DISTANCES_KM;}
+  if(!Array.isArray(distances)||!distances.length)distances=TERRAIN_DISTANCES_KM;
+  const lookTop=clamp(pitch+diagonal+2,-89,89),above=Math.max(0,eyeHeightAboveGroundM());
+  if(lookTop<-1&&above>1){
+    const visibleKm=Math.min(220,above/Math.tan(-lookTop*D2R)/1000*1.6+.5);
+    const kept=distances.filter((km,index)=>index<2||km<=visibleKm);
+    if(kept.length>=4)distances=kept;
+  }
+  // The layered renderer asks for one step beyond each side. Include both
+  // neighbouring integer rows needed by its fractional-azimuth interpolation.
+  const lookDown=Math.max(0,-pitch);
+  const stepScale=lookDown+fovV/2>=90?clamp(1/Math.max(.3,Math.cos(Math.min(72,lookDown)*D2R)),1,3.2):1;
+  const step=clamp(5/(Math.max(1,W||941)/Math.max(1,fovH)),.03,1.5)*stepScale;
+  return {halfDeg:half,azPadDeg:Math.max(2,Math.ceil(step)+1),requiredKm:distances[distances.length-1]};
+}
+function terrainMotionFrameStatus1233(s,W,H){
+  const lat=+el.lat.value,lon=+el.lon.value;
+  const range=terrainMotionRenderRange1233(s,W,H),grid=terrainRenderGrid1224();
+  const report={pending:false,requiredKm:range.requiredKm,missingRows:0,origin:[lat,lon],hasData:false,
+    rowsChecked:0,firstMissingKm:null,sourceCurrent:terrainMotionSourceCurrent1233(realTerrainState.rayGrid,lat,lon)};
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||!Array.isArray(grid)||grid.length!==360){
+    report.pending=true;report.reason='ground';return report;
+  }
+  const centre=Number.isFinite(s?.facingAz)?s.facingAz:0,reach=range.halfDeg+range.azPadDeg;
+  const full=range.halfDeg>=180,angles=new Set();
+  if(full){for(let az=0;az<360;az++)angles.add(az);}
+  else for(let az=Math.floor(centre-reach);az<=Math.ceil(centre+reach);az++)angles.add(((az%360)+360)%360);
+  const sourceSafe=grid===realTerrainState.rayGrid&&report.sourceCurrent;
+  for(const az of angles){
+    const row=grid[az];report.rowsChecked++;
+    const missing=row?row._firstMissingKm1233:0;
+    const rowOrigin=row?row._terrainOrigin1233:null;
+    const current=sourceSafe||(Array.isArray(rowOrigin)&&Math.abs(rowOrigin[0]-lat)<=1e-10&&Math.abs(rowOrigin[1]-lon)<=1e-10);
+    if(!current||!row||(Number.isFinite(missing)&&missing<=range.requiredKm+1e-9)){
+      report.missingRows++;report.pending=true;
+      const at=Number.isFinite(missing)?missing:0;
+      report.firstMissingKm=report.firstMissingKm===null?at:Math.min(report.firstMissingKm,at);
+    }
+    if(row)for(const point of row){
+      if(point&&Number.isFinite(point.distanceKm)&&point.distanceKm<=range.requiredKm){report.hasData=true;break;}
+    }
+  }
+  if(report.pending)report.reason=report.firstMissingKm===0?'ground':'visible-dem';
+  terrainMotionState1224().frameStatus1233=report;
+  return report;
+}
+
 function terrainRenderGrid1224(){
   const source=realTerrainState.rayGrid;
   if(!Array.isArray(source)||source.length!==360)return source;
   let lat,lon;
-  try{lat=+el.lat.value;lon=+el.lon.value;}catch(e){return source;}
-  if(!Number.isFinite(lat)||!Number.isFinite(lon))return source;
-  const memo=terrainMotionState1224();
-  const sampledGround=terrainMotionGround1224(lat,lon);
-  if(sampledGround===undefined)return memo.view&&terrainMotionOriginNear1224(memo.lastOrigin,[lat,lon])?memo.view:source;
+  try{lat=+el.lat.value;lon=+el.lon.value;}catch(e){return null;}
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return null;
+  const memo=terrainMotionState1224(),sampledGround=terrainMotionGround1224(lat,lon);
+  if(sampledGround===undefined){
+    // Cached profiles can be used before raw DEM buffers are hydrated only
+    // when their explicit full-row origins exactly match this observer.
+    if(terrainMotionSourceCurrent1233(source,lat,lon))return source;
+    const signature=`unloaded|${lat}|${lon}|${memo.revision}`;
+    if(memo.signature===signature&&memo.view)return memo.view;
+    const view=new Array(360),near=new Array(360);
+    for(let az=0;az<360;az++){
+      const row=[];
+      Object.defineProperties(row,{_terrainOrigin1233:{value:[lat,lon]},_firstMissingKm1233:{value:0},_complete1233:{value:false}});
+      view[az]=near[az]=row;
+    }
+    memo.source=source;memo.signature=signature;memo.view=view;memo.near=near;memo.lastOrigin=[lat,lon];
+    return view;
+  }
   const ground=sampledGround===null?0:sampledGround,eye=terrainMotionEye1224(ground);
   const rings=realTerrainState._osmWaterRings;
   let mapCount=0;try{mapCount=worldMapTiles;}catch(e){}
   let fuji=false;try{fuji=fujiDetailEnabled;}catch(e){}
   const signature=[lat,lon,ground,eye,memo.revision,realTerrainState._renderRevision||0,mapCount,fuji?1:0].join('|');
   if(memo.source===source&&memo.signature===signature&&memo.rings===rings&&memo.view)return memo.view;
-  if(memo.source!==source&&!terrainMotionOriginNear1224(memo.lastOrigin,[lat,lon]))memo.lastRows=new Array(360);
   memo.source=source;memo.signature=signature;memo.rings=rings;memo.lastOrigin=[lat,lon];
   const view=new Array(360),near=new Array(360),done=new Uint8Array(360),values=new Array(360),nearValues=new Array(360);
-  // Keep fallback references from the previous completed view; constructing a
-  // new Array getter view does not visit any row or touch every DEM point.
   for(let az=0;az<360;az++){
     const resolve=()=>{
       if(done[az])return values[az];
       done[az]=1;
-      const built=terrainMotionBuildRow1224(az,lat,lon,ground,eye);
-      if(built){
-        values[az]=built;memo.lastRows[az]={row:built,lat,lon};memo.rowsBuilt++;
-      }else{
-        const previous=memo.lastRows[az];
-        values[az]=previous&&terrainMotionOriginNear1224([previous.lat,previous.lon],[lat,lon])?previous.row:source[az];
-        memo.rowsFallback++;
-      }
-      return values[az];
+      const row=terrainMotionBuildRow1224(az,lat,lon,ground,eye);
+      values[az]=row;memo.rowsBuilt++;
+      if(!row._complete1233)memo.rowsFallback++;
+      return row;
     };
     Object.defineProperty(view,az,{enumerable:true,configurable:false,get:resolve});
     Object.defineProperty(near,az,{enumerable:true,configurable:false,get:()=>{
@@ -51491,6 +51803,7 @@ function terrainRenderGrid1224(){
   memo.view=view;memo.near=near;
   return view;
 }
+
 function terrainRenderNearGrid1224(){
   const grid=terrainRenderGrid1224(),memo=terrainMotionState1224();
   if(grid===memo.view)return memo.near;
@@ -51560,8 +51873,8 @@ async function refreshTerrainWhileWalking(){
   if(walkBusy){walkPending=true;return;}
   const now=performance.now();
   const travel=terrainMoveBuildOrigin1224?terrainDistanceAndBearing(lat,lon,...terrainMoveBuildOrigin1224).distanceKm*1000:Infinity;
-  if(realTerrainState.profile&&terrainMotionPixels1224.size&&now-terrainMoveLastBuild1224<1200)return;
-  if(realTerrainState.profile&&terrainMotionPixels1224.size&&travel<40&&realTerrainState.failedKey!==key)return;
+  if(realTerrainState.profile&&terrainMotionPixels1224.size&&now-terrainMoveLastBuild1224<(terrainFramePending1233()?2000:1200))return;
+  if(realTerrainState.profile&&terrainMotionPixels1224.size&&travel<40&&realTerrainState.failedKey!==key&&!terrainFramePending1233())return;
   terrainMoveLastBuild1224=now;terrainMoveBuildOrigin1224=[lat,lon];
   clearTimeout(terrainSettleTimer);terrainSettlePendingKey='';
   walkBusy=true;walkPending=false;syncSimLoadingLabel();
@@ -51979,7 +52292,7 @@ let cameraViewSkip={pending:0,noState:0,drawn:0};
 const cameraWarp={canvas:null,gl:null,program:null,loc:null,failed:false};
 function cameraWarpReady(){
   if(cameraWarp.failed)return false;
-  if(cameraWarp.gl)return true;
+  if(cameraWarp.gl){if(cameraWarp.gl.isContextLost()){cameraWarp.failed=true;return false;}return true;}
   try{
     const canvas=document.createElement("canvas");
     const gl=canvas.getContext("webgl",{alpha:true,premultipliedAlpha:false,antialias:false,depth:false,stencil:false});
@@ -52070,6 +52383,7 @@ function cameraWarpApply(texture,srcView,dstView,target){
   gl.uniform2f(loc.uSrcSize,srcView.w,srcView.h);
   gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  if(gl.isContextLost()){cameraWarp.failed=true;return false;}
   const context=target.getContext("2d");
   context.setTransform(1,0,0,1,0,0);
   context.clearRect(0,0,target.width,target.height);
@@ -52149,6 +52463,7 @@ function cameraPanoPrepare(){
       bridgeContext.clearRect(0,0,bridgeRestore.width,bridgeRestore.height);
     }
     try{updateCameraViewOnly();}finally{cameraMoveOverride=null;}
+    if(terrainFramePending1233()){cameraPano.tiles=tiles;cameraPanoClear();drawPhoto._terrainRenderKey=null;return "地形の準備中です。準備後に再生してください";}
     const terrainLayer=drawPhoto._terrainLayerCanvas,maskLayer=drawPhoto._waterSurfaceMaskCanvas;
     if(!terrainLayer||terrainLayer.width!==W||terrainLayer.height!==H){cameraPanoClear();drawPhoto._terrainRenderKey=null;return "地形の下絵を取れませんでした";}
     /* 【v919】焼いたその場でGPUへ載せ、キャンバスは捨てる。
