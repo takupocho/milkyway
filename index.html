@@ -5426,6 +5426,33 @@ body.fs-sim.drone-mode .gps1223-replay{
 .gps1228-photo-popup-card.is-compact .gps1228-photo-popup-caption{min-width:0}
 @media(max-width:420px){.gps1228-photo-row{grid-template-columns:60px minmax(0,1fr)}.gps1237-photo-editor{padding:10px}.gps1237-photo-row-actions button,.gps1237-photo-editor-actions button{min-height:44px}.gps1237-photo-title{font-size:13px}}
 
+.gps1228-photos-dialog .gps1228-photo-preview{position:relative;cursor:zoom-in}
+.gps1238-preview-affordance{display:block;margin-top:3px;color:#c9e9ff;font:600 10px/1.4 system-ui,sans-serif;text-align:center}
+.gps1238-marker-group{margin:0;padding:0;border:0;min-width:0}
+.gps1238-marker-group legend{padding:0;margin-bottom:6px;font-size:12px;color:#d1e0ed}
+.gps1238-marker-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.gps1228-photos-dialog .gps1238-marker-options button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;border:1px solid #7593b0;background:#14273a;color:#b9cada;font-size:15px;font-weight:650;box-shadow:none}
+.gps1238-marker-options button::before{content:"";display:inline-block;width:15px;height:15px;border:1px solid #8aabc5;border-radius:50%;box-sizing:border-box;flex:none}
+.gps1228-photos-dialog .gps1238-marker-options button.is-selected{border:2px solid #8de2d0;background:#25524e;color:#f0fffb;box-shadow:0 0 0 2px #8de2d018}
+.gps1238-marker-options button.is-selected::before{content:"✓";border:0;background:#8de2d0;color:#0d2e28;font:800 12px/15px system-ui,sans-serif}
+.gps1238-marker-options button:focus-visible{outline:2px solid #c3f4e9;outline-offset:3px}
+.gps1238-preview-layer{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;background:#07101bf2;overscroll-behavior:contain}
+.gps1238-preview-card{display:flex;flex-direction:column;width:min(960px,100%);height:calc(100% - 8px);max-height:100%;box-sizing:border-box;padding:12px;gap:10px;border:1px solid #a5c4e460;border-radius:14px;background:#10202eea;color:#edf6ff;overflow:hidden}
+.gps1238-preview-card header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.gps1238-preview-card h3{font-size:17px;margin:0;min-width:0;overflow-wrap:anywhere;max-height:3.6em;overflow:auto}
+.gps1238-preview-card button{box-sizing:border-box;width:auto;margin:0;flex:none;min-width:44px;min-height:44px;border:1px solid #7298b888;border-radius:8px;padding:7px 11px;background:#28445e;color:#f1f8ff;font:600 14px/1.35 system-ui,sans-serif;touch-action:manipulation;cursor:pointer}
+.gps1238-preview-card button:disabled{opacity:.4;cursor:default}
+.gps1238-preview-card :focus-visible{outline:2px solid #b5f4e5;outline-offset:2px}
+.gps1238-preview-stage{flex:1;min-height:0;min-width:0;position:relative;overflow:auto;background:#030b13;border-radius:8px;touch-action:none;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;cursor:zoom-in}
+.gps1238-preview-stage.is-zoomed{cursor:grab}
+.gps1238-preview-stage.is-zoomed:active{cursor:grabbing}
+.gps1238-preview-plane{min-width:100%;min-height:100%;display:flex;align-items:center;justify-content:center}
+.gps1238-preview-plane img{display:block;max-width:none;max-height:none;flex:none;object-fit:contain;pointer-events:none}
+.gps1238-preview-tools{display:flex;align-items:center;gap:8px;flex:none}
+.gps1238-preview-tools output{margin-left:auto;min-width:48px;text-align:right;font:600 14px/1.35 system-ui,sans-serif}
+.gps1238-preview-hint{margin:0;color:#b0c7da;font-size:11px;line-height:1.5;flex:none}
+@media(max-width:500px){.gps1238-preview-layer{padding:6px}.gps1238-preview-card{padding:9px;gap:8px;height:100%;border-radius:10px}.gps1238-preview-card h3{font-size:15px}.gps1238-preview-card header button{font-size:12px;padding:7px 9px}}
+
 /* v1231: compact summit information, kept within the simulation viewport. */
 .sky-info-popup.mountain-detail{
   left:auto;right:12px;bottom:auto;top:var(--mountain-popup-top1231,12px);
@@ -7874,7 +7901,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1237-gps-photo-points";
+const APP_VERSION="1238-gps-photo-preview";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -17326,6 +17353,7 @@ function driveLogSceneVisibilitySet1235(shown){
   driveLogSceneVisible=shown===true;
   if(!driveLogSceneVisible){
     driveLogPhotosDraw1228._regions=[];
+    driveLogPointPassReset1238(driveLogReplayState1223);
     driveLogPhotosAutoReset1237(driveLogReplayState1223);
     photoClickRegions=photoClickRegions.filter(region=>!region.gpsPhoto1228);
     const popup=document.getElementById('driveLogPhotosPopup1228');if(popup)popup.hidden=true;
@@ -50370,7 +50398,7 @@ function driveLogReplaySync1223(){
   ui.Hint.textContent=replay.message||`全体 約${Math.round(replay.baseDurationMs/replay.speed/1000)}秒 · ${replay.follow?'ドラッグで構図を調整':'カメラを自由に移動'}`;driveLogStorySync1227(replay);driveLogReplayDestinationSync1227(replay);driveLogReplayControlsSync1228(replay);driveLogPhotosSync1228(replay);
 }
 function driveLogReplayPause1223(render=true,message=''){
-  const replay=driveLogReplayState1223;if(!replay)return;driveLogStorySuspend1227(replay);driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);replay.playing=false;if(replay.raf)cancelAnimationFrame(replay.raf);replay.raf=0;replay.lastNow=null;replay.message=message;
+  const replay=driveLogReplayState1223;if(!replay)return;driveLogPointPassReset1238(replay);driveLogStorySuspend1227(replay);driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);replay.playing=false;if(replay.raf)cancelAnimationFrame(replay.raf);replay.raf=0;replay.lastNow=null;replay.message=message;
   if(state){state.lat=+el.lat.value;state.lon=+el.lon.value;}driveLogReplaySync1223();if(render){update();scheduleSaveSettings();}
 }
 
@@ -51577,6 +51605,68 @@ async function driveLogPhotosLoad1228(replay){
     if(typeof driveLogReplaySync1223==='function'&&driveLogReplayState1223===replay)driveLogReplaySync1223();
   })();return state.loadPromise;
 }
+function driveLogPhotosPreviewClose1238(restoreFocus=true){
+  const current=driveLogPhotosOpen1228._current,preview=current?.preview1238;if(!preview)return;
+  current.preview1238=null;preview.observer?.disconnect();window.removeEventListener('resize',preview.resize);
+  if(preview.url)URL.revokeObjectURL(preview.url);preview.image.onload=preview.image.onerror=null;preview.image.removeAttribute('src');preview.layer.remove();
+  preview.dialog.inert=preview.dialogInert;preview.dialog.removeAttribute('aria-hidden');preview.dialog.scrollTop=preview.scrollTop;
+  if(restoreFocus&&preview.focus?.isConnected)preview.focus.focus({preventScroll:true});
+}
+function driveLogPhotosPreviewOpen1238(replay,item,trigger){
+  const current=driveLogPhotosOpen1228._current,state=replay?.photos1228;
+  if(!current||current.replay!==replay||state?.busy||state?.disposed||!state?.items.includes(item)||!(item.blob instanceof Blob))return;
+  driveLogPhotosPreviewClose1238(false);
+  const dialog=document.getElementById('driveLogPhotosDialog1228');if(!dialog)return;
+  const make=(tag,text,className)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;};
+  const layer=make('div',undefined,'gps1238-preview-layer'),card=make('section',undefined,'gps1238-preview-card');card.setAttribute('role','dialog');card.setAttribute('aria-modal','true');card.setAttribute('aria-label','写真を拡大して確認');card.tabIndex=-1;
+  const header=make('header'),heading=make('h3',driveLogPhotoTitle1237(item)||'写真を拡大して確認'),close=make('button','編集に戻る');close.type='button';header.appendChild(heading);header.appendChild(close);card.appendChild(header);
+  const stage=make('div',undefined,'gps1238-preview-stage'),plane=make('div',undefined,'gps1238-preview-plane'),image=make('img');image.alt=`${driveLogPhotosTime1228(item.shotMs)}に撮影した写真`;image.draggable=false;plane.appendChild(image);stage.appendChild(plane);card.appendChild(stage);
+  const tools=make('div',undefined,'gps1238-preview-tools'),minus=make('button','−'),plus=make('button','＋'),fit=make('button','全体'),zoom=make('output','1×');
+  for(const button of [minus,plus,fit])button.type='button';minus.setAttribute('aria-label','写真を縮小');plus.setAttribute('aria-label','写真を拡大');zoom.setAttribute('aria-live','polite');
+  for(const node of [minus,plus,fit,zoom])tools.appendChild(node);card.appendChild(tools);
+  const status=make('p','＋・− / ピンチで拡大縮小。拡大中は写真をドラッグできます。','gps1238-preview-hint');status.setAttribute('role','status');card.appendChild(status);layer.appendChild(card);current.overlay.appendChild(layer);
+  const preview=current.preview1238={layer,card,dialog,image,stage,plane,focus:trigger||document.activeElement,scrollTop:dialog.scrollTop,dialogInert:dialog.inert,url:null,scale:1,baseWidth:1,baseHeight:1,pointers:new Map(),gesture:null,ready:false};
+  dialog.inert=true;dialog.setAttribute('aria-hidden','true');close.addEventListener('click',()=>driveLogPhotosPreviewClose1238());
+  const active=()=>driveLogPhotosOpen1228._current===current&&current.preview1238===preview;
+  const draw=(next,anchor)=>{
+    if(!active()||!preview.ready)return;
+    const before=preview.scale,width=stage.clientWidth,height=stage.clientHeight,oldWidth=preview.baseWidth*before,oldHeight=preview.baseHeight*before;
+    const x=anchor?.x??width/2,y=anchor?.y??height/2,contentX=(stage.scrollLeft+x-Math.max(0,(width-oldWidth)/2))/before,contentY=(stage.scrollTop+y-Math.max(0,(height-oldHeight)/2))/before;
+    preview.scale=Math.max(1,Math.min(6,next));const newWidth=preview.baseWidth*preview.scale,newHeight=preview.baseHeight*preview.scale;
+    image.style.width=`${newWidth}px`;image.style.height=`${newHeight}px`;plane.style.width=`${Math.max(width,newWidth)}px`;plane.style.height=`${Math.max(height,newHeight)}px`;
+    stage.scrollLeft=Math.max(0,Math.max(0,(width-newWidth)/2)+contentX*preview.scale-x);stage.scrollTop=Math.max(0,Math.max(0,(height-newHeight)/2)+contentY*preview.scale-y);
+    zoom.textContent=`${Number(preview.scale.toFixed(1))}×`;minus.disabled=preview.scale<=1;plus.disabled=preview.scale>=6;stage.classList.toggle('is-zoomed',preview.scale>1);
+  };
+  preview.resize=()=>{if(!active()||!preview.ready)return;const ratio=Math.min(stage.clientWidth/Math.max(1,image.naturalWidth),stage.clientHeight/Math.max(1,image.naturalHeight));preview.baseWidth=Math.max(1,image.naturalWidth*ratio);preview.baseHeight=Math.max(1,image.naturalHeight*ratio);draw(preview.scale);};
+  image.onload=()=>{if(!active())return;preview.ready=true;preview.resize();};image.onerror=()=>{if(active()){status.textContent='この写真を表示できませんでした。編集へ戻って別の写真を確認してください。';minus.disabled=plus.disabled=fit.disabled=true;}};
+  minus.addEventListener('click',()=>draw(preview.scale/1.5));plus.addEventListener('click',()=>draw(preview.scale*1.5));fit.addEventListener('click',()=>draw(1));
+  stage.addEventListener('wheel',event=>{event.preventDefault();const rect=stage.getBoundingClientRect();draw(preview.scale*Math.exp(-Math.max(-120,Math.min(120,event.deltaY))*.002),{x:event.clientX-rect.left,y:event.clientY-rect.top});},{passive:false});
+  const gesture=()=>{const points=[...preview.pointers.values()];if(points.length>=2){const [a,b]=points;preview.gesture={kind:'pinch',distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),scale:preview.scale};}else if(points.length===1)preview.gesture={kind:'pan',x:points[0].x,y:points[0].y,left:stage.scrollLeft,top:stage.scrollTop};else preview.gesture=null;};
+  stage.addEventListener('pointerdown',event=>{if(event.pointerType==='mouse'&&event.button!==0)return;if(!preview.ready)return;event.preventDefault();preview.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});stage.setPointerCapture?.(event.pointerId);gesture();});
+  stage.addEventListener('pointermove',event=>{if(!preview.pointers.has(event.pointerId))return;event.preventDefault();preview.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const g=preview.gesture;if(!g)return;
+    if(g.kind==='pinch'&&preview.pointers.size>=2){const [a,b]=[...preview.pointers.values()],rect=stage.getBoundingClientRect();draw(g.scale*Math.hypot(a.x-b.x,a.y-b.y)/g.distance,{x:(a.x+b.x)/2-rect.left,y:(a.y+b.y)/2-rect.top});}
+    else if(g.kind==='pan'&&preview.scale>1){stage.scrollLeft=g.left+g.x-event.clientX;stage.scrollTop=g.top+g.y-event.clientY;}
+  });
+  const up=event=>{if(preview.pointers.delete(event.pointerId))gesture();};for(const type of ['pointerup','pointercancel','lostpointercapture'])stage.addEventListener(type,up);
+  layer.addEventListener('click',event=>{if(event.target===layer)driveLogPhotosPreviewClose1238();});
+  window.addEventListener('resize',preview.resize);if(typeof ResizeObserver==='function'){preview.observer=new ResizeObserver(preview.resize);preview.observer.observe(stage);}
+  try{preview.url=URL.createObjectURL(item.blob);image.src=preview.url;}catch(error){image.onerror();}
+  close.focus({preventScroll:true});
+}
+function driveLogPhotosPreviewKey1238(event){
+  const preview=driveLogPhotosOpen1228._current?.preview1238;if(!preview)return false;
+  if(event.key==='Escape'){event.preventDefault();driveLogPhotosPreviewClose1238();return true;}
+  if(event.key==='Tab'){
+    const nodes=[...preview.card.querySelectorAll('button:not(:disabled),[tabindex="0"]')].filter(node=>node.getClientRects().length&&node.tabIndex>=0),first=nodes[0],last=nodes.at(-1);
+    if(!first){event.preventDefault();preview.card.focus();}else if(event.shiftKey&&(document.activeElement===first||!preview.card.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!preview.card.contains(document.activeElement))){event.preventDefault();first.focus();}
+  }
+  return true;
+}
+function driveLogPhotosMarkerKey1238(event){
+  const control=event.target?.gps1238MarkerKey?event.target:document.activeElement;
+  return typeof control?.gps1238MarkerKey==='function'&&control.gps1238MarkerKey(event);
+}
+
 function driveLogPhotosDialogUi1228(){
   let overlay=document.getElementById('driveLogPhotosOverlay1228');if(overlay)return overlay;
   const make=(tag,id,text)=>{const node=document.createElement(tag);if(id)node.id=`driveLogPhotos${id}1228`;if(text)node.textContent=text;return node;};
@@ -51613,7 +51703,7 @@ remove.addEventListener('click',async()=>{
       }
     }
   });
-  document.addEventListener('keydown',event=>{if(!driveLogPhotosOpen1228._current)return;event.stopImmediatePropagation();if(event.key==='Escape'){event.preventDefault();driveLogPhotosDialogClose1228();return;}if(event.key!=='Tab')return;
+  document.addEventListener('keydown',event=>{if(!driveLogPhotosOpen1228._current)return;event.stopImmediatePropagation();if(driveLogPhotosPreviewKey1238(event))return;if(driveLogPhotosMarkerKey1238(event))return;if(event.key==='Escape'){event.preventDefault();driveLogPhotosDialogClose1228();return;}if(event.key!=='Tab')return;
     const nodes=[...dialog.querySelectorAll('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(node=>node.getClientRects().length&&node.tabIndex>=0),first=nodes[0],last=nodes.at(-1);
     if(!first){event.preventDefault();dialog.focus();}else if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===dialog||!dialog.contains(document.activeElement))){event.preventDefault();first.focus();}
   },true);
@@ -51623,7 +51713,7 @@ remove.addEventListener('click',async()=>{
 }
 function driveLogPhotosStatus1228(text){const node=document.getElementById('driveLogPhotosStatus1228');if(node)node.textContent=text;}
 function driveLogPhotosDialogClose1228(){
-  const current=driveLogPhotosOpen1228._current;if(!current)return;driveLogPhotosOpen1228._current=null;
+  const current=driveLogPhotosOpen1228._current;if(!current)return;driveLogPhotosPreviewClose1238(false);driveLogPhotosOpen1228._current=null;
   const state=current.replay.photos1228;if(state)state.importToken++;
   for(const url of current.urls)URL.revokeObjectURL(url);current.urls=[];current.overlay.hidden=true;current.overlay.setAttribute('aria-hidden','true');
   for(const item of current.inert)item.node.inert=item.value;document.body.style.overflow=current.overflow;
@@ -51642,7 +51732,7 @@ function driveLogPhotosOpen1228(replay=driveLogReplayState1223){
 function driveLogPhotosList1228(replay){
   const current=driveLogPhotosOpen1228._current;if(!current||current.replay!==replay)return;
   const state=driveLogPhotosState1228(replay),list=document.getElementById('driveLogPhotosList1228');
-  for(const url of current.urls)URL.revokeObjectURL(url);current.urls=[];list.replaceChildren();
+  driveLogPhotosPreviewClose1238(false);for(const url of current.urls)URL.revokeObjectURL(url);current.urls=[];list.replaceChildren();
   document.getElementById('driveLogPhotosInput1228').disabled=state.busy||!!state.error;
   document.getElementById('driveLogPhotosZone1228').disabled=state.busy;
   document.getElementById('driveLogPhotosDeleteAll1228').disabled=state.busy||!state.items.length;
@@ -51653,13 +51743,8 @@ function driveLogPhotosList1228(replay){
     const meta=driveLogPhotoMetaNormalize1237(item),point=driveLogPhotoIsPoint1237(item),time=driveLogPhotosTime1228(item.shotMs),name=driveLogPhotoTitle1237(item)||(point?'ポイント':'撮影地点');
     const row=make('div',undefined,'gps1228-photo-row');
     const image=make('img'),url=URL.createObjectURL(item.blob);current.urls.push(url);image.src=url;image.alt=`${time}に撮影した写真`;image.loading='lazy';image.decoding='async';
-    const view=make('button',undefined,'gps1228-photo-preview');view.type='button';view.setAttribute('aria-label',point?`${name}のポイントを編集`:`${name}の写真を見る`);view.disabled=state.busy;view.appendChild(image);
-    view.addEventListener('click',()=>{
-      if(state.busy)return;
-      if(point){current.editKey=item.key;driveLogPhotosList1228(replay);return;}
-      const ids=state.items.filter(value=>!driveLogPhotoIsPoint1237(value)).map(value=>value.key);
-      driveLogPhotosDialogClose1228();driveLogPhotosShow1228(replay,ids,item.key,true);
-    });row.appendChild(view);
+    const view=make('button',undefined,'gps1228-photo-preview');view.type='button';view.setAttribute('aria-label',`${name}の写真を拡大して確認`);view.title='写真を拡大して確認';view.disabled=state.busy;view.appendChild(image);view.appendChild(make('span','拡大','gps1238-preview-affordance'));
+    view.addEventListener('click',()=>driveLogPhotosPreviewOpen1238(replay,item,view));row.appendChild(view);
     const caption=make('div',undefined,'gps1228-photo-caption');
     caption.appendChild(make('strong',name,'gps1237-photo-title'));
     const line=make('div');line.appendChild(make('span',point?'ポイント':'写真',`gps1237-photo-kind${point?' is-point':''}`));line.appendChild(make('span',`${time} · ${item.positionSource==='photo-gps'?'写真のGPS位置':'ログの位置'}`));caption.appendChild(line);
@@ -51686,12 +51771,14 @@ function driveLogPhotosList1228(replay){
       const form=make('form',undefined,'gps1237-photo-editor');
       const titleLabel=make('label','タイトル（ポイント名）'),title=make('input');title.type='text';title.maxLength=160;title.value=meta.title;title.placeholder='例：展望台・山頂・休憩場所';title.disabled=state.busy;titleLabel.appendChild(title);form.appendChild(titleLabel);
       const commentLabel=make('label','コメント'),comment=make('textarea');comment.maxLength=2000;comment.rows=3;comment.value=meta.comment;comment.placeholder='景色や撮影時のメモ';comment.disabled=state.busy;commentLabel.appendChild(comment);form.appendChild(commentLabel);
-      const markerLabel=make('label','マークの種類'),marker=make('select');for(const [value,text] of [['photo','写真マーク'],['point','ポイントマーク']]){const option=make('option',text);option.value=value;marker.appendChild(option);}marker.value=meta.markerType;marker.disabled=state.busy;markerLabel.appendChild(marker);form.appendChild(markerLabel);
+      const marker={value:meta.markerType},markerGroup=make('fieldset',undefined,'gps1238-marker-group'),markerLegend=make('legend','マークの種類'),markerOptions=make('div',undefined,'gps1238-marker-options'),markerButtons=[];markerOptions.setAttribute('role','radiogroup');markerOptions.setAttribute('aria-label','マークの種類');markerGroup.appendChild(markerLegend);
+      const markerSync=()=>{for(const button of markerButtons){const selected=button.dataset.value===marker.value;button.classList.toggle('is-selected',selected);button.setAttribute('aria-checked',String(selected));button.tabIndex=selected?0:-1;}};
+      for(const [value,text] of [['photo','写真'],['point','ポイント']]){const button=make('button',text);button.type='button';button.dataset.value=value;button.disabled=state.busy;button.setAttribute('role','radio');button.addEventListener('click',()=>{if(state.busy)return;marker.value=value;markerSync();});button.gps1238MarkerKey=event=>{if(state.busy||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(event.key))return false;event.preventDefault();marker.value=event.key==='Home'?'photo':event.key==='End'?'point':marker.value==='photo'?'point':'photo';markerSync();markerButtons.find(option=>option.dataset.value===marker.value)?.focus();return true;};markerButtons.push(button);markerOptions.appendChild(button);}markerSync();markerGroup.appendChild(markerOptions);form.appendChild(markerGroup);
       form.appendChild(make('p','ポイントマークにすると、シミュレーションでは写真を表示せず、タイトルとコメントを表示します。写真マークに戻すこともできます。'));
       const buttons=make('div',undefined,'gps1237-photo-editor-actions'),cancel=make('button','キャンセル'),save=make('button','保存');cancel.type='button';save.type='submit';cancel.disabled=save.disabled=state.busy;
       cancel.addEventListener('click',()=>{if(state.busy)return;current.editKey=null;driveLogPhotosList1228(replay);});buttons.appendChild(cancel);buttons.appendChild(save);form.appendChild(buttons);
       form.addEventListener('submit',async event=>{
-        event.preventDefault();if(state.busy)return;state.busy=true;for(const control of [title,comment,marker,cancel,save])control.disabled=true;driveLogPhotosStatus1228('保存しています…');
+        event.preventDefault();if(state.busy)return;state.busy=true;for(const control of [title,comment,...markerButtons,cancel,save])control.disabled=true;driveLogPhotosStatus1228('保存しています…');
         let saved=false;
         try{saved=await driveLogPhotosMetaSave1237(replay,item,{title:title.value,comment:comment.value,markerType:marker.value});}
         catch(error){saved=false;}
@@ -51705,7 +51792,7 @@ function driveLogPhotosList1228(replay){
         if(saved){
           current.editKey=null;driveLogPhotosList1228(replay);driveLogPhotosSync1228(replay);driveLogPhotosStatus1228('タイトル・コメント・マークを保存しました。');
           if(typeof drawPhoto==='function')drawPhoto._terrainRenderKey=null;if(typeof update==='function')update();
-        }else{for(const control of [title,comment,marker,cancel,save])control.disabled=false;driveLogPhotosStatus1228('保存できませんでした。内容を確認して、もう一度保存してください。');}
+        }else{for(const control of [title,comment,...markerButtons,cancel,save])control.disabled=false;driveLogPhotosStatus1228('保存できませんでした。内容を確認して、もう一度保存してください。');}
       });row.appendChild(form);
     }
     list.appendChild(row);
@@ -51902,18 +51989,102 @@ function driveLogPhotosAdvance1230(replay,wallMs){
         }
       }
     }
-    driveLogPhotosTick1228(replay,0);
+    driveLogPhotosTick1228(replay,dt);
     return story;
   }
   if(state)state.holdRendered1230=false;
   const current=driveLogStoryAdvance1227(replay,dt);
-  driveLogPhotosTick1228(replay,0);
+  driveLogPhotosTick1228(replay,dt);
   return current;
+}
+/* v1238: point names are moving annotations, never replay stops or photo cards. */
+function driveLogPointPassReset1238(replay){
+  if(!replay)return;
+  if(replay.pointPass1238?.current&&replay.story1227)replay.story1227.renderPending=true;
+  replay.pointPass1238=null;
+}
+function driveLogPointPassTick1238(replay,wallDt){
+  if(!replay)return;
+  const photos=replay.photos1228,active=replay.sample?.activeMs??0,phase=replay.story1227?.phase||'travel';
+  if(!photos?.loaded||photos.disposed||!driveLogSceneVisible||!replay.playing){driveLogPointPassReset1238(replay);return;}
+  let passage=replay.pointPass1238;
+  if(!passage){
+    const cursor=Number.isFinite(photos.cursor)?photos.cursor:active;
+    passage=replay.pointPass1238={cursor,phase:photos.phase||phase,seen:new Set(photos.items.filter(item=>driveLogPhotoIsPoint1237(item)&&item.activeMs<cursor).map(item=>item.key)),current:null};
+  }
+  if(active<passage.cursor-1e-5){driveLogPointPassReset1238(replay);return;}
+  const dt=Math.max(0,Math.min(250,Number.isFinite(wallDt)?wallDt:0));let changed=false;
+  if(passage.current){
+    const item=photos.items.find(value=>value.key===passage.current.key);
+    passage.current.remainingMs-=dt;
+    if(passage.current.remainingMs<=1e-7||!item||!driveLogPhotoIsPoint1237(item)){passage.current=null;changed=true;}
+  }
+  if(!['intro','summary'].includes(phase)){
+    const start=passage.phase==='intro'?passage.cursor-1e-5:passage.cursor;
+    let latest=null;
+    for(const item of photos.items){
+      if(!driveLogPhotoIsPoint1237(item)||passage.seen.has(item.key)||!Number.isFinite(item.activeMs)||item.activeMs<=start||item.activeMs>active+1e-5)continue;
+      passage.seen.add(item.key);
+      if(!latest||item.activeMs>=latest.activeMs)latest=item;
+    }
+    // A fast replay can cross several points in one frame. Keep the latest
+    // name rather than queueing extra time or changing the GPS/camera clocks.
+    if(latest){passage.current={key:latest.key,remainingMs:1000};changed=true;}
+  }
+  passage.cursor=active;passage.phase=phase;
+  // The destination time card can hold the camera while only its DOM updates.
+  // Request a canvas redraw when a name appears/expires so none can linger.
+  if(changed&&replay.story1227)replay.story1227.renderPending=true;
+}
+function driveLogPointPassLines1238(ctx,title,width,maxLines=3){
+  const lines=[];let line='';
+  const characters=[...String(title)];
+  for(let index=0;index<characters.length;index++){
+    const character=characters[index];
+    if(line&&ctx.measureText(line+character).width>width){
+      lines.push(line);line=character;
+      if(lines.length>=maxLines){
+        let last=lines[maxLines-1];
+        while(last&&ctx.measureText(last+'…').width>width)last=[...last].slice(0,-1).join('');
+        lines[maxLines-1]=last+'…';return lines;
+      }
+    }else line+=character;
+  }
+  if(line||!lines.length)lines.push(line);
+  return lines;
+}
+function driveLogPointPassDraw1238(ctx,replay,photos,groups,W,H){
+  const passage=replay?.pointPass1238,current=passage?.current;
+  if(!replay?.playing||!driveLogSceneVisible||photos?.disposed){driveLogPointPassReset1238(replay);return;}
+  if(!current||current.remainingMs<=0||!(W>0&&H>0))return;
+  const item=photos.items.find(value=>value.key===current.key);
+  if(!item||!driveLogPhotoIsPoint1237(item)){passage.current=null;return;}
+  const group=[...groups.values()].find(value=>value.kind==='point'&&value.ids.includes(current.key));
+  if(!group)return;
+  const cssWidth=el.photoCanvas?.getBoundingClientRect?.().width||W,scale=W/Math.max(1,cssWidth),mobile=cssWidth<700;
+  const font=(mobile?18:20)*scale,padding=10*scale,lineHeight=font*1.2,margin=8*scale;
+  const maxWidth=Math.min(W-2*margin,(mobile?240:320)*scale);
+  if(maxWidth<=2*padding||H<lineHeight+2*margin)return;
+  ctx.save();ctx.font=`700 ${font}px system-ui,sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  const maxLines=Math.max(1,Math.min(3,Math.floor((H-2*margin-12*scale)/lineHeight)));
+  const lines=driveLogPointPassLines1238(ctx,driveLogPhotoTitle1237(item),maxWidth-2*padding,maxLines);
+  const width=Math.min(maxWidth,Math.max(...lines.map(line=>ctx.measureText(line).width))+2*padding),height=lines.length*lineHeight+12*scale;
+  const left=group.x-width-32*scale,right=group.x+32*scale;
+  const x=clamp(left>=margin?left:right,margin,Math.max(margin,W-margin-width));
+  const y=clamp(group.y-height-28*scale,margin,Math.max(margin,H-margin-height));
+  ctx.globalAlpha*=Math.min(1,current.remainingMs/150);
+  ctx.beginPath();ctx.moveTo(group.x,group.y);ctx.lineTo(clamp(group.x,x,x+width),clamp(group.y,y,y+height));
+  ctx.strokeStyle='rgba(255,239,199,.95)';ctx.lineWidth=1.5*scale;ctx.stroke();
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,width,height,7*scale);else ctx.rect(x,y,width,height);
+  ctx.fillStyle='rgba(12,23,32,.85)';ctx.fill();ctx.strokeStyle='rgba(255,224,160,.9)';ctx.lineWidth=1.2*scale;ctx.stroke();
+  ctx.fillStyle='#fff7e7';lines.forEach((line,index)=>ctx.fillText(line,x+width/2,y+6*scale+lineHeight*(index+.5)));
+  ctx.restore();
 }
 function driveLogPhotosTick1228(replay,wallDt){
   if(!replay)return;const state=driveLogPhotosState1228(replay),active=replay.sample?.activeMs??0,phase=replay.story1227?.phase||'travel';
   if(!state.loaded||state.disposed){state.cursor=active;state.phase=phase;return;}
   if(active<state.cursor-1e-5)driveLogPhotosSeek1228(replay);
+  driveLogPointPassTick1238(replay,wallDt);
   if(!driveLogPhotosReplayEnabled1237(replay)){
     state.pending=[];state.holdRendered1230=false;
     if(state.showing&&!state.showing.manual)driveLogPhotosHide1228(replay);
@@ -51936,10 +52107,12 @@ function driveLogPhotosTick1228(replay,wallDt){
   driveLogPhotosPopupSync1228(replay);
 }
 function driveLogPhotosSeek1228(replay){
+  driveLogPointPassReset1238(replay);
   const state=replay?.photos1228;if(!state)return;driveLogPhotosHide1228(replay);state.pending=[];state.cursor=replay.sample?.activeMs??0;state.phase=null;
   state.seen=new Set(state.items.filter(item=>item.activeMs<state.cursor).map(item=>item.key));
 }
 function driveLogPhotosClose1228(replay=driveLogPhotosSync1228._active){
+  driveLogPointPassReset1238(replay);
   driveLogPhotosDialogClose1228();if(replay?.photos1228){const state=replay.photos1228;state.disposed=true;state.importToken++;state.pending=[];driveLogPhotosHide1228(replay);state.items=[];}
   driveLogPhotosDraw1228._regions=[];if(driveLogPhotosSync1228._active===replay)driveLogPhotosSync1228._active=null;
 }
@@ -51978,6 +52151,7 @@ function driveLogPhotosDraw1228(ctx,s,toXY,W,H,project){
     if(group.ids.length>1){ctx.fillStyle=group.kind==='point'?'#fff0c7':'#e3f2ff';ctx.strokeStyle='#132938';ctx.font='bold 9px system-ui';ctx.textAlign='left';ctx.lineWidth=2;ctx.strokeText(String(group.ids.length),group.x+9,group.y-6);ctx.fillText(String(group.ids.length),group.x+9,group.y-6);}
   }
   ctx.restore();driveLogPhotosDraw1228._regions=[...groups.values()];
+  driveLogPointPassDraw1238(ctx,replay,state,groups,W,H);
 }
 function driveLogPhotosHit1228(x,y){
   const replay=driveLogReplayState1223;if(!driveLogSceneVisible||!replay)return false;
