@@ -5595,6 +5595,24 @@ body.fs-sim.drone-mode .gps1223-replay{
 #driveLogList .gps1223-row-actions .gps1235-scene{grid-column:span 4;}
 
 
+/* v1240: keep the clock and seek bar visible when the controls are folded. */
+.gps1223-replay.gps1240-collapsed{
+  background:transparent;background-image:none;border-color:transparent;
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;
+}
+.gps1223-replay.gps1240-collapsed .gps1223-replay-head,
+.gps1223-replay.gps1240-collapsed .gps1223-replay-actions,
+.gps1223-replay.gps1240-collapsed .gps1223-replay-hint,
+.gps1223-replay.gps1240-collapsed #driveLogReplayVisibility1228{display:none;}
+.gps1223-replay.gps1240-collapsed .gps1228-panel-meta{min-height:0;margin-bottom:5px;}
+.gps1223-replay.gps1240-collapsed .gps1223-replay-time{
+  padding:2px 0;min-height:18px;color:#f5f8ff;text-shadow:0 1px 3px #000;
+  cursor:pointer;white-space:nowrap;
+}
+.gps1223-replay.gps1240-collapsed .gps1223-replay-time:focus-visible{
+  outline:2px solid #78e2c3;outline-offset:2px;border-radius:3px;
+}
+
 /* v1239: spread the replay controls across the photo instead of squeezing mobile labels. */
 .gps1223-replay{
   width:min(420px,var(--gps1226-available));
@@ -8011,7 +8029,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1239-gps-hiking-data";
+const APP_VERSION="1240-gps-smooth-controls";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -25922,6 +25940,7 @@ for(const sel of ["#bestTimeDateNav",".dt-nav-row",".dt-date-row","#sliderTimeli
   document.querySelectorAll(sel).forEach(guardDoubleTapZoom);
 }
 function handlePhotoTap(pos){
+  if(driveLogReplayPanelBlankTap1240(pos))return;
   if(terrainFramePending1233())return; // Held image belongs to its last completed pose.
   // 後から描いたラベルを優先し、山名と星空名称が重なっても見た目どおりに反応させる。
   const hit=[...photoClickRegions].reverse().find(r=>pos[0]>=r.x1 && pos[0]<=r.x2 && pos[1]>=r.y1 && pos[1]<=r.y2);
@@ -36706,7 +36725,7 @@ function requestRealTerrainProfile(lat,lon){
       }
     }
     if(!result) result=await buildRealTerrainProfile(lat,lon,token);
-    if(token!==realTerrainState.requestToken||key!==terrainRequestTarget1224||key!==`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`) return;
+    if(token!==realTerrainState.requestToken||key!==terrainRequestTarget1224||key!==`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`){terrainRequestDiscardOwned1240(token,key);return;}
     terrainRequestActive1224="";
     realTerrainState.loadingKey="";
     syncSimLoadingLabel();
@@ -36750,13 +36769,61 @@ function invalidateCurrentEyeTerrainProfile(){
 }
 /* 保存済みrayGridの実標高と距離から、現在の「追加高さ＋三脚＋上昇量」で稜線を再計算する。
    外部データを取り直さず、地球曲率と標準的な大気差(7/6地球半径)も同じ式で統一する。 */
+
+/* v1240: derive unchanged skyline values only for directions actually read. */
+function terrainReplayLazyEnabled1240(){try{return !!driveLogReplayState1223?.playing&&!arActive&&TERRAIN_RENDERER==='layered';}catch(_error){return false;}}
+function terrainReplayEyeInput1240(grid,observerElevation){
+ try{
+  if(!(driveLogReplayState1223&&(driveLogReplayState1223.playing||driveLogReplayState1223.follow))||arActive||TERRAIN_RENDERER!=='layered')return {grid,observerElevation};
+  const current=terrainRenderGrid1224(),ground=terrainMotionGround1224(+el.lat.value,+el.lon.value);
+  if(Array.isArray(current)&&current.length>=360&&(ground===null||Number.isFinite(ground)))return {grid:current,observerElevation:ground===null?0:ground};
+ }catch(_error){}
+ return {grid,observerElevation};
+}
+function terrainReplayEyeProfiles1240(grid,observerElevation,eyeHeight){
+ const profile=new Array(360),layerProfiles=TERRAIN_DISTANCE_BANDS.map(()=>new Array(360)),blockingProfile=new Array(360);
+ const done=new Uint8Array(360),eyeElevation=observerElevation+eyeHeight,earthRadius=6371000*(7/6);
+ const cache={grid,observerElevation,eyeHeight,profile,layerProfiles,blockingProfile,lazyReplay1240:true,rowsBuilt1240:0};
+ const set=(array,az,value)=>Object.defineProperty(array,az,{value,writable:true,enumerable:true,configurable:true});
+ const resolve=az=>{
+  if(done[az])return;done[az]=1;cache.rowsBuilt1240++;
+  const row=grid[az];let highest=0,highestLand=-Infinity;const heights=TERRAIN_DISTANCE_BANDS.map(()=>0);
+  if(Array.isArray(row))for(const point of row){
+   if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<=0)continue;
+   const metres=point.distanceKm*1000;let altitude=null;
+   if(Number.isFinite(point.baseElevation)){const curvatureDrop=metres*metres/(2*earthRadius);altitude=Math.atan2(point.baseElevation-eyeElevation-curvatureDrop,metres)*R2D;}
+   else if(!point.water&&Number.isFinite(point.alt))altitude=point.alt-Math.atan2(eyeHeight-1.6,metres)*R2D;
+   if(Number.isFinite(altitude)){
+    if(altitude>highest)highest=altitude;if(!point.water&&!point.baseNoData&&altitude>highestLand)highestLand=altitude;
+    const layerIndex=TERRAIN_DISTANCE_BANDS.findIndex(band=>point.distanceKm>=band.min&&point.distanceKm<band.max);
+    if(layerIndex>=0&&altitude>heights[layerIndex])heights[layerIndex]=altitude;
+   }
+  }
+  set(profile,az,clamp(highest,0,45));set(blockingProfile,az,Number.isFinite(highestLand)?clamp(highestLand,-45,45):null);
+  for(let layer=0;layer<heights.length;layer++)set(layerProfiles[layer],az,clamp(heights[layer],0,45));
+ };
+ for(let az=0;az<360;az++){
+  for(const array of [profile,blockingProfile,...layerProfiles])Object.defineProperty(array,az,{enumerable:true,configurable:true,get(){resolve(az);return array[az];}});
+ }
+ return cache;
+}
+/* Latitude and azimuth trig is constant within one polar ray. Coordinates use
+   the exact same spherical formula; no observer or elevation is rounded. */
+function terrainMotionRayDestination1240(lat,lon,az){
+ const p1=lat*D2R,l1=lon*D2R,br=az*D2R,sinP=Math.sin(p1),cosP=Math.cos(p1),sinB=Math.sin(br),cosB=Math.cos(br);
+ return distanceKm=>{const d=distanceKm/6371,sinD=Math.sin(d),cosD=Math.cos(d),p2=Math.asin(sinP*cosD+cosP*sinD*cosB);
+  const l2=l1+Math.atan2(sinB*sinD*cosP,cosD-sinP*Math.sin(p2));return [p2*R2D,((l2*R2D+540)%360)-180];};
+}
+
 function currentEyeTerrainProfile(){
   const fallback=realTerrainState.profile;
-  const grid=realTerrainState.rayGrid,observerElevation=realTerrainState.observerElevation;
+  const input=terrainReplayEyeInput1240(realTerrainState.rayGrid,realTerrainState.observerElevation);
+  const grid=input.grid,observerElevation=input.observerElevation;
   if(!Array.isArray(grid)||grid.length<360||!Number.isFinite(observerElevation)) return fallback;
   const eyeHeight=eyeHeightAboveGroundM();
   const cache=currentEyeTerrainProfileCache;
   if(cache.grid===grid&&cache.observerElevation===observerElevation&&cache.eyeHeight===eyeHeight&&cache.profile) return cache.profile;
+  if(terrainReplayLazyEnabled1240()){currentEyeTerrainProfileCache=terrainReplayEyeProfiles1240(grid,observerElevation,eyeHeight);return currentEyeTerrainProfileCache.profile;}
   const eyeElevation=observerElevation+eyeHeight,earthRadius=6371000*(7/6);
   const profile=new Array(360).fill(0);
   const layerProfiles=TERRAIN_DISTANCE_BANDS.map(()=>new Array(360).fill(0));
@@ -50620,12 +50687,152 @@ function driveLogReplayFollowApply1223(){
   camera.seekPending=false;
   if(photoHold){replay.photos1228.holdRendered1230=true;driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);}
 }
+/* v1240: replay motion resamples cached geographic DEM at the exact camera
+   origin. Only missing visible raster buffers are hydrated in the background;
+   a completed frame remains the sole publishable scene. */
+function terrainRequestDiscardOwned1240(token,key){
+  // A normal request started just before replay may finish at an old pose.
+  // Its decoded rasters remain useful, but it cannot publish that geometry.
+  if(token!==realTerrainState.requestToken||terrainRequestActive1224!==key)return;
+  terrainRequestActive1224='';
+  if(realTerrainState.loadingKey===key)realTerrainState.loadingKey='';
+  syncSimLoadingLabel();
+}
+function driveLogReplayTerrainActive1240(){
+  try{
+    const replay=driveLogReplayState1223;
+    return !!(replay&&replay.follow&&!arActive&&TERRAIN_RENDERER==='layered'&&realTerrainState.profile);
+  }catch(_error){return false;}
+}
+function driveLogReplayTerrainState1240(){
+  return driveLogReplayTerrainState1240._state||(driveLogReplayTerrainState1240._state={
+    origin:null,missing:new Map(),job:null,lastBatchAt:-Infinity,retryAt:0,waterOrigin:null,waterAt:-Infinity,
+    skipped:0,batches:0,requested:0,loaded:0,failed:0,timedOut:0
+  });
+}
+function driveLogReplayTerrainMissing1240(tiles,distanceKm=0){
+  if(!driveLogReplayTerrainActive1240())return;
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+  const loader=driveLogReplayTerrainState1240();
+  if(!loader.origin||loader.origin[0]!==lat||loader.origin[1]!==lon){loader.origin=[lat,lon];loader.missing.clear();}
+  const priority=Number.isFinite(distanceKm)?Math.max(0,distanceKm):0;
+  for(const tile of tiles){
+    if(terrainMotionPixels1224.get(tile.key)||terrainDemTileAbsent1233(tile.key))continue;
+    const previous=loader.missing.get(tile.key);
+    if(previous&&previous._requiredKm1240<=priority)continue;
+    if(!previous&&loader.missing.size>=512)continue;
+    loader.missing.set(tile.key,{...tile,_requiredKm1240:priority});
+  }
+}
+function driveLogReplayTerrainClose1240(replay){
+  const loader=driveLogReplayTerrainState1240(),job=loader.job;
+  if(job&&(!replay||job.replay===replay)){
+    // Shared tile promises still populate the geographic raster cache. They
+    // never publish geometry or resume a closed replay.
+    if(job.loadingKey&&realTerrainState.loadingKey===job.loadingKey)realTerrainState.loadingKey='';
+    // Keep the unsettled shared batch as the one global hydration slot. A
+    // closed/reopened replay cannot accumulate more hung four-worker batches.
+    job.closed=true;
+  }
+  loader.origin=null;loader.missing.clear();loader.retryAt=0;loader.waterOrigin=null;loader.waterAt=-Infinity;
+  syncSimLoadingLabel();
+}
+async function driveLogReplayTerrainRefresh1240(now=performance.now()){
+  if(!driveLogReplayTerrainActive1240())return false;
+  const replay=driveLogReplayState1223,loader=driveLogReplayTerrainState1240();
+  // A paused overview may have queued the normal 300ms full-profile settle
+  // callback just before Play. Cancel only that unstarted callback; an actual
+  // normal request keeps its own token and loading ownership.
+  if(terrainSettleTimer&&terrainSettlePendingKey){
+    const queuedKey=terrainSettlePendingKey;clearTimeout(terrainSettleTimer);
+    terrainSettleTimer=0;terrainSettlePendingKey='';
+    if(realTerrainState.loadingKey===queuedKey&&!walkBusy&&!terrainRequestActive1224)realTerrainState.loadingKey='';
+  }
+  const lat=+el.lat.value,lon=+el.lon.value;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return true;
+  // Full-profile builds formerly refreshed geographic map-water coverage as
+  // a side effect. Keep that cached prefetch on long routes, without rebuilding
+  // any polar geometry or repeating its tile loop every animation frame.
+  if(typeof worldMapEnsureTiles==='function'&&now-loader.waterAt>=2000&&
+     (!loader.waterOrigin||terrainDistanceAndBearing(loader.waterOrigin[0],loader.waterOrigin[1],lat,lon).distanceKm>=.2)){
+    loader.waterOrigin=[lat,lon];loader.waterAt=now;
+    try{worldMapEnsureTiles(lat,lon);}catch(_error){}
+  }
+  if(!loader.origin||loader.origin[0]!==lat||loader.origin[1]!==lon){loader.origin=[lat,lon];loader.missing.clear();}
+  // Force only the current visible lazy rows, and share those exact rows with
+  // the subsequent draw. No rounded-origin geometry can pass the frame gate.
+  const pose={...state,lat,lon,facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value};
+  let report;
+  try{report=terrainMotionFrameStatus1233(pose,photoCtx.canvas.width,photoCtx.canvas.height);}
+  catch(_error){return false;}
+  if(!report.pending){
+    loader.skipped++;
+    if(!loader.job&&!walkBusy&&!terrainRequestActive1224)realTerrainState.loadingKey='';
+    syncSimLoadingLabel();return true;
+  }
+  if(loader.job||now<loader.retryAt||now-loader.lastBatchAt<750)return true;
+  const requiredTiles=()=>[...loader.missing.values()]
+    .filter(tile=>!terrainMotionPixels1224.get(tile.key)&&!terrainDemTileAbsent1233(tile.key)&&tile._requiredKm1240<=(Number.isFinite(report.requiredKm)?report.requiredKm:Infinity)+1e-9)
+    .sort((a,b)=>a._requiredKm1240-b._requiredKm1240).slice(0,96);
+  let tiles=requiredTiles();
+  if(!tiles.length){
+    // Closing/reopening at the same pose can retain memoized incomplete rows
+    // while releasing their collector. Resample once to recover their exact
+    // missing raster evidence instead of falling back to an expensive build.
+    terrainMotionInvalidate1224();
+    try{report=terrainMotionFrameStatus1233(pose,photoCtx.canvas.width,photoCtx.canvas.height);}
+    catch(_error){return false;}
+    if(!report.pending){
+      loader.skipped++;
+      if(!loader.job&&!walkBusy&&!terrainRequestActive1224)realTerrainState.loadingKey='';
+      syncSimLoadingLabel();return true;
+    }
+    tiles=requiredTiles();
+  }
+  if(!tiles.length)return false; // A malformed/absent source still uses the normal bounded builder.
+  const job={replay,lat,lon,loadingKey:!walkBusy&&!terrainRequestActive1224?`replay-dem:${lat},${lon}`:null,closed:false,timer:0};
+  loader.job=job;loader.lastBatchAt=now;loader.batches++;loader.requested+=tiles.length;
+  if(job.loadingKey)realTerrainState.loadingKey=job.loadingKey;
+  syncSimLoadingLabel();
+  let timedOut=false;
+  const work=(async()=>{
+    try{
+      await loadTilesWithLimit(tiles,4);
+      const loaded=tiles.filter(tile=>terrainMotionPixels1224.get(tile.key)||terrainDemTileAbsent1233(tile.key)).length;
+      loader.loaded+=loaded;
+      if(loaded<tiles.length){loader.failed+=tiles.length-loaded;if(loader.job===job)loader.retryAt=performance.now()+3000;}
+      else if(loader.job===job)loader.retryAt=0;
+    }catch(_error){loader.failed++;if(loader.job===job)loader.retryAt=performance.now()+3000;}
+    finally{
+      job.finished=true;clearTimeout(job.timer);
+      if(loader.job===job){
+        loader.job=null;
+        if(job.loadingKey&&realTerrainState.loadingKey===job.loadingKey)realTerrainState.loadingKey='';
+        // Even a definite 404 changes the known/nodata state. Always recheck
+        // it; only the retained-frame gate may publish a newly drawn scene.
+        terrainMotionInvalidate1224();syncSimLoadingLabel();
+        if(!job.closed&&driveLogReplayState1223===replay){terrainMotionDraw1224(true);}
+      }
+    }
+  })();
+  const timeout=new Promise(resolve=>{job.timer=setTimeout(()=>{timedOut=true;resolve();},12000);});
+  await Promise.race([work,timeout]);
+  if(timedOut&&!job.finished){
+    // Keep the job and its original shared promises. Without abort support,
+    // only their actual settlement can safely release the four-worker slot.
+    job.timedOut=true;loader.timedOut++;syncSimLoadingLabel();
+  }
+  return true;
+}
+
 function driveLogReplayRefreshTerrain1223(now=performance.now()){
   const replay=driveLogReplayState1223;if(!replay)return;
-  const key=`${(+el.lat.value).toFixed(4)},${(+el.lon.value).toFixed(4)}`;
-  if(realTerrainState.key===key&&terrainMotionPixels1224.size&&!terrainFramePending1233())return;
-  realTerrainState.loadingKey=key;
-  if(now-replay.terrainAt<750)return;replay.terrainAt=now;refreshTerrainWhileWalking();
+  if(driveLogReplayTerrainActive1240()){
+    driveLogReplayTerrainRefresh1240(now).then(handled=>{if(!handled&&driveLogReplayState1223===replay)refreshTerrainWhileWalking();});return;
+  }
+  if(now-replay.terrainAt<750)return;replay.terrainAt=now;
+  refreshTerrainWhileWalking();
 }
 function driveLogReplayRender1223(full=false){
   const replay=driveLogReplayState1223;if(!replay)return;
@@ -50664,7 +50871,9 @@ function driveLogReplayOverview1223(){
   const overviewPose={distanceM:radius,heightM:height,bearing:180,last:null};driveLogReplayPosition1223(focus,overviewPose);driveLogReplayCameraOverview1226(replay,focus,overviewPose);
   if(replay.sample)driveLogReplayDate1223(replay.sample.timestampMs);update();driveLogReplayRefreshTerrain1223();driveLogReplaySync1223();scheduleSaveSettings();
 }
-function driveLogReplayClose1223(render=true){driveLogReplayControlsClose1228();driveLogPhotosClose1228();driveLogReplayDestinationClose1227();const existed=!!driveLogReplayState1223;driveLogReplayPause1223(false);driveLogReplayState1223=null;driveLogReplaySync1223();if(existed&&render&&state)update();scheduleSaveSettings();}
+function driveLogReplayClose1223(render=true){
+  driveLogReplayTerrainClose1240(driveLogReplayState1223);driveLogReplayControlsClose1228();driveLogPhotosClose1228();driveLogReplayDestinationClose1227();const existed=!!driveLogReplayState1223;driveLogReplayPause1223(false);driveLogReplayState1223=null;driveLogReplaySync1223();if(existed&&render&&state)update();scheduleSaveSettings();
+}
 function driveLogReplayValidate1223(){
   const replay=driveLogReplayState1223;if(replay&&replay.tracks.some(track=>!driveLogData.tracks.includes(track))){const ids=new Set(driveLogData.tracks.map(track=>track.id));driveLogSelectedIds=driveLogSelectedIds.filter(id=>ids.has(id));driveLogReplayClose1223();}
 }
@@ -51350,6 +51559,73 @@ function driveLogReplayControlsList1228(row,track){
   if(main&&!main.querySelector('.gps1228-log-name')){const title=document.createElement('strong');title.className='gps1228-log-name';title.textContent=driveLogReplayLabel1228([track],track.kind==='hike'?'登山ログ':'走行ログ');main.prepend(title);}
   if(actions&&!actions.querySelector('.gps1228-name-edit')){const button=document.createElement('button');button.type='button';button.className='gps1228-name-edit';button.textContent='名前';button.setAttribute('aria-label','このログの名前を編集');button.addEventListener('click',event=>{event.stopPropagation();driveLogReplaySettingsOpen1228([track],true);});actions.prepend(button);}
 }
+/* v1240: a blank-scene tap folds only the replay controls, never the GPS data. */
+let driveLogReplayPanelTapState1240=null;
+function driveLogReplayPanelFold1240(collapsed,focus=false){
+  const replay=driveLogReplayState1223,panel=document.getElementById('driveLogReplayPanel1223'),time=document.getElementById('driveLogReplayTime1223');
+  if(!panel||!time)return;
+  collapsed=!!collapsed&&!!replay;
+  if(replay)replay.panelCollapsed1240=collapsed;
+  const active=document.activeElement,moveFocus=focus||collapsed&&panel.contains(active)&&active!==document.getElementById('driveLogReplaySeek1223');
+  panel.classList.toggle('gps1240-collapsed',collapsed);
+  panel.setAttribute('aria-label',collapsed?'GPSログの時刻と再生位置。時刻または背景を押すと操作ボタンを表示':'GPSログのシミュレーションと再生');
+  if(collapsed){
+    time.tabIndex=0;time.setAttribute('role','button');time.setAttribute('aria-expanded','false');
+    time.setAttribute('aria-controls',panel.id);time.setAttribute('aria-label',`操作ボタンを表示。${time.textContent}`);time.title='時刻または背景を押すと操作ボタンを表示';
+  }else{
+    time.removeAttribute('tabindex');time.removeAttribute('role');time.removeAttribute('aria-expanded');time.removeAttribute('aria-controls');time.removeAttribute('aria-label');time.title=time.textContent;
+  }
+  // The full panel's normalized position remains unchanged while its height changes.
+  driveLogReplayPanelClamp1228();
+  if(moveFocus||!collapsed&&active===time){const target=collapsed?time:panel.querySelector('.gps1223-replay-head');target?.focus({preventScroll:true});}
+  el.photoCanvasWrap?.dispatchEvent(new Event('gpsreplaypanelmove'));
+}
+function driveLogReplayPanelFoldReset1240(){
+  driveLogReplayPanelTapState1240?.pointers.clear();
+  if(driveLogReplayPanelTapState1240){driveLogReplayPanelTapState1240.gesture=null;driveLogReplayPanelTapState1240.tap=null;}
+  driveLogReplayPanelFold1240(false);
+}
+function driveLogReplayPanelBlankTap1240(pos){
+  const current=driveLogReplayPanelTapState1240,tap=current?.tap,replay=driveLogReplayState1223,panel=document.getElementById('driveLogReplayPanel1223');
+  if(current)current.tap=null;
+  if(!tap||tap.replay!==replay||!replay||!panel||panel.hidden||performance.now()-tap.time>500||!pos?.every(Number.isFinite))return false;
+  const canvas=el.photoCanvas,rect=canvas.getBoundingClientRect();
+  if(pos[0]<0||pos[1]<0||pos[0]>canvas.width||pos[1]>canvas.height)return false;
+  if(!rect.width||!rect.height||Math.hypot(pos[0]/canvas.width*rect.width-tap.x,pos[1]/canvas.height*rect.height-tap.y)>12)return false;
+  // All painted labels retain their normal click behavior, including photo/point marks.
+  if(photoClickRegions.some(region=>pos[0]>=region.x1&&pos[0]<=region.x2&&pos[1]>=region.y1&&pos[1]<=region.y2)||trainPhotoPickAt(pos))return false;
+  driveLogReplayPanelFold1240(!replay.panelCollapsed1240);return true;
+}
+function driveLogReplayPanelFoldInit1240(){
+  const canvas=el.photoCanvas,panel=document.getElementById('driveLogReplayPanel1223'),time=document.getElementById('driveLogReplayTime1223');
+  if(!canvas||!panel||!time||driveLogReplayPanelTapState1240)return;
+  const current=driveLogReplayPanelTapState1240={pointers:new Set(),gesture:null,tap:null};
+  // Observe native gestures without taking pointer capture or cancelling camera input.
+  window.addEventListener('pointerdown',event=>{
+    current.pointers.add(event.pointerId);current.tap=null;
+    if(current.pointers.size!==1){if(current.gesture)current.gesture.invalid=true;return;}
+    if(event.target!==canvas||event.button>0||!driveLogReplayState1223||panel.hidden||canvas.closest('[inert]')||highDetailPhotoPicking||darumaSilhouettePhotoPicking){current.gesture=null;return;}
+    current.gesture={pointerId:event.pointerId,x:event.clientX,y:event.clientY,time:performance.now(),replay:driveLogReplayState1223,invalid:false};
+  },{capture:true,passive:true});
+  window.addEventListener('pointermove',event=>{const gesture=current.gesture;if(gesture?.pointerId===event.pointerId&&Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)>=6)gesture.invalid=true;},{capture:true,passive:true});
+  const end=event=>{
+    const gesture=current.gesture;
+    if(gesture?.pointerId===event.pointerId){
+      const rect=canvas.getBoundingClientRect(),elapsed=performance.now()-gesture.time;
+      if(event.type==='pointerup'&&event.target===canvas&&current.pointers.size===1&&!gesture.invalid&&elapsed<=600&&Math.hypot(event.clientX-gesture.x,event.clientY-gesture.y)<6&&gesture.replay===driveLogReplayState1223){
+        current.tap={x:event.clientX-rect.left,y:event.clientY-rect.top,time:performance.now(),replay:gesture.replay};
+      }
+      current.gesture=null;
+    }
+    current.pointers.delete(event.pointerId);
+    if(event.type!=='pointerup')current.tap=null;
+  };
+  for(const type of ['pointerup','pointercancel'])window.addEventListener(type,end,{capture:true,passive:true});
+  window.addEventListener('blur',()=>{current.pointers.clear();current.gesture=null;current.tap=null;});
+  time.addEventListener('click',()=>{if(driveLogReplayState1223?.panelCollapsed1240)driveLogReplayPanelFold1240(false);});
+  time.addEventListener('keydown',event=>{if(!driveLogReplayState1223?.panelCollapsed1240||!['Enter',' '].includes(event.key))return;event.preventDefault();event.stopPropagation();driveLogReplayPanelFold1240(false,true);});
+}
+
 let driveLogReplaySettingsState1228=null;
 let driveLogReplayPanelPosition1228=null;
 let driveLogReplayPanelDrag1228=null;
@@ -51400,6 +51676,7 @@ function driveLogReplayPanelApply1228(x,y,remember=true){
 }
 function driveLogReplayPanelClamp1228(){
   const panel=document.getElementById('driveLogReplayPanel1223'),wrap=el.photoCanvasWrap;if(!driveLogReplayPanelPosition1228||!panel||!wrap||panel.hidden)return;
+  if(panel.classList.contains('gps1240-collapsed')){const rect=panel.getBoundingClientRect(),host=wrap.getBoundingClientRect();driveLogReplayPanelApply1228(rect.left-host.left,rect.top-host.top,false);return;}
   const bounds=driveLogReplayPanelBounds1228(wrap,panel),position=driveLogReplayPanelPosition1228;
   driveLogReplayPanelApply1228(bounds.left+position.x*(bounds.right-bounds.left),bounds.top+position.y*(bounds.bottom-bounds.top),false);
 }
@@ -51408,6 +51685,7 @@ function driveLogReplayPanelReset1228(){
   const overlay=document.getElementById('driveLogStory1227'),summary=document.getElementById('driveLogStorySummary1227'),card=document.getElementById('driveLogStoryCard1227');if(overlay&&summary&&!summary.hidden&&typeof driveLogStoryLayout1227==='function')driveLogStoryLayout1227(overlay,summary);if(overlay&&card&&!card.hidden&&typeof driveLogStoryCardLayout1227==='function')driveLogStoryCardLayout1227(overlay,card);
 }
 function driveLogReplayControlsSceneOpen1228(replay){
+  driveLogReplayPanelFoldReset1240();
   if(replay&&!replay.baseLabel1228)replay.baseLabel1228=String(replay.tracks?.[0]?.source||'GPSログ');
   driveLogReplayControlsSync1228(replay);driveLogReplayPanelClamp1228();
 }
@@ -51424,11 +51702,11 @@ function driveLogReplayControlsSync1228(replay){
   if(title){if(title.textContent!==replay.label){title.textContent=replay.label;titleChanged=true;}title.title=replay.label;
     const overlay=document.getElementById('driveLogStory1227');if(titleChanged&&overlay&&card&&!card.hidden&&typeof driveLogStoryCardLayout1227==='function')driveLogStoryCardLayout1227(overlay,card);
   }
-  const time=document.getElementById('driveLogReplayTime1223');if(time)time.title=time.textContent;
+  const time=document.getElementById('driveLogReplayTime1223');if(time){time.title=replay.panelCollapsed1240?'時刻または背景を押すと操作ボタンを表示':time.textContent;if(replay.panelCollapsed1240)time.setAttribute('aria-label',`操作ボタンを表示。${time.textContent}`);}
   const summary=document.getElementById('driveLogStorySummary1227'),heading=summary?.querySelector('h3');
   if(heading){const text=replay.tracks?.some(track=>driveLogReplayName1228(track.displayName))?`${replay.label} のまとめ`:replay.sample?.kind==='hike'?'山行のまとめ':'行程のまとめ';if(heading.textContent!==text){heading.textContent=text;const overlay=document.getElementById('driveLogStory1227');if(overlay&&!summary.hidden&&typeof driveLogStoryLayout1227==='function')driveLogStoryLayout1227(overlay,summary);}}
 }
-function driveLogReplayControlsClose1228(){driveLogHikingDataClose1239(false);driveLogReplaySettingsClose1228();driveLogReplayPanelDrag1228=null;const title=document.getElementById('driveLogReplayTitle1228');if(title)title.hidden=true;}
+function driveLogReplayControlsClose1228(){driveLogReplayPanelFoldReset1240();driveLogHikingDataClose1239(false);driveLogReplaySettingsClose1228();driveLogReplayPanelDrag1228=null;const title=document.getElementById('driveLogReplayTitle1228');if(title)title.hidden=true;}
 function driveLogReplayControlsInit1228(){
   const panel=document.getElementById('driveLogReplayPanel1223'),ui=driveLogReplayControlsUi1228();if(!panel||!ui.Overlay||panel.dataset.controls1228)return;panel.dataset.controls1228='1';
   const header=panel.querySelector('.gps1223-replay-head'),close=document.getElementById('driveLogReplayClose1223'),time=document.getElementById('driveLogReplayTime1223');
@@ -52494,7 +52772,11 @@ function driveLogHikingDataOpen1239(replay=driveLogReplayState1223){
  for(const item of current.inert)item.node.inert=true;document.body.style.overflow='hidden';
  for(const [mode,label] of [['distance','距離'],['active','行動時間'],['datetime','日時']]){const button=make('button',label);button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-controls',canvas.id);button.dataset.mode=mode;button.setAttribute('aria-selected',String(mode===current.mode));button.tabIndex=mode===current.mode?0:-1;tabs.appendChild(button);button.addEventListener('click',()=>{current.mode=mode;for(const node of tabs.children){node.setAttribute('aria-selected',String(node===button));node.tabIndex=node===button?0:-1;}driveLogHikingDataRedraw1239(current);});button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const buttons=[...tabs.children],index=buttons.indexOf(button),next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});}
  close.addEventListener('click',()=>driveLogHikingDataClose1239());fit.addEventListener('click',()=>driveLogHikingDataFit1239(current));exportButton.addEventListener('click',()=>driveLogHikingDataExport1239(current));
- for(const type of ['click','dblclick','pointerdown','mousedown','touchstart','touchmove','wheel'])overlay.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+ for(const type of ['click','dblclick','pointerdown','mousedown','touchstart','touchmove','wheel'])overlay.addEventListener(type,event=>{
+  // Leaflet 1.9.4 tracks pinch and touch drag on document; preserve native map touch bubbling.
+  if(type.startsWith('touch')&&mapNode.contains(event.target))return;
+  event.stopPropagation();
+ },{passive:true});
  current.key=event=>{if(driveLogHikingDataState1239!==current)return;if(!dialog.contains(event.target)){event.stopImmediatePropagation();}if(event.key==='Escape'){event.stopImmediatePropagation();event.preventDefault();driveLogHikingDataClose1239();return;}if(event.key!=='Tab')return;const nodes=[...dialog.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),[tabindex="0"]')].filter(node=>node.getClientRects().length&&node.tabIndex>=0),first=nodes[0],last=nodes.at(-1);if(!first){event.preventDefault();dialog.focus();}else if(event.shiftKey&&(document.activeElement===first||!dialog.contains(document.activeElement))){event.preventDefault();last.focus();}else if(!event.shiftKey&&(document.activeElement===last||!dialog.contains(document.activeElement))){event.preventDefault();first.focus();}};
  current.blockKey=event=>{if(driveLogHikingDataState1239===current&&!dialog.contains(event.target))event.stopImmediatePropagation();};for(const type of ['keydown','keyup','keypress'])overlay.addEventListener(type,event=>event.stopPropagation());document.addEventListener('keydown',current.key,true);document.addEventListener('keyup',current.blockKey,true);document.addEventListener('keypress',current.blockKey,true);
  current.resize=()=>driveLogHikingDataRedraw1239(current);current.fullscreen=()=>driveLogHikingDataClose1239();window.addEventListener('resize',current.resize);document.addEventListener('fullscreenchange',current.fullscreen);if(typeof ResizeObserver==='function'){current.observer=new ResizeObserver(current.resize);current.observer.observe(canvas);current.observer.observe(mapNode);}
@@ -52505,6 +52787,7 @@ function driveLogHikingDataOpen1239(replay=driveLogReplayState1223){
 driveLogReplayUiInit1223();
 driveLogReplayDestinationInit1227();
 driveLogReplayControlsInit1228();
+driveLogReplayPanelFoldInit1240();
 driveLogDestinationZoomInit1228();
 driveLogPhotosSync1228(null);
 /* v1224: immutable geographic DEM -> lazy current-observer polar rendering view.
@@ -52537,6 +52820,7 @@ function terrainMotionElevation1224(lat,lon,distanceKm,zoomOverride){
     const missing=needed.filter(tile=>!cache.has(tile.key)||!cache.get(tile.key));
     if(missing.length){
       if(missing.every(tile=>terrainDemTileAbsent1233(tile.key))){definitelyAbsent=true;continue;}
+      driveLogReplayTerrainMissing1240(missing,distanceKm);
       return undefined;
     }
     sampled=true;
@@ -52582,12 +52866,13 @@ function terrainMotionWater1224(lat,lon,distanceKm,elevation,isNoData,isKnown){
    known. A missing tile cannot produce a new near half attached to an old far half. */
 function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
   const distances=TERRAIN_DISTANCES_KM,n=distances.length;
+  const destination=terrainMotionRayDestination1240(lat,lon,az);
   const base=new Array(n),ridge=new Array(n),coords=new Array(n),selected=new Array(n);
   const earth=2*6371000*(7/6),toAlt=(e,d,eye)=>Math.atan2(e-eye-d*d/earth,d)*R2D;
   let previousKm=0,firstMissingKm=Infinity;
   const missingAt=km=>{firstMissingKm=Math.min(firstMissingKm,km);};
   for(let d=0;d<n;d++){
-    const distanceKm=distances[d],coord=terrainDestination(lat,lon,az,distanceKm);
+    const distanceKm=distances[d],coord=destination(distanceKm);
     const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
     if(elevation===undefined){
       missingAt(distanceKm);base[d]=undefined;ridge[d]=null;coords[d]=coord;selected[d]=null;previousKm=distanceKm;continue;
@@ -52601,7 +52886,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
       // The primary ring determines zoom for all its peak candidates, as in buildRealTerrainProfile.
       const zoom=distanceKm<=3?14:distanceKm<=15?12:10;
       for(let k=1;k<=count;k++){
-        const subKm=distanceKm-gapKm*k/(count+1),subCoord=terrainDestination(lat,lon,az,subKm);
+        const subKm=distanceKm-gapKm*k/(count+1),subCoord=destination(subKm);
         const subElevation=terrainMotionElevation1224(subCoord[0],subCoord[1],subKm,zoom);
         if(subElevation===undefined){missingAt(subKm);continue;}
         if(!Number.isFinite(subElevation))continue;
@@ -52643,7 +52928,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
         const along=info.distanceKm*Math.cos(rad),half=Math.sqrt(Math.max(0,radius*radius-lateral*lateral));
         const begin=Math.max(1,along-half),end=along+half;
         for(let distanceKm=begin;distanceKm<=end+.001;distanceKm+=.25){
-          const coord=terrainDestination(lat,lon,az,distanceKm);
+          const coord=destination(distanceKm);
           const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm,12);
           if(elevation===undefined){missingAt(distanceKm);continue;}
           if(Number.isFinite(elevation))extras.push({distanceKm,lat:coord[0],lon:coord[1],
@@ -52669,7 +52954,7 @@ function terrainMotionBuildRow1224(az,lat,lon,ground,selectEye){
     for(const point of sourceRow){
       if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<=0||ordinary.has(point.distanceKm)||seen.has(point.distanceKm))continue;
       const distanceKm=point.distanceKm;seen.add(distanceKm);
-      const coord=terrainDestination(lat,lon,az,distanceKm);
+      const coord=destination(distanceKm);
       const elevation=terrainMotionElevation1224(coord[0],coord[1],distanceKm);
       if(elevation===undefined){missingAt(distanceKm);continue;}
       if(!Number.isFinite(elevation))continue;
@@ -52890,11 +53175,13 @@ function terrainRequestTargetSet1224(key){
 }
 /* Fetch a complete source grid occasionally. Never combine near and far rows from different origins. */
 async function refreshTerrainWhileWalking(){
+  if(driveLogReplayTerrainActive1240()){
+    const handled=await driveLogReplayTerrainRefresh1240();if(handled)return;
+  }
   const lat=+el.lat.value,lon=+el.lon.value;
   if(!Number.isFinite(lat)||!Number.isFinite(lon)||arActive)return;
   const key=`${lat.toFixed(4)},${lon.toFixed(4)}`;
   terrainRequestTargetSet1224(key);
-  if(realTerrainState.key!==key)realTerrainState.loadingKey=key;
   if(!driveLogReplayState1223?.playing)terrainMotionDraw1224();
   if(walkBusy){walkPending=true;return;}
   const now=performance.now();
@@ -52903,7 +53190,7 @@ async function refreshTerrainWhileWalking(){
   if(realTerrainState.profile&&terrainMotionPixels1224.size&&travel<40&&realTerrainState.failedKey!==key&&!terrainFramePending1233())return;
   terrainMoveLastBuild1224=now;terrainMoveBuildOrigin1224=[lat,lon];
   clearTimeout(terrainSettleTimer);terrainSettlePendingKey='';
-  walkBusy=true;walkPending=false;syncSimLoadingLabel();
+  walkBusy=true;walkPending=false;realTerrainState.loadingKey=key;syncSimLoadingLabel();
   const token=++realTerrainState.requestToken;
   try{
     walkSectorStats.full++;
@@ -52923,7 +53210,9 @@ async function refreshTerrainWhileWalking(){
   }catch(error){
     if(token===realTerrainState.requestToken){realTerrainState.failedKey=key;setExternalDataStatus('elevation','error','直前の地形を保持・通信待ち');}
   }finally{
-    walkBusy=false;syncSimLoadingLabel();
+    walkBusy=false;
+    if(realTerrainState.loadingKey===key&&!terrainRequestActive1224)realTerrainState.loadingKey='';
+    syncSimLoadingLabel();
     /* A new animation frame will request the latest position. No recursive build storm. */
     walkPending=false;
   }
