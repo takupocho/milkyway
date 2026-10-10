@@ -2057,6 +2057,12 @@
   .drone-altitude-speed-title{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;font:700 10px/1.2 'Inter',sans-serif;}
   .drone-altitude-speed-panel input{display:block;width:100%;margin:0;accent-color:var(--core-amber);}
   .drone-altitude-speed-scale{display:flex;justify-content:space-between;margin-top:3px;color:rgba(210,225,250,.72);font:600 8px/1 'Inter',sans-serif;}
+  .drone-altitude-actions{display:flex;gap:8px;margin-top:10px;}
+  .drone-altitude-actions button{flex:1;min-width:0;min-height:44px;padding:8px 10px;border:1px solid rgba(154,196,232,.5);border-radius:8px;background:rgba(43,62,84,.85);color:#e5efff;font:700 12px/1.2 'Inter','Noto Sans JP',sans-serif;cursor:pointer;touch-action:manipulation;}
+  .drone-altitude-actions .drone-force-descent{border-color:rgba(235,179,97,.75);background:rgba(142,93,34,.32);color:#ffe0aa;}
+  .drone-altitude-actions button:disabled{opacity:.4;cursor:default;}
+  .drone-altitude-actions button:focus-visible{outline:2px solid #eab15f;outline-offset:2px;}
+  .drone-altitude-hint{margin-top:7px;color:rgba(210,225,250,.78);font:500 9px/1.5 'Inter','Noto Sans JP',sans-serif;}
   .sim-address-label{
     padding:4px 10px;border-radius:9px;pointer-events:none;
     border:1px solid rgba(196,206,232,.4);background:rgba(12,16,30,.6);
@@ -6933,12 +6939,17 @@ body.fs-sim.drone-mode .gps1223-replay{
                     <button id="driveLogStopBtn" type="button" hidden>■ 停止</button>
                   </div>
                 </div>
-                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと上昇下降の速さの設定、長押しで最速下降"></div>
-                <!-- 【v1022】自動で上昇・下降する画面をやめ、F/V・左スティックで上昇・下降する速さの設定にした。 -->
+                <div id="droneBadge" class="drone-badge" hidden role="button" tabindex="0" aria-label="ドローン高度。押すと速さと下降の設定、長押しで現在地の地上へ戻る"></div>
+                <!-- 【v1236】短押しで速さ・下降操作、長押しで現在地の地上視点へ戻る。 -->
                 <div id="droneAltitudeSpeedPanel" class="drone-altitude-speed-panel" hidden>
                   <div class="drone-altitude-speed-title"><span>上昇・下降の速さ</span><span id="droneAltitudeSpeedVal">8m/秒</span></div>
                   <input id="droneAltitudeSpeedSlider" type="range" min="1" max="60" step="1" value="8" aria-label="ドローンの上昇・下降の速さ">
                   <div class="drone-altitude-speed-scale"><span>1m/秒</span><span>Shiftで4倍</span><span>60m/秒</span></div>
+                  <div class="drone-altitude-actions">
+                    <button id="droneForcedDescentBtn" type="button" class="drone-force-descent">強制下降</button>
+                    <button id="droneAltitudeStopBtn" type="button" disabled>停止</button>
+                  </div>
+                  <div class="drone-altitude-hint">高度表示を長押しすると、地上へ一気に戻ります。</div>
                 </div>
                 <div id="simAddressLabel" class="sim-address-label" hidden></div>
                 <div id="simLoadingLabel" class="sim-loading-label" hidden>地形データ読み込み中…</div>
@@ -7829,7 +7840,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1235-gps-log-settings";
+const APP_VERSION="1236-plan-drone-altitude";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -9273,7 +9284,7 @@ const el={
   constellationToggleBtn:$("constellationToggleBtn"), planetToggleBtn:$("planetToggleBtn"), mobileSettingsBtn:$("mobileSettingsBtn"), closeSettingsBtn:$("closeSettingsBtn"),
   namedStarsToggleBtn:$("namedStarsToggleBtn"), starGroupsToggleBtn:$("starGroupsToggleBtn"), popupShowLabelsBtn:$("popupShowLabelsBtn"), popupMountainNamesBtn:$("popupMountainNamesBtn"), popupFujiDetailBtn:$("popupFujiDetailBtn"),
   popupRealSunMoonBtn:$("popupRealSunMoonBtn"),
-  popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMoonLinesBtn:$("mapMoonLinesBtn"), mapSunLinesBtn:$("mapSunLinesBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupMinorRoadBtn:$("popupMinorRoadBtn"), popupPhotoTexBtn:$("popupPhotoTexBtn"), popupPhotoWaterBtn:$("popupPhotoWaterBtn"), popupRailBtn:$("popupRailBtn"), popupTrainHeadlightsBtn:$("popupTrainHeadlightsBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupHimejiBtn:$("popupHimejiBtn"), popupShiratoriBtn:$("popupShiratoriBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupFavPlacesBtn:$("popupFavPlacesBtn"), popupDriveLogBtn:$("popupDriveLogBtn"),   /* 【v1082】【v1105】 */
+  popupSunsetModeBtn:$("popupSunsetModeBtn"), popupVignetteBtn:$("popupVignetteBtn"), popupRealMilkyWayBtn:$("popupRealMilkyWayBtn"), popupMilkyWayPositionTrailBtn:$("popupMilkyWayPositionTrailBtn"), popupConstellationLinesBtn:$("popupConstellationLinesBtn"), popupSunPathBtn:$("popupSunPathBtn"), popupMoonPathBtn:$("popupMoonPathBtn"), popupHorizonLineBtn:$("popupHorizonLineBtn"), popupSouth50Btn:$("popupSouth50Btn"), popupSkylineBtn:$("popupSkylineBtn"), droneBadge:$("droneBadge"), droneAltitudeSpeedPanel:$("droneAltitudeSpeedPanel"), droneAltitudeSpeedSlider:$("droneAltitudeSpeedSlider"), droneAltitudeSpeedVal:$("droneAltitudeSpeedVal"), droneForcedDescentBtn:$("droneForcedDescentBtn"), droneAltitudeStopBtn:$("droneAltitudeStopBtn"), simTopStack:$("simTopStack"), simAddressLabel:$("simAddressLabel"), simLoadingLabel:$("simLoadingLabel"), highDetailStatusLabel:$("highDetailStatusLabel"), darumaTelephotoBanner:$("darumaTelephotoBanner"), droneSticks:$("droneSticks"), droneMapPanel:$("droneMapPanel"), droneMapTabBtn:$("droneMapTabBtn"), droneMap:$("droneMap"), droneMapLayerBtn:$("droneMapLayerBtn"), mapMeasureBtn:$("mapMeasureBtn"), mapMeasureEndBtn:$("mapMeasureEndBtn"), mapMoonLinesBtn:$("mapMoonLinesBtn"), mapSunLinesBtn:$("mapSunLinesBtn"), mapMeasureReadout:$("mapMeasureReadout"), droneStickLeft:$("droneStickLeft"), droneStickRight:$("droneStickRight"), popupTerrainMeshBtn:$("popupTerrainMeshBtn"), popupWorldGridBtn:$("popupWorldGridBtn"), popupContourBtn:$("popupContourBtn"), popupRoadBtn:$("popupRoadBtn"), popupMinorRoadBtn:$("popupMinorRoadBtn"), popupPhotoTexBtn:$("popupPhotoTexBtn"), popupPhotoWaterBtn:$("popupPhotoWaterBtn"), popupRailBtn:$("popupRailBtn"), popupTrainHeadlightsBtn:$("popupTrainHeadlightsBtn"), popupAkashiBtn:$("popupAkashiBtn"), popupHimejiBtn:$("popupHimejiBtn"), popupShiratoriBtn:$("popupShiratoriBtn"), popupPlaceNameBtn:$("popupPlaceNameBtn"), popupFavPlacesBtn:$("popupFavPlacesBtn"), popupDriveLogBtn:$("popupDriveLogBtn"),   /* 【v1082】【v1105】 */
   popupTrailBtn:$("popupTrailBtn"), popupTrailNameBtn:$("popupTrailNameBtn"), trailIncludeTrackBox:$("trailIncludeTrackBox"),   /* 【v1101】 */
   overlayTrailDayColor:$("overlayTrailDayColor"), overlayTrailNightColor:$("overlayTrailNightColor"),
   overlayTrailDayBright:$("overlayTrailDayBright"), overlayTrailDayBrightVal:$("overlayTrailDayBrightVal"),
@@ -20516,9 +20527,9 @@ function syncDroneVerticalSpeedControl(){
   if(el.droneAltitudeSpeedSlider)el.droneAltitudeSpeedSlider.value=droneVerticalSpeedMps;
   syncDroneAltitudeSpeedLabel();
 }
-/* 【v730】自動上昇・下降。【v1022】残っているのは高度表示の長押し（強制下降）だけ。 */
+/* 【v1236】自動下降は速度パネルの「強制下降」から開始する。 */
 let droneAutoVerticalRaf=0,droneAutoVerticalSpeedMps=-8,droneAutoVerticalLastTime=0,droneAutoVerticalLastDraw=0;
-/* 【v869】長押しの強制下降はいちばん速い -30m/秒。【v1022】設定の速さがそれより速ければそちら。 */
+/* 強制下降は30m/秒以上。設定がそれより速ければ、その速さを使う。 */
 const DRONE_FORCED_DESCENT_MPS=-30;
 function droneForcedDescentMps(){return -Math.max(-DRONE_FORCED_DESCENT_MPS,droneVerticalSpeedMps);}
 /* 【v869】強制下降は**緊急用の一時的な上書き**なので、終わったら元の速度へ戻す。
@@ -20541,6 +20552,8 @@ function stopDroneAutoVertical(syncAll=true){
   if(syncAll&&wasActive) update();
 }
 function startDroneAutoVertical(speedMps){
+  releaseDroneCameraFollow1236();
+  if(typeof cancelPlanDroneAltitudeRestore1236==="function")cancelPlanDroneAltitudeRestore1236();
   stopDroneAutoVertical(false);
   droneAutoVerticalSpeedMps=clamp(Math.round(speedMps),-DRONE_VERTICAL_SPEED_MAX,DRONE_VERTICAL_SPEED_MAX);   /* 【v1022】スライダーには触らない */
   if(!droneAutoVerticalSpeedMps) return;
@@ -20588,64 +20601,98 @@ function syncDroneBadge(){
   }
   /* 【v821】自動上昇・下降の間は update() を飛ばすので、高度はここでも書き替える。 */
   if(typeof updateSimInfoPanel==="function") updateSimInfoPanel();
+  syncDroneAltitudeActionControls1236();
   syncSimTopStack();
 }
-/* 【v869】高度表示の押し分け。
-
-     短押し … 上昇・下降速度の画面を**開閉**
-     外をタップ … 閉じる
-     長押し … **強制的に最速で下降**
-
-   短押しを「開く」だけにしなかったのは、**自動下降を止める手段が無くなる**ため
-   （以前は短押しが停止を兼ねていた）。止めるときは画面の「停止」を使う。 */
+/* 【v1236】短押しで操作パネル、長押しで即座に地上へ戻す。 */
+function releaseDroneCameraFollow1236(){
+  walkRise=0;
+  if(trainChaseOn)trainChaseSet(false,{restore:false,render:false});
+  const replay=driveLogReplayState1223;
+  if(replay?.follow){
+    replay.follow=false;
+    driveLogReplayCameraSuspend1226(replay);driveLogReplayMotionSuspend1225(replay);
+    driveLogReplaySync1223();
+  }
+}
+function syncDroneAltitudeActionControls1236(){
+  if(el.droneForcedDescentBtn)el.droneForcedDescentBtn.disabled=cameraRiseM<=0||arActive;
+  if(el.droneAltitudeStopBtn)el.droneAltitudeStopBtn.disabled=!droneAutoVerticalActive()&&!droneDescentRaf;
+}
+function stopDroneAltitudeMotion1236(syncAll=true){
+  walkRise=0;
+  if(typeof cancelPlanDroneAltitudeRestore1236==="function")cancelPlanDroneAltitudeRestore1236();
+  stopDroneAutoVertical(false);stopDroneDescent();
+  const ground=planDroneGroundElevation1236();
+  droneHoldElevation=cameraRiseM>0&&ground!==null?ground+viewpointOffsetM+tripodHeightM+cameraRiseM:null;
+  syncDroneAltitudeActionControls1236();
+  if(syncAll){syncTripodHeightControl();drawPhoto._terrainRenderKey=null;update();}
+}
+function resetDroneAltitudeToGround1236(){
+  releaseDroneCameraFollow1236();
+  stopDroneAltitudeMotion1236(false);
+  cameraRiseM=0;droneHoldElevation=null;
+  syncTripodHeightControl();invalidateCurrentEyeTerrainProfile();
+  toggleDroneAltitudeSpeedPanel(false);
+  drawPhoto._terrainRenderKey=null;update();
+}
 function toggleDroneAltitudeSpeedPanel(force){
   if(!el.droneAltitudeSpeedPanel) return;
   const next=force===undefined?!el.droneAltitudeSpeedPanel.hidden:!force;
   el.droneAltitudeSpeedPanel.hidden=next;
-  syncDroneAltitudeSpeedLabel();syncSimTopStack();
+  syncDroneAltitudeSpeedLabel();syncDroneAltitudeActionControls1236();syncSimTopStack();
 }
 if(el.droneBadge){
-  let altitudeBadgePressTimer=0,altitudeBadgeLongPressed=false,altitudeBadgePointer=null;
+  let altitudeBadgePressTimer=0,altitudeBadgeLongPressed=false,altitudeBadgePointer=null,altitudeBadgeStart=null;
+  const clearAltitudeBadgePress=()=>{
+    clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;
+    const pointer=altitudeBadgePointer;altitudeBadgePointer=null;altitudeBadgeStart=null;
+    if(pointer!==null)try{if(el.droneBadge.hasPointerCapture(pointer))el.droneBadge.releasePointerCapture(pointer);}catch(_error){}
+  };
+  const cancelAltitudeBadgePress=event=>{
+    if(altitudeBadgePointer!==null&&(!event||event.pointerId===altitudeBadgePointer))clearAltitudeBadgePress();
+  };
   const endAltitudeBadgePress=event=>{
-    if(altitudeBadgePointer===null||(event&&event.pointerId!==altitudeBadgePointer)) return;
-    clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;altitudeBadgePointer=null;
-    // 長押しが成立していたら、離したときには何もしない（下降は続く）。
-    if(!altitudeBadgeLongPressed) toggleDroneAltitudeSpeedPanel();
+    if(altitudeBadgePointer===null||event.pointerId!==altitudeBadgePointer)return;
+    const wasLong=altitudeBadgeLongPressed;
+    clearAltitudeBadgePress();
+    if(!wasLong)toggleDroneAltitudeSpeedPanel();
   };
   el.droneBadge.addEventListener("pointerdown",event=>{
-    if(arActive) return;
+    if(arActive||event.isPrimary===false||(event.button!==undefined&&event.button!==0)||altitudeBadgePointer!==null)return;
     altitudeBadgePointer=event.pointerId;altitudeBadgeLongPressed=false;
+    altitudeBadgeStart={x:event.clientX,y:event.clientY};
+    try{el.droneBadge.setPointerCapture(event.pointerId);}catch(_error){}
     altitudeBadgePressTimer=setTimeout(()=>{
       altitudeBadgePressTimer=0;altitudeBadgeLongPressed=true;
-      /* 【v869】長押しは強制的に最速で下降。別の操作なので速度画面は閉じる。
-         いまの速度を控えておき、着地して止まったら戻す。 */
-      toggleDroneAltitudeSpeedPanel(false);
-      startDroneAutoVertical(droneForcedDescentMps());   /* 【v1022】 */
+      resetDroneAltitudeToGround1236();
     },550);
     event.preventDefault();event.stopPropagation();
   });
+  el.droneBadge.addEventListener("pointermove",event=>{
+    if(altitudeBadgePointer!==event.pointerId||!altitudeBadgeStart||altitudeBadgeLongPressed)return;
+    if(Math.hypot(event.clientX-altitudeBadgeStart.x,event.clientY-altitudeBadgeStart.y)>12)cancelAltitudeBadgePress(event);
+  });
   el.droneBadge.addEventListener("pointerup",endAltitudeBadgePress);
-  el.droneBadge.addEventListener("pointercancel",event=>{clearTimeout(altitudeBadgePressTimer);altitudeBadgePressTimer=0;altitudeBadgePointer=null;});
+  for(const type of ["pointercancel","lostpointercapture"])el.droneBadge.addEventListener(type,cancelAltitudeBadgePress);
   el.droneBadge.addEventListener("contextmenu",event=>event.preventDefault());
   el.droneBadge.addEventListener("keydown",event=>{
-    if(event.key!=="Enter"&&event.key!==" ") return;
-    event.preventDefault();
-    toggleDroneAltitudeSpeedPanel();
+    if(event.key!=="Enter"&&event.key!==" ")return;
+    event.preventDefault();if(!event.repeat)toggleDroneAltitudeSpeedPanel();
   });
-  /* 【v869】画面の外をタップしたら閉じる。
-
-     高度表示自身の pointerdown は stopPropagation() しているのでここへは届かない
-     （＝自分を押して即座に閉じてしまう事故は起きない）。
-
-     **イベントは止めない。** 止めると「閉じるための1回目のタップ」が
-     下のボタンに効かなくなり、操作が1回無駄になる。 */
+  window.addEventListener("blur",()=>cancelAltitudeBadgePress());
   document.addEventListener("pointerdown",event=>{
     const panel=el.droneAltitudeSpeedPanel;
-    if(!panel||panel.hidden) return;
-    if(panel.contains(event.target)||el.droneBadge.contains(event.target)) return;
+    if(!panel||panel.hidden)return;
+    if(panel.contains(event.target)||el.droneBadge.contains(event.target))return;
     toggleDroneAltitudeSpeedPanel(false);
   });
 }
+if(el.droneForcedDescentBtn)el.droneForcedDescentBtn.addEventListener("click",()=>{
+  if(arActive||cameraRiseM<=0)return;
+  startDroneAutoVertical(droneForcedDescentMps());
+});
+if(el.droneAltitudeStopBtn)el.droneAltitudeStopBtn.addEventListener("click",()=>stopDroneAltitudeMotion1236());
 if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.addEventListener("input",()=>{
   /* 【v1022】上昇・下降の速さの設定。動かすのは F/V・左スティック。 */
   droneVerticalSpeedMps=clamp(Math.round(+el.droneAltitudeSpeedSlider.value||8),DRONE_VERTICAL_SPEED_MIN,DRONE_VERTICAL_SPEED_MAX);
@@ -28697,6 +28744,55 @@ async function restorePlanBridgeSnapshot(location){
   syncBridgeButtonStatus();drawPhoto._terrainRenderKey=null;
   return true;
 }
+/* 【v1236】計画には地面からの上昇量を保存する。別の山の絶対標高を引き継がない。
+   新しい地点の地面がまだ不明な間は相対高度を保ち、標高が確定してから飛行高度を固定する。 */
+let pendingPlanDroneAltitude1236=null;
+function planDroneAltitudeValue1236(location){
+  const value=savedNumber(location&&location.cameraRiseM);
+  return value===null?0:clamp(value,0,CAMERA_RISE_MAX_M);
+}
+function capturePlanDroneAltitude1236(){
+  return clamp(Number.isFinite(cameraRiseM)?cameraRiseM:0,0,CAMERA_RISE_MAX_M);
+}
+function cancelPlanDroneAltitudeRestore1236(){pendingPlanDroneAltitude1236=null;}
+function beginPlanDroneAltitudeRestore1236(location){
+  if(typeof driveLogReplayPause1223==='function')driveLogReplayPause1223(false);
+  if(typeof releaseDroneCameraFollow1236==='function')releaseDroneCameraFollow1236();
+  stopDroneAutoVertical(false);stopDroneDescent();
+  cameraRiseM=planDroneAltitudeValue1236(location);droneHoldElevation=null;
+  pendingPlanDroneAltitude1236=cameraRiseM>0
+    ?{lat:+el.lat.value,lon:+el.lon.value,rise:cameraRiseM,ready:false}:null;
+  syncTripodHeightControl();drawPhoto._terrainRenderKey=null;
+}
+function planDroneGroundElevation1236(){
+  try{
+    const lat=+el.lat.value,lon=+el.lon.value;
+    const sampled=terrainMotionGround1224(lat,lon);
+    if(Number.isFinite(sampled))return sampled;
+    if(sampled===null)return 0; // 確定した標高なし（海など）。取得途中のundefinedとは区別する。
+    if(terrainMotionSourceCurrent1233(realTerrainState.rayGrid,lat,lon)&&Number.isFinite(realTerrainState.observerElevation))
+      return realTerrainState.observerElevation;
+  }catch(_error){}
+  return null;
+}
+function applyPlanDroneAltitudeRestore1236(){
+  const pending=pendingPlanDroneAltitude1236;
+  if(!pending||!pending.ready)return false;
+  /* 取得待ちの間に別の場所へ移動したり、自分で高度を変えたら、その操作を優先する。 */
+  if(+el.lat.value!==pending.lat||+el.lon.value!==pending.lon||Math.abs(cameraRiseM-pending.rise)>.001||droneHoldElevation!==null){
+    cancelPlanDroneAltitudeRestore1236();return false;
+  }
+  const ground=planDroneGroundElevation1236();
+  if(ground===null)return false;
+  droneHoldElevation=pending.rise>0?ground+viewpointOffsetM+tripodHeightM+pending.rise:null;
+  pendingPlanDroneAltitude1236=null;
+  syncTripodHeightControl();drawPhoto._terrainRenderKey=null;
+  return true;
+}
+function finishPlanDroneAltitudeRestore1236(){
+  if(pendingPlanDroneAltitude1236)pendingPlanDroneAltitude1236.ready=true;
+  return applyPlanDroneAltitudeRestore1236();
+}
 /* 【v1210】同名保存の確認。はいを選ぶまでは計画・写真・キャッシュに書き込まない。 */
 let planSaveModalGeneration=0,planSaveCommitting=false,planPhotoProcessing=false;
 function setPlanSaveCommitting(on){
@@ -28781,6 +28877,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     focalLength:+el.focalLength.value,lensMode:mobileLensMode,
     facingAz:+el.facingAz.value,facingAlt:+el.facingAlt.value,orientation,
     tripodHeight:+el.tripodHeight.value,viewpointOffset:+el.viewpointOffset.value,
+    cameraRiseM:capturePlanDroneAltitude1236(),
     cloudSea:captureCloudSeaForPlan(),
     comets:captureCometsForPlan(),
     kmzBuilding:captureKmzBuildingForPlan(),
@@ -29005,6 +29102,7 @@ async function applySavedObservingPlan(location){
   activeLoadedPlanId=location.id;
   syncQuickPhotoButton(location);
   el.lat.value=Number(location.lat).toFixed(5);el.lon.value=Number(location.lon).toFixed(5);el.tz.value=location.tz;el.citySelect.value=0;
+  beginPlanDroneAltitudeRestore1236(location);
   /* 通信や通常キャッシュ確認より先に、撮影計画へ封入した水域を復元する。 */
   await restorePlanWaterSnapshot(location);
   if(typeof location.bridgeVisible==="boolean") bridgeLinesVisible=location.bridgeVisible;
@@ -29044,7 +29142,7 @@ async function applySavedObservingPlan(location){
   /* 【v1034】撮影計画に無ければ既定（160cm・0m）へ戻す（前の計画の値を引きずらない） */
   el.tripodHeight.value=Number.isFinite(+location.tripodHeight)?clamp(Math.round(+location.tripodHeight),0,200):160;
   el.viewpointOffset.value=Number.isFinite(+location.viewpointOffset)?clamp(+location.viewpointOffset,0,500):0;
-  syncViewpointOffsetControl();syncTripodHeightControl();invalidateCurrentEyeTerrainProfile();
+  syncViewpointOffsetControl();syncTripodHeightControl();finishPlanDroneAltitudeRestore1236();invalidateCurrentEyeTerrainProfile();
   /* 島影は日付ではなく観測地点と視点高へ結び付け、通信前に軽量データから復元する。 */
   applyDarumaIslandSilhouetteFromPlan(location.darumaIslandSilhouette||null);
   /* 雲海は、記録があればその内容でON、無ければOFFにする（v687）。 */
@@ -29405,7 +29503,7 @@ function renderCurrentPlanPreview(){
   appendPlanPreviewItem("撮影方向",`方位 ${Math.round(+el.facingAz.value)}°・仰角 ${Math.round(+el.facingAlt.value)}°`);
   appendPlanPreviewItem("構図",orientation==="portrait"?"縦構図":"横構図");
   const eye=observerEyeElevationM();
-  appendPlanPreviewItem("視点高",`${eye===null?"海抜未取得":`海抜 ${eye.toFixed(1)}m`}・追加 ${viewpointOffsetM.toFixed(1)}m・三脚 ${tripodHeightM.toFixed(2)}m`,true);
+  appendPlanPreviewItem("視点高",`${eye===null?"海抜未取得":`海抜 ${eye.toFixed(1)}m`}・ドローン上昇 ${capturePlanDroneAltitude1236().toFixed(1)}m・追加 ${viewpointOffsetM.toFixed(1)}m・三脚 ${tripodHeightM.toFixed(2)}m`,true);
   /* 雲海はONのときだけ出す。ここに出ていれば、その内容で記録される（v687）。 */
   const cloudNow=captureCloudSeaForPlan();
   if(cloudNow) appendPlanPreviewItem("雲海",`${cloudSeaSummaryText(cloudNow)}・風 ${cloudSeaWindLabel()}`,true);
@@ -53297,6 +53395,7 @@ function applyViewKeys(dt,fast){
     viewChanged=true;
   }
   if(walkRise!==0){
+    if(typeof cancelPlanDroneAltitudeRestore1236==="function")cancelPlanDroneAltitudeRestore1236();
     const next=clamp(cameraRiseM+walkRise*riseMps()*(fast?4:1)*dt,0,CAMERA_RISE_MAX_M);
     if(next!==cameraRiseM){
       cameraRiseM=next;
@@ -53316,6 +53415,10 @@ function applyViewKeys(dt,fast){
    地面より下へは潜らせず、上限も超えさせない。 */
 const DRONE_GROUND_CLEARANCE_M=10;   /* 【v1022】地面に押し上げられるときの地面からの高さ */
 function applyDroneAltitudeHold(){
+  if(pendingPlanDroneAltitude1236){
+    if(applyPlanDroneAltitudeRestore1236())return true;
+    if(pendingPlanDroneAltitude1236)return false;
+  }
   if(droneHoldElevation===null) return false;
   const ground=groundElevationM();
   if(ground===null) return false;
@@ -53323,7 +53426,7 @@ function applyDroneAltitudeHold(){
   /* 【v1022】地面が保持高度より高い（尾根が迫る）ときは、地面の 10m 上へ押し上げ、**そこを新しい保持高度にする**。
      これまでは押し上げたあと地面が下がると元の保持高度へ戻っていたので、尾根を越えるたびに上下していた。
      押し上げられた先で水平に飛び続ける＝真っ直ぐ動く。下がるのは自分で下降したときだけ。 */
-  if(next<DRONE_GROUND_CLEARANCE_M&&!trainChaseOn){
+  if(next<DRONE_GROUND_CLEARANCE_M&&next<cameraRiseM-.05&&!trainChaseOn){
     next=Math.min(DRONE_GROUND_CLEARANCE_M,CAMERA_RISE_MAX_M);
     droneHoldElevation=ground+viewpointOffsetM+tripodHeightM+next;
   }
