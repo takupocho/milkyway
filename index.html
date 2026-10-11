@@ -1593,6 +1593,28 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   @media (max-width:900px){
     .sim-info-panel{font-size:10px;padding:6px 8px;line-height:1.5;right:calc(var(--sim-inset-x) + 6px);}
   }
+
+  /* 【v1245】本文は選択・コピーできるまま、上の小さなつまみだけで位置を動かす。 */
+  .sim-info-panel{pointer-events:auto;}
+  .sim-info-panel-drag1245{
+    position:absolute;right:0;bottom:calc(100% + 3px);height:26px;
+    display:flex;align-items:center;padding:0 9px;border:1px solid rgba(154,196,232,.55);
+    border-radius:7px;background:rgba(12,20,38,.88);color:#cfe2ff;
+    font:600 10px/1.2 'IBM Plex Mono',monospace;white-space:nowrap;cursor:grab;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+  }
+  .sim-info-panel-drag1245:focus-visible{outline:2px solid #cfe2ff;outline-offset:2px;}
+  .sim-info-panel-drag1245.sim-info-dragging1245{cursor:grabbing;}
+  .sim-info-panel-text1245{display:block;}
+  .sim-info-panel.sim-info-moved1245{box-sizing:border-box;width:max-content;}
+  .sim-info-moved1245 .sim-info-panel-text1245{
+    white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto;overscroll-behavior:contain;
+  }
+  .sim-info-safe-area1245{
+    position:absolute;visibility:hidden;pointer-events:none;width:0;height:0;
+    padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);
+  }
+
   body.ar-active .sim-info-panel{display:none;}
   .sim-top-stack{
     position:absolute;top:calc(var(--sim-inset-y) + 20px);left:0;right:0;z-index:9;
@@ -7158,7 +7180,7 @@ body.fs-sim.drone-mode .gps1223-replay{
                 <p class="plan-title-card-place"><span id="planTitleCardPlace"></span><span class="plan-title-card-genre" id="planTitleCardGenre"></span></p>
               </div>
               <canvas id="compassStrip" width="1200" height="42" tabindex="0" role="slider" aria-label="撮影方位。左右にスライドして変更" aria-valuemin="0" aria-valuemax="359" aria-valuenow="180"></canvas>
-              <div id="simInfoPanel" class="sim-info-panel" hidden></div>
+              <div id="simInfoPanel" class="sim-info-panel" hidden><div id="simInfoPanelDrag1245" class="sim-info-panel-drag1245" role="button" tabindex="0" aria-label="情報パネルを移動。ドラッグまたは矢印キー、Homeキーで初期位置へ。" title="ドラッグで移動・矢印キーで移動・Homeキーで元に戻す">⠿ 移動</div><div id="simInfoPanelText1245" class="sim-info-panel-text1245"></div></div>
               <div class="sim-top-stack" id="simTopStack">
                 <!-- 【v955】ドライブモードの状態。画面の下は小地図・ドローンの操作輪・方位バーが
                      並んでいて必ず何かと重なるので、上の状態表示の列へ入れる。
@@ -8073,7 +8095,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1244-gps-checkpoints";
+const APP_VERSION="1245-draggable-info";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -17658,6 +17680,125 @@ if(el.popupClockBtn) el.popupClockBtn.addEventListener("click",()=>{
 
 /* 【v821】撮影条件の一覧。「表示」の「情報」ボタンで入り切りする。
    不具合の報告時に、この1枚で再現条件が伝わるようにするためのもの。 */
+
+/* 【v1245】情報パネルの移動。位置はこのページ内だけで保持し、設定や撮影データへは保存しない。 */
+var simInfoPanelMoveState1245;
+function simInfoPanelMoveEnd1245(clearTouches=false){
+  const move=simInfoPanelMoveState1245;if(!move)return;
+  const drag=move.drag;move.drag=null;
+  move.handle.classList.remove('sim-info-dragging1245');
+  if(clearTouches)move.touchPointers.clear();
+  if(drag){try{move.handle.releasePointerCapture(drag.pointerId);}catch(_error){}}
+}
+function simInfoPanelMoveBounds1245(){
+  const move=simInfoPanelMoveState1245;
+  if(!move||move.panel.hidden||!move.panel.getClientRects().length)return null;
+  const host=move.wrap.getBoundingClientRect(),photo=move.canvas.getBoundingClientRect();
+  if(!(host.width>0&&host.height>0&&photo.width>0&&photo.height>0))return null;
+  const sx=host.width/(move.wrap.clientWidth||host.width),sy=host.height/(move.wrap.clientHeight||host.height);
+  const safe=getComputedStyle(move.safe),number=value=>Math.max(0,parseFloat(value)||0),viewport=window.visualViewport;
+  const vx=viewport?viewport.offsetLeft:0,vy=viewport?viewport.offsetTop:0;
+  const vw=viewport?viewport.width:(document.documentElement.clientWidth||window.innerWidth),vh=viewport?viewport.height:(document.documentElement.clientHeight||window.innerHeight);
+  const il=Math.max(host.left,photo.left),it=Math.max(host.top,photo.top),ir=Math.min(host.right,photo.right),ib=Math.min(host.bottom,photo.bottom);
+  const vl=Math.max(il,vx+number(safe.paddingLeft)),vt=Math.max(it,vy+number(safe.paddingTop));
+  const vr=Math.min(ir,vx+vw-number(safe.paddingRight)),vb=Math.min(ib,vy+vh-number(safe.paddingBottom));
+  const panelStyle=getComputedStyle(move.panel),handle=move.handle.getBoundingClientRect();
+  const minWidth=Math.max(handle.width,(number(panelStyle.paddingLeft)+number(panelStyle.paddingRight)+number(panelStyle.borderLeftWidth)+number(panelStyle.borderRightWidth)+1)*sx);
+  const minHeight=handle.height+(3+number(panelStyle.paddingTop)+number(panelStyle.paddingBottom)+number(panelStyle.borderTopWidth)+number(panelStyle.borderBottomWidth)+1)*sy;
+  if(!(vr-vl>minWidth+12&&vb-vt>minHeight+12&&host.width*.52>=minWidth))return null;
+  const local=(left,top,right,bottom)=>({left:(left+6-host.left)/sx,top:(top+6-host.top)/sy,right:(right-6-host.left)/sx,bottom:(bottom-6-host.top)/sy});
+  const full=local(il,it,ir,ib),visible=local(vl,vt,vr,vb);
+  return {host,sx,sy,full,visible,width:host.width/sx,key:[host.width,host.height,il-host.left,it-host.top,ir-host.left,ib-host.top,vl-host.left,vt-host.top,vr-host.left,vb-host.top].map(value=>value.toFixed(2)).join('|')};
+}
+function simInfoPanelMoveApply1245(x,y,remember=true,bounds=null){
+  const move=simInfoPanelMoveState1245;bounds=bounds||simInfoPanelMoveBounds1245();if(!move||!bounds)return false;
+  const panel=move.panel,style=getComputedStyle(panel),number=value=>parseFloat(value)||0;
+  const grip=move.handle.getBoundingClientRect().height/bounds.sy+3;
+  panel.classList.add('sim-info-moved1245');
+  panel.style.maxWidth=Math.min(bounds.visible.right-bounds.visible.left,bounds.width*.52)+'px';
+  move.text.style.maxHeight=Math.max(1,bounds.visible.bottom-bounds.visible.top-grip-number(style.paddingTop)-number(style.paddingBottom)-number(style.borderTopWidth)-number(style.borderBottomWidth))+'px';
+  const rect=panel.getBoundingClientRect(),width=rect.width/bounds.sx,height=rect.height/bounds.sy;
+  const range=area=>({left:area.left,top:area.top+grip,right:Math.max(area.left,area.right-width),bottom:Math.max(area.top+grip,area.bottom-height)});
+  const full=range(bounds.full),visible=range(bounds.visible),limit=(value,low,high)=>Math.max(low,Math.min(high,value));
+  const left=limit(x,visible.left,visible.right),top=limit(y,visible.top,visible.bottom);
+  panel.style.left=left+'px';panel.style.top=top+'px';panel.style.right='auto';panel.style.transform='none';
+  if(remember)move.position={x:full.right>full.left?limit((left-full.left)/(full.right-full.left),0,1):0,y:full.bottom>full.top?limit((top-full.top)/(full.bottom-full.top),0,1):0};
+  move.boundsKey=bounds.key;
+  return {left,top,full};
+}
+function simInfoPanelMoveClamp1245(){
+  const move=simInfoPanelMoveState1245;if(!move)return;
+  const bounds=simInfoPanelMoveBounds1245();if(!bounds){simInfoPanelMoveEnd1245(true);return;}
+  if(!move.position)return;
+  if(move.drag&&move.boundsKey!==bounds.key)simInfoPanelMoveEnd1245();
+  // First measure the current text size, then project the saved fractions into its new travel range.
+  const rect=move.panel.getBoundingClientRect(),measured=simInfoPanelMoveApply1245((rect.left-bounds.host.left)/bounds.sx,(rect.top-bounds.host.top)/bounds.sy,false,bounds);
+  if(!measured)return;
+  const range=measured.full,position=move.position;
+  const applied=simInfoPanelMoveApply1245(range.left+position.x*(range.right-range.left),range.top+position.y*(range.bottom-range.top),false,bounds);
+  if(move.drag&&applied){move.drag.left=applied.left;move.drag.top=applied.top;move.drag.startX=move.drag.lastX;move.drag.startY=move.drag.lastY;}
+}
+function simInfoPanelMoveReset1245(){
+  const move=simInfoPanelMoveState1245;if(!move)return;simInfoPanelMoveEnd1245(true);move.position=null;move.boundsKey=null;
+  move.panel.classList.remove('sim-info-moved1245');
+  for(const key of ['left','top','right','transform','max-width'])move.panel.style.removeProperty(key);
+  move.text.style.removeProperty('max-height');
+}
+function simInfoPanelMoveInit1245(){
+  if(simInfoPanelMoveState1245)return;
+  const panel=el.simInfoPanel,wrap=el.photoCanvasWrap,canvas=el.photoCanvas;
+  const handle=document.getElementById('simInfoPanelDrag1245'),text=document.getElementById('simInfoPanelText1245');
+  if(!panel||!wrap||!canvas||!handle||!text)return;
+  const safe=document.createElement('div');safe.className='sim-info-safe-area1245';safe.setAttribute('aria-hidden','true');wrap.appendChild(safe);
+  const move=simInfoPanelMoveState1245={panel,wrap,canvas,handle,text,safe,position:null,drag:null,touchPointers:new Set(),boundsKey:null};
+  const stop=event=>{event.stopPropagation();},consume=event=>{event.preventDefault();event.stopPropagation();};
+  for(const type of ['pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','touchstart','touchmove','touchend','touchcancel','click','dblclick','wheel'])panel.addEventListener(type,stop,{passive:true});
+  handle.addEventListener('pointerdown',event=>{
+    consume(event);
+    if(event.isPrimary===false||(event.button!==undefined&&event.button!==0)||move.drag)return;
+    const bounds=simInfoPanelMoveBounds1245();if(!bounds)return;
+    const rect=panel.getBoundingClientRect();move.boundsKey=bounds.key;
+    move.drag={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,left:(rect.left-bounds.host.left)/bounds.sx,top:(rect.top-bounds.host.top)/bounds.sy,moved:false};
+    if(event.pointerType==='touch')move.touchPointers.add(event.pointerId);
+    handle.classList.add('sim-info-dragging1245');try{handle.setPointerCapture(event.pointerId);}catch(_error){}
+  });
+  document.addEventListener('pointerdown',event=>{
+    if(move.touchPointers.size&&event.pointerType==='touch'&&!move.touchPointers.has(event.pointerId)){move.touchPointers.add(event.pointerId);simInfoPanelMoveEnd1245();consume(event);}
+    else if(move.drag&&move.drag.pointerId!==event.pointerId)simInfoPanelMoveEnd1245();
+  },{capture:true,passive:false});
+  document.addEventListener('pointermove',event=>{
+    const drag=move.drag;if(!drag||drag.pointerId!==event.pointerId){if(move.touchPointers.has(event.pointerId))consume(event);return;}
+    consume(event);const bounds=simInfoPanelMoveBounds1245();if(!bounds||move.boundsKey!==bounds.key){simInfoPanelMoveEnd1245();return;}
+    drag.lastX=event.clientX;drag.lastY=event.clientY;
+    if(!drag.moved&&Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)<3)return;
+    drag.moved=true;simInfoPanelMoveApply1245(drag.left+(event.clientX-drag.startX)/bounds.sx,drag.top+(event.clientY-drag.startY)/bounds.sy,true,bounds);
+  },{capture:true,passive:false});
+  const end=event=>{
+    const active=move.drag&&move.drag.pointerId===event.pointerId,guarded=move.touchPointers.has(event.pointerId);
+    if(!active&&!guarded)return;consume(event);if(active)simInfoPanelMoveEnd1245();move.touchPointers.delete(event.pointerId);
+  };
+  for(const type of ['pointerup','pointercancel'])document.addEventListener(type,end,{capture:true,passive:false});
+  handle.addEventListener('lostpointercapture',event=>{if(move.drag&&move.drag.pointerId===event.pointerId)simInfoPanelMoveEnd1245();});
+  // Legacy touch events from a second finger must not start the canvas camera pinch handler.
+  for(const type of ['touchstart','touchmove','touchend','touchcancel'])document.addEventListener(type,event=>{
+    if(!move.touchPointers.size)return;consume(event);if(event.touches&&event.touches.length===0)simInfoPanelMoveEnd1245(true);
+  },{capture:true,passive:false});
+  handle.addEventListener('contextmenu',event=>event.preventDefault());
+  handle.addEventListener('keydown',event=>{
+    if(event.key==='Home'){consume(event);simInfoPanelMoveReset1245();return;}
+    const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[event.key];if(!delta)return;
+    consume(event);simInfoPanelMoveEnd1245(true);const bounds=simInfoPanelMoveBounds1245();if(!bounds)return;
+    const rect=panel.getBoundingClientRect(),step=event.shiftKey?30:10;simInfoPanelMoveApply1245((rect.left-bounds.host.left)/bounds.sx+delta[0]*step,(rect.top-bounds.host.top)/bounds.sy+delta[1]*step,true,bounds);
+  });
+  const clamp=()=>simInfoPanelMoveClamp1245();
+  if(typeof ResizeObserver==='function'){move.observer=new ResizeObserver(clamp);for(const node of [wrap,canvas,panel])move.observer.observe(node);}
+  for(const type of ['resize','orientationchange','scroll'])window.addEventListener(type,clamp,{passive:true});
+  document.addEventListener('fullscreenchange',clamp);
+  if(window.visualViewport)for(const type of ['resize','scroll'])window.visualViewport.addEventListener(type,clamp,{passive:true});
+  window.addEventListener('blur',()=>simInfoPanelMoveEnd1245(true));
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)simInfoPanelMoveEnd1245(true);});
+}
+
 let simInfoPanelVisible=false;
 function syncSimInfoPanelVisibility(){
   if(el.popupInfoBtn){
@@ -17665,8 +17806,10 @@ function syncSimInfoPanelVisibility(){
     el.popupInfoBtn.setAttribute("aria-pressed",String(simInfoPanelVisible));
   }
   if(el.simInfoPanel){
+    simInfoPanelMoveInit1245();
     el.simInfoPanel.hidden=!simInfoPanelVisible;
-    if(simInfoPanelVisible) updateSimInfoPanel();
+    if(simInfoPanelVisible){updateSimInfoPanel();simInfoPanelMoveClamp1245();}
+    else simInfoPanelMoveEnd1245(true);
   }
 }
 /* 【v888】水域レイ診断の表示。
@@ -17759,7 +17902,7 @@ function updateSimInfoPanel(){
   const dateText=(el.simulationClockDate&&el.simulationClockDate.textContent||"").trim();
   const timeText=(el.simulationClockTime&&el.simulationClockTime.textContent||"").trim();
   const focalText=(el.flVal&&el.flVal.textContent||"").replace(/\s+/g,"");
-  el.simInfoPanel.textContent=[
+  const infoText1245=[
     `${Number.isFinite(lat)?lat.toFixed(6):"—"}, ${Number.isFinite(lon)?lon.toFixed(6):"—"}`,
     dateText&&timeText?`${dateText}、${timeText}`:(dateText||timeText),
     groundText,
@@ -17778,6 +17921,8 @@ function updateSimInfoPanel(){
     }catch(e){return "水域 —";}})(),   /* 【v1039】水際の細分化が働く条件。ガタガタの切り分け用 */
     `v${APP_VERSION}`
   ].filter(Boolean).join("\n");
+  const infoBody1245=document.getElementById("simInfoPanelText1245");
+  if(infoBody1245&&infoBody1245.textContent!==infoText1245){infoBody1245.textContent=infoText1245;simInfoPanelMoveClamp1245();}
 }
 syncSimInfoPanelVisibility();
 if(el.popupInfoBtn) el.popupInfoBtn.addEventListener("click",()=>{
