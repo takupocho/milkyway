@@ -7531,7 +7531,7 @@ body.fs-sim.drone-mode .gps1223-replay{
                   <section class="high-detail-settings-section" aria-labelledby="highDetailTemporaryTitle">
                     <h4 id="highDetailTemporaryTitle" class="high-detail-settings-heading">カメラ周辺を一時スキャン</h4>
                     <p class="plan-modal-help">画面の高精細ボタンを短押しすると、その時のカメラ位置を中心に取得します。回転は360°自由。移動すると解除します。</p>
-                    <div class="field"><label class="top" for="highDetailRadiusM">高精細化する半径（m）</label><input id="highDetailRadiusM" type="number" min="5" max="50" step="1" value="50" inputmode="numeric"></div>
+                    <div class="field"><label class="top" for="highDetailRadiusM">高精細化する半径（m・最大200m）</label><input id="highDetailRadiusM" type="number" min="5" max="200" step="1" value="50" inputmode="numeric"></div>
                     <div class="field" style="margin-top:12px;">
                       <label class="top">高精細度合い <span class="val mono" id="highDetailQualityVal">3（バランス）</span></label>
                       <input id="highDetailQualitySlider" type="range" min="1" max="5" step="1" value="3">
@@ -7551,7 +7551,7 @@ body.fs-sim.drone-mode .gps1223-replay{
                       <div class="field"><label class="top" for="localDetailLat">緯度</label><input id="localDetailLat" type="number" min="-90" max="90" step="0.000001"></div>
                       <div class="field"><label class="top" for="localDetailLon">経度</label><input id="localDetailLon" type="number" min="-180" max="180" step="0.000001"></div>
                     </div>
-                    <div class="field" style="margin-top:10px;"><label class="top" for="localDetailRadius">高精細化する半径（m）</label><input id="localDetailRadius" type="number" min="5" max="50" step="1" value="25" inputmode="numeric"></div>
+                    <div class="field" style="margin-top:10px;"><label class="top" for="localDetailRadius">高精細化する半径（m・最大200m）</label><input id="localDetailRadius" type="number" min="5" max="200" step="1" value="25" inputmode="numeric"></div>
                     <div class="high-detail-settings-actions"><button id="localDetailFetchBtn" type="button" class="primary">取得して表示</button><button id="localDetailTerrainBtn" type="button">解除して通常DEMへ戻す</button></div>
                     <div id="localDetailTerrainStatus" class="map-hint" style="margin-top:8px;" aria-live="polite">未取得：通常のDEM地形を使用</div>
                     <p class="plan-modal-help" style="margin:8px 0 0;">取得した地形は、撮影計画の保存画面で一緒に保存できます。</p>
@@ -8102,7 +8102,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1248-circular-high-detail";
+const APP_VERSION="1249-high-detail-200m";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -19871,7 +19871,7 @@ let localDetailTerrainRequestToken=0;
 let localDetailPresets=[];
 function localDetailTerrainConfig(){
   const lat=localDetailNumber1248(el.localDetailLat.value),lon=localDetailNumber1248(el.localDetailLon.value),radius=localDetailNumber1248(el.localDetailRadius.value);
-  return {lat:lat!==null&&Math.abs(lat)<=90?lat:NaN,lon:lon!==null&&Math.abs(lon)<=180?lon:NaN,radiusM:Math.round(clamp(radius===null?25:radius,5,50))};
+  return {lat:lat!==null&&Math.abs(lat)<=90?lat:NaN,lon:lon!==null&&Math.abs(lon)<=180?lon:NaN,radiusM:Math.round(clamp(radius===null?25:radius,5,200))};
 }
 function localDetailTerrainKey(cfg=localDetailTerrainConfig()){
   return Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)?`${cfg.lat.toFixed(6)},${cfg.lon.toFixed(6)},${Math.round(cfg.radiusM)},dem5-z15`:"";
@@ -19974,7 +19974,7 @@ function localDetailNumber1248(value){
   const number=Number(value);return Number.isFinite(number)?number:null;
 }
 function localDetailSamplePayload1248(data,name=""){
-  if(!data||Object.prototype.toString.call(data.elevations)!=="[object Float32Array]"||data.elevations.length>10201)throw new Error("取得済みの標高配列がありません。");
+  if(!data||Object.prototype.toString.call(data.elevations)!=="[object Float32Array]"||data.elevations.length>160801)throw new Error("取得済みの標高配列がありません。");
   const values=Array.from(data.elevations,value=>{
     if(Number.isFinite(value))return value;
     if(Number.isNaN(value))return null;
@@ -19989,11 +19989,11 @@ function localDetailDecodeSamples1248(saved){
   if(!saved||typeof saved!=="object"||Array.isArray(saved)||saved.version!==2||saved.enabled!==true)fail("保存形式または有効状態が対応していません。");
   const {lat,lon,radiusM}=saved;
   if(typeof lat!=="number"||typeof lon!=="number"||!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)fail("中心の緯度・経度が不正です。");
-  if(!Number.isInteger(radiusM)||radiusM<5||radiusM>50)fail("半径は5〜50mの整数で保存する必要があります。");
+  if(!Number.isInteger(radiusM)||radiusM<5||radiusM>200)fail("半径は5〜200mの整数で保存する必要があります。");
   const sample=saved.sampleData,size=radiusM*2+1;
   if(!sample||typeof sample!=="object"||Array.isArray(sample)||sample.version!==1||sample.format!=="float32-json-null")fail("標高配列の保存形式が対応していません。");
   if(sample.lat!==lat||sample.lon!==lon||sample.radiusM!==radiusM||sample.stepM!==1||sample.size!==size)fail("標高配列の中心・半径・1m間隔・サイズが一致しません。");
-  if(!Array.isArray(sample.values)||sample.values.length!==size*size||sample.values.length>10201)fail("標高配列の点数が範囲外です。");
+  if(!Array.isArray(sample.values)||sample.values.length!==size*size||sample.values.length>160801)fail("標高配列の点数が範囲外です。");
   const elevations=new Float32Array(size*size);let validCount=0,minElevation=Infinity,maxElevation=-Infinity;
   for(let index=0;index<sample.values.length;index++){
     const value=sample.values[index],east=index%size-radiusM,north=Math.floor(index/size)-radiusM;
@@ -20009,7 +20009,7 @@ function localDetailLegacyDescriptor1248(saved){
   if(!saved||typeof saved!=="object"||Array.isArray(saved)||saved.sampleData!==undefined||(saved.version!==undefined&&saved.version!==1))return null;
   const lat=localDetailNumber1248(saved.lat),lon=localDetailNumber1248(saved.lon),radius=localDetailNumber1248(saved.radiusM);
   if(lat===null||lon===null||Math.abs(lat)>90||Math.abs(lon)>180)return null;
-  return {version:1,name:String(saved.name||"").slice(0,200),lat,lon,radiusM:Math.round(clamp(radius===null?25:radius,5,50)),enabled:saved.enabled!==false};
+  return {version:1,name:String(saved.name||"").slice(0,200),lat,lon,radiusM:Math.round(clamp(radius===null?25:radius,5,200)),enabled:saved.enabled!==false};
 }
 function localDetailCurrentPlanSnapshot1248(){
   if(localDetailTerrainFetching1248||!localDetailTerrainEnabled||!localDetailTerrainData)return null;
@@ -21480,7 +21480,7 @@ function highDetailSettingsSanitize1246(value,fallbackQuality=3){
   const source=value&&typeof value==='object'?value:{};
   const number=value=>(typeof value!=='number'&&typeof value!=='string')||String(value).trim()===''?null:(Number.isFinite(+value)?+value:null);
   const radius=number(source.radiusM),quality=number(source.quality),fallback=number(fallbackQuality);
-  return {radiusM:radius!==null&&radius>=5&&radius<=50?Math.round(radius):50,quality:clamp(Math.round(quality===null?(fallback===null?3:fallback):quality)||3,1,5)};
+  return {radiusM:radius!==null&&radius>=5&&radius<=200?Math.round(radius):50,quality:clamp(Math.round(quality===null?(fallback===null?3:fallback):quality)||3,1,5)};
 }
 function highDetailSettingsPersisted1246(){return {...highDetailSettingsConfig1246};}
 function highDetailSettingsRestore1246(value,legacyQuality=3){
@@ -21756,7 +21756,7 @@ function setHighDetail(on){
   renderSupersample=1;
   if(on){
     highDetailApplySavedSettings1246();
-    highDetailRadiusM1248=clamp(Math.round(+highDetailSettingsConfig1246.radiusM||50),5,50);
+    highDetailRadiusM1248=clamp(Math.round(+highDetailSettingsConfig1246.radiusM||50),5,200);
     highDetailCircle1248={lat:+el.lat.value,lon:+el.lon.value,radiusM:highDetailRadiusM1248,generation:highDetailGeneration};
     highDetailTarget={lat:null,lon:null,frontKm:null,backKm:null,distanceKm:0,targetBearing:null,bearing:0,nearKm:.0005,farKm:highDetailRadiusM1248/1000,halfAngleDeg:180};
     highDetailFallbackPending=false;
@@ -21792,8 +21792,8 @@ function setHighDetail(on){
 }
 function updateHighDetailSettingsSummary(){
   const source=String(el.highDetailRadiusM?.value??'').trim(),radius=source===''?NaN:Number(source);
-  if(!Number.isFinite(radius)||radius<5||radius>50){
-    el.highDetailSettingsSummary.textContent='一時スキャンの半径は5〜50mで入力してください。';return null;
+  if(!Number.isFinite(radius)||radius<5||radius>200){
+    el.highDetailSettingsSummary.textContent='一時スキャンの半径は5〜200mで入力してください。';return null;
   }
   const radiusM=Math.round(radius);
   el.highDetailSettingsSummary.textContent='次の短押しで、その時のカメラ位置を中心に半径'+radiusM+'mを取得します。回転しても保持し、移動すると解除します。';
@@ -28286,7 +28286,7 @@ async function applyPersistedSettingsText(stored){
     if(s.localDetailTerrain&&typeof s.localDetailTerrain==="object"){
       if(localDetailNumber1248(s.localDetailTerrain.lat)!==null&&Math.abs(+s.localDetailTerrain.lat)<=90) el.localDetailLat.value=+s.localDetailTerrain.lat;
       if(localDetailNumber1248(s.localDetailTerrain.lon)!==null&&Math.abs(+s.localDetailTerrain.lon)<=180) el.localDetailLon.value=+s.localDetailTerrain.lon;
-      if(Number.isFinite(+s.localDetailTerrain.radiusM)) el.localDetailRadius.value=clamp(+s.localDetailTerrain.radiusM,5,50);
+      if(Number.isFinite(+s.localDetailTerrain.radiusM)) el.localDetailRadius.value=clamp(+s.localDetailTerrain.radiusM,5,200);
     }
     if(s.darumaTelephotoConfig&&typeof s.darumaTelephotoConfig==="object"){
       darumaTelephotoConfig={
