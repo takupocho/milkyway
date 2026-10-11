@@ -1489,6 +1489,10 @@
   body.drone-mode .drone-sticks{display:block;}
   /* v652: PCでも同じ位置に出す（マウスでもつまめる）。 */
   body.ar-active .drone-sticks{display:none!important;}
+/* v1243: hide only the manual drone sticks during hiking playback. */
+body.gps1243-hiking-playing .drone-sticks{display:none!important;}
+body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--sim-inset-y,0px) + 39px);}
+
   /* 【v1071】地図モードではスティックを出さない（地図の上に重なって邪魔。閉じれば元どおり）。 */
   .photo-canvas-wrap.osm-map-open .drone-sticks{display:none!important;}
   /* ステータスと外部データ再読込は右端の同じ並びのまま、右スティックの真上へ。 */
@@ -5677,6 +5681,17 @@ body.fs-sim.drone-mode .gps1223-replay{
   .gps1223-replay .gps1223-replay-head #driveLogReplayClose1223{width:36px;min-width:36px;}
 }
 
+/* v1243: retain reached hiking times under the replay cursor. */
+.gps1243-milestones[hidden],.gps1243-milestone[hidden]{display:none!important;}
+.gps1243-milestones{display:grid;grid-template-columns:repeat(var(--gps1243-slots,4),minmax(0,1fr));gap:5px;margin:8px 0 0;pointer-events:none;color:#fff;text-align:center;font-variant-numeric:tabular-nums;}
+.gps1243-milestone{box-sizing:border-box;min-width:0;min-height:84px;padding:7px 3px 6px;border-radius:12px;background:#0b2029c9;text-shadow:0 1px 3px #0008;}
+.gps1243-milestone-label{display:block;font-size:clamp(10px,2.5vw,12px);font-weight:800;line-height:1.25;overflow-wrap:anywhere;}
+.gps1243-milestone-clock{display:block;margin-top:3px;font-size:clamp(20px,6vw,28px);font-weight:900;line-height:1.12;letter-spacing:0;white-space:nowrap;}
+.gps1243-milestone-date{display:block;font-size:9px;line-height:1.25;margin-top:2px;}
+.gps1243-milestone-duration{display:block;margin-top:4px;font-size:clamp(9px,2.2vw,11px);font-weight:650;line-height:1.3;overflow-wrap:anywhere;}
+.gps1243-milestone-duration b{display:block;font-weight:800;}
+@media(prefers-reduced-motion:reduce){.gps1243-milestone{backdrop-filter:none;}}
+
 </style>
 </head>
 <body>
@@ -8040,7 +8055,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1242-gps-calm-camera";
+const APP_VERSION="1243-gps-journey-times";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -50966,8 +50981,17 @@ function driveLogReplayRender1223(full=false){
   }
   driveLogReplaySync1223();
 }
+/* v1243: playback visibility is temporary and separate from controllerVisible.
+   Release a held manual stick before hiding it; explicit altitude auto-flight stays intact. */
+function driveLogReplayDroneControlsSync1243(replay){
+  const hidden=!!(replay?.playing&&replay.sample?.kind==='hike');
+  if(document.body.classList.contains('gps1243-hiking-playing')===hidden)return hidden;
+  if(hidden)for(const base of [el.droneStickLeft,el.droneStickRight])base?._replayRelease1243?.();
+  document.body.classList.toggle('gps1243-hiking-playing',hidden);
+  return hidden;
+}
 function driveLogReplaySync1223(){
-  const replay=driveLogReplayState1223,ui=driveLogReplayUi1223();if(!ui.Panel)return;ui.Panel.hidden=!replay;if(!replay){driveLogStorySync1227(null);driveLogReplayDestinationSync1227(null);driveLogReplayControlsSync1228(null);driveLogPhotosSync1228(null);return;}
+  const replay=driveLogReplayState1223,ui=driveLogReplayUi1223();driveLogReplayDroneControlsSync1243(replay);if(!ui.Panel)return;ui.Panel.hidden=!replay;if(!replay){driveLogStorySync1227(null);driveLogReplayDestinationSync1227(null);driveLogReplayControlsSync1228(null);driveLogPhotosSync1228(null);return;}
   ui.Name.textContent=replay.label;ui.Play.textContent=replay.playing?'⏸ 一時停止':replay.progress>=1?'▶ もう一度':'▶ 再生';ui.Play.disabled=!replay.prepared.activeMs;ui.Follow.textContent=replay.follow?'追従 ON':'追従 OFF';ui.Follow.setAttribute('aria-pressed',String(replay.follow));ui.Speed.value=String(replay.speed);ui.Duration.value=String(driveLogReplayDurationMinutes1225);
   if(document.activeElement!==ui.Seek)ui.Seek.value=String(replay.progress*1000);
   const sample=replay.sample,percent=`${Math.round(replay.progress*100)}%`;
@@ -51622,6 +51646,7 @@ function driveLogReplayPlay1223(){
   }
   else story=driveLogStoryEnsure1227(replay);
   story.cardsVisible=true;driveLogStoryFlags1227(story);replay.message='';replay.playing=true;replay.lastNow=null;replay.lastDraw=-Infinity;
+  driveLogReplayDroneControlsSync1243(replay);
   if(replay.tracks?.some(track=>track?.kind==='hike'))driveLogReplayPanelFold1240(true);
   driveLogReplayRender1223(true);story.renderPending=false;
   const tick=now=>{
@@ -51805,13 +51830,83 @@ function driveLogReplayPanelReset1228(){
   driveLogReplayPanelPosition1228=null;const panel=document.getElementById('driveLogReplayPanel1223');if(panel)for(const key of ['left','top','right','bottom','margin'])panel.style.removeProperty(key);
   const overlay=document.getElementById('driveLogStory1227'),summary=document.getElementById('driveLogStorySummary1227'),card=document.getElementById('driveLogStoryCard1227');if(overlay&&summary&&!summary.hidden&&typeof driveLogStoryLayout1227==='function')driveLogStoryLayout1227(overlay,summary);if(overlay&&card&&!card.hidden&&typeof driveLogStoryCardLayout1227==='function')driveLogStoryCardLayout1227(overlay,card);
 }
+/* v1243: milestone visibility is derived from the native replay cursor.
+   Destination holds may share arrival/departure cursor values; their phase
+   prevents a zero-duration stay from revealing departure before it happens. */
+function driveLogReplayMilestonesModel1243(replay){
+  const empty={slots:4,cards:[]};
+  if(!replay?.tracks?.some(track=>track?.kind==='hike')||!(replay.prepared?.activeMs>0))return empty;
+  const plan=replay.plan1227||replay.story1227?.plan;
+  if(!plan||!Number.isFinite(plan.startMs)||!Number.isFinite(plan.endMs))return empty;
+  const total=replay.prepared.activeMs,progress=Number.isFinite(replay.progress)?clamp(replay.progress,0,1):0;
+  if(!replay.hasStarted&&progress<=0)return empty;
+  const active=Number.isFinite(replay.sample?.activeMs)?clamp(replay.sample.activeMs,0,total):progress*total;
+  const destination=!!plan.hasDestination&&Number.isFinite(plan.arrivalMs)&&Number.isFinite(plan.departureMs)
+    &&Number.isFinite(plan.arrivalActiveMs)&&Number.isFinite(plan.departureActiveMs)
+    &&plan.arrivalActiveMs>=0&&plan.departureActiveMs>=plan.arrivalActiveMs&&plan.departureActiveMs<=total;
+  const cards=[{slot:0,label:'出発',time:plan.startMs,duration:null,durationLabel:''}];
+  if(destination){
+    // Two sides of an omitted recording gap can share the active cursor.
+    // A photo at the previous endpoint must not reveal the next segment's time.
+    const reached=(boundary,time,segment)=>{
+      if(active!==boundary)return active>boundary;
+      const sample=replay.sample;
+      if(Number.isInteger(segment)&&Number.isInteger(sample?.segmentIndex)&&sample.segmentIndex!==segment)return sample.segmentIndex>segment;
+      return !Number.isFinite(sample?.timestampMs)||sample.timestampMs>=time;
+    };
+    if(reached(plan.arrivalActiveMs,plan.arrivalMs,plan.arrivalSegmentIndex))cards.push({slot:1,label:'目的地に到着',time:plan.arrivalMs,duration:plan.outboundMs??plan.arrivalMs-plan.startMs,durationLabel:'往路所要時間'});
+    const story=replay.story1227,phase=story?.phase==='intro'&&progress>0?story.afterIntroPhase:story?.phase;
+    const returning=['return','finish','summary'].includes(phase);
+    if(reached(plan.departureActiveMs,plan.departureMs,plan.departureSegmentIndex)&&(active>plan.departureActiveMs||returning))cards.push({slot:2,label:'下山開始',time:plan.departureMs,duration:null,durationLabel:''});
+  }
+  // A selected destination can coincide with the final sample. Its five-second
+  // stay still precedes departure and finish even though the cursor is complete.
+  if((active>=total||progress>=1)&&(!destination||cards.some(card=>card.slot===2)))cards.push({slot:destination?3:1,label:destination?'下山終了':'終了',time:plan.endMs,duration:destination?plan.returnMs??plan.endMs-plan.departureMs:plan.totalMs??plan.endMs-plan.startMs,durationLabel:destination?'復路所要時間':'全行程所要時間'});
+  return {slots:destination?4:2,cards};
+}
+function driveLogReplayMilestonesSync1243(replay){
+  const panel=document.getElementById('driveLogReplayPanel1223');if(!panel)return;
+  let box=document.getElementById('driveLogReplayMilestones1243');
+  if(!box&&replay){
+    const seek=panel.querySelector('.gps1223-progress');if(!seek)return;
+    box=document.createElement('div');box.id='driveLogReplayMilestones1243';box.className='gps1243-milestones';box.hidden=true;
+    box.setAttribute('role','list');box.setAttribute('aria-label','登山の通過時刻');box.setAttribute('aria-live','polite');box.setAttribute('aria-atomic','false');
+    box._milestoneCards1243=[];
+    for(let slot=0;slot<4;slot++){
+      const item=document.createElement('div');item.className='gps1243-milestone';item.hidden=true;item.setAttribute('role','listitem');
+      const label=document.createElement('span');label.className='gps1243-milestone-label';
+      const clock=document.createElement('strong');clock.className='gps1243-milestone-clock';
+      const date=document.createElement('span');date.className='gps1243-milestone-date';date.hidden=true;
+      const duration=document.createElement('span');duration.className='gps1243-milestone-duration';duration.hidden=true;
+      const caption=document.createElement('span'),value=document.createElement('b');duration.append(caption,value);
+      item.append(label,clock,date,duration);box.appendChild(item);box._milestoneCards1243.push({item,label,clock,date,duration,caption,value});
+    }
+    seek.after(box);
+  }
+  if(!box)return;
+  const model=driveLogReplayMilestonesModel1243(replay),zone=+el.tz?.value||0,key=JSON.stringify([zone,model.slots,model.cards]);
+  if(box._milestoneKey1243===key)return;
+  box._milestoneKey1243=key;box.hidden=!model.cards.length;box.style.setProperty('--gps1243-slots',String(model.slots));
+  const startDate=model.cards.length?driveLogStoryDate1227(model.cards[0].time):'',bySlot=new Map(model.cards.map(card=>[card.slot,card]));
+  let dated=false;
+  for(const [slot,node]of box._milestoneCards1243.entries()){
+    const card=bySlot.get(slot);node.item.hidden=!card;if(!card)continue;
+    node.item.style.gridColumn=String(slot+1);node.label.textContent=card.label;node.clock.textContent=driveLogStoryClock1227(card.time);
+    const date=driveLogStoryDate1227(card.time),otherDate=date!==startDate;node.date.hidden=!otherDate;node.date.textContent=otherDate?date.slice(5):'';dated=dated||otherDate;
+    node.duration.hidden=!Number.isFinite(card.duration);node.caption.textContent=card.durationLabel;node.value.textContent=Number.isFinite(card.duration)?driveLogStoryDuration1227(card.duration):'';
+    node.item.title=card.label+' '+date+' '+node.clock.textContent+(node.duration.hidden?'':' · '+card.durationLabel+' '+node.value.textContent);
+  }
+  const layout=JSON.stringify([model.slots,model.cards.length,dated]);
+  if(box._milestoneLayout1243!==layout){box._milestoneLayout1243=layout;driveLogReplayPanelClamp1228();el.photoCanvasWrap?.dispatchEvent(new Event('gpsreplaypanelmove'));}
+}
+
 function driveLogReplayControlsSceneOpen1228(replay){
   driveLogReplayPanelFoldReset1240();
   if(replay&&!replay.baseLabel1228)replay.baseLabel1228=String(replay.tracks?.[0]?.source||'GPSログ');
   driveLogReplayControlsSync1228(replay);driveLogReplayPanelClamp1228();
 }
 function driveLogReplayControlsSync1228(replay){
-  driveLogVisibilityControlsSync1235();
+  driveLogVisibilityControlsSync1235();driveLogReplayMilestonesSync1243(replay);
   let title=document.getElementById('driveLogReplayTitle1228'),titleChanged=false;
   const card=document.getElementById('driveLogStoryCard1227');
   if(!title&&replay&&card){title=document.createElement('div');title.id='driveLogReplayTitle1228';title.className='gps1228-replay-title';card.prepend(title);titleChanged=true;}
@@ -54925,8 +55020,9 @@ function bindDroneStick(base,onMove,onRelease){
     if(knob) knob.style.transform="translate(0px,0px)";
     onRelease();
   };
+  base._replayRelease1243=()=>release(null);
   base.addEventListener("pointerdown",event=>{
-    if(arActive) return;
+    if(arActive||document.body.classList.contains('gps1243-hiking-playing')) return;
     /* 前回の指を離したイベントを取りこぼすと(描画で固まっている間に指が外れた、
        ポインタ捕捉に失敗した等)、activePointerが残って以後ずっと無反応になる。
        新しく触られたら、前の状態は捨てて必ず受け付ける。 */
