@@ -5161,6 +5161,24 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
 .gps1239-data-tabs button{padding:8px 4px;white-space:nowrap;border-radius:18px;}
 .gps1239-data-chart{width:100%;height:280px;display:block;background:#172b40;border-radius:10px;}
 .gps1239-data-chart-note{font-size:12px;color:#bdd0df;margin:8px 0 18px;min-height:36px;}
+/* v1244: checkpoint timeline above the hiking GPX export. */
+.gps1244-checkpoints{margin:0 0 18px;min-width:0;}
+.gps1244-checkpoints h3{margin:0 0 12px;color:#eef5ff;font-size:16px;line-height:1.4;}
+.gps1244-checkpoints h4{margin:14px 0 9px;color:#bfd3e3;font-size:13px;line-height:1.4;overflow-wrap:anywhere;}
+.gps1244-checkpoint-list{--gps1244-time-width:56px;list-style:none;padding:0;margin:0;}
+.gps1244-checkpoint-list.dated{--gps1244-time-width:105px;}
+.gps1244-checkpoint{position:relative;display:grid;grid-template-columns:var(--gps1244-time-width) 28px minmax(0,1fr);column-gap:10px;align-items:start;min-height:28px;padding-bottom:16px;}
+.gps1244-checkpoint:not(:last-child)::before{content:'';position:absolute;left:calc(var(--gps1244-time-width) + 23px);top:14px;bottom:-14px;width:2px;background:#7f9cb266;}
+.gps1244-checkpoint:last-child{padding-bottom:0;}
+.gps1244-checkpoint time{grid-column:1;grid-row:1;color:#eef5ff;font-size:14px;font-weight:600;line-height:28px;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.gps1244-checkpoint-icon{grid-column:2;grid-row:1;position:relative;z-index:1;display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid #b8ccdb;border-radius:50%;background:#e0c278;color:#553e13;font-size:14px;font-weight:700;line-height:1;}
+.gps1244-checkpoint.start .gps1244-checkpoint-icon{background:#285e49;border-color:#a4d6b7;color:#e1ffeb;}
+.gps1244-checkpoint.goal .gps1244-checkpoint-icon{background:#794354;border-color:#e9adb8;color:#fff1f4;}
+.gps1244-checkpoint-label{grid-column:3;grid-row:1;min-width:0;min-height:28px;padding-top:3px;color:#eef5ff;font-size:14px;font-weight:600;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap;}
+.gps1244-checkpoint-elapsed{grid-column:3;grid-row:2;margin:9px 0 0;color:#aec5d7;font-size:12px;line-height:1.4;}
+.gps1244-checkpoint-status{margin:10px 0 0;color:#bfd3e3;font-size:12px;line-height:1.5;}
+.gps1244-checkpoint-status[hidden]{display:none;}
+@media(max-width:350px){.gps1244-checkpoint-list{--gps1244-time-width:49px;}.gps1244-checkpoint-list.dated{--gps1244-time-width:92px;}.gps1244-checkpoint{column-gap:7px;}.gps1244-checkpoint:not(:last-child)::before{left:calc(var(--gps1244-time-width) + 20px);}.gps1244-checkpoint time{font-size:12px;}}
 .gps1239-data-export{display:flex;gap:12px;align-items:center;justify-content:space-between;border-top:1px solid #7f9cb244;border-bottom:1px solid #7f9cb244;padding:14px 0;}
 .gps1239-data-export button{background:#276469;white-space:nowrap;}
 .gps1239-data-export small{display:block;color:#afc8da;font-size:11px;}
@@ -8055,7 +8073,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1243-gps-journey-times";
+const APP_VERSION="1244-gps-checkpoints";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -52916,6 +52934,28 @@ let driveLogHikingDataState1239=null;
 function driveLogHikingNode1239(tag,text,className){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;}
 function driveLogHikingTime1239(ms){if(typeof ms!=='number'||!Number.isFinite(ms))return '—';const date=new Date(ms);return Number.isFinite(date.getTime())?date.toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';}
 function driveLogHikingDuration1239(ms){const minutes=Math.floor(Math.max(0,ms||0)/60000);return String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');}
+/* v1244: render only start, registered point markers and goal from the read-only model. */
+function driveLogHikingCheckpointsSync1244(current,loadError=''){
+ if(driveLogHikingDataState1239!==current||!current.checkpoints1244)return;
+ const make=driveLogHikingNode1239,model=driveLogHikingCheckpointsModel1244(current),groups=model.groups||[];
+ current.checkpointBody1244.replaceChildren();current.checkpoints1244.setAttribute('aria-busy',String(!loadError&&model.loading));
+ for(const group of groups){
+  if(groups.length>1)current.checkpointBody1244.appendChild(make('h4',group.name||'登山ログ '+(group.trackIndex+1)));
+  const rows=group.rows||[],days=new Set(rows.filter(row=>Number.isFinite(row.time)).map(row=>{const date=new Date(row.time);return date.getFullYear()+'-'+date.getMonth()+'-'+date.getDate();})),dated=days.size>1;
+  const list=make('ol',undefined,'gps1244-checkpoint-list'+(dated?' dated':''));list.setAttribute('aria-label',groups.length>1?(group.name||'登山ログ '+(group.trackIndex+1))+'のチェックポイント':'チェックポイント');
+  for(let index=0;index<rows.length;index++){
+   const row=rows[index],node=make('li',undefined,'gps1244-checkpoint '+row.kind),time=make('time',driveLogHikingProfileTime1239(row.time,true,dated)),icon=make('span',row.kind==='start'?'S':row.kind==='goal'?'G':'⚑','gps1244-checkpoint-icon'),label=make('span',row.label,'gps1244-checkpoint-label');
+   if(Number.isFinite(row.time)){const date=new Date(row.time);if(Number.isFinite(date.getTime()))time.setAttribute('datetime',date.toISOString());}
+   icon.setAttribute('aria-hidden','true');node.append(time,icon,label);
+   const next=rows[index+1];if(next&&Number.isFinite(next.elapsedMs)){const duration=driveLogStoryDuration1227(next.elapsedMs),elapsed=make('p',duration,'gps1244-checkpoint-elapsed');elapsed.setAttribute('aria-label','次のチェックポイントまで '+duration);node.appendChild(elapsed);}
+   list.appendChild(node);
+  }
+  current.checkpointBody1244.appendChild(list);
+ }
+ const error=loadError||model.error;
+ current.checkpointStatus1244.textContent=error?'ポイントを読み込めませんでした。読み込み済みのチェックポイントを表示しています。':model.loading?'ポイントを読み込んでいます…':!groups.length?'有効なGPS位置がありません。':!model.pointCount?'登録されたポイントはありません。':'';
+ current.checkpointStatus1244.hidden=!current.checkpointStatus1244.textContent;
+}
 function driveLogHikingDataClose1239(restoreFocus=true){
  const current=driveLogHikingDataState1239;if(!current)return;driveLogHikingDataState1239=null;
  current.observer?.disconnect();window.removeEventListener('resize',current.resize);document.removeEventListener('fullscreenchange',current.fullscreen);document.removeEventListener('keydown',current.key,true);document.removeEventListener('keyup',current.blockKey,true);document.removeEventListener('keypress',current.blockKey,true);
@@ -52939,11 +52979,52 @@ function driveLogHikingDataPopup1239(current,items){
   if(items.length>1){const next=driveLogHikingNode1239('button',(index+1)+' / '+items.length+'　次へ');next.type='button';next.addEventListener('click',()=>{index=(index+1)%items.length;render();});wrap.appendChild(next);}
  };render();return {node:wrap,release:()=>{if(url){URL.revokeObjectURL(url);current.urls.delete(url);url=null;}}};
 }
+/* 【v1244】登録したポイントだけを、ログごとの実時刻で並べるチェックポイント。 */
+function driveLogHikingCheckpointsModel1244(current){
+ const replay=current?.replay,state=replay?.photos1228,tracks=Array.isArray(replay?.tracks)?replay.tracks:[],samples=Array.isArray(current?.data?.samples)?current.data.samples:[];
+ const model={groups:[],loading:!state?.loaded&&!state?.error&&!state?.disposed,error:typeof state?.error==='string'?state.error:'',pointCount:0},owners=new Map(),byIndex=new Map();
+ const timeValid=value=>typeof value==='number'&&Number.isFinite(value)&&Math.abs(value)<=864e13;
+ const positionValid=value=>value&&typeof value.lat==='number'&&Number.isFinite(value.lat)&&Math.abs(value.lat)<=90&&typeof value.lon==='number'&&Number.isFinite(value.lon)&&Math.abs(value.lon)<=180;
+ for(const [trackIndex,track] of tracks.entries()){
+  if(!track)continue;const trackId=typeof track.id==='string'||typeof track.id==='number'?track.id:'gps1239-track-'+trackIndex;
+  const group={trackIndex,trackId,name:String(track.displayName||track.name||track.source||track.place||'登山ログ').trim()||'登山ログ',rows:[]},owner={group,samples:[],ranges:new Map()};
+  byIndex.set(trackIndex,owner);const key=String(trackId);if(!owners.has(key))owners.set(key,[]);owners.get(key).push(owner);
+ }
+ for(const [sampleIndex,sample] of samples.entries()){
+  if(!sample||!timeValid(sample.time)||!positionValid(sample)||!Number.isInteger(sample.trackIndex))continue;
+  const owner=byIndex.get(sample.trackIndex);if(!owner||String(sample.trackId)!==String(owner.group.trackId))continue;
+  owner.samples.push(sample);const key=Number.isInteger(sample.segmentIndex)?sample.segmentIndex:'sample-'+sampleIndex,range=owner.ranges.get(key);
+  if(range){range.start=Math.min(range.start,sample.time);range.end=Math.max(range.end,sample.time);}else owner.ranges.set(key,{start:sample.time,end:sample.time});
+ }
+ for(const owner of byIndex.values()){
+  if(!owner.samples.length)continue;owner.samples.sort((a,b)=>a.time-b.time);const first=owner.samples[0],last=owner.samples.at(-1),group=owner.group;
+  group.rows.push({id:'gps1244-checkpoint-'+group.trackIndex+'-start',kind:'start',label:'スタート',time:first.time,lat:first.lat,lon:first.lon,elapsedMs:null},
+   {id:'gps1244-checkpoint-'+group.trackIndex+'-goal',kind:'goal',label:'ゴール',time:last.time,lat:last.lat,lon:last.lon,elapsedMs:null});model.groups.push(group);
+ }
+ const items=!state?.disposed&&Array.isArray(state?.items)?state.items:[],preparedSegments=Array.isArray(replay?.prepared?.segments)?replay.prepared.segments:null;
+ for(const [itemIndex,item] of items.entries()){
+  if(!driveLogPhotoIsPoint1237(item)||!timeValid(item?.shotMs)||!positionValid(item)||(typeof item.trackId!=='string'&&typeof item.trackId!=='number'))continue;
+  let candidates=(owners.get(String(item.trackId))||[]).filter(owner=>owner.samples.length);
+  if(item.trackIndex!==undefined){if(!Number.isInteger(item.trackIndex))continue;candidates=candidates.filter(owner=>owner.group.trackIndex===item.trackIndex);}
+  // Photo segment indexes refer to replay.prepared, never to hiking-data segments.
+  if(preparedSegments&&item.segmentIndex!==undefined){
+   if(!Number.isInteger(item.segmentIndex)||item.segmentIndex<0)continue;const segment=preparedSegments[item.segmentIndex];
+   if(!segment||String(segment.trackId)!==String(item.trackId)||!Number.isInteger(segment.trackIndex)||!timeValid(segment.startMs)||!timeValid(segment.endMs)||item.shotMs<segment.startMs||item.shotMs>segment.endMs)continue;
+   candidates=candidates.filter(owner=>owner.group.trackIndex===segment.trackIndex);
+  }
+  candidates=candidates.filter(owner=>[...owner.ranges.values()].some(range=>item.shotMs>=range.start&&item.shotMs<=range.end));
+  if(candidates.length!==1)continue;const group=candidates[0].group;
+  group.rows.push({id:'gps1244-checkpoint-'+group.trackIndex+'-point-'+itemIndex,kind:'point',label:driveLogPhotoMetaNormalize1237(item).title||'ポイント',time:item.shotMs,lat:item.lat,lon:item.lon,elapsedMs:null});model.pointCount++;
+ }
+ const rank={start:0,point:1,goal:2};for(const group of model.groups){group.rows.sort((a,b)=>a.time-b.time||rank[a.kind]-rank[b.kind]);for(let i=1;i<group.rows.length;i++)group.rows[i].elapsedMs=group.rows[i].time-group.rows[i-1].time;}
+ return model;
+}
 function driveLogHikingDataPhotos1239(current){
  if(driveLogHikingDataState1239!==current)return;
  const state=current.replay.photos1228,items=(state?.items||[]).filter(item=>Number.isFinite(item.lat)&&Number.isFinite(item.lon)&&Math.abs(item.lat)<=90&&Math.abs(item.lon)<=180);
  current.photos=items;const points=items.filter(driveLogPhotoIsPoint1237).length;current.legend.textContent='● 出発　● 終了　📷 写真 '+(items.length-points)+'枚　⚑ ポイント '+points+'件';
  current.photoStatus.textContent=state?.error?'写真・ポイントの位置を読み込めませんでした。ルートとGPXは利用できます。':state?.loaded?'マークをタップするとタイトル・コメントを確認できます。':'写真・ポイントの位置を読み込んでいます…';
+ driveLogHikingCheckpointsSync1244(current);
  if(!current.map)return;
  for(const marker of current.photoMarkers)marker.remove();current.photoMarkers=[];
  const groups=new Map();for(const item of items){const kind=driveLogPhotoIsPoint1237(item)?'point':'photo',key=kind+':'+item.lat.toFixed(5)+':'+item.lon.toFixed(5);if(groups.has(key))groups.get(key).push(item);else groups.set(key,[item]);}
@@ -52983,9 +53064,10 @@ function driveLogHikingDataOpen1239(replay=driveLogReplayState1223){
  const legend=make('p','● 出発　● 終了','gps1239-data-legend'),mapStatus=make('p','等高線地図を読み込んでいます…','gps1239-data-status'),photoStatus=make('p','写真・ポイントの位置を読み込んでいます…','gps1239-data-status');mapStatus.setAttribute('role','status');photoStatus.setAttribute('role','status');left.append(legend,mapStatus,photoStatus);
  const tabs=make('div',undefined,'gps1239-data-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','標高グラフの横軸');const canvas=make('canvas',undefined,'gps1239-data-chart');canvas.id='driveLogHikingProfile1239';canvas.setAttribute('role','img');canvas.setAttribute('aria-label','登山ルートの標高グラフ');right.append(tabs,canvas);
  const note=make('p','タイムは滞在を含む全行程。行動時間は記録の空白を除く時間です。'+(stats.gaps?' 記録の空白ではルート・グラフをつなぎません。':''),'gps1239-data-chart-note');right.appendChild(note);
+ const checkpoints1244=make('section',undefined,'gps1244-checkpoints'),checkpointTitle1244=make('h3','チェックポイント'),checkpointBody1244=make('div'),checkpointStatus1244=make('p','','gps1244-checkpoint-status');checkpointTitle1244.id='driveLogHikingCheckpointsTitle1244';checkpoints1244.setAttribute('aria-labelledby',checkpointTitle1244.id);checkpointStatus1244.setAttribute('role','status');checkpoints1244.append(checkpointTitle1244,checkpointBody1244,checkpointStatus1244);right.appendChild(checkpoints1244);
  const exporter=make('div',undefined,'gps1239-data-export'),exportLabel=make('div','GPXデータ'),exportButton=make('button','エクスポート');exportLabel.appendChild(make('small','この登山ログを書き出す'));exportButton.type='button';exporter.append(exportLabel,exportButton);right.appendChild(exporter);const exportStatus=make('p','','gps1239-data-status');exportStatus.setAttribute('role','status');right.appendChild(exportStatus);
  const host=document.fullscreenElement||document.body;host.appendChild(overlay);
- const current=driveLogHikingDataState1239={replay,overlay,dialog,data,canvas,mode:'distance',map:null,mapNode,fit,bounds:[],photos:[],photoMarkers:[],legend,mapStatus,photoStatus,exportStatus,urls:new Set(),focus:document.activeElement,overflow:document.body.style.overflow,inert:[...host.children].filter(node=>node!==overlay&&!['SCRIPT','STYLE','LINK'].includes(node.tagName)).map(node=>({node,value:node.inert})),frame:0};
+ const current=driveLogHikingDataState1239={replay,overlay,dialog,data,canvas,mode:'distance',map:null,mapNode,fit,bounds:[],photos:[],photoMarkers:[],legend,mapStatus,photoStatus,exportStatus,checkpoints1244,checkpointBody1244,checkpointStatus1244,urls:new Set(),focus:document.activeElement,overflow:document.body.style.overflow,inert:[...host.children].filter(node=>node!==overlay&&!['SCRIPT','STYLE','LINK'].includes(node.tagName)).map(node=>({node,value:node.inert})),frame:0};
  for(const item of current.inert)item.node.inert=true;document.body.style.overflow='hidden';
  for(const [mode,label] of [['distance','距離'],['active','行動時間'],['datetime','日時']]){const button=make('button',label);button.type='button';button.setAttribute('role','tab');button.setAttribute('aria-controls',canvas.id);button.dataset.mode=mode;button.setAttribute('aria-selected',String(mode===current.mode));button.tabIndex=mode===current.mode?0:-1;tabs.appendChild(button);button.addEventListener('click',()=>{current.mode=mode;for(const node of tabs.children){node.setAttribute('aria-selected',String(node===button));node.tabIndex=node===button?0:-1;}driveLogHikingDataRedraw1239(current);});button.addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const buttons=[...tabs.children],index=buttons.indexOf(button),next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length;buttons[next].click();buttons[next].focus();});}
  close.addEventListener('click',()=>driveLogHikingDataClose1239());fit.addEventListener('click',()=>driveLogHikingDataFit1239(current));exportButton.addEventListener('click',()=>driveLogHikingDataExport1239(current));
@@ -52998,7 +53080,7 @@ function driveLogHikingDataOpen1239(replay=driveLogReplayState1223){
  current.blockKey=event=>{if(driveLogHikingDataState1239===current&&!dialog.contains(event.target))event.stopImmediatePropagation();};for(const type of ['keydown','keyup','keypress'])overlay.addEventListener(type,event=>event.stopPropagation());document.addEventListener('keydown',current.key,true);document.addEventListener('keyup',current.blockKey,true);document.addEventListener('keypress',current.blockKey,true);
  current.resize=()=>driveLogHikingDataRedraw1239(current);current.fullscreen=()=>driveLogHikingDataClose1239();window.addEventListener('resize',current.resize);document.addEventListener('fullscreenchange',current.fullscreen);if(typeof ResizeObserver==='function'){current.observer=new ResizeObserver(current.resize);current.observer.observe(canvas);current.observer.observe(mapNode);}
  driveLogHikingDataMap1239(current);driveLogHikingDataPhotos1239(current);driveLogHikingDataRedraw1239(current);close.focus({preventScroll:true});
- driveLogPhotosLoad1228(replay).then(()=>{if(driveLogHikingDataState1239===current&&driveLogReplayState1223===replay)driveLogHikingDataPhotos1239(current);}).catch(()=>{if(driveLogHikingDataState1239===current)current.photoStatus.textContent='写真・ポイントの位置を読み込めませんでした。';});
+ driveLogPhotosLoad1228(replay).then(()=>{if(driveLogHikingDataState1239===current&&driveLogReplayState1223===replay)driveLogHikingDataPhotos1239(current);}).catch(()=>{if(driveLogHikingDataState1239===current){current.photoStatus.textContent='写真・ポイントの位置を読み込めませんでした。';driveLogHikingCheckpointsSync1244(current,'ポイントを読み込めませんでした。');}});
 }
 
 driveLogReplayUiInit1223();
