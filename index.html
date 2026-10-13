@@ -4285,8 +4285,8 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
 
   /* 【v1252】画像全体を不透明なホームで覆い、画像の外は通常の操作を保つ。 */
   #arModeBtn{display:none!important;}
-  /* 【v1253】情報ボタンは通常画面・全画面とも非表示。既存の情報機能は保持する。 */
-  #iconInfoBtn{display:none!important;}
+  /* 【v1256】情報ボタンは全画面のみ非表示。既存の情報機能は保持する。 */
+  body.fs-sim #iconInfoBtn{display:none!important;}
   #headerLeftGroup #mobileSettingsBtn,#headerLeftGroup #driveModeBtn{display:inline-flex;}
   #toggleBtnRow #driveModeBtn{display:inline-flex;}
   #popupHomeBtn{color:#9cf0ff;border-color:#55d6ee;background:linear-gradient(145deg,#1d759c,#133c68);box-shadow:0 0 0 1px rgba(83,222,255,.16),0 3px 13px rgba(15,169,218,.17);}
@@ -4368,8 +4368,8 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   .home-screen-compact1252 .home-rail-action1255{min-height:64px;padding:4px 5px;font-size:12px;gap:4px;}
   .home-screen-compact1252 .home-rail-action-icon1255{font-size:14px;line-height:1;}
   .home-screen-compact1252 .home-rail-guide1255{font-size:11px;line-height:1.55;}
-  #simLiveBadge1255{position:absolute;left:9px;top:7px;z-index:14002;display:flex;align-items:center;justify-content:center;width:36px;height:20px;min-width:36px;padding:0;margin:0;box-sizing:border-box;border:1px solid #647081;border-radius:6px;background:#343e4d;color:#c0c8d3;font:800 9px/1 system-ui,sans-serif;letter-spacing:.03em;opacity:.55;cursor:pointer;touch-action:manipulation;}
-  body.fs-sim #simLiveBadge1255{left:49px;top:56px;}
+  #simLiveBadge1255{position:absolute;left:9px;top:7px;z-index:320;display:flex;align-items:center;justify-content:center;width:36px;height:20px;min-width:36px;padding:0;margin:0;box-sizing:border-box;border:1px solid #647081;border-radius:6px;background:#343e4d;color:#c0c8d3;font:800 9px/1 system-ui,sans-serif;letter-spacing:.03em;opacity:.55;cursor:pointer;touch-action:manipulation;}
+
   #simLiveBadge1255[aria-pressed="true"],#simLiveBadge1255.active{background:#fff;border-color:#e13444;color:#d52737;opacity:1;animation:sim-live-pulse1255 1.3s ease-in-out infinite;}
   #simLiveBadge1255:focus-visible,.home-rail-screen1255 button:focus-visible,#homeRailBackBtn1255:focus-visible{outline:2px solid #a1edff;outline-offset:2px;}
   @keyframes sim-live-pulse1255{0%,100%{opacity:1;}50%{opacity:.55;}}
@@ -5840,6 +5840,14 @@ body.fs-sim.drone-mode .gps1223-replay{
 
 
 
+
+
+/* 【v1256】寸法と衝突を見て配置する左側操作の既定値。表示条件は既存CSSに任せる。 */
+.photo-canvas-wrap{--sim-ui-photo-top1256:9px;--sim-ui-map-top1256:53px;--sim-ui-left1256:9px;}
+#mobileMapToggleBtn{--sim-ui-map-bottom1256:53px;}
+body.drone-mode #mobileMapToggleBtn{--sim-ui-map-bottom1256:127px;}
+@media(max-width:760px){.photo-canvas-wrap{--sim-ui-photo-top1256:31px;--sim-ui-map-top1256:75px;}#mobileMapToggleBtn{--sim-ui-map-bottom1256:44px;}body.drone-mode #mobileMapToggleBtn{--sim-ui-map-bottom1256:124px;}}
+body.fs-sim .photo-canvas-wrap{--sim-ui-photo-top1256:108px;--sim-ui-map-top1256:152px;}
 
 </style>
 </head>
@@ -8272,7 +8280,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1255-home-rail-live";
+const APP_VERSION="1256-sim-controls-layout";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -26985,6 +26993,7 @@ function enterFullscreenSim(){
   fsMoveNode(document.getElementById("moonTimelineRow"),fsBars);
   fsMoveNode(document.getElementById("sunTimelineRow"),fsBars);
   fsMoveNode(document.getElementById("mwTimelineRow"),fsBars);
+  if(typeof simUiLayoutSchedule1256==='function')simUiLayoutSchedule1256();
   if(el.focalQuick)setFocalQuickOpen(false);
   update();
   /* 【v962】ここまでで動いていたら戻す。 */
@@ -28115,6 +28124,7 @@ function layoutHeaderForViewport(){
   for(const node of nodes)parent.insertBefore(node,anchor);
   if(el.constellationToggleBtn.parentElement!==el.displayOptionsPopup){el.displayOptionsPopup.appendChild(el.constellationToggleBtn);el.displayOptionsPopup.appendChild(el.planetToggleBtn);}
   homeScreenScheduleLayout1251();
+  if(typeof simUiLayoutSchedule1256==='function')simUiLayoutSchedule1256();
 }
 layoutHeaderForViewport();
 if(mobileHeaderMQ.addEventListener) mobileHeaderMQ.addEventListener("change",layoutHeaderForViewport);
@@ -57118,6 +57128,100 @@ async function homeRailOpenObject1255(){
   applySavedObservingPlan=function(location){if(location)homeRailActionsCancel1255();return originalPlan.apply(this,arguments);};
   for(const [id,handler]of [['homeRailPlaceTrainBtn1255',homeRailPlaceTrain1255],['homeRailPlaceTrussBtn1255',homeRailPlaceTruss1255],['homeRailObjectBtn1255',homeRailOpenObject1255],['homeRailGuideBtn1255',()=>homeRailGuideSet1255(true)]])document.getElementById(id)?.addEventListener('click',handler);
   homeRailActionSync1255();
+})();
+
+/* 【v1256】LIVEは焦点距離の下。左側の操作は同じ順番で重ならない位置へ。 */
+var simUiLayoutReady1256=false,simUiLayoutRaf1256=0;
+var simUiZoomOriginal1256=new WeakMap();
+function simUiStyle1256(node,key,value){if(node&&node.style[key]!==value)node.style[key]=value;}
+function simUiRect1256(node){
+  if(!node||node.hidden)return null;
+  const computed=window.getComputedStyle(node);
+  if(computed.display==='none'||computed.visibility==='hidden')return null;
+  const box=node.getBoundingClientRect();
+  if(![box.left,box.top,box.right,box.bottom].every(Number.isFinite)||box.right<=box.left||box.bottom<=box.top)return null;
+  return {left:box.left,top:box.top,right:box.right,bottom:box.bottom,width:box.right-box.left,height:box.bottom-box.top};
+}
+function simUiLocal1256(node,box){
+  const host=node.getBoundingClientRect();
+  return {left:box.left-host.left-(node.clientLeft||0)+(node.scrollLeft||0),top:box.top-host.top-(node.clientTop||0)+(node.scrollTop||0),width:box.width,height:box.height};
+}
+function simUiPlace1256(node,left,top){
+  simUiStyle1256(node,'left',left+'px');simUiStyle1256(node,'top',top+'px');simUiStyle1256(node,'bottom','auto');
+}
+function simUiOverlap1256(a,b,gap=0){return !!a&&!!b&&a.left<b.right+gap&&a.right+gap>b.left&&a.top<b.bottom+gap&&a.bottom+gap>b.top;}
+function simUiLayout1256(){
+  const focal=el.focalBadge,badge=document.getElementById('simLiveBadge1255'),wrap=el.photoCanvasWrap;
+  if(!focal||!badge||!wrap)return;
+  const host=focal.parentElement;
+  // firstChildなら、全画面復元が控えるnextSiblingをLIVEの移動で壊さない。
+  if(host&&badge.parentElement!==host)host.insertBefore(badge,host.firstChild);
+  const focalBox=simUiRect1256(focal),badgeBox=simUiRect1256(badge);
+  if(host&&focalBox&&badgeBox){
+    const local=simUiLocal1256(host,{left:focalBox.left+(focalBox.width-badgeBox.width)/2,top:focalBox.bottom+4,width:badgeBox.width,height:badgeBox.height});
+    simUiPlace1256(badge,local.left,local.top);
+  }
+  const frame=simUiRect1256(wrap);if(!frame)return;
+  const style=window.getComputedStyle(wrap),number=(name,fallback)=>{const value=parseFloat(style.getPropertyValue(name));return Number.isFinite(value)?value:fallback;};
+  const mobile=window.matchMedia('(max-width:760px)').matches,fs=!!fsSimActive,map=wrap.classList.contains('osm-map-open');
+  const left=number('--sim-ui-left1256',9),first=number(map?'--sim-ui-map-top1256':'--sim-ui-photo-top1256',fs?(map?152:108):mobile?(map?75:31):(map?53:9));
+  const live=simUiRect1256(badge),liveBottom=live?simUiLocal1256(wrap,live).top+live.height+8:0;
+  const search=document.getElementById('mobileSkySearchSelect')?.closest('.mobile-sky-search-control');
+  const photoNodes=[search,el.shotPlanBtn||document.getElementById('shotPlanBtn'),el.cameraCutPlayBtn||document.getElementById('cameraCutPlayBtn')];
+  const mapNodes=[photoNodes[1],el.mapMeasureBtn,el.mapMoonLinesBtn,el.mapSunLinesBtn];
+  const nodes=map?mapNodes:photoNodes,placed=[];
+  let x=left,y=Math.max(first,liveBottom),columnWidth=0;
+  for(const node of nodes){
+    const box=simUiRect1256(node);if(!box)continue;
+    if(y+box.height>frame.height-6&&placed.length){x+=columnWidth+8;y=Math.max(6,Math.min(first,frame.height-box.height-6));columnWidth=0;}
+    const px=Math.max(6,Math.min(x,frame.width-box.width-6)),py=Math.max(6,Math.min(y,frame.height-box.height-6));
+    simUiPlace1256(node,px,py);placed.push({left:frame.left+px+(wrap.clientLeft||0)-(wrap.scrollLeft||0),top:frame.top+py+(wrap.clientTop||0)-(wrap.scrollTop||0),right:frame.left+px+box.width+(wrap.clientLeft||0)-(wrap.scrollLeft||0),bottom:frame.top+py+box.height+(wrap.clientTop||0)-(wrap.scrollTop||0),width:box.width,height:box.height});
+    columnWidth=Math.max(columnWidth,box.width);y=py+box.height+8;
+  }
+  const toggle=el.mobileMapToggleBtn||document.getElementById('mobileMapToggleBtn'),toggleBox=simUiRect1256(toggle);
+  if(toggleBox){
+    const bottomValue=parseFloat(window.getComputedStyle(toggle).getPropertyValue('--sim-ui-map-bottom1256'));
+    const bottom=Number.isFinite(bottomValue)?bottomValue:mobile?44:53;
+    let tx=left,ty=Math.max(6,Math.min(frame.height-toggleBox.height-6,frame.height-bottom-toggleBox.height));
+    const absolute=(lx,ly)=>({left:frame.left+lx+(wrap.clientLeft||0)-(wrap.scrollLeft||0),top:frame.top+ly+(wrap.clientTop||0)-(wrap.scrollTop||0),right:frame.left+lx+toggleBox.width+(wrap.clientLeft||0)-(wrap.scrollLeft||0),bottom:frame.top+ly+toggleBox.height+(wrap.clientTop||0)-(wrap.scrollTop||0)});
+    if(placed.some(box=>simUiOverlap1256(absolute(tx,ty),box,8))){
+      const after=Math.max(...placed.map(box=>box.bottom-frame.top-(wrap.clientTop||0)+(wrap.scrollTop||0)))+8;
+      if(after+toggleBox.height<=frame.height-6)ty=after;
+      else tx=Math.min(frame.width-toggleBox.width-6,Math.max(...placed.map(box=>box.right-frame.left-(wrap.clientLeft||0)+(wrap.scrollLeft||0)))+8);
+    }
+    simUiPlace1256(toggle,tx,ty);placed.push(absolute(tx,ty));
+  }
+  const mapNode=el.osmMap||document.getElementById('osmMap'),panel=el.osmMapPanel||document.getElementById('osmMapPanel');
+  const corner=mapNode?.querySelector('.leaflet-top.leaflet-left'),zoom=corner?.querySelector('.leaflet-control-zoom');
+  if(!corner||!zoom)return;
+  if(!simUiZoomOriginal1256.has(corner))simUiZoomOriginal1256.set(corner,corner.style.left||'');
+  const original=simUiZoomOriginal1256.get(corner),mapBox=simUiRect1256(mapNode),zoomBox=simUiRect1256(zoom);
+  if(!map||!panel||!wrap.contains(panel)||!mapBox||!zoomBox){simUiStyle1256(corner,'left',original);return;}
+  const margin=parseFloat(window.getComputedStyle(zoom).marginLeft)||0,baseLeft=mapBox.left+(mapNode.clientLeft||0)+margin;
+  const base={...zoomBox,left:baseLeft,right:baseLeft+zoomBox.width};
+  if(!placed.some(box=>simUiOverlap1256(base,box))){simUiStyle1256(corner,'left',original);return;}
+  const target=Math.max(...placed.map(box=>box.right))+8;
+  if(target+zoomBox.width<=mapBox.right-6)simUiStyle1256(corner,'left',(target-mapBox.left-(mapNode.clientLeft||0)-margin)+'px');
+}
+function simUiLayoutSchedule1256(){
+  if(!simUiLayoutReady1256||simUiLayoutRaf1256)return;
+  simUiLayoutRaf1256=requestAnimationFrame(()=>{simUiLayoutRaf1256=0;simUiLayout1256();});
+}
+(function initSimUiLayout1256(){
+  window.addEventListener('resize',simUiLayoutSchedule1256);window.addEventListener('orientationchange',simUiLayoutSchedule1256);
+  window.addEventListener('scroll',simUiLayoutSchedule1256,{passive:true,capture:true});
+  if(window.visualViewport){window.visualViewport.addEventListener('resize',simUiLayoutSchedule1256);window.visualViewport.addEventListener('scroll',simUiLayoutSchedule1256);}
+  if(typeof ResizeObserver==='function'){
+    const observer=new ResizeObserver(simUiLayoutSchedule1256);
+    for(const node of [el.focalBadge,el.headerLeftGroup,el.toggleBtnRow,el.photoCanvasWrap,el.osmMap])if(node)observer.observe(node);
+  }
+  if(typeof MutationObserver==='function'){
+    const changed=new MutationObserver(simUiLayoutSchedule1256);
+    if(el.focalBadge)changed.observe(el.focalBadge,{childList:true,subtree:true,characterData:true});
+    if(el.osmMap)changed.observe(el.osmMap,{childList:true,subtree:true});
+    for(const node of [document.body,el.photoCanvasWrap])if(node)changed.observe(node,{attributes:true,attributeFilter:['class']});
+  }
+  simUiLayoutReady1256=true;simUiLayout1256();
 })();
 
 })();
