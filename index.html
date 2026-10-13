@@ -5870,6 +5870,28 @@ body.fs-sim .photo-canvas-wrap{--sim-ui-photo-top1256:108px;--sim-ui-map-top1256
   .home-rail-info1258.home-rail-info-compact1258 .home-rail-info-name1258{font-size:18px;}
   .home-rail-info1258.home-rail-info-compact1258 .home-rail-info-body1258{padding-right:9px;padding-left:9px;}
 
+
+  /* 【v1259】駅の時刻表は地図内の中央へ。Leafletの位置更新でも駅へ戻さない。 */
+  .rail-station-popup.rail-station-centered1259{position:absolute!important;z-index:950;left:var(--rail-station-left1259,50%)!important;top:var(--rail-station-top1259,50%)!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important;margin:0!important;width:var(--rail-station-width1259,230px)!important;min-width:0!important;max-width:none!important;height:var(--rail-station-height1259,auto)!important;max-height:var(--rail-station-height1259,480px)!important;box-sizing:border-box;pointer-events:auto;font:13px/1.4 system-ui,sans-serif;text-align:left;}
+  .rail-station-centered1259 .leaflet-popup-tip-container{display:none!important;}
+  .rail-station-centered1259 .leaflet-popup-content-wrapper{height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;padding:0;background:#fff;color:#1c2330;border-radius:16px;box-shadow:0 4px 18px rgba(0,0,0,.35);}
+  .rail-station-centered1259 .leaflet-popup-content{width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;max-height:none!important;box-sizing:border-box;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;margin:12px!important;overflow:hidden;white-space:normal!important;font:13px/1.4 system-ui,sans-serif;}
+  .rail-station-centered1259 .rs-title{flex:0 0 auto;min-width:0;margin:0 24px 8px 0;font-size:17px;line-height:1.35;overflow-wrap:anywhere;}
+  .rail-station-centered1259 .rs-list{flex:1 1 auto;min-height:0!important;max-height:var(--rail-station-list-height1259,288px)!important;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;}
+  .rail-station-centered1259 .rs-foot{flex:0 0 auto;margin-top:8px;overflow-wrap:anywhere;}
+  .rail-station-centered1259 .rs-main{min-width:0;overflow-wrap:anywhere;}
+  .rail-station-centered1259 .rs-co{max-width:100%;box-sizing:border-box;white-space:normal;overflow-wrap:anywhere;}
+  .rail-station-centered1259 .rs-row{gap:8px;}
+  .rail-station-centered1259 a.leaflet-popup-close-button{position:absolute;top:4px;right:4px;z-index:2;width:28px;height:28px;padding:0;border-radius:50%;background:#f4f6f9;color:#566071;text-align:center;text-decoration:none;font:400 24px/28px system-ui,sans-serif;box-sizing:border-box;cursor:pointer;}
+  .rail-station-centered1259 a.leaflet-popup-close-button:focus-visible{outline:2px solid #2f6fd0;outline-offset:-3px;}
+  .rail-station-centered1259.rail-station-compact1259 .rs-row{gap:4px;}
+  .rail-station-centered1259.rail-station-compact1259 .rs-eta{font-size:16px;}
+  .rail-station-centered1259.rail-station-compact1259 .rs-eta small{font-size:9px;margin-left:1px;}
+  .rail-station-centered1259.rail-station-compact1259 .rs-co{font-size:10px;padding-right:4px;padding-left:4px;}
+  .rail-station-centered1259.rail-station-compact1259 .rs-sub{font-size:10px;}
+  body.home-screen-open1250 .rail-station-centered1259{pointer-events:none;}
+  .photo-canvas-wrap:not(.osm-map-open) .rail-station-centered1259{visibility:hidden!important;pointer-events:none;}
+
 </style>
 </head>
 <body>
@@ -8317,7 +8339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1258-home-rail-map-info";
+const APP_VERSION="1259-centered-station-timetable";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -18430,7 +18452,7 @@ function updateOsmKmzMarkers(){
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
           m._railStation=true;
-          m.bindPopup(()=>{const h=railSimStationPopupHtml(slot);m._railHtml=h;return h;},{className:"rail-station-popup",autoPan:true,maxWidth:280,minWidth:230,offset:[0,-8]});
+          m.bindPopup(()=>{const h=railSimStationPopupHtml(slot);m._railHtml=h;return h;},{className:"rail-station-popup",autoPan:false,keepInView:false,maxWidth:280,minWidth:230,offset:[0,-8]});
           m.on("popupopen",()=>railSimPrepareStationPopup(m));
         }
         mapKmzMarkers.set(slot.id,m);
@@ -57476,6 +57498,94 @@ setOsmMapScreenOpen=function(open,options){
 for(const type of ['pointerdown','touchstart','wheel','keydown'])el.osmMap?.addEventListener(type,()=>{
   if(osmMapScreenOpen&&homeRailPresentationState1258?.request)homeRailPresentationCancel1258();
 },{capture:true,passive:true});
+
+
+/* 【v1259】Leafletの駅ポップアップ実体を保ったまま、変形されない地図パネルへ置く。 */
+var railStationPopupState1259={popup:null,node:null,map:null,marker:null};
+function railStationPopupAccessibility1259(ignoreHome){
+  const state=railStationPopupState1259;if(!state||!state.node)return;
+  const node=state.node,wrap=el.photoCanvasWrap;
+  const inactive=!node.isConnected||!state.popup||!state.popup._map||(typeof state.popup.isOpen==='function'&&!state.popup.isOpen())||state.map!==osmMapInstance||!wrap||!wrap.classList.contains('osm-map-open')||(ignoreHome!==true&&document.body.classList.contains('home-screen-open1250'))||node.style.visibility==='hidden';
+  node.inert=inactive;node.setAttribute('aria-hidden',String(inactive));
+  for(const child of [node.querySelector('.rs-list'),node.querySelector('.leaflet-popup-close-button')])if(child)child.tabIndex=inactive?-1:0;
+  if(inactive&&node.contains(document.activeElement)&&typeof document.activeElement?.blur==='function')document.activeElement.blur();
+}
+function railStationPopupClear1259(popup){
+  const state=railStationPopupState1259;if(!state||state.popup!==popup)return;
+  state.node.inert=true;state.node.setAttribute('aria-hidden','true');
+  for(const child of [state.node.querySelector('.rs-list'),state.node.querySelector('.leaflet-popup-close-button')])if(child)child.tabIndex=-1;
+  if(state.node.contains(document.activeElement)&&typeof document.activeElement?.blur==='function')document.activeElement.blur();
+  state.popup=null;state.node=null;state.map=null;state.marker=null;
+}
+function railStationPopupClose1259(popup){
+  const state=railStationPopupState1259;
+  if(!state||state.popup!==popup||state.map!==osmMapInstance||!popup._map)return;
+  if(typeof popup.close==='function')popup.close();else if(typeof state.map.closePopup==='function')state.map.closePopup(popup);
+}
+function railStationPopupChrome1259(node){
+  const title=node.querySelector('.rs-title'),foot=node.querySelector('.rs-foot'),content=node.querySelector('.leaflet-popup-content'),wrapper=node.querySelector('.leaflet-popup-content-wrapper');
+  const sum=(element,names)=>{if(!element)return 0;const style=window.getComputedStyle(element);return names.reduce((value,name)=>value+(parseFloat(style[name])||0),0);};
+  const item=element=>element?element.getBoundingClientRect().height+sum(element,['marginTop','marginBottom']):0;
+  return Math.max(36,item(title)+item(foot)+sum(content,['marginTop','marginBottom','paddingTop','paddingBottom'])+sum(wrapper,['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth']));
+}
+function railStationPopupLayout1259(){
+  const state=railStationPopupState1259,wrap=el.photoCanvasWrap,panel=el.osmMapPanel||document.getElementById('osmMapPanel');
+  if(!state||!state.node||!state.popup)return;
+  const node=state.node,list=node.querySelector('.rs-list');
+  if(state.map!==osmMapInstance||!state.popup._map||!node.isConnected){simUiStyle1256(node,'visibility','hidden');railStationPopupAccessibility1259();return;}
+  const host=simUiRect1256(panel),frame=simUiRect1256(wrap),vv=window.visualViewport;
+  const unavailable=()=>{simUiStyle1256(node,'visibility','hidden');railStationPopupAccessibility1259();};
+  if(!host||!frame||!list||!wrap.classList.contains('osm-map-open')){unavailable();return;}
+  const viewport={left:vv?vv.offsetLeft||0:0,top:vv?vv.offsetTop||0:0,right:vv?(vv.offsetLeft||0)+vv.width:window.innerWidth,bottom:vv?(vv.offsetTop||0)+vv.height:window.innerHeight};
+  let left=Math.max(host.left,frame.left,viewport.left)+8,right=Math.min(host.right,frame.right,viewport.right)-8,top=Math.max(host.top,frame.top,viewport.top)+8,bottom=Math.min(host.bottom,frame.bottom,viewport.bottom)-8;
+  if(right<=left||bottom<=top){unavailable();return;}
+  const centre=(left+right)/2,overlap=box=>box&&box.left<right&&box.right>left&&box.top<bottom&&box.bottom>top;
+  const mapNode=el.osmMap||document.getElementById('osmMap'),zoom=mapNode?.querySelector('.leaflet-control-zoom');
+  for(const child of [el.shotPlanBtn,el.mapMeasureBtn,el.mapMoonLinesBtn,el.mapSunLinesBtn,el.mobileMapToggleBtn,zoom]){
+    const box=simUiRect1256(child);if(overlap(box)&&(box.left+box.right)/2<centre)left=Math.max(left,box.right+8);
+  }
+  const actions=simUiRect1256(wrap.querySelector('.osm-map-actions'));if(overlap(actions)&&(actions.left+actions.right)/2>centre)right=Math.min(right,actions.left-8);
+  for(const child of [el.osmMapCoordinate,el.osmTrackReadout,el.mapMeasureEndBtn,el.simTopStack]){
+    const box=simUiRect1256(child);if(overlap(box))top=Math.max(top,box.bottom+8);
+  }
+  for(const child of [el.compassStrip,mapNode?.querySelector('.leaflet-control-attribution')]){
+    const box=simUiRect1256(child);if(overlap(box))bottom=Math.min(bottom,box.top-8);
+  }
+  if(right<=left||bottom<=top){unavailable();return;}
+  const set=(name,value)=>{if(node.style.getPropertyValue(name)!==value)node.style.setProperty(name,value);};
+  const width=Math.min(360,right-left);set('--rail-station-width1259',width+'px');
+  const compact=width<230;if(node.classList.contains('rail-station-compact1259')!==compact)node.classList.toggle('rail-station-compact1259',compact);
+  const chrome=railStationPopupChrome1259(node),height=Math.min(480,bottom-top,chrome+Math.max(0,list.scrollHeight));
+  set('--rail-station-height1259',height+'px');set('--rail-station-list-height1259',Math.max(0,height-chrome)+'px');
+  set('--rail-station-left1259',((left+right)/2-host.left-(panel.clientLeft||0)+(panel.scrollLeft||0))+'px');
+  set('--rail-station-top1259',((top+bottom)/2-host.top-(panel.clientTop||0)+(panel.scrollTop||0))+'px');
+  simUiStyle1256(node,'visibility','visible');railStationPopupAccessibility1259();
+}
+function railStationPopupMount1259(marker){
+  const popup=marker&&marker.getPopup&&marker.getPopup(),node=popup&&popup.getElement&&popup.getElement(),map=popup&&popup._map,panel=el.osmMapPanel||document.getElementById('osmMapPanel');
+  if(!marker?._railStation||!popup||!node||!map||map!==osmMapInstance||!panel||(typeof popup.isOpen==='function'&&!popup.isOpen())||!node.classList.contains('rail-station-popup')||!node.querySelector('.rs-list'))return;
+  if(!railStationPopupState1259)railStationPopupState1259={popup:null,node:null,map:null,marker:null};
+  const state=railStationPopupState1259;if(state.popup&&state.popup!==popup)railStationPopupClear1259(state.popup);
+  node.classList.add('rail-station-centered1259');if(node.parentElement!==panel)panel.appendChild(node);
+  state.popup=popup;state.node=node;state.map=map;state.marker=marker;
+  if(!popup._railCenteredRemove1259&&typeof popup.on==='function'){popup.on('remove',()=>railStationPopupClear1259(popup));popup._railCenteredRemove1259=true;}
+  if(!node._railCenteredEvents1259){
+    for(const type of ['wheel','touchstart','touchmove','pointerdown','mousedown','dblclick','click'])node.addEventListener(type,event=>event.stopPropagation(),{passive:true});
+    node.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();railStationPopupClose1259(popup);}});
+    const close=node.querySelector('.leaflet-popup-close-button');if(close){close.setAttribute('aria-label','駅の時刻表を閉じる');close.title='駅の時刻表を閉じる';}
+    node._railCenteredEvents1259=true;
+  }
+  railStationPopupAccessibility1259();railStationPopupLayout1259();
+}
+(function initRailStationPopup1259(){
+  const previousPrepare=railSimPrepareStationPopup;railSimPrepareStationPopup=function(marker){const result=previousPrepare.apply(this,arguments);railStationPopupMount1259(marker);return result;};
+  const previousLayout=simUiLayout1256;simUiLayout1256=function(){const result=previousLayout.apply(this,arguments);railStationPopupLayout1259();return result;};
+  const previousHome=setHomeScreenOpen1250;setHomeScreenOpen1250=function(){if(!arguments[0])railStationPopupAccessibility1259(true);const result=previousHome.apply(this,arguments);railStationPopupAccessibility1259();return result;};
+  if(typeof MutationObserver==='function'){
+    const observer=new MutationObserver(railStationPopupAccessibility1259);
+    for(const node of [document.body,el.photoCanvasWrap])if(node)observer.observe(node,{attributes:true,attributeFilter:['class']});
+  }
+})();
 
 })();
 
