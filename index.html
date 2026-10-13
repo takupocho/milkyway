@@ -4292,8 +4292,8 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   #popupHomeBtn{color:#9cf0ff;border-color:#55d6ee;background:linear-gradient(145deg,#1d759c,#133c68);box-shadow:0 0 0 1px rgba(83,222,255,.16),0 3px 13px rgba(15,169,218,.17);}
   #popupHomeBtn[aria-expanded="true"]{color:#e8fcff;background:linear-gradient(145deg,#238eae,#205578);border-color:#96f0ff;}
   .home-screen-overlay1250[hidden]{display:none!important;}
-  .home-screen-overlay1250{position:absolute;inset:auto;z-index:14000;display:block;box-sizing:border-box;padding:0;margin:0;border:3px solid #37bee9;border-radius:0;background:#071225;opacity:1;pointer-events:auto;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 0 0 1px #7ae8ff;}
-  .home-screen-panel1250{position:relative;width:100%;height:100%;max-width:none;max-height:none;min-width:0;box-sizing:border-box;padding:0 10px 10px;margin:0;border:0;border-radius:0;background:linear-gradient(155deg,#0c1b33,#071225 72%);opacity:1;box-shadow:none;color:#eff8ff;display:flex;flex-direction:column;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
+  .home-screen-overlay1250{position:absolute;inset:auto;z-index:14000;display:block;box-sizing:border-box;padding:0;margin:0;border:3px solid #37bee9;border-radius:18px;overflow:hidden;background:#071225;opacity:1;pointer-events:auto;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:inset 0 0 0 1px #7ae8ff;}
+  .home-screen-panel1250{position:relative;width:100%;height:100%;max-width:none;max-height:none;min-width:0;box-sizing:border-box;padding:0 10px 10px;margin:0;border:0;border-radius:15px;background:linear-gradient(155deg,#0c1b33,#071225 72%);opacity:1;box-shadow:none;color:#eff8ff;display:flex;flex-direction:column;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
   .home-screen-toolbar1250{display:none!important;}
   .home-screen-brand1250{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 1px;}
   .home-screen-eyebrow1250{margin:0 0 2px;color:#69d9ef;font:700 7px/1.3 system-ui,sans-serif;letter-spacing:.2em;}
@@ -4320,7 +4320,6 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   .home-screen-compact1252 .home-screen-card-title1250{font-size:12px;}
   .home-screen-compact1252 .home-screen-card-subtitle1250{font-size:8.5px;line-height:1.25;margin-top:1px;}
   .home-screen-compact1252 .home-screen-status1250{font-size:8px;}
-  body.fs-sim .home-screen-panel1250{padding-top:49px;}
   body.home-screen-open1250.fs-sim .photo-canvas-wrap #popupHomeBtn,body.home-screen-open1250.fs-sim .photo-canvas-wrap #mobileSettingsBtn,body.home-screen-open1250.fs-sim .photo-canvas-wrap #mobileDisplayOptionsBtn,body.home-screen-open1250.fs-sim .photo-canvas-wrap #iconInfoBtn,body.home-screen-open1250.fs-sim .photo-canvas-wrap #mobileOrientationToggleBtn,body.home-screen-open1250.fs-sim .photo-canvas-wrap #driveModeBtn,body.home-screen-open1250.fs-sim .fs-exit-btn{z-index:14001;}
 
   body.fs-sim .photo-canvas-wrap #popupHomeBtn,body.fs-sim .photo-canvas-wrap #iconInfoBtn,body.fs-sim .photo-canvas-wrap #mobileOrientationToggleBtn,body.fs-sim .photo-canvas-wrap #driveModeBtn{position:absolute;top:7px;z-index:320;width:39px;height:39px;min-width:39px;display:inline-flex;align-items:center;justify-content:center;}
@@ -8203,7 +8202,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1253-fullscreen-buttons";
+const APP_VERSION="1254-home-fullscreen-size";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -27839,7 +27838,14 @@ function homeScreenFrameBounds1251(){
   const photo=canvas?.getBoundingClientRect?.(),outer=wrap?.getBoundingClientRect?.();
   const valid=rect=>rect&&[rect.left,rect.top,rect.right,rect.bottom].every(Number.isFinite)&&rect.right>rect.left&&rect.bottom>rect.top;
   if(!valid(outer))return null;
-  const fallback=!valid(photo),image=fallback?outer:photo;
+  const fallback=!valid(photo);
+  /* 【v1254】全画面の器から通常の縦構図と同じ寸法を作る。カメラを横構図にしてもホームは縦長。 */
+  if(fsSimActive){
+    const outerWidth=outer.right-outer.left,outerHeight=outer.bottom-outer.top;
+    const width=Math.min(outerWidth*2/3,outerHeight*2/3),height=width*1.5;
+    return {left:(outerWidth-width)/2-(wrap.clientLeft||0)+(wrap.scrollLeft||0),top:(outerHeight-height)/2-(wrap.clientTop||0)+(wrap.scrollTop||0),width,height,fallback};
+  }
+  const image=fallback?outer:photo;
   const left=Math.max(image.left,outer.left),top=Math.max(image.top,outer.top);
   const right=Math.min(image.right,outer.right),bottom=Math.min(image.bottom,outer.bottom);
   if(right<=left||bottom<=top)return null;
