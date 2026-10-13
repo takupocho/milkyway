@@ -8280,7 +8280,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1256-sim-controls-layout";
+const APP_VERSION="1257-map-zoom-live-compass";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -48983,7 +48983,8 @@ function queueCompassAzimuth(azimuth){
 }
 el.compassStrip.addEventListener("pointerdown",e=>{
   if(e.button!==undefined&&e.button!==0) return;
-  if(playbackTimer) stopPlayback(true);
+  /* 【v1257】方位だけの操作ではLIVEの現在時刻を保つ。通常再生は従来どおり一時停止する。 */
+  if(playbackTimer&&!liveOn) stopPlayback(true);
   compassDragActive=true;
   compassDragPointerId=e.pointerId;
   compassDragStartX=e.clientX;
@@ -57133,6 +57134,7 @@ async function homeRailOpenObject1255(){
 /* 【v1256】LIVEは焦点距離の下。左側の操作は同じ順番で重ならない位置へ。 */
 var simUiLayoutReady1256=false,simUiLayoutRaf1256=0;
 var simUiZoomOriginal1256=new WeakMap();
+var simUiZoomVerticalOriginal1257=new WeakMap();
 function simUiStyle1256(node,key,value){if(node&&node.style[key]!==value)node.style[key]=value;}
 function simUiRect1256(node){
   if(!node||node.hidden)return null;
@@ -57179,7 +57181,9 @@ function simUiLayout1256(){
     columnWidth=Math.max(columnWidth,box.width);y=py+box.height+8;
   }
   const toggle=el.mobileMapToggleBtn||document.getElementById('mobileMapToggleBtn'),toggleBox=simUiRect1256(toggle);
-  if(toggleBox){
+  const stackedZoomReady1257=mobile&&fs&&map&&wrap.contains(el.osmMapPanel||document.getElementById('osmMapPanel'))&&
+    !!simUiRect1256((el.osmMap||document.getElementById('osmMap'))?.querySelector('.leaflet-control-zoom'));
+  if(toggleBox&&!stackedZoomReady1257){
     const bottomValue=parseFloat(window.getComputedStyle(toggle).getPropertyValue('--sim-ui-map-bottom1256'));
     const bottom=Number.isFinite(bottomValue)?bottomValue:mobile?44:53;
     let tx=left,ty=Math.max(6,Math.min(frame.height-toggleBox.height-6,frame.height-bottom-toggleBox.height));
@@ -57195,10 +57199,40 @@ function simUiLayout1256(){
   const corner=mapNode?.querySelector('.leaflet-top.leaflet-left'),zoom=corner?.querySelector('.leaflet-control-zoom');
   if(!corner||!zoom)return;
   if(!simUiZoomOriginal1256.has(corner))simUiZoomOriginal1256.set(corner,corner.style.left||'');
-  const original=simUiZoomOriginal1256.get(corner),mapBox=simUiRect1256(mapNode),zoomBox=simUiRect1256(zoom);
-  if(!map||!panel||!wrap.contains(panel)||!mapBox||!zoomBox){simUiStyle1256(corner,'left',original);return;}
-  const margin=parseFloat(window.getComputedStyle(zoom).marginLeft)||0,baseLeft=mapBox.left+(mapNode.clientLeft||0)+margin;
-  const base={...zoomBox,left:baseLeft,right:baseLeft+zoomBox.width};
+  if(!simUiZoomVerticalOriginal1257.has(corner))simUiZoomVerticalOriginal1257.set(corner,{top:corner.style.top||'',transform:corner.style.transform||''});
+  const original=simUiZoomOriginal1256.get(corner),vertical=simUiZoomVerticalOriginal1257.get(corner);
+  const stacked=mobile&&fs&&map&&panel&&wrap.contains(panel);
+  if(!stacked){simUiStyle1256(corner,'top',vertical.top);simUiStyle1256(corner,'transform',vertical.transform);}
+  const mapBox=simUiRect1256(mapNode),zoomBox=simUiRect1256(zoom);
+  if(!map||!panel||!wrap.contains(panel)||!mapBox||!zoomBox){
+    simUiStyle1256(corner,'left',original);simUiStyle1256(corner,'top',vertical.top);simUiStyle1256(corner,'transform',vertical.transform);return;
+  }
+  const computedZoom=window.getComputedStyle(zoom),margin=parseFloat(computedZoom.marginLeft)||0;
+  if(stacked){
+    // 通常の左列の続き。＋／−は1つの既存Leaflet操作として高さを測る。
+    const visible=mapNodes.map(simUiRect1256).filter(Boolean),last=visible[visible.length-1];
+    let centre=last?(last.left+last.right)/2:frame.left+left+(wrap.clientLeft||0)-(wrap.scrollLeft||0)+18;
+    let zoomTop=last?last.bottom+8:frame.top+Math.max(first,liveBottom)+(wrap.clientTop||0)-(wrap.scrollTop||0);
+    const toggleHeight=toggleBox?toggleBox.height+8:0,totalHeight=zoomBox.height+toggleHeight;
+    if(zoomTop+totalHeight>frame.bottom-6){
+      // 高さが足りない器では、既存の縦列を押し潰さず次の列へ続ける。
+      const columnWidth=Math.max(zoomBox.width,toggleBox?toggleBox.width:0);
+      const right=visible.length?Math.max(...visible.map(box=>box.right)):frame.left+left+36;
+      centre=Math.min(right+8,frame.right-columnWidth-6)+columnWidth/2;
+      zoomTop=Math.max(frame.top+6,Math.min(visible[0]?.top||zoomTop,frame.bottom-totalHeight-6));
+    }
+    const local=simUiLocal1256(mapNode,{left:centre-zoomBox.width/2,top:zoomTop,width:zoomBox.width,height:zoomBox.height});
+    simUiStyle1256(corner,'left',(local.left-margin)+'px');
+    simUiStyle1256(corner,'top',(local.top-(parseFloat(computedZoom.marginTop)||0))+'px');
+    simUiStyle1256(corner,'transform','none');
+    if(toggleBox){
+      const measured=simUiRect1256(zoom);
+      const toggleLocal=simUiLocal1256(wrap,{left:centre-toggleBox.width/2,top:(measured?measured.bottom:zoomTop+zoomBox.height)+8,width:toggleBox.width,height:toggleBox.height});
+      simUiPlace1256(toggle,toggleLocal.left,toggleLocal.top);
+    }
+    return;
+  }
+  const baseLeft=mapBox.left+(mapNode.clientLeft||0)+margin,base={...zoomBox,left:baseLeft,right:baseLeft+zoomBox.width};
   if(!placed.some(box=>simUiOverlap1256(base,box))){simUiStyle1256(corner,'left',original);return;}
   const target=Math.max(...placed.map(box=>box.right))+8;
   if(target+zoomBox.width<=mapBox.right-6)simUiStyle1256(corner,'left',(target-mapBox.left-(mapNode.clientLeft||0)-margin)+'px');
