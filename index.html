@@ -3090,6 +3090,11 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   .map-kmz-icon.station{background:#2f6fd0;width:24px;height:24px;font-size:14px;}
   .map-kmz-icon.train{width:36px;height:36px;font-size:20px;}   /* 【v1190】駅に停まっても輪が見えるよう、駅より大きく */
   .map-kmz-icon.target{border-color:#ffe08a;box-shadow:0 0 0 3px rgba(255,224,138,.6),0 1px 5px rgba(0,0,0,.45);}
+/* 【v1266】照準後も列車の押下面を保ち、距離表示や視野の線は操作を遮らない。 */
+#osmMap .train-context-hit1266,#osmMap .train-context-hit1266 *{pointer-events:auto;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
+#osmMap .train-distance-passive1266,#osmMap .train-distance-passive1266 *{pointer-events:none!important;}
+#osmMap .osm-fov-fill,#osmMap .osm-fov-outline,#osmMap .osm-fov-centerline{pointer-events:none!important;}
+
   /* 【v1187】駅の案内（Google マップの駅の時刻表ふう） */
   .rail-station-popup .leaflet-popup-content-wrapper{border-radius:16px;padding:2px 4px;box-shadow:0 4px 18px rgba(0,0,0,.35);}
   .rail-station-popup .leaflet-popup-content{margin:10px 12px;font-family:system-ui,sans-serif;color:#1c2330;}
@@ -6231,8 +6236,7 @@ body.train-flow-map1265 #mobileMapToggleBtn,body.train-flow-map1265 #osmTrackRea
 body.train-flow-map1265 #osmApplyHintDismiss1260,body.train-flow-map1265 .osm-map-actions,
 body.train-flow-map1265 .plan-quick-actions,body.train-flow-map1265 .sim-left-help,
 body.train-flow-map1265 .sim-right-help{display:none!important;}
-/* 通常画面でもカードをスクロールせず読める地図の高さを確保する。 */
-body.train-flow-map1265:not(.fs-sim) #photoCanvasWrap{width:calc(100vw - 20px)!important;max-width:100%!important;aspect-ratio:auto!important;height:min(760px,calc(100dvh - 72px))!important;min-height:420px;}
+/* 【v1266】PCは既存のシミュレーション枠を使う。配置カードはその枠内の空き領域へ収める。 */
 /* 390pxのスマホでも、方向と決定ボタンまで一度に見渡せる密度にする。 */
 #mapPlaceBar.train-flow-active1265 #trainFlow1265{gap:10px;padding:18px 16px;}
 #mapPlaceBar.train-flow-active1265 .train-flow-header1265{gap:4px;font-size:18px;}
@@ -8796,7 +8800,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1265-train-placement-flow";
+const APP_VERSION="1266-train-map-interaction";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -14660,6 +14664,8 @@ let trainPlacing=null,trainPlaceMarker=null,trainPreviewLayer=null,trainSnapToke
 function trainBeginPlacement(spec){
   const checked=trainSpecOf(spec);
   if(!checked)return;
+  /* 【v1266】スマホは既存の全画面へ先に移してから、同じ枠の地図を開く。完了・取消後も通常の全画面操作へ戻る。 */
+  if(fsSimAvailable()&&!fsSimActive)enterFullscreenSim();
   trainPlacing={spec:checked,lat:null,lon:null,path:[],reverse:false,snap:null,busy:false};
   fireworkPlacing=null;objectPlacing=null;launchSitePlacing=null;   /* 同じ帯を使うので譲る */
   document.getElementById("kmzAddChooser").hidden=true;
@@ -18900,7 +18906,7 @@ function updateOsmKmzMarkers(){
   {
     kmzCommitEditor();   /* 入力欄で動かした直後でも今の位置に */
     for(const slot of kmzSlots){
-      if(!slot||slot.visible===false||!slot.model)continue;
+      if(!slot||slot.visible===false||!slot.model||trainFlowOriginalHidden1266(slot))continue;
       const cfg=kmzSlotSettings(slot);
       if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))continue;
       seen.add(slot.id);
@@ -18930,6 +18936,7 @@ function updateOsmKmzMarkers(){
         if(typeof window.trainContextInstall1265==='function')window.trainContextInstall1265(m,slot);
       }
       const isTarget=slot.id===mapKmzTargetId;
+      if(iconKind==="train"&&m.setZIndexOffset)m.setZIndexOffset(isTarget?2000:0);
       if(m.setRadius){
         m.setRadius(isTarget?11:9);
         m.setStyle({color:isTarget?"#ffe08a":"#fff",weight:isTarget?3:2.5});
@@ -18948,7 +18955,7 @@ function updateOsmKmzMarkers(){
     else mapKmzLine.setLatLngs([origin,target]);
     const mid=L.latLng((origin.lat+target.lat)/2,(origin.lng+target.lng)/2);
     const text=formatMeasureDistance(osmMapInstance.distance(origin,target));
-    const icon=()=>L.divIcon({className:"",html:`<div class="map-sky-label kmz">${text}</div>`,iconSize:[0,0],iconAnchor:[0,0]});
+    const icon=()=>L.divIcon({className:"train-distance-passive1266",html:`<div class="map-sky-label kmz">${text}</div>`,iconSize:[0,0],iconAnchor:[0,0]});
     if(!mapKmzLabel){mapKmzLabel=L.marker(mid,{pane:"markerPane",interactive:false,icon:icon()}).addTo(osmMapInstance);mapKmzLabelText=text;}
     else{mapKmzLabel.setLatLng(mid);if(text!==mapKmzLabelText){mapKmzLabel.setIcon(icon());mapKmzLabelText=text;}}
   }else{
@@ -59224,6 +59231,7 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
   function detachElement(state){
     cancel(state);
     for(const [type,fn,options] of state.listeners)state.element?.removeEventListener(type,fn,options);
+    state.element?.classList.remove("train-context-hit1266");
     state.listeners=[];state.element=null;bound.delete(state);
     if(state.map&&state.map.off)state.map.off('movestart zoomstart dragstart',state.mapCancel);
     state.map=null;
@@ -59233,6 +59241,7 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     if(state.element===element&&element)return;
     detachElement(state);if(!element||state.disposed)return;
     state.element=element;bound.add(state);
+    element.classList.add("train-context-hit1266");
     element.setAttribute('aria-haspopup','dialog');
     element.setAttribute('aria-keyshortcuts','Shift+F10');
     const on=(type,fn,options)=>{element.addEventListener(type,fn,options);state.listeners.push([type,fn,options]);};
@@ -59277,6 +59286,22 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
 /* 【v1265】自由配置の下書きを、場所・向き・通過時刻の順に確定する。 */
 var trainPlaceFlow1265={active:false,phase:'position',serial:0,draft:null,editSlot:null,menuSlot:null,context:null,moving:null,dayOffset:0,after:0,arrow:null,arrowMap:null};
 var trainPlaceEditIntent1265=null;
+/* 【v1266】置き直す列車は保存スロットを保ったまま地図の印だけを外す。 */
+var trainPlaceMarkerMask1266=null;
+function trainFlowOriginalHidden1266(slot){return !!trainPlaceMarkerMask1266&&trainPlaceMarkerMask1266.slot===slot;}
+function trainFlowHideOriginal1266(slot){
+  if(!slot||!slot.train||slot.train.run?.sim||!kmzSlots.includes(slot))return;
+  if(trainPlaceMarkerMask1266?.slot===slot)return;
+  trainPlaceMarkerMask1266={slot,target:mapKmzTargetId===slot.id?slot.id:null};
+  if(mapKmzTargetId===slot.id)mapKmzTargetId=null;
+  updateOsmKmzMarkers();
+}
+function trainFlowRestoreOriginal1266(){
+  const mask=trainPlaceMarkerMask1266;trainPlaceMarkerMask1266=null;
+  if(!mask)return;
+  if(mask.target!==null&&mapKmzTargetId===null&&kmzSlots.includes(mask.slot))mapKmzTargetId=mask.target;
+  updateOsmKmzMarkers();
+}
 function trainFlowNode1265(name){return document.getElementById('trainFlow'+name+'1265');}
 function trainFlowContext1265(){return {plan:activeLoadedPlanId,restore:kmzBuildingRestoreToken,lat:String(el.lat.value),lon:String(el.lon.value),revision:homeLocationObserverRevision1250,date:String(el.dateInput.value)};}
 function trainFlowCurrent1265(){
@@ -59324,7 +59349,7 @@ function trainFlowShow1265(){
 }
 function trainFlowClose1265(){
   const s=trainPlaceFlow1265,wasActive=s.active;s.serial++;s.active=false;s.draft=null;s.context=null;s.editSlot=null;s.menuSlot=null;
-  trainFlowRemoveArrow1265();
+  trainFlowRemoveArrow1265();trainFlowRestoreOriginal1266();
   const bar=document.getElementById('mapPlaceBar');bar.classList.remove('train-flow-active1265');
   trainFlowNode1265('').hidden=true;document.body.classList.remove('train-flow-map1265');
   if(wasActive)trainFlowMapResize1265();
@@ -59444,6 +59469,7 @@ function trainFlowReset1265(){
     trainPlaceEditIntent1265=null;
     const s=trainPlaceFlow1265,oldRun=edit?.train?.run,minute=oldRun?oldRun.atMin:kmzTimelineMinutes();
     Object.assign(s,{active:true,phase:'position',draft:trainPlacing,editSlot:edit,context:trainFlowContext1265(),moving:oldRun?true:null,dayOffset:minute>=1440?1:0,after:0});
+    trainFlowHideOriginal1266(edit);
     trainFlowNode1265('Time').value=trainFlowTimeText1265(minute);trainFlowNode1265('Speed').value=String(Math.min(160,Math.max(1,oldRun?.speedKmh||60)));
     trainPlacing.reverse=!!edit?.train?.reverse;trainFlowSync1265();
   };
