@@ -6256,6 +6256,14 @@ body.train-flow-map1265 .sim-right-help{display:none!important;}
 #mapPlaceBar.train-flow-active1265 #trainFlow1265 button{font-size:14px;padding:8px 5px;}
 body.train-flow-map1265 #osmMap .leaflet-top.leaflet-left{top:auto!important;bottom:32px!important;transform:none!important;}
 
+/* 【v1268】再設定の対象を縦に選ぶ。高さの制限とスクロールは既存の配置カードを使う。 */
+#mapPlaceBar.train-flow-active1265 #trainFlow1265:has(#trainFlowEditMenu1268:not([hidden])){gap:16px;padding-top:38px;padding-bottom:28px;}
+#mapPlaceBar.train-flow-active1265 #trainFlowEditMenu1268{display:flex;flex-direction:column;align-items:stretch;gap:12px;width:min(100%,220px);min-width:0;margin:0 auto;}
+#mapPlaceBar.train-flow-active1265 #trainFlow1265 #trainFlowEditMenu1268 .train-flow-choice1265{min-height:44px;background:#189b39;color:#fff;}
+@media(max-height:480px){
+  #mapPlaceBar.train-flow-active1265 #trainFlow1265:has(#trainFlowEditMenu1268:not([hidden])){gap:12px;padding-top:30px;padding-bottom:18px;}
+}
+
 </style>
 </head>
 <body>
@@ -7855,6 +7863,13 @@ body.train-flow-map1265 #osmMap .leaflet-top.leaflet-left{top:auto!important;bot
     <button id="trainFlowReset1265" class="train-flow-choice1265" type="button">再設定</button>
     <button id="trainFlowDelete1265" class="train-flow-choice1265" type="button">削除</button>
   </div>
+  <div id="trainFlowEditMenu1268" class="train-flow-edit-menu1268" role="group" aria-label="再設定する項目" hidden>
+    <button id="trainFlowEditAll1268" class="train-flow-choice1265" type="button">はじめから</button>
+    <button id="trainFlowEditBody1268" class="train-flow-choice1265" type="button">列車の変更</button>
+    <button id="trainFlowEditCars1268" class="train-flow-choice1265" type="button">車両数の変更</button>
+    <button id="trainFlowEditPosition1268" class="train-flow-choice1265" type="button">配置の変更</button>
+    <button id="trainFlowEditTime1268" class="train-flow-choice1265" type="button">時間の変更</button>
+  </div>
   <div id="trainFlowActions1265" class="train-flow-actions1265">
     <button id="trainFlowConfirm1265" class="train-flow-confirm1265" type="button" hidden>決定</button>
     <button id="trainFlowCancel1265" class="train-flow-cancel1265" type="button">やめる</button>
@@ -8812,7 +8827,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1267-train-picker-view";
+const APP_VERSION="1268-train-targeted-edit";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -58946,6 +58961,7 @@ function trainPickerStep1264(step){
   if(s.step===1)s.angle=-s.index*Math.PI*2/trainPickerBodies1264.length;
   trainPickerCount1264(s.cars);trainPickerPaint1264(true);trainPickerAnimate1264();
   if(el.homeScreenPanel1250)el.homeScreenPanel1250.scrollTop=0;
+  trainPickerEditSync1268();
 }
 function trainPickerCount1264(value){
   const s=trainPickerState1264;s.cars=Math.max(1,Math.min(4,Math.round(Number(value)||1)));
@@ -58983,6 +58999,7 @@ function trainPickerContinue1264(){
   if(!trainPickerCurrent1264()){
     const error=document.getElementById('trainPickerError1264');error.hidden=false;error.textContent='撮影位置や計画が変わりました。鉄道の画面へ戻って選び直してください。';return;
   }
+  if(trainPickerTargetContinue1268())return;
   if(s.step===1){s.continueAfter=performance.now()+400;trainPickerStep1264(2);document.getElementById('trainPickerPlus1264').focus({preventScroll:true});return;}
   const item=trainPickerBodies1264[s.index],spec=trainSpecOf({name:item.name.replace(/\n/g,' ')+' '+s.cars+'両編成',body:item.body,cars:s.cars,path:[],reverse:false,run:null});
   if(!spec)return;
@@ -59012,7 +59029,7 @@ function trainPickerKeyboard1264(event){
   carousel.addEventListener('pointerdown',event=>{if(event.isPrimary!==false)s.swipe={x:event.clientX,y:event.clientY};});
   carousel.addEventListener('pointerup',event=>{const start=s.swipe;s.swipe=null;if(!start)return;const dx=event.clientX-start.x,dy=event.clientY-start.y;if(Math.abs(dx)>36&&Math.abs(dx)>Math.abs(dy)*1.3){s.suppressClick=performance.now()+400;shift(dx<0?1:-1);}});
   carousel.addEventListener('pointercancel',()=>{s.swipe=null;});
-  document.getElementById('trainPickerBack1264').addEventListener('click',()=>{if(s.step===2){trainPickerStep1264(1);s.buttons[s.index].focus({preventScroll:true});}else{trainPickerClose1264();document.getElementById('homeRailPlaceTrainBtn1255').focus({preventScroll:true});}});
+  document.getElementById('trainPickerBack1264').addEventListener('click',()=>{if(trainPickerTargetBack1268())return;if(s.step===2){trainPickerStep1264(1);s.buttons[s.index].focus({preventScroll:true});}else{trainPickerClose1264();document.getElementById('homeRailPlaceTrainBtn1255').focus({preventScroll:true});}});
   document.getElementById('trainPickerContinue1264').addEventListener('click',trainPickerContinue1264);
   document.getElementById('trainPickerMinus1264').addEventListener('click',()=>trainPickerCount1264(s.cars-1));
   document.getElementById('trainPickerPlus1264').addEventListener('click',()=>trainPickerCount1264(s.cars+1));
@@ -59422,7 +59439,7 @@ function trainFlowRemoveArrow1265(){
 function trainFlowArrow1265(){
   const s=trainPlaceFlow1265,d=trainPlacing;
   trainFlowRemoveArrow1265();
-  if(!s.active||s.draft!==d||!d||d.busy||!Number.isFinite(d.lat)||!osmMapInstance)return;
+  if(!s.active||s.editMode1268==='time'||s.draft!==d||!d||d.busy||!Number.isFinite(d.lat)||!osmMapInstance)return;
   const spec=trainSpecOf({...d.spec,path:d.path,reverse:d.reverse});if(!spec)return;
   const bearings=trainHeadBearings(spec),bearing=norm360(bearings[d.reverse?'backward':'forward']),r=bearing*Math.PI/180;
   const x=Math.sin(r)*64,y=-Math.cos(r)*64,right=x>30;
@@ -59440,7 +59457,7 @@ function trainFlowShow1265(){
   trainFlowLayout1265();
 }
 function trainFlowClose1265(){
-  const s=trainPlaceFlow1265,wasActive=s.active;s.serial++;s.active=false;s.draft=null;s.context=null;s.editSlot=null;s.menuSlot=null;
+  const s=trainPlaceFlow1265,wasActive=s.active;s.serial++;s.active=false;s.draft=null;s.context=null;s.editSlot=null;s.menuSlot=null;s.editMode1268=null;s.originalFingerprint1268=null;
   trainFlowRemoveArrow1265();trainFlowRestoreOriginal1266();
   const bar=document.getElementById('mapPlaceBar');bar.classList.remove('train-flow-active1265');
   trainFlowNode1265('').hidden=true;document.body.classList.remove('train-flow-map1265');
@@ -59452,14 +59469,14 @@ function trainFlowCancel1265(){
 }
 function trainFlowSync1265(){
   const s=trainPlaceFlow1265;if(!s.active)return;
-  const menu=s.phase==='menu'||s.phase==='auto',d=s.draft;
+  const menu=s.phase==='menu'||s.phase==='editmenu'||s.phase==='auto',d=s.draft;
   if(!menu&&(!d||d!==trainPlacing))return;
   if(!menu&&!trainFlowCurrent1265()){trainFlowCancel1265();setKmzBuildingStatus('撮影位置や日付・計画が変わったため、列車の配置をやり直してください。','error');return;}
   const busy=!menu&&(d.busy||s.phase==='committing'),hasPosition=!menu&&Number.isFinite(d.lat),rail=hasPosition&&d.path.length>=2;
   if(!menu&&s.phase!=='committing'&&s.phase!=='motion')s.phase=hasPosition&&!d.busy?'direction':'position';
   const direction=s.phase==='direction',motion=s.phase==='motion';
   const show=(id,on)=>{trainFlowNode1265(id).hidden=!on;};
-  show('Header',!menu&&!motion);show('Dismiss',menu);show('Directions',direction);show('Motion',motion);show('Timing',motion&&s.moving===true);show('SpeedRow',false);show('Manage',s.phase==='menu');show('Confirm',direction||motion||s.phase==='committing');show('Actions',!menu);
+  show('Header',!menu&&!motion);show('Dismiss',menu);show('Directions',direction);show('Motion',motion);show('Timing',motion&&s.moving===true);show('SpeedRow',false);show('Manage',s.phase==='menu');document.getElementById('trainFlowEditMenu1268').hidden=s.phase!=='editmenu';show('Confirm',direction||motion||s.phase==='committing');show('Actions',!menu);
   if(!menu){
     const item=trainPickerBodies1264.find(item=>item.body===d.spec.body);
     trainFlowNode1265('Title').textContent=item?item.name.replace(/\n/g,' '):d.spec.name.replace(/\s*\d+両編成\s*$/,'');
@@ -59467,11 +59484,13 @@ function trainFlowSync1265(){
   }
   let message='',hint='';
   if(s.phase==='menu')hint='どうしますか？';
+  else if(s.phase==='editmenu')hint='再設定';
   else if(s.phase==='auto'){message='時刻表で動く列車です。';hint='ホームの鉄道シミュレーションで路線の ON／OFF を変更できます。';}
   else if(s.phase==='committing'){message='列車を配置しています…';hint='地面の高さを確認しています。';}
   else if(motion){hint='この場所を通過する\n時刻を設定しますか？';if(!rail)message='線路が見つからないため、この場所に停止して配置します。';}
   else if(direction){message=rail?'線路に合わせました。':'近くに線路が見つかりません。';hint=rail?'進行方向を選択してください':'向きを選ぶか、線路の近くをもう一度タップしてください。';}
   else{message=busy?'線路を探しています…':'どこに置きますか？';hint=busy?'そのままお待ちください。':'線路近くを地図でタップしてください。';}
+  if(motion&&s.editMode1268==='time'){hint='走行と通過時刻を変更します。';if(!rail)message='通過時刻を設定するには、配置の変更で線路上へ置いてください。';}
   const msg=trainFlowNode1265('Message'),help=trainFlowNode1265('Hint');msg.textContent=message;msg.hidden=!message;help.textContent=hint;help.hidden=!hint;
   if(direction){
     const bearings=trainHeadBearings(trainSpecOf({...d.spec,path:d.path,reverse:d.reverse}));
@@ -59481,7 +59500,7 @@ function trainFlowSync1265(){
   }
   trainFlowNode1265('Move').disabled=!rail;
   trainFlowNode1265('Move').setAttribute('aria-pressed',String(s.moving===true));trainFlowNode1265('Still').setAttribute('aria-pressed',String(s.moving===false));
-  trainFlowNode1265('TimeNote').textContent=(s.dayOffset?'翌日の ':'')+'指定時刻にこの場所を通過させる';
+  trainFlowNode1265('TimeNote').textContent=(s.dayOffset===1?'翌日の ':s.dayOffset>1?s.dayOffset+'日後の ':s.dayOffset<0?(-s.dayOffset)+'日前の ':'')+'指定時刻にこの場所を通過させる';
   trainFlowNode1265('Confirm').disabled=busy||(motion&&s.moving===null);
   for(const id of ['Forward','Backward','Move','Still','Time','Speed'])if(s.phase==='committing')trainFlowNode1265(id).disabled=true;else if(id!=='Move')trainFlowNode1265(id).disabled=false;
   trainFlowNode1265('Cancel').disabled=false;
@@ -59497,6 +59516,7 @@ async function trainFlowConfirm1265(){
   const s=trainPlaceFlow1265,d=trainPlacing;
   if(!s.active||!d||s.draft!==d||d.busy||s.phase==='committing')return;
   if(!trainFlowCurrent1265()){trainFlowCancel1265();return;}
+  if(s.editMode1268==='position'||s.editMode1268==='time'){await trainFlowPartialConfirm1268();return;}
   if(s.phase==='direction'){
     s.phase='motion';s.after=performance.now()+400;
     if(d.path.length<2)s.moving=false;
@@ -59546,12 +59566,133 @@ function trainPlaceMenuOpen1265(slot){
 function trainFlowReset1265(){
   const s=trainPlaceFlow1265,slot=s.menuSlot;
   if(!slot||!kmzSlots.includes(slot)||slot.train.run?.sim)return;
-  trainFlowCancel1265();setHomeScreenOpen1250(true);homeRailScreenSet1255(true);
-  if(!trainPickerOpen1264())return;
-  const spec=trainSpecOf(slot.train),index=trainPickerBodies1264.findIndex(item=>item.body===spec.body);
-  trainPickerSelect1264(Math.max(0,index));trainPickerCount1264(Math.min(4,spec.cars));trainPickerStep1264(1);
-  trainPlaceEditIntent1265={slot,plan:activeLoadedPlanId,restore:kmzBuildingRestoreToken,handingOff:false};
+  s.phase='editmenu';trainFlowSync1265();trainFlowNode1265('Hint').tabIndex=-1;trainFlowNode1265('Hint').focus({preventScroll:true});
 }
+/* 【v1268】再設定は選んだ項目だけを変更し、確定まで保存列車を保つ。 */
+var trainFlowEditorPrecision1268=null;
+(function trainEditPrecisionInit1268(){
+  const fields=[['lat','kmzBuildingLat'],['lon','kmzBuildingLon'],['altitude','kmzBuildingAltitude'],['heading','kmzBuildingHeading'],['scale','kmzBuildingScale'],['opacity','kmzBuildingOpacity']];
+  const load=kmzLoadEditor;kmzLoadEditor=function(){
+    const result=load.apply(this,arguments),guard=trainFlowEditorPrecision1268;
+    if(guard&&kmzActiveSlot()===guard.slot){guard.inputs={};for(const [key,id]of fields)guard.inputs[key]={value:String(el[id].value),dirty:false};}
+    else trainFlowEditorPrecision1268=null;
+    return result;
+  };
+  const commit=kmzCommitEditor;kmzCommitEditor=function(){
+    const guard=trainFlowEditorPrecision1268,slot=kmzActiveSlot(),keep=[];
+    if(guard?.slot===slot)for(const [key,id]of fields){const input=guard.inputs?.[key];if(input&&!input.dirty&&String(el[id].value)===input.value)keep.push([key,slot[key]]);}
+    const result=commit.apply(this,arguments);
+    for(const [key,value]of keep)slot[key]=value;
+    return result;
+  };
+  for(const [key,id]of fields)for(const type of ['input','change'])el[id]?.addEventListener(type,()=>{const input=trainFlowEditorPrecision1268?.inputs?.[key];if(input)input.dirty=true;},true);
+})();
+function trainFlowEditFingerprint1268(slot){
+  return JSON.stringify([slot.train,slot.lat,slot.lon,slot.altitude,slot.heading,slot.nudgeForward,slot.nudgeRight,slot.move,slot.scale,slot.opacity,slot.visible,slot.silhouette,slot.glow]);
+}
+function trainFlowEditContextCurrent1268(context){
+  const now=trainFlowContext1265();return !!context&&Object.keys(now).every(key=>context[key]===now[key]);
+}
+function trainFlowEditIntentCurrent1268(intent){
+  return !!intent&&kmzSlots.includes(intent.slot)&&!intent.slot.train?.run?.sim&&trainFlowEditContextCurrent1268(intent.context)&&intent.fingerprint===trainFlowEditFingerprint1268(intent.slot);
+}
+function trainFlowEdit1268(mode){
+  const s=trainPlaceFlow1265,slot=s.menuSlot;
+  if(!['all','body','cars','position','time'].includes(mode)||!slot||slot.train?.run?.sim||!kmzSlots.includes(slot))return;
+  if(!trainFlowEditContextCurrent1268(s.context)){trainFlowCancel1265();setKmzBuildingStatus('撮影位置や日付・計画が変わりました。列車を選び直してください。','error');return;}
+  const spec=trainSpecOf(slot.train);if(!spec)return;
+  const intent={slot,mode,plan:activeLoadedPlanId,restore:kmzBuildingRestoreToken,context:trainFlowContext1265(),fingerprint:trainFlowEditFingerprint1268(slot),handingOff:false,after:performance.now()+400};
+  trainFlowCancel1265();
+  if(mode==='position'||mode==='time'){
+    intent.handingOff=true;trainPlaceEditIntent1265=intent;trainBeginPlacement(spec);return;
+  }
+  setHomeScreenOpen1250(true);homeRailScreenSet1255(true);
+  if(!trainPickerOpen1264())return;
+  trainPlaceEditIntent1265=intent;
+  const index=trainPickerBodies1264.findIndex(item=>item.body===spec.body);
+  trainPickerSelect1264(Math.max(0,index));trainPickerCount1264(Math.min(4,spec.cars));trainPickerStep1264(mode==='cars'?2:1);
+  if(mode==='cars'&&spec.cars>4){const error=document.getElementById('trainPickerError1264');error.hidden=false;error.textContent='現在は'+spec.cars+'両です。変更する場合は1〜4両を選んで決定してください。';}
+}
+function trainPickerEditSync1268(){
+  const mode=trainPlaceEditIntent1265?.mode,s=trainPickerState1264,target=mode==='body'||mode==='cars';
+  document.getElementById('trainPickerTitle1264').textContent=mode==='body'?'列車の変更':mode==='cars'?'車両数の変更':'鉄道を自由に配置する';
+  const next=document.getElementById('trainPickerContinue1264');next.textContent=target?'決定':'次へ　›';
+  if(target){
+    document.getElementById('trainPickerStep1264').textContent=mode==='body'?'列車を選んでください':'何両編成にしますか？';
+    document.getElementById('trainPickerBack1264').textContent='‹ 再設定へ戻る';
+    next.setAttribute('aria-label',mode==='body'?'決定：列車だけを変更':'決定：車両数だけを変更');
+  }else next.setAttribute('aria-label',s.step===1?'次へ：編成の両数を選ぶ':'次へ：地図で置く場所を選ぶ');
+}
+function trainFlowPartialModel1268(spec){
+  const model=buildTrainModel(spec);if(!model)throw Error('列車の模型を作れませんでした。もう一度お試しください。');return model;
+}
+function trainFlowPartialFinish1268(slot,spec,model,mode,position=null){
+  slot.train=spec;slot.model=model;slot.fileName='🚃 '+spec.name;
+  if(position){slot.lat=position.lat;slot.lon=position.lon;slot.altitude=position.altitude;slot.heading=0;slot.nudgeForward=0;slot.nudgeRight=0;slot.move={on:false,from:null,to:null};}
+  slot._guideToken=(slot._guideToken||0)+1;delete slot._runOffsetM;
+  kmzActiveId=slot.id;trainFlowEditorPrecision1268={slot};kmzLoadEditor();renderKmzList();refreshKmzBuildingControls(false);
+  trainPlaceEditIntent1265=null;trainPickerClose1264(false);setHomeScreenOpen1250(false,{restoreFocus:false});trainFlowCancel1265();
+  drawPhoto._terrainRenderKey='';update();updateOsmKmzMarkers();scheduleSaveSettings();
+  const label={body:'列車',cars:'車両数',position:'配置',time:'走行・通過時刻'}[mode];setKmzBuildingStatus(label+'を変更しました。');
+}
+function trainPickerTargetContinue1268(){
+  const intent=trainPlaceEditIntent1265;if(!intent||!['body','cars'].includes(intent.mode))return false;
+  const error=document.getElementById('trainPickerError1264');
+  if(!trainFlowEditIntentCurrent1268(intent)){error.hidden=false;error.textContent='元の列車や撮影条件が変わりました。再設定を開き直してください。';return true;}
+  if(performance.now()<intent.after)return true;
+  try{
+    const s=trainPickerState1264,old=intent.slot.train,item=trainPickerBodies1264[s.index];
+    const spec=intent.mode==='body'?{...old,body:item.body,name:item.name.replace(/\n/g,' ')+' '+old.cars+'両編成'}:{...old,cars:s.cars,name:old.name.replace(/\s*\d+\s*両編成\s*$/,'')+' '+s.cars+'両編成'};
+    if(!trainSpecOf(spec))throw Error('列車の設定を確認してください。');
+    const model=trainFlowPartialModel1268(spec);
+    if(!trainFlowEditIntentCurrent1268(intent))throw Error('元の列車や撮影条件が変わりました。再設定を開き直してください。');
+    trainFlowPartialFinish1268(intent.slot,spec,model,intent.mode);
+  }catch(cause){error.hidden=false;error.textContent=cause?.message||'変更できませんでした。';}
+  return true;
+}
+function trainPickerTargetBack1268(){
+  const intent=trainPlaceEditIntent1265;if(!intent||!['body','cars'].includes(intent.mode))return false;
+  const slot=intent.slot;trainPlaceEditIntent1265=null;trainPickerClose1264(false);setHomeScreenOpen1250(false,{restoreFocus:false});
+  if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
+  if(trainPlaceMenuOpen1265(slot))trainFlowReset1265();return true;
+}
+async function trainFlowPartialConfirm1268(){
+  const s=trainPlaceFlow1265,d=trainPlacing,slot=s.editSlot,mode=s.editMode1268;
+  if(!slot||!trainFlowCurrent1265()||s.originalFingerprint1268!==trainFlowEditFingerprint1268(slot)){trainFlowCancel1265();setKmzBuildingStatus('元の列車や撮影条件が変わりました。再設定を開き直してください。','error');return;}
+  if((mode==='position'&&s.phase!=='direction')||(mode==='time'&&s.phase!=='motion')||performance.now()<s.after)return;
+  const message=text=>{trainFlowNode1265('Message').hidden=false;trainFlowNode1265('Message').textContent=text;};
+  let spec={...slot.train};
+  if(mode==='position'){
+    if(!Number.isFinite(d.lat)||!Number.isFinite(d.lon))return;
+    if(spec.run&&d.path.length<2){message('走行設定を保つため、線路の近くを選んでください。');return;}
+    spec={...spec,path:d.path.map(point=>point.slice()),reverse:d.reverse};
+  }else{
+    if(s.moving===null)return;
+    if(s.moving){
+      const atMin=trainFlowParseTime1265(trainFlowNode1265('Time').value,s.dayOffset);
+      if(atMin===null){message('通過時刻を秒まで入力してください。');return;}
+      if(spec.path.length<2){message('通過時刻を設定するには、配置の変更で線路上へ置いてください。');return;}
+      const oldRun=spec.run,run=oldRun?{...oldRun,atMin}:{atMin,speedKmh:60};
+      if(oldRun?.table){const delta=atMin-oldRun.atMin;run.table={...oldRun.table,stops:oldRun.table.stops.map(stop=>({...stop,arr:stop.arr+delta,dep:stop.dep+delta}))};}
+      spec={...spec,run};
+    }else spec={...spec,run:null};
+  }
+  if(!trainSpecOf(spec))return;
+  const serial=++s.serial,snapToken=trainSnapToken,lat=d.lat,lon=d.lon;s.phase='committing';trainFlowSync1265();
+  const current=()=>s.active&&s.serial===serial&&s.phase==='committing'&&s.draft===d&&trainPlacing===d&&trainSnapToken===snapToken&&trainFlowCurrent1265()&&s.originalFingerprint1268===trainFlowEditFingerprint1268(slot);
+  try{
+    let position=null;
+    if(mode==='position'){
+      const dem=await fireworkGroundElevation(lat,lon);if(!current())return;
+      const deck=await trainBridgeDeckElevationM(lat,lon);if(!current())return;
+      const ground=Number.isFinite(dem)?dem:0;position={lat,lon,altitude:Number.isFinite(deck)&&deck>ground+.3?deck:ground};
+    }
+    const model=trainFlowPartialModel1268(spec);if(!current())return;
+    trainFlowPartialFinish1268(slot,spec,model,mode,position);
+  }catch(cause){if(!current())return;s.phase=mode==='position'?'direction':'motion';trainFlowSync1265();message(cause?.message||'変更できませんでした。');}
+  finally{if(s.active&&s.serial===serial&&s.phase==='committing'&&!current()){trainFlowCancel1265();setKmzBuildingStatus('設定が変わったため変更を中止しました。','error');}}
+}
+
 (function initTrainFlow1265(){
   if(!trainFlowNode1265(''))return;
   const oldBegin=trainBeginPlacement;trainBeginPlacement=function(spec){
@@ -59560,8 +59701,12 @@ function trainFlowReset1265(){
     trainFlowClose1265();oldBegin(spec);if(!trainPlacing)return;
     trainPlaceEditIntent1265=null;
     const s=trainPlaceFlow1265,oldRun=edit?.train?.run,minute=oldRun?oldRun.atMin:kmzTimelineMinutes();
-    Object.assign(s,{active:true,phase:'position',draft:trainPlacing,editSlot:edit,context:trainFlowContext1265(),moving:oldRun?true:null,dayOffset:minute>=1440?1:0,after:0});
-    trainFlowHideOriginal1266(edit);
+    Object.assign(s,{active:true,phase:'position',draft:trainPlacing,editSlot:edit,context:trainFlowContext1265(),moving:oldRun?true:null,dayOffset:minute>=1440?1:0,after:0,editMode1268:intent?.mode||'all',originalFingerprint1268:edit?trainFlowEditFingerprint1268(edit):null});
+    if(s.editMode1268!=='time')trainFlowHideOriginal1266(edit);
+    if(s.editMode1268==='time'&&edit){
+      Object.assign(trainPlacing,{lat:edit.lat,lon:edit.lon,path:edit.train.path.map(point=>point.slice()),reverse:edit.train.reverse});
+      s.phase='motion';s.moving=!!oldRun;s.dayOffset=Math.floor(minute/1440);s.after=performance.now()+400;
+    }
     trainFlowNode1265('Time').value=trainFlowTimeText1265(minute);trainFlowNode1265('Speed').value=String(Math.min(160,Math.max(1,oldRun?.speedKmh||60)));
     trainPlacing.reverse=!!edit?.train?.reverse;trainFlowSync1265();
   };
@@ -59571,7 +59716,7 @@ function trainFlowReset1265(){
     return oldEnd(active?null:note);
   };
   const oldClick=trainMapClick;trainMapClick=function(event){
-    const s=trainPlaceFlow1265;if(s.active&&s.phase==='committing')return true;
+    const s=trainPlaceFlow1265;if(s.active&&(s.phase==='committing'||s.editMode1268==='time'||['menu','editmenu','auto'].includes(s.phase)))return true;
     if(s.active&&s.draft===trainPlacing){s.phase='position';s.framed=false;}return oldClick(event);
   };
   const framedMaps=new WeakSet();
@@ -59597,6 +59742,7 @@ function trainFlowReset1265(){
   trainFlowNode1265('Confirm').addEventListener('click',trainFlowConfirm1265);
   trainFlowNode1265('Cancel').addEventListener('click',trainFlowCancel1265);trainFlowNode1265('Dismiss').addEventListener('click',trainFlowCancel1265);
   trainFlowNode1265('Reset').addEventListener('click',trainFlowReset1265);
+  for(const [id,mode]of [['All','all'],['Body','body'],['Cars','cars'],['Position','position'],['Time','time']])document.getElementById('trainFlowEdit'+id+'1268').addEventListener('click',()=>trainFlowEdit1268(mode));
   trainFlowNode1265('Delete').addEventListener('click',()=>{
     const slot=trainPlaceFlow1265.menuSlot;if(!slot||!kmzSlots.includes(slot)||slot.train.run?.sim)return;
     trainFlowCancel1265();kmzRemoveSlot(slot.id);update();updateOsmKmzMarkers();scheduleSaveSettings();
