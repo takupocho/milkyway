@@ -6386,6 +6386,27 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
 .bridge-height-reference1271{font-size:13px;margin-top:18px;border-top:1px solid #39526a;padding-top:12px;color:#bad0e0}.bridge-height-reference1271 a{color:#83daf5}.bridge-height-reference1271 summary{cursor:pointer}
 .bridge-height-ui1271.compact1271{background:none;pointer-events:none;align-items:flex-end;justify-content:flex-end}.compact1271 .bridge-height-dialog1271{pointer-events:auto;width:min(410px,100%);max-height:46dvh;padding:14px;border-radius:16px}.compact1271 .bridge-height-header1271 h2{font-size:17px}.compact1271 .bridge-height-actions1271{margin-top:8px}.compact1271 .bridge-height-actions1271 button{flex-basis:100px}.compact1271 p{font-size:14px;margin:5px 0 8px}
 @media(max-width:540px){.bridge-height-ui1271{padding:8px}.bridge-height-dialog1271{padding:16px;max-height:calc(100dvh - 16px);border-radius:16px;font-size:15px}.bridge-height-header1271 h2{font-size:20px}.bridge-height-endpoints1271{grid-template-columns:1fr;gap:14px}.bridge-height-stepper1271{grid-template-columns:48px minmax(0,1fr) 48px}.bridge-height-actions1271 button{flex-basis:120px}.bridge-height-list-heading1271{align-items:flex-start}.compact1271 .bridge-height-dialog1271{max-height:40dvh}}
+  /* 【v1275】停止位置の 0.1 秒送り。日付・時刻の行は増やさず、スライダーの脇に入口を置く。 */
+  #playbackPrecisionBtn1275{
+    flex:none;width:auto;min-width:57px;min-height:44px;margin:0;padding:6px 8px;
+    border:1px solid rgba(232,166,89,.6);border-radius:11px;
+    background:rgba(232,166,89,.13);color:var(--core-amber);font:700 12px/1.2 'Inter',sans-serif;
+    touch-action:manipulation;-webkit-user-select:none;user-select:none;
+  }
+  #playbackPrecisionBtn1275[aria-expanded="true"]{background:rgba(232,166,89,.3);}
+  #playSpeedPopup{width:min(320px,calc(100vw - 16px));max-height:calc(100dvh - 16px);overflow-y:auto;overscroll-behavior:contain;}
+  .playback-popup-title1275{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:14px;}
+  #playbackPopupClose1275{flex:none;width:44px;height:44px;min-height:44px;padding:0;margin:0;border-radius:10px;font-size:24px;touch-action:manipulation;}
+  .playback-precision1275{margin:0 0 13px;padding:0 0 13px;border:0;border-bottom:1px solid var(--line);min-width:0;}
+  .playback-precision1275 legend{padding:0;margin:0 0 6px;font-size:13px;}
+  #playbackPosition1275{display:block;margin:0 0 10px;text-align:center;color:var(--core-amber);font:700 23px/1.3 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;}
+  .playback-step-row1275{display:flex;gap:10px;}
+  .playback-step-row1275 button{flex:1;min-width:0;width:auto;min-height:48px;margin:0;padding:8px 5px;border-radius:10px;font:700 17px/1.2 'Inter',sans-serif;touch-action:manipulation;-webkit-user-select:none;user-select:none;}
+  .playback-step-row1275 button:disabled{opacity:.4;cursor:default;}
+  #playSpeedPopup .playback-precision-hint1275{font-size:11px;color:var(--dim);margin:8px 0 0;}
+  .clock-tenth1275{font-size:.85em;}
+  #playbackPrecisionBtn1275:focus-visible,#playSpeedPopup button:focus-visible{outline:2px solid var(--core-cyan,#64caee);outline-offset:2px;}
+  @media(max-width:760px){#sliderTimelineRow{min-height:44px;}#playbackPrecisionBtn1275{min-width:54px;padding:6px;}.dt-time-label .val{font-variant-numeric:tabular-nums;}}
 </style>
 </head>
 <body>
@@ -8622,7 +8643,13 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
                   </div>
                 </div>
               </div>
-              <div id="playSpeedPopup" class="play-speed-popup" aria-hidden="true" role="dialog" aria-label="再生速度">
+              <div id="playSpeedPopup" class="play-speed-popup" aria-hidden="true" role="dialog" aria-label="再生速度と停止位置の微調整">
+                <div class="playback-popup-title1275"><span>再生・停止位置</span><button type="button" id="playbackPopupClose1275" aria-label="再生・停止位置を閉じる">×</button></div>
+                <fieldset class="playback-precision1275"><legend>停止位置を微調整</legend>
+                  <output id="playbackPosition1275" aria-label="現在の停止位置">00:00:00.0</output>
+                  <div class="playback-step-row1275"><button type="button" id="playbackBack1275" aria-label="0.1秒戻す">−0.1秒</button><button type="button" id="playbackForward1275" aria-label="0.1秒進める">＋0.1秒</button></div>
+                  <p class="playback-precision-hint1275">押すと再生を止め、0.1秒ずつ戻す・進めることができます。</p>
+                </fieldset>
                 <div class="play-speed-head"><span>再生速度</span><span id="playSpeedValue" class="play-speed-value">20倍速</span></div>
                 <input type="range" id="playSpeedRange" min="0" max="100" step="1" value="33" aria-label="再生速度">
                 <div class="play-speed-presets">
@@ -8769,6 +8796,7 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
               </div>
               <div class="timeline-row slider-row" id="sliderTimelineRow">
                 <button type="button" id="playPauseBtn" class="play-pause-btn" aria-label="再生">▶</button>
+                <button type="button" id="playbackPrecisionBtn1275" aria-label="0.1秒単位で停止位置を調整" aria-haspopup="dialog" aria-expanded="false" aria-controls="playSpeedPopup" title="停止位置を0.1秒ずつ戻す・進める">0.1秒</button>
                 <div class="slider-wrap">
                   <div class="slider-tick-marks" id="sliderTickMarks"></div>
                   <input type="range" id="timeSlider" min="0" max="1800" step="1">
@@ -9039,7 +9067,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1274-ground-relative-height";
+const APP_VERSION="1275-tenth-second-position";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -17414,19 +17442,64 @@ function fineTimeSpanLabelForHalf(half){
 }
 function fineTimeSpanLabel(){ return fineTimeSpanLabelForHalf(fineTimeHalfMin()); }
 function getTimeDisplayRange(){
+  const limit=playbackTimeLimit1275();
   if(fineTimeOn){
     const center=Number.isFinite(fineTimeCenter)?fineTimeCenter:+el.timeSlider.value||0;
     const half=fineTimeHalfMin();
     /* 端に寄っても幅は1時間のまま。窓ごとずらして狭くならないようにする。 */
     let start=center-half,end=center+half;
     if(start<0){end-=start;start=0;}
-    if(end>1800){start-=end-1800;end=1800;}
-    return {start:Math.max(0,start),end:Math.min(1800,end)};
+    if(end>limit){start-=end-limit;end=limit;}
+    return {start:Math.max(0,start),end:Math.min(limit,end)};
   }
   return timeRangeMode==="15h" ? {start:16*60, end:31*60} : {start:0, end:30*60};
 }
 /* 時刻の刻み。望遠になるほど細かくする。
    分単位で保持しているので、1秒＝1/60分、0.1秒＝1/600分。 */
+/* v1275: preserve the paused time independently of the coarse timeline scale. */
+function playbackTimeLimit1275(){return timeRangeMode==='15h'?1860:1800;}
+function playbackClockParts1275(minutes){
+  const totalTenth=Math.max(0,Math.round((Number.isFinite(minutes)?minutes:0)*600));
+  return {dayOffset:Math.floor(totalTenth/864000),hh:Math.floor(totalTenth/36000)%24,
+    mm:Math.floor(totalTenth/600)%60,ss:Math.floor(totalTenth/10)%60,tenth:totalTenth%10,totalTenth};
+}
+function playbackWriteMinutes1275(minutes){
+  if(!Number.isFinite(minutes))return null;
+  const minimum=!fineTimeOn&&timeRangeMode==='15h'?960:0;
+  const value=clamp(minutes,minimum,playbackTimeLimit1275());
+  let movedWindow=false;
+  if(fineTimeOn){
+    const window=getTimeDisplayRange();
+    if(value<window.start||value>window.end){fineTimeCenter=value;movedWindow=true;}
+  }
+  const range=getTimeDisplayRange(),slider=el.timeSlider;
+  /* Capture value before changing range attributes; range controls sanitize each write. */
+  slider.min=String(range.start);slider.max=String(range.end);slider.step='any';slider.value=String(value);
+  const actual=Number(slider.value);
+  playbackVisualMinutes=actual;
+  if(movedWindow){renderTickRow();renderSliderTickMarks();updateRangeHint();}
+  if(typeof syncPlaybackPosition1275==='function')syncPlaybackPosition1275(actual);
+  return actual;
+}
+function playbackStepTenth1275(direction){
+  if(direction!==-1&&direction!==1)return false;
+  /* Replays own separate RAFs; stop them before the shared manual-clock input. */
+  if(typeof flightReplayState1262!=='undefined'&&flightReplayState1262.active&&
+     flightReplayState1262.playing&&typeof flightReplayPause1262==='function')flightReplayPause1262();
+  if(typeof driveLogReplayState1223!=='undefined'&&driveLogReplayState1223&&
+     driveLogReplayState1223.playing&&typeof driveLogReplayPause1223==='function')driveLogReplayPause1223(false);
+  const current=playbackTimer&&Number.isFinite(playbackVisualMinutes)?playbackVisualMinutes:Number(el.timeSlider.value);
+  if(!Number.isFinite(current))return false;
+  /* Commit only the requested tenth; stopPlayback(false) must not round the source first. */
+  if(playbackTimer||liveOn)stopPlayback(false);
+  const next=(Math.round(current*600)+direction)/600;
+  const actual=playbackWriteMinutes1275(next);
+  if(actual===null)return false;
+  /* Existing input listeners cancel pending LIVE setup and pause flight history. */
+  el.timeSlider.dispatchEvent(new Event('input',{bubbles:true}));
+  update();scheduleSaveSettings();return true;
+}
+
 function timeStepMinutes(){
   const focal=Math.max(1,+el.focalLength.value||24);
   if(focal>=300) return 1/600;   // 0.1秒
@@ -17436,9 +17509,11 @@ function timeStepMinutes(){
   return 1;                      // 1分
 }
 function syncTimeSliderStep(){
-  const step=timeStepMinutes();
-  const text=step>=1?"1":step.toFixed(6);
-  if(el.timeSlider.step!==text) el.timeSlider.step=text;
+  const step=timeStepMinutes(),slider=el.timeSlider,value=Number(slider.value),base=Number(slider.min)||0;
+  const grid=(value-base)/step,aligned=Number.isFinite(grid)&&Math.abs(grid-Math.round(grid))<=1e-7;
+  /* A lens or scale change must not move an already chosen fraction of a second. */
+  slider.step=aligned?String(step):'any';
+  if(Number.isFinite(value))slider.value=String(value);
 }
 /* 微調整のときの目盛りの間隔（分）。
    スマホの幅では5分ごとだと数字がぶつかって読めないので、10分ごとにする（v690）。
@@ -17522,18 +17597,19 @@ function updateRangeHint(){
   el.rangeHint.textContent = `${modeLabel}　${String(startH).padStart(2,"0")}:00 〜 ${endDayLabel}${String(endH).padStart(2,"0")}:00 まで(日をまたいで指定できます)`;
 }
 function applyTimeRangeMode(){
-  syncTimeSliderStep();
+  const previousMinutes=Number(el.timeSlider.value);
   /* 微調整の窓の外へ時刻が動いていたら、その時刻を中心に取り直す。
      でないと、ベストタイムなどで飛んだ時刻が窓の端へ丸められてしまう。 */
   if(fineTimeOn){
-    const now=+el.timeSlider.value;
+    const now=previousMinutes;
     const fineWindow=getTimeDisplayRange();
     if(Number.isFinite(now)&&(now<fineWindow.start||now>fineWindow.end)) fineTimeCenter=now;
   }
   const range=getTimeDisplayRange();
   el.timeSlider.min=range.start;
   el.timeSlider.max=range.end;
-  el.timeSlider.value=clamp(+el.timeSlider.value, range.start, range.end);
+  el.timeSlider.step='any';el.timeSlider.value=String(clamp(previousMinutes,range.start,range.end));
+  syncTimeSliderStep();
   renderTickRow();
   renderSliderTickMarks();
   updateRangeHint();
@@ -18636,15 +18712,12 @@ function syncSimulationClockVisibility(){
 function updateSimulationClock(minutes,seconds){
   const [baseY,baseMo,baseDa]=el.dateInput.value.split("-").map(Number);
   if(!baseY||!baseMo||!baseDa) return;
-  const wholeMinutes=Math.max(0,Math.floor(minutes));
-  const dayOffset=Math.floor(wholeMinutes/1440);
-  const hh=Math.floor(wholeMinutes/60)%24, mm=wholeMinutes%60;
-  const d=new Date(Date.UTC(baseY,baseMo-1,baseDa+dayOffset));
+  const clock=playbackClockParts1275(minutes);
+  const d=new Date(Date.UTC(baseY,baseMo-1,baseDa+clock.dayOffset));
   const weekdays=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"];
   el.simulationClockDate.textContent=`${d.getUTCFullYear()}.${String(d.getUTCMonth()+1).padStart(2,"0")}.${String(d.getUTCDate()).padStart(2,"0")}${weekdays[d.getUTCDay()]}`;
-  el.simulationClockTime.innerHTML=`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
-    +(Number.isFinite(seconds)?`<span class="clock-sec">:${String(Math.floor(seconds)).padStart(2,"0")}</span>`:"");
-  /* 【v821】情報の一覧も同じ時に書き替える。出していない間は何もしない。 */
+  el.simulationClockTime.innerHTML=`${String(clock.hh).padStart(2,"0")}:${String(clock.mm).padStart(2,"0")}`
+    +`<span class="clock-sec">:${String(clock.ss).padStart(2,"0")}<span class="clock-tenth1275">.${clock.tenth}</span></span>`;
   if(typeof updateSimInfoPanel==="function") updateSimInfoPanel();
 }
 syncSimulationClockVisibility();
@@ -27015,17 +27088,12 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
   }
 }
 function updatePlaybackClockLabel(minutes){
-  const rounded=Math.floor(minutes);
-  const dayOffset=Math.floor(rounded/1440), hh=Math.floor(rounded/60)%24, mm=rounded%60;
-  /* 【v969】秒は**常に**出す。
-     これまでは10倍速より速いと秒を消していたが、再生中はスライダーの書き換えで
-     update() 側（v943・常に秒あり）も走るため、「17:10」と「17:11:00」が
-     交互に書かれて点滅して見えていた。両方の経路を揃える。 */
-  const ss=Math.floor((minutes-rounded)*60);
-  el.timeLabel.innerHTML=(dayOffset>0?'<span class="next-day-label">翌日</span> ':"")
-    +`${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`
-    +`<span class="clock-sec">:${String(ss).padStart(2,"0")}</span>`;
-  updateSimulationClock(minutes,ss);
+  const clock=playbackClockParts1275(minutes);
+  el.timeLabel.innerHTML=(clock.dayOffset>0?'<span class="next-day-label">翌日</span> ':"")
+    +`${String(clock.hh).padStart(2,"0")}:${String(clock.mm).padStart(2,"0")}`
+    +`<span class="clock-sec">:${String(clock.ss).padStart(2,"0")}<span class="clock-tenth1275">.${clock.tenth}</span></span>`;
+  updateSimulationClock(minutes,clock.ss+clock.tenth/10);
+  syncPlaybackPosition1275(minutes);
 }
 /* =========================================================
    再生速度の目盛り（v618）
@@ -27107,8 +27175,8 @@ function playbackTick(now){
     const nowMinutes=liveNowMinutes();
     if(nowMinutes<playbackVisualMinutes-720)liveTick();   /* 深夜0時の切り替えでは日付も合わせる。 */
     playbackVisualMinutes=nowMinutes;
-  }else playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,1800);
-  const finished=playbackVisualMinutes>=1800;
+  }else playbackVisualMinutes=clamp(playbackVisualMinutes+speed*dtSec,0,playbackTimeLimit1275());
+  const finished=playbackVisualMinutes>=playbackTimeLimit1275();
 
   /* 【v1193】LIVEで走行列車を見ている間は写真を30fpsで描く。通常再生は
      リアル天の川30fps・従来表示最大60fpsを維持し、省電力の上限も守る。 */
@@ -27195,20 +27263,8 @@ function stopPlayback(commit=true){
   el.playPauseBtn.classList.remove("playing");
   if(starTrailDelayTimer){ clearTimeout(starTrailDelayTimer); starTrailDelayTimer=null; }
   if(commit){
-    /* 【v943】**秒で止める**。
-       これまでは `timeStepMinutes()`（焦点距離で決まる刻み。広角では1分）へ
-       丸めていたので、止めた瞬間の秒が捨てられていた。
-
-       スライダーの刻みが1分のままだと、書き込んだ小数はブラウザに丸められる。
-       必要なときだけ刻みを1秒まで細かくしてから書く
-       （`syncTimeSliderStep()` が次に走れば元の刻みへ戻る。
-         刻みを変えても、すでに入っている値は丸め直されない）。 */
-    const secondStep=1/60;
-    const snapped=Math.round(playbackVisualMinutes*60)/60;
-    if(!(+el.timeSlider.step>0)||+el.timeSlider.step>secondStep+1e-9){
-      el.timeSlider.step=secondStep.toFixed(6);
-    }
-    el.timeSlider.value=clamp(+snapped.toFixed(6),0,1800);
+    /* v1275: 0.1秒で止め、スライダーの粗い目盛りへ戻さない。 */
+    playbackWriteMinutes1275(Math.round(playbackVisualMinutes*600)/600);
     update();
   }
 }
@@ -27220,29 +27276,53 @@ el.playPauseBtn.addEventListener("click",()=>{
    長押しが成立したときだけ、そのあとのクリックを捨てる。 */
 const PLAY_LONG_PRESS_MS=450;
 let playLongPressTimer=0,playLongPressAt=0;
+/* 【v1275】同じ小窓を長押しと「0.1秒」ボタンから開く。時刻の変更はコアへ委ねる。 */
+var playbackPrecisionAnchor1275=null;
+function syncPlaybackPosition1275(minutes){
+  const clock=playbackClockParts1275(minutes);
+  const readout=document.getElementById("playbackPosition1275");
+  if(readout) readout.textContent=(clock.dayOffset>0?"翌日 ":"")+`${String(clock.hh).padStart(2,"0")}:${String(clock.mm).padStart(2,"0")}:${String(clock.ss).padStart(2,"0")}.${clock.tenth}`;
+  /* 微調整の表示窓の端では止めない。コアが窓を移動し、さらに先へ送れる。 */
+  const lower=!fineTimeOn&&timeRangeMode==="15h"?960*600:0;
+  const upper=playbackTimeLimit1275()*600;
+  const previous=document.getElementById("playbackBack1275"),next=document.getElementById("playbackForward1275");
+  if(previous) previous.disabled=clock.totalTenth<=lower;
+  if(next) next.disabled=clock.totalTenth>=upper;
+}
 function playSpeedPopupOpen(){ return !!(el.playSpeedPopup&&el.playSpeedPopup.classList.contains("show")); }
 function positionPlaySpeedPopup(){
   if(!playSpeedPopupOpen()) return;
-  const button=el.playPauseBtn.getBoundingClientRect();
-  const pop=el.playSpeedPopup;
-  const width=pop.offsetWidth||240,height=pop.offsetHeight||120;
+  const anchor=playbackPrecisionAnchor1275&&playbackPrecisionAnchor1275.isConnected!==false?playbackPrecisionAnchor1275:el.playPauseBtn;
+  const button=anchor.getBoundingClientRect(),pop=el.playSpeedPopup;
+  const width=pop.offsetWidth||320,height=pop.offsetHeight||300;
   const left=clamp(button.left+button.width/2-width/2,8,Math.max(8,window.innerWidth-width-8));
   let top=button.top-height-10;
   if(top<8) top=Math.min(Math.max(8,window.innerHeight-height-8),button.bottom+10);
+  top=clamp(top,8,Math.max(8,window.innerHeight-height-8));
   pop.style.left=`${Math.round(left)}px`;
   pop.style.top=`${Math.round(top)}px`;
 }
-function openPlaySpeedPopup(){
+function openPlaySpeedPopup(anchor=el.playPauseBtn){
   if(!el.playSpeedPopup) return;
+  playbackPrecisionAnchor1275=anchor;
   syncAnimationSpeedRangeFromValue();syncAnimationSpeedLabel();
+  syncPlaybackPosition1275(playbackTimer?playbackVisualMinutes:+el.timeSlider.value);
   el.playSpeedPopup.classList.add("show");
   el.playSpeedPopup.setAttribute("aria-hidden","false");
+  const opener=document.getElementById("playbackPrecisionBtn1275");
+  if(opener) opener.setAttribute("aria-expanded","true");
   positionPlaySpeedPopup();
+  const close=document.getElementById("playbackPopupClose1275");
+  if(close) close.focus({preventScroll:true});
 }
-function closePlaySpeedPopup(){
+function closePlaySpeedPopup({restoreFocus=false}={}){
   if(!el.playSpeedPopup) return;
+  const anchor=playbackPrecisionAnchor1275;
   el.playSpeedPopup.classList.remove("show");
   el.playSpeedPopup.setAttribute("aria-hidden","true");
+  const opener=document.getElementById("playbackPrecisionBtn1275");
+  if(opener) opener.setAttribute("aria-expanded","false");
+  if(restoreFocus&&anchor&&anchor.isConnected!==false) anchor.focus({preventScroll:true});
 }
 function cancelPlayLongPress(){
   if(playLongPressTimer){clearTimeout(playLongPressTimer);playLongPressTimer=0;}
@@ -27292,14 +27372,31 @@ if(el.playSpeedPopup){
 /* 外を触ったら閉じる。画面が動いたら位置を合わせ直す。 */
 document.addEventListener("pointerdown",(e)=>{
   if(!playSpeedPopupOpen()) return;
-  if(e.target.closest&&(e.target.closest("#playSpeedPopup")||e.target.closest("#playPauseBtn"))) return;
+  if(e.target.closest&&(e.target.closest("#playSpeedPopup")||e.target.closest("#playPauseBtn")||e.target.closest("#playbackPrecisionBtn1275"))) return;
   closePlaySpeedPopup();
 },true);
 document.addEventListener("keydown",(e)=>{
-  if(e.key==="Escape"&&playSpeedPopupOpen()) closePlaySpeedPopup();
+  if(e.key==="Escape"&&playSpeedPopupOpen()){ e.preventDefault(); closePlaySpeedPopup({restoreFocus:true}); }
 });
 window.addEventListener("scroll",positionPlaySpeedPopup,{passive:true});
 window.addEventListener("resize",positionPlaySpeedPopup);
+/* クリックだけで 1 回進める。pointerdown/touchend では動かさず、タッチの重複を防ぐ。 */
+{
+  const opener=document.getElementById("playbackPrecisionBtn1275");
+  if(opener) opener.addEventListener("click",()=>{
+    if(playSpeedPopupOpen()) closePlaySpeedPopup({restoreFocus:true});
+    else openPlaySpeedPopup(opener);
+  });
+  const close=document.getElementById("playbackPopupClose1275");
+  if(close) close.addEventListener("click",()=>closePlaySpeedPopup({restoreFocus:true}));
+  for(const [id,direction] of [["playbackBack1275",-1],["playbackForward1275",1]]){
+    const button=document.getElementById(id);
+    if(button) button.addEventListener("click",()=>{
+      playbackStepTenth1275(direction);
+      syncPlaybackPosition1275(+el.timeSlider.value);
+    });
+  }
+}
 // ユーザーがスライダーを直接動かしたら再生を止める(手動操作を優先)
 el.timeSlider.addEventListener("pointerdown",()=>{ if(playbackTimer) stopPlayback(); });
 
@@ -30899,7 +30996,7 @@ async function applySavedObservingPlan(location){
   fineTimeOn=false;fineTimeHalf=FINE_TIME_HALVES[0];
   if(typeof location.is15hMode==="boolean") timeRangeMode=location.is15hMode?"15h":"30h";
   applyTimeRangeMode();
-  if(Number.isFinite(+location.timeMinutes)) el.timeSlider.value=clamp(+location.timeMinutes,+el.timeSlider.min,+el.timeSlider.max);
+  if(Number.isFinite(+location.timeMinutes)) playbackWriteMinutes1275(clamp(+location.timeMinutes,+el.timeSlider.min,+el.timeSlider.max));
   if(location.lensMode==="normal"||location.lensMode==="fisheye") mobileLensMode=location.lensMode;
   if(Number.isFinite(+location.focalLength)){
     const focal=+location.focalLength;
@@ -32232,30 +32329,12 @@ function computeState(){
   const lat=parseFloat(el.lat.value), lon=parseFloat(el.lon.value), tz=parseFloat(el.tz.value);
   const [y,mo,da]=el.dateInput.value.split("-").map(Number);
   const minutes=+el.timeSlider.value; // 0〜1800 (選択日 00:00 からの分数。1440以上は翌日)
-  /* 0.1秒単位へ先に丸めてから分・秒へ分ける。
-     分を先に切り出すと、59.9999…秒が「60.0」と表示される。 */
-  const totalTenthSec=Math.round(minutes*600);
-  const dayOffset=Math.floor(totalTenthSec/(1440*600));
-  const wholeMin=Math.floor(totalTenthSec/600);
-  const hh=Math.floor(wholeMin/60), mm=wholeMin%60; // hhは24以上になり得る
-  const dispHH=hh%24;
-  /* 刻みが分未満のときは秒まで出す。出さないと、動かしても
-     数字が変わらず「動いていない」と見える。 */
-  const timeStep=(typeof timeStepMinutes==="function")?timeStepMinutes():1;
-  const secondsPart=(totalTenthSec-wholeMin*600)/10;
-  /* 秒は整数で表示する。小数以下は裏で持ったまま。
-     同じ色系のまま少しだけ薄くして、時分と見分けられるようにする。 */
-  /* 【v943】秒は**常に**出す。
-     これまでは「刻みが分未満のとき（＝100mm以上）」だけだったので、
-     出たり出なかったりして分かりにくかった。
-     一時停止で秒に止まれるようになったので、広角でも秒が意味を持つ。 */
-  const secondsText=`<span class="clock-sec">:${String(Math.floor(secondsPart)).padStart(2,"0")}</span>`;
-  el.timeLabel.innerHTML = (dayOffset>0?'<span class="next-day-label">翌日</span> ':"") + `${String(dispHH).padStart(2,"0")}:${String(mm).padStart(2,"0")}${secondsText}`;
-  const dispDateObj = new Date(Date.UTC(y, mo-1, da + dayOffset));
+  /* 【v1275】時計は共通の 0.1 秒表示。実際の天体計算には丸め前の minutes を使う。 */
+  const clock1275=playbackClockParts1275(minutes);
+  updatePlaybackClockLabel(minutes);
+  const dispDateObj = new Date(Date.UTC(y, mo-1, da + clock1275.dayOffset));
   const timeWeekdayCircled=["㈰","㈪","㈫","㈬","㈭","㈮","㈯"][dispDateObj.getUTCDay()];
   el.timeDateLabel.textContent = `${dispDateObj.getUTCFullYear()}.${String(dispDateObj.getUTCMonth()+1).padStart(2,"0")}.${String(dispDateObj.getUTCDate()).padStart(2,"0")}${timeWeekdayCircled}`;
-  // 大きい時計にも、刻みが分未満のときは秒を出す。
-  updateSimulationClock(minutes,Math.floor(secondsPart));   /* 【v943】常に秒まで */
 
   /* 時刻を hh と mm だけから組み立てていたため、
      スライダーの分未満（秒・0.1秒）が丸ごと捨てられていた。
