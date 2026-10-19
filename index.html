@@ -9037,7 +9037,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1272-bridge-3d-editor";
+const APP_VERSION="1273-bank-bridge-seal";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -39043,14 +39043,16 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
           data[o+3]=Math.round(outA*255);
         }else{
           depthBuffer[index]=z;
-          pixels32[index]=packed;
+          if(!face.occluderOnly1273)pixels32[index]=packed;
         }
       }
     }
   };
   /* 不透明な面を先に。半透明の面（v876のハンガーなど）はあとから重ねる。 */
+  for(const face of faces)if(face.occluderOnly1273)rasterize(face,false);
   const clearFaces=[];
   for(const face of faces){
+    if(face.occluderOnly1273)continue;
     if(face.alpha<.999||face.beamScreen1272){clearFaces.push(face);continue;}
     rasterize(face,false);
   }
@@ -39081,7 +39083,7 @@ function kmzOpaqueGroupSlot(slot){
   }
   return cached.opaque;
 }
-function kmzPaintOpaqueGroups(targetCtx,records,W,H){
+function kmzPaintOpaqueGroups(targetCtx,records,W,H,bridgeJoin1273=null){
   if(!records.length)return;
   const bounds=records.map(record=>{
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
@@ -39098,8 +39100,9 @@ function kmzPaintOpaqueGroups(targetCtx,records,W,H){
   const groups=new Map();
   for(let i=0;i<records.length;i++){const k=root(i);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);}
   for(const indices of groups.values()){
-    if(indices.length===1&&!records[indices[0]].lightFaces1272){records[indices[0]].paint();continue;}
-    const faces=[];
+    const bridgeSeeds1273=bridgeJoinSeeds1273(records,indices,bounds,bridgeJoin1273);
+    if(indices.length===1&&!records[indices[0]].lightFaces1272&&!bridgeSeeds1273.length){records[indices[0]].paint();continue;}
+    const faces=bridgeSeeds1273.slice();
     for(const i of indices){const record=records[i];for(const face of record.faces){
       if(!face.beamScreen1272)face.rgb=record.rgbFor(face.color||record.defaultColor,face.shade);face.skyline=face.beamScreen1272?null:record.nearSky;faces.push(face);
     }}
@@ -39108,7 +39111,8 @@ function kmzPaintOpaqueGroups(targetCtx,records,W,H){
   }
 }
 function drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,slots){
-  const records=[],flush=()=>{kmzPaintOpaqueGroups(targetCtx,records,W,H);records.length=0;};
+  const bridgeJoin1273=phase==="after"?bridgeJoinContext1273(s,W,H):null;
+  const records=[],flush=()=>{kmzPaintOpaqueGroups(targetCtx,records,W,H,bridgeJoin1273);records.length=0;};
   for(const slot of slots){
     if(!kmzOpaqueGroupSlot(slot))flush();
     if(slot&&slot.model&&slot.model.lines)drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot);
@@ -39559,10 +39563,11 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
       }
     }
     const paintFaces=()=>{
-    if(kmzDepthBuffer){
+    const bridgeSeeds1273=reflectionPass?[]:bridgeJoinSlotSeeds1273(slot,projected,s,W,H);
+    if(kmzDepthBuffer||bridgeSeeds1273.length){
       /* 【v903】1画素ごとに手前の面を選ぶ。globalAlpha は上で
          cfg.opacity にしてあるので、模型全体の濃さは今までどおり効く。 */
-      drawKmzDepthBuffer(targetCtx,projected,W,H,rgbFor,DEFAULT_COLOR);
+      drawKmzDepthBuffer(targetCtx,bridgeSeeds1273.length?bridgeSeeds1273.concat(projected):projected,W,H,rgbFor,DEFAULT_COLOR);
     }else{
       for(const face of projected){
         const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
@@ -39576,7 +39581,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
     }
     };
     if(opaqueRecords){
-      opaqueRecords.push({faces:headlightFaces1272.length?projected.concat(headlightFaces1272):projected,lightFaces1272:headlightFaces1272.length,nearSky,rgbFor,defaultColor:DEFAULT_COLOR,
+      opaqueRecords.push({faces:headlightFaces1272.length?projected.concat(headlightFaces1272):projected,lightFaces1272:headlightFaces1272.length,bankKey1273:slot.bridgeHeightBank1271&&typeof slot.id==="string"&&slot.id.startsWith("bridge-bank-")?slot.id.slice(12):null,nearSky,rgbFor,defaultColor:DEFAULT_COLOR,
         paint:()=>{targetCtx.save();applyBodyClip();paintFaces();targetCtx.restore();}});
     }else paintFaces();
   }
@@ -46381,6 +46386,7 @@ function drawPhoto(ctx,s){
         let bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
             bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths;
         const bridgeMirrorPlane=bridgeLinesVisible?waterMirrorSharedPlaneM():null;
+        const bridgeJoinNow1273=overlayCache?overlayCache.bridgeJoinFrame1273:bridgeJoinFrame1273(terrainGeometryKey,s,W,H);
         let bridgeWaysForDisplay=[],activeBridgeSignatures=null;
         if(overlayCache){
           flowerFieldRecords1220=overlayCache.flowerFieldRecords1220||[];
@@ -46915,7 +46921,7 @@ function drawPhoto(ctx,s){
           /* v778: 橋脚を画面固定幅の線ではなく、実寸を持つ直方体ポリゴンとして作る。
              橋方向の厚さは橋幅に応じて1.5〜4.2m、橋幅方向は橋幅の約68%とする。
              遠景だけは1.5px相当を下限にして、v776の遠距離視認性も維持する。 */
-          const fillBridgePierPrism=(bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,deckBottomElevation,terrainElevation,bridgeHalfWidth,bridgeWidthM,distanceM)=>{
+          const fillBridgePierPrism=(bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,deckBottomElevation,terrainElevation,bridgeHalfWidth,bridgeWidthM,distanceM,bridgeJoinKey1273)=>{
             if(!Number.isFinite(deckBottomElevation)||!Number.isFinite(terrainElevation)) return false;
             const bottomElevation=Math.min(terrainElevation,deckBottomElevation-.35);
             if(deckBottomElevation-bottomElevation<.35) return false;
@@ -46947,6 +46953,10 @@ function drawPhoto(ctx,s){
               :[top00,top10,bottom10,bottom00];
             const frontDrawn=fillGroundPolygon(bridgePierPaths[bucket],frontFace);
             const sideDrawn=fillGroundPolygon(bridgePierShadePaths[bucket],sideFace);
+            if(overlayMirrorZ===null){
+              if(frontDrawn)bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,frontFace,clipToView,projectGround,camForward);
+              if(sideDrawn)bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,sideFace,clipToView,projectGround,camForward);
+            }
             if(frontDrawn||sideDrawn){
               strokeGroundSegment(bridgePierEdgePaths[bucket],bottom00,top00);
               strokeGroundSegment(bridgePierEdgePaths[bucket],bottom10,top10);
@@ -46960,6 +46970,8 @@ function drawPhoto(ctx,s){
             for(const way of ways){
               const points=way.points;
               if(!Array.isArray(points)||points.length<2) continue;
+              const bridgeJoinMatch1273=overlayMirrorZ===null?bridgeHeightMatch1271(way):null;
+              const bridgeJoinKey1273=bridgeJoinMatch1273&&bridgeJoinMatch1273.record.embankment?bridgeJoinMatch1273.record.key:null;
               const xy=points.map(point=>({east:(point[1]-originLon)*metrePerDegLon,north:(point[0]-originLat)*111320}));
               const segmentLengths=[],cumulative=[0];
               let totalM=0;
@@ -47083,6 +47095,9 @@ function drawPhoto(ctx,s){
                     const bucket=bridgeBucketOf(current.distanceM);
                     fillGroundPolygon(bridgePaths[bucket],ribbonQuad(previous,current,1));
                     if(overlayMirrorZ===null){
+                      bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,ribbonQuad(previous,current,1),clipToView,projectGround,camForward);
+                      bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,[previous.left,current.left,current.bottomLeft,previous.bottomLeft],clipToView,projectGround,camForward);
+                      bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,[previous.right,current.right,current.bottomRight,previous.bottomRight],clipToView,projectGround,camForward);
                       bridgePickAdd1272(way,ribbonQuad(previous,current,1),clipToView,projectGround);
                       bridgePickAdd1272(way,[previous.left,current.left,current.bottomLeft,previous.bottomLeft],clipToView,projectGround);
                       bridgePickAdd1272(way,[previous.right,current.right,current.bottomRight,previous.bottomRight],clipToView,projectGround);
@@ -47134,7 +47149,7 @@ function drawPhoto(ctx,s){
                       fillBridgePierPrism(
                         bucket,eastM,northM,dirEast,dirNorth,perpEast,perpNorth,
                         deckElevation-displayThicknessM,pierTerrainElevation,
-                        displayHalfWidth,way.widthM||5,current.distanceM
+                        displayHalfWidth,way.widthM||5,current.distanceM,bridgeJoinKey1273
                       );
                     }
                   }
@@ -47151,6 +47166,7 @@ function drawPhoto(ctx,s){
                 if(!bl||!br)continue;
                 const bucket=bridgeBucketOf(cap.distanceM);
                 fillGroundPolygon(bridgeSidePaths[bucket],[cap.left,cap.right,br,bl]);
+                if(overlayMirrorZ===null)bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,[cap.left,cap.right,br,bl],clipToView,projectGround,camForward);
                 strokeGroundSegment(bridgeEdgePaths[bucket],cap.left,cap.right);
               }
             }
@@ -47228,7 +47244,7 @@ function drawPhoto(ctx,s){
         /* 【v844】昼用のために形を預ける。色は預けない（昼夜で変わるのは色だけ）。 */
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
           sharedTerrainProjectionCache.groundOverlayPaths={
-            key:terrainGeometryKey,flowerFieldRecords1220,
+            key:terrainGeometryKey,bridgeJoinFrame1273:bridgeJoinNow1273,flowerFieldRecords1220,
             gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,
@@ -47347,7 +47363,7 @@ function drawPhoto(ctx,s){
           /* v777: この投影済み橋形状を、水面反射の後で橋だけ戻すためにも保持する。
              Path2Dはすでに地形の遮蔽判定を通過しているので、山の裏側の橋は含まれない。 */
           drawPhoto._bridgeForegroundOverlay={
-            key:terrainGeometryKey,buckets:FADE_BUCKETS,
+            key:terrainGeometryKey,join1273:bridgeJoinNow1273,buckets:FADE_BUCKETS,
             deck:bridgePaths,side:bridgeSidePaths,edge:bridgeEdgePaths,
             pier:bridgePierPaths,pierShade:bridgePierShadePaths,pierEdge:bridgePierEdgePaths,
             mark:bridgeRailMarkPaths
@@ -60774,7 +60790,7 @@ function bridgeHeightRailWays1271(ways){
     for(const path of rec.approaches||[]){const points=path.map(p=>p.slice(0,2));if(points.length>=2)out.push({widthM:4.2,points});}
   }return out;
 }
-/* 【v1272】盛土とその上の線路を同じ奥行きバッファへ。照射は補正した表面だけを読む。 */
+/* 【v1273】盛土の端面・底面を閉じる。線路と照射面は v1272 の補正標高を共有する。 */
 var bridgeHeightBoundsCache1272=new WeakMap(),bridgeHeightBeamBoundsCache1272=new WeakMap();
 function bridgeHeightBounds1272(item){
   let bounds=bridgeHeightBoundsCache1272.get(item);if(bounds)return bounds;
@@ -60849,19 +60865,31 @@ function bridgeHeightBankSlots1271(){
     const v=(lat,lon,z)=>{const xy=trainXY(origin[0],origin[1],lat,lon);return [xy[0],xy[1],z-base];};
     const quad=(a,b,c,d,color,kind)=>{triangles.push([a,b,c],[a,c,d]);triangleColors.push(color,color);triangleBankKind1272.push(kind,kind);};
     for(const path of rec.approaches){
-      let prev=null;
-      for(let i=0;i<path.length;i++){
-        const p=path[i],q=path[Math.min(i+1,path.length-1)],r=path[Math.max(0,i-1)];
-        if(![p[0],p[1],p[2],p[3]].every(Number.isFinite)){prev=null;continue;}
+      // 欠損や折り返しで切れた区間も独立した立体にする。隣の不正な点を法線計算へ混ぜない。
+      const runs=[];let run=[];
+      for(const p of path){
+        if(!p||![p[0],p[1],p[2],p[3]].every(Number.isFinite)){if(run.length>1)runs.push(run);run=[];continue;}
+        if(run.length){const last=run[run.length-1],delta=trainXY(last[0],last[1],p[0],p[1]);if(Math.hypot(...delta)<.001){run[run.length-1]=p;continue;}}
+        run.push(p);
+      }
+      if(run.length>1)runs.push(run);
+      for(const points of runs){
+      let prev=null,openStart=null;
+      const closeEnd=()=>{if(openStart&&prev){quad(prev.fr,prev.r,prev.l,prev.fl,[85,92,65],'bank-cap');openStart=null;}};
+      for(let i=0;i<points.length;i++){
+        const p=points[i],q=points[Math.min(i+1,points.length-1)],r=points[Math.max(0,i-1)];
         const a=trainXY(origin[0],origin[1],r[0],r[1]),b=trainXY(origin[0],origin[1],q[0],q[1]);
-        const length=Math.hypot(b[0]-a[0],b[1]-a[1]);if(length<.001){prev=null;continue;}
+        const length=Math.hypot(b[0]-a[0],b[1]-a[1]);if(length<.001){closeEnd();prev=null;continue;}
         const normal=[(b[1]-a[1])/length,-(b[0]-a[0])/length],top=p[2]-.35,ground=Math.min(top,p[3]),height=Math.max(0,top-ground),half=rec.widthM/2,foot=half+Math.min(60,height*1.5);
         const offset=(width,z)=>{const ll=trainLL(p[0],p[1],normal[0]*width,normal[1]*width);return v(ll[0],ll[1],z);};
         const current={p,normal,offset,height,l:offset(half,top),r:offset(-half,top),fl:offset(foot,ground-.1),fr:offset(-foot,ground-.1)};
         if(prev&&(prev.height>.1||height>.1)){
+          // 橋に向いた端面と、地面側の底面も閉じて、どの視点からも内部が見えないようにする。
+          if(!openStart){quad(prev.fl,prev.l,prev.r,prev.fr,[85,92,65],'bank-cap');openStart=prev;}
           quad(prev.l,current.l,current.r,prev.r,[102,97,72],'bank-top');
           quad(prev.fl,current.fl,current.l,prev.l,[79,100,63],'bank-slope');
           quad(prev.r,current.r,current.fr,prev.fr,[71,91,57],'bank-slope');
+          quad(prev.fr,current.fr,current.fl,prev.fl,[61,70,49],'bank-bottom');
           if(railOn){
             const bedHalf=Math.min(1.7,half),tieHalf=Math.min(1.25,half),gaugeHalf=Math.min(.575,half*.55),railHalf=.055;
             quad(prev.offset(bedHalf,prev.p[2]-.23),current.offset(bedHalf,p[2]-.23),current.offset(-bedHalf,p[2]-.23),prev.offset(-bedHalf,prev.p[2]-.23),[116,117,113],'ballast');
@@ -60878,7 +60906,10 @@ function bridgeHeightBankSlots1271(){
               for(const x of [edge-railHalf,edge+railHalf])quad(prev.offset(x,prev.p[2]-.10),current.offset(x,p[2]-.10),current.offset(x,p[2]),prev.offset(x,prev.p[2]),[112,119,117],'rail-side');
             }
           }
-        }prev=current;
+        }else closeEnd();
+        prev=current;
+      }
+      closeEnd();
       }
     }
     if(!triangles.length)continue;
@@ -61204,6 +61235,45 @@ function installBridgeHeightTrainHooks1271(){
 installBridgeHeightTrainHooks1271();
 
 /* 【v1272】3D画面で実際に描いた鉄道橋を選ぶ。反射・道路橋・地形の裏は対象にしない。 */
+/* 【v1273】橋の既存の色は地形に残し、盛土との重なりだけ同じ奥行きで判断する。 */
+function bridgeJoinViewKey1273(s,W,H){
+  return [s.lat,s.lon,s.facingAz,s.facingAlt,s.fovH,W,H,
+    eyeHeightAboveGroundM(),highDetailProjectionGround1246(realTerrainState.observerElevation||0),
+    mobileLensMode,arActive,bridgeHeightRevision1271,bridgeLinesVisible].join('|');
+}
+function bridgeJoinFrame1273(key,s,W,H){return {key,view:bridgeJoinViewKey1273(s,W,H),faces:[]};}
+function bridgeJoinAdd1273(frame,key,poly,clip,project,forward){
+  if(!frame||!key||frame.faces.length>=30000)return;
+  const clipped=clip(poly);if(!clipped||clipped.length<3)return;
+  const points=clipped.map(project),zs=clipped.map(v=>dot(v,forward));
+  if(!points.every(p=>p&&p.length>=2&&p.every(Number.isFinite))||!zs.every(z=>Number.isFinite(z)&&z>0))return;
+  for(let i=1;i+1<clipped.length;i++){
+    const p=[points[0],points[i],points[i+1]],z=[zs[0],zs[i],zs[i+1]];
+    if(Math.abs((p[1][0]-p[0][0])*(p[2][1]-p[0][1])-(p[2][0]-p[0][0])*(p[1][1]-p[0][1]))<1e-9)continue;
+    frame.faces.push({points:p,zs:z,depth:(z[0]+z[1]+z[2])/3,alpha:1,occluderOnly1273:true,bridgeKey1273:key,
+      bounds1273:[Math.min(...p.map(v=>v[0])),Math.min(...p.map(v=>v[1])),Math.max(...p.map(v=>v[0])),Math.max(...p.map(v=>v[1]))]});
+  }
+}
+function bridgeJoinContext1273(s,W,H){
+  if(arActive||!bridgeLinesVisible||typeof cameraPano!=='undefined'&&cameraPano.playing)return null;
+  if(!(overlayBridgePalette(clamp(s.twilight,0,1)).baseAlpha>.012))return null;
+  const overlay=drawPhoto._bridgeForegroundOverlay,frame=overlay&&overlay.join1273,renderKey=drawPhoto._terrainRenderKey;
+  if(!frame||frame.key!==overlay.key||(renderKey!==frame.key+'|day'&&renderKey!==frame.key+'|night-only')||frame.view!==bridgeJoinViewKey1273(s,W,H))return null;
+  return frame;
+}
+function bridgeJoinSeeds1273(records,indices,bounds,frame){
+  if(!frame||!frame.faces.length)return [];
+  const keys=new Set(indices.map(i=>records[i].bankKey1273).filter(Boolean));if(!keys.size)return [];
+  const overlap=(a,b)=>a[0]<b[2]&&b[0]<a[2]&&a[1]<b[3]&&b[1]<a[3];
+  return frame.faces.filter(face=>keys.has(face.bridgeKey1273)&&indices.some(i=>overlap(face.bounds1273,bounds[i])));
+}
+function bridgeJoinSlotSeeds1273(slot,faces,s,W,H){
+  if(!slot.bridgeHeightBank1271||typeof slot.id!=='string'||!slot.id.startsWith('bridge-bank-'))return [];
+  const frame=bridgeJoinContext1273(s,W,H);if(!frame||!faces.length)return [];
+  const bounds=[Infinity,Infinity,-Infinity,-Infinity];
+  for(const face of faces)for(const p of face.points){bounds[0]=Math.min(bounds[0],p[0]);bounds[1]=Math.min(bounds[1],p[1]);bounds[2]=Math.max(bounds[2],p[0]);bounds[3]=Math.max(bounds[3],p[1]);}
+  return bridgeJoinSeeds1273([{bankKey1273:slot.id.slice(12)}],[0],[bounds],frame);
+}
 var bridgePickState1272={active:false,ways:[],select:null,regions:[],epoch:0,key:'',width:0,height:0};
 function bridgePickViewKey1272(){
   return [el.lat.value,el.lon.value,el.facingAz.value,el.facingAlt.value,el.focalLength.value,el.photoCanvas.width,el.photoCanvas.height,
