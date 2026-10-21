@@ -4343,6 +4343,11 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   #homeScreenGrid1255[hidden],#homeScreenStatus[hidden],#homeRailScreen1255[hidden],#homeRailMain1255[hidden],#homeRailGuide1255[hidden],#homeRailBackBtn1255[hidden],#homeMainEyebrow1255[hidden]{display:none!important;}
   #homeRailBackBtn1255{display:inline;padding:0;margin:0;border:0;border-radius:0;background:none;box-shadow:none;color:#69d9ef;font:700 8px/1.3 system-ui,sans-serif;letter-spacing:.08em;}
   .home-rail-screen-active1255 #homeScreenTitle1250{font-size:18px;line-height:1.25;}
+
+  /* 【v1280】鉄道の見え方。配置用の操作とは別に、その場でON/OFFを選ぶ。 */
+  .home-train-sun-windows1280{margin:14px 0 18px;padding:12px;border:1px solid rgba(123,206,231,.4);border-radius:14px;background:rgba(17,32,52,.72);}
+  .home-train-sun-windows1280 button{width:100%;min-height:44px;white-space:normal;line-height:1.45;padding:10px 12px;}
+  .home-train-sun-windows1280 p{margin:8px 0 0;color:#b7d2dc;font-size:13px;line-height:1.65;}
   .home-rail-screen1255,.home-rail-main1255{display:flex;flex-direction:column;flex:1 0 auto;min-width:0;}
   .home-rail-instruction1255{margin:0 0 6px;color:#b7d5e5;font:500 10px/1.4 system-ui,sans-serif;overflow-wrap:anywhere;}
   .home-rail-routes1255{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:repeat(2,minmax(80px,1fr));gap:6px;}
@@ -7683,6 +7688,7 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
                 <button id="popupPhotoWaterBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="衛星写真のとき、水面（映り込み・海の色）を描くか。OFF にすると写真の水面がそのまま見えます">水域</button>
                 <button id="popupRailBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false">線路</button>
                 <!-- 【v1194】キハの前照灯と前方照射。昼は消灯、夜は窓明かりと連動。 -->
+                <button id="popupTrainSunWindowsBtn1280" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="夕焼けモードで太陽を背にした列車の窓を、明るい夕陽色で見せます。夜の室内灯とは別の演出です">逆光の窓明かり：ON</button>
                 <button id="popupTrainHeadlightsBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="キハの先頭2灯と前方照射。日中は消灯し、夜は窓明かりと連動します">キハ ヘッドライト</button>
                 <button id="popupPlaceNameBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">地名</button>
                 <!-- 【v1082】地図の登録地点（撮影場所・駐車場・気になる所・お気に入りの山）をシミュレーション画面にも出す。 -->
@@ -8382,6 +8388,10 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
                     <button id="homeRailKakogawaBtn1255" type="button" class="home-rail-route1255" data-home-rail="kakogawa" aria-pressed="false"><span class="home-rail-name1255">JR加古川線</span><span class="home-rail-state-row1255"><span class="home-rail-subtitle1255">LIVE シミュレーション</span><span class="home-rail-state1255" data-rail-state>OFF</span></span></button>
                     <button id="homeRailShintetsuBtn1255" type="button" class="home-rail-route1255" data-home-rail="shintetsu" aria-pressed="false"><span class="home-rail-name1255">神戸電鉄 <span class="home-rail-name-line1255">粟生線</span></span><span class="home-rail-state-row1255"><span class="home-rail-subtitle1255">LIVE シミュレーション</span><span class="home-rail-state1255" data-rail-state>OFF</span></span></button>
                     <button id="homeRailBantanBtn1255" type="button" class="home-rail-route1255" data-home-rail="bantan" aria-pressed="false"><span class="home-rail-name1255">播但線</span><span class="home-rail-state-row1255"><span class="home-rail-subtitle1255">LIVE シミュレーション</span><span class="home-rail-state1255" data-rail-state>OFF</span></span></button>
+                      </div>
+                      <div class="home-train-sun-windows1280">
+                        <button id="homeTrainSunWindowsBtn1280" type="button" class="constellation-toggle-btn active" aria-pressed="true" aria-describedby="homeTrainSunWindowsHelp1280">逆光の窓明かり：ON</button>
+                        <p id="homeTrainSunWindowsHelp1280">夕焼けモードで、太陽を背にした列車の窓を明るい夕陽色で見せます。</p>
                       </div>
                       <h3 class="home-rail-actions-title1255">撮影シミュレーションのために配置</h3>
                       <div class="home-rail-actions1255" aria-label="鉄道の配置と使い方">
@@ -9097,7 +9107,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1279-backlit-rail-silhouette";
+const APP_VERSION="1280-backlit-windows-reflection-fade";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -11864,6 +11874,7 @@ let trainBogieSmoothOn=true;
      点く・消えるときは TRAIN_WINDOW_LIGHT_RAMP_MIN 分かけてなめらかに変える。
    ・日の出・日の入は、観測地と日付から計算した値(s.sunRiseSet)。終日昇らない日は点きっぱなし、終日沈まない日は点かない。 */
 let trainLightsOn=true;
+var trainSunWindowsOn1280=true;   /* 【v1280】旧設定は既定ON。夕焼け・逆光時だけ効く。 */
 let trainHeadlightsOn=true;   /* 【v1194】表示メニューでキハの前照灯・前方照射を切り替える。 */
 const TRAIN_HEADLIGHT_BRIGHTNESS_MAX=5;
 let trainHeadlightBrightness=1;   /* 【v1195】1倍は従来の明るさ。 */
@@ -23806,6 +23817,44 @@ function railBridgeTint1279(ctx,mask,kmzMask,amount,W,H){
   ctx.globalCompositeOperation="source-over";ctx.drawImage(layer,0,0);ctx.restore();
 }
 /* 描いた鏡像そのもののalphaだけを保護する。光芒や別の模型の再投影は増やさない。 */
+/* 【v1280】鏡の面から反射像の先へ薄くする。軸は元の3D投影から取り、画面の高さで決めない。 */
+var railReflectionGroup1280=null;
+function railReflectionSample1280(samples,contact,reflected,distanceM){
+  if(!Array.isArray(samples)||!Array.isArray(contact)||!Array.isArray(reflected)||![...contact,...reflected,distanceM].every(Number.isFinite)||distanceM<0)return;
+  if(contact.length!==2||reflected.length!==2||Math.max(...contact.map(Math.abs),...reflected.map(Math.abs))>1e7||Math.hypot(reflected[0]-contact[0],reflected[1]-contact[1])<.5)return;
+  const sample={a:contact.slice(),b:reflected.slice(),distanceM};
+  if(samples.length<256){samples.push(sample);return;}
+  let farthest=0;for(let i=1;i<samples.length;i++)if(samples[i].distanceM>samples[farthest].distanceM)farthest=i;
+  if(distanceM<samples[farthest].distanceM)samples[farthest]=sample;
+}
+function railReflectionAxis1280(samples){
+  if(!Array.isArray(samples)||!samples.length)return null;
+  const valid=samples.filter(item=>item&&Array.isArray(item.a)&&Array.isArray(item.b)&&item.a.length===2&&item.b.length===2&&[...item.a,...item.b,item.distanceM].every(Number.isFinite)&&item.distanceM>=0&&Math.hypot(item.b[0]-item.a[0],item.b[1]-item.a[1])>=.5);if(!valid.length)return null;
+  const nearest=valid.reduce((a,b)=>b.distanceM<a.distanceM?b:a),nearLimit=nearest.distanceM+Math.max(25,nearest.distanceM*.5);
+  const local=valid.filter(item=>item.distanceM<=nearLimit),near=local.reduce((a,b)=>Math.hypot(b.b[0]-b.a[0],b.b[1]-b.a[1])>Math.hypot(a.b[0]-a.a[0],a.b[1]-a.a[1])?b:a);
+  const dx=near.b[0]-near.a[0],dy=near.b[1]-near.a[1],length=Math.hypot(dx,dy),ux=dx/length,uy=dy/length;
+  let extent=length;for(const sample of local)extent=Math.max(extent,(sample.b[0]-near.a[0])*ux+(sample.b[1]-near.a[1])*uy);
+  if(!Number.isFinite(extent)||extent<.5)return null;return {a:near.a.slice(),b:[near.a[0]+ux*extent,near.a[1]+uy*extent]};
+}
+function railReflectionBridgeSample1280(samples,vector,mirrorZ,eye,earthDrop,project){
+  if(!Array.isArray(vector)||vector.length!==3||![...vector,mirrorZ,eye,earthDrop].every(Number.isFinite)||!(earthDrop>0)||typeof project!=='function')return;
+  const distanceM=Math.hypot(vector[0],vector[1]),contact=[vector[0],vector[1],mirrorZ-eye-distanceM*distanceM/earthDrop];
+  railReflectionSample1280(samples,project(contact),project(vector),distanceM);
+}
+function railReflectionModel1280(slot,records,mirrorZ,eye,earthRadius,project){
+  if(!railReflectionGroup1280||!slot||slot.glow||!(slot.train||slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY)||!Array.isArray(records)||typeof project!=='function'||![mirrorZ,eye,earthRadius].every(Number.isFinite)||!(earthRadius>0))return;
+  for(const record of records){
+    if(!record||!Array.isArray(record.vec)||!Number.isFinite(record.distanceM))continue;
+    const contact=[record.vec[0],record.vec[1],mirrorZ-eye-record.distanceM*record.distanceM/(2*earthRadius)];
+    railReflectionSample1280(railReflectionGroup1280,project(contact),project(record.vec),record.distanceM);
+  }
+}
+function railReflectionFade1280(ctx,axis,W,H){
+  if(!ctx||!axis||!Array.isArray(axis.a)||!Array.isArray(axis.b)||axis.a.length!==2||axis.b.length!==2||![...axis.a,...axis.b,W,H].every(Number.isFinite)||W<=0||H<=0||Math.hypot(axis.b[0]-axis.a[0],axis.b[1]-axis.a[1])<.5)return false;
+  const gradient=ctx.createLinearGradient(axis.a[0],axis.a[1],axis.b[0],axis.b[1]);
+  for(let i=0;i<=16;i++){const u=i/16,alpha=1-.92*u*u*(3-2*u);gradient.addColorStop(u,'rgba(255,255,255,'+alpha+')');}
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='destination-in';ctx.fillStyle=gradient;ctx.fillRect(0,0,W,H);ctx.restore();return true;
+}
 function railReflectionCollect1279(source,s,W,H){
   if(!(sunsetModeWeight(s)>.002))return;
   let mask=drawPhoto._railReflectionMask1279;
@@ -26602,8 +26651,33 @@ el.normalStarOpacitySlider.addEventListener("input",()=>{
   update();
 });
 
+/* 【v1280】逆光の窓明かり。HOMEと表示メニューを同じ保存値へ同期する。 */
+function trainSunWindowsSync1280(){
+  for(const id of ['homeTrainSunWindowsBtn1280','popupTrainSunWindowsBtn1280']){
+    const button=document.getElementById(id);if(!button)continue;
+    button.classList.toggle('active',trainSunWindowsOn1280);
+    button.setAttribute('aria-pressed',String(trainSunWindowsOn1280));
+    const label=`逆光の窓明かり：${trainSunWindowsOn1280?'ON':'OFF'}`;
+    if(button.textContent!==label)button.textContent=label;
+  }
+}
+function trainSunWindowsRestoreSetting1280(saved,keepCurrent=false){
+  if(saved&&typeof saved.trainSunWindowsOn1280==='boolean')trainSunWindowsOn1280=saved.trainSunWindowsOn1280;
+  else if(!keepCurrent)trainSunWindowsOn1280=true;
+  trainSunWindowsSync1280();
+}
+function trainSunWindowsToggle1280(){
+  trainSunWindowsOn1280=!trainSunWindowsOn1280;
+  trainSunWindowsSync1280();update();scheduleSaveSettings();
+}
+for(const id of ['homeTrainSunWindowsBtn1280','popupTrainSunWindowsBtn1280']){
+  const button=document.getElementById(id);if(button)button.addEventListener('click',trainSunWindowsToggle1280);
+}
+trainSunWindowsSync1280();
+
 /* 「表示」ポップアップ内の6ボタンを、設定画面側の既存機能と常に同期する。 */
 function syncDisplayPopupControls(){
+  trainSunWindowsSync1280();
   if(homeRailRuntimeReady1255)syncHomeRailState1255();
   if(!el.popupRealMilkyWayBtn) return;
   if(el.popupTrainHeadlightsBtn){
@@ -29417,6 +29491,7 @@ function collectPersistedSettings(){
     cloudSeaGapPct:cloudSeaGapPct,
     railLinesVisible:railLinesVisible,
     trainHeadlightsOn:trainHeadlightsOn,   /* 【v1194】 */
+    trainSunWindowsOn1280,
     trainHeadlightBrightness,   /* 【v1195】 */
     placeNameVisible:placeNameVisible,
     favPlacesSceneVisible:favPlacesSceneVisible,   /* 【v1082】 */
@@ -29569,6 +29644,7 @@ const USER_DEFAULT_SETTINGS={
  "cloudSeaGapPct": 8,
  "railLinesVisible": true,
  "trainHeadlightsOn": true,
+ "trainSunWindowsOn1280": true,
  "trainHeadlightBrightness": 1,
  "placeNameVisible": true,
  "daylightStarsOn": false,
@@ -29713,6 +29789,7 @@ async function applyPersistedSettingsText(stored){
     const s=JSON.parse(stored);
     await bridgeHeightRestore1271(s.railBridgeHeights1271);
     trainHeadlightsOn=s.trainHeadlightsOn!==false;   /* 【v1194】古い設定は既定ON。 */
+    trainSunWindowsRestoreSetting1280(s);
     setTrainHeadlightBrightness(s.trainHeadlightBrightness);   /* 【v1195】旧設定・不正値は1倍。 */
     if(s.lat!==undefined) el.lat.value=s.lat;
     if(s.lon!==undefined) el.lon.value=s.lon;
@@ -30981,6 +31058,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     bridgeVisible:bridgeLinesVisible,
     railBridgeHeights1271:bridgeLibraryLegacySnapshot1277(),
     trainHeadlightsOn,   /* 【v1194】撮影計画にも照明の入り切りを保存する。 */
+    trainSunWindowsOn1280,
     trainHeadlightBrightness,   /* 【v1195】撮影計画にも光量を保存する。 */
     updatedAt:Date.now()
   };
@@ -31203,6 +31281,7 @@ async function applySavedObservingPlan(location){
   await restorePlanWaterSnapshot(location);
   if(typeof location.bridgeVisible==="boolean") bridgeLinesVisible=location.bridgeVisible;
   if(typeof location.trainHeadlightsOn==="boolean")trainHeadlightsOn=location.trainHeadlightsOn;   /* 古い計画では現在の設定を保つ。 */
+  trainSunWindowsRestoreSetting1280(location,true);
   if(savedNumber(location.trainHeadlightBrightness)!==null)setTrainHeadlightBrightness(location.trainHeadlightBrightness);   /* 【v1195】光量のない旧計画は現在値を保つ。 */
   await restorePlanBridgeSnapshot(location);
   /* 【v1174】**計画を読み込んだとき、橋が最初から出ない**（利用者報告：少し移動すると橋が現れる）。
@@ -39252,7 +39331,47 @@ function kmzDepthScratchFor(w,h){
   scratch.depth.fill(Infinity);
   return scratch;
 }
-function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
+/* 【v1280】実際の深度描画で見えた逆光の窓だけ、夕焼けの地上減光から戻す。模型は再描画しない。 */
+var trainSunWindowsState1280={active:false,context:null,width:0,height:0,mask:null,snapshot:null,maskCanvas:null,snapshotCanvas:null,rasterCanvas:null,rasterImage:null,owners:null,rasterWidth:0,rasterHeight:0};
+function trainSunWindowsEnabled1280(){return typeof trainSunWindowsOn1280!=='undefined'&&trainSunWindowsOn1280&&!(typeof arActive!=='undefined'&&arActive);}
+function trainSunWindowsCurrent1280(ctx){const state=trainSunWindowsState1280;return state.active&&trainSunWindowsEnabled1280()&&ctx===state.context&&ctx?.canvas?.width===state.width&&ctx?.canvas?.height===state.height;}
+function trainSunWindowsBegin1280(ctx,W,H){const state=trainSunWindowsState1280;state.active=trainSunWindowsEnabled1280();state.context=ctx;state.width=W;state.height=H;state.mask=null;state.snapshot=null;}
+function trainSunWindowsEnd1280(ctx){const state=trainSunWindowsState1280;if(ctx===state.context){state.active=false;state.context=null;state.mask=null;state.snapshot=null;}}
+function trainSunWindowsCanvas1280(canvas,W,H){if(!canvas)canvas=document.createElement('canvas');if(canvas.width!==W)canvas.width=W;if(canvas.height!==H)canvas.height=H;return canvas;}
+function trainSunWindowsClear1280(canvas){const c=canvas.getContext('2d');c.setTransform(1,0,0,1,0,0);c.globalAlpha=1;c.globalCompositeOperation='source-over';c.filter='none';c.clearRect(0,0,canvas.width,canvas.height);return c;}
+function trainSunWindowsClip1280(c,nearSky,W,H){if(!nearSky?.length)return;c.beginPath();c.moveTo(0,nearSky[0]);for(let x=1;x<nearSky.length;x++)c.lineTo(x,nearSky[x]);c.lineTo(W,nearSky[nearSky.length-1]);c.lineTo(W,-H);c.lineTo(0,-H);c.closePath();c.clip();}
+function trainSunWindowsMark1280(ctx,faces,s,amount,reflection,rgbFor,defaultColor){
+  if(reflection||!trainSunWindowsCurrent1280(ctx)||!(amount>0))return;const k=clamp(amount,0,1),alt=s?.sunAltAz?.alt,t=Number.isFinite(alt)?clamp(alt/14,0,1):0,sunlight=[255,Math.round(180+25*t),Math.round(65+25*t)];
+  for(const face of faces){if(face.glow!==1&&face.glow!==4)continue;const incidence=trainWindowSunIncidence1279(face,s),strength=k*Math.pow(incidence,.35);if(!(strength>.001))continue;const normal=rgbFor(face.color||defaultColor,face.shade);face.color=normal.map((value,index)=>lerp(value,sunlight[index],strength));face.shade=2;face.sunWindow1280=strength;}
+}
+function trainSunWindowsRaster1280(ctx,faces,W,H){
+  if(!trainSunWindowsCurrent1280(ctx)||!faces.some(face=>face.sunWindow1280>0))return null;const state=trainSunWindowsState1280;
+  if(!state.owners||state.owners.length!==W*H)state.owners=new Float32Array(W*H);else state.owners.fill(0);return state.owners;
+}
+function trainSunWindowsNeedsDepth1280(ctx,faces){return trainSunWindowsCurrent1280(ctx)&&faces.some(face=>face.sunWindow1280>0);}
+function trainSunWindowsCollect1280(ctx,scratch,minX,minY,boxW,boxH,owners,nearSky=null){
+  if(!trainSunWindowsCurrent1280(ctx))return;const state=trainSunWindowsState1280;if(!state.mask&&!owners)return;
+  let emissionCanvas=null;
+  if(owners){
+    if(state.rasterWidth!==scratch.w||state.rasterHeight!==scratch.h||!state.rasterCanvas){state.rasterCanvas=trainSunWindowsCanvas1280(state.rasterCanvas,scratch.w,scratch.h);state.rasterImage=state.rasterCanvas.getContext('2d').createImageData(scratch.w,scratch.h);state.rasterWidth=scratch.w;state.rasterHeight=scratch.h;}
+    const pixels=state.rasterImage.data;pixels.fill(0);let visible=false;for(let i=0;i<owners.length;i++){const alpha=Math.round(clamp(owners[i],0,1)*255);if(alpha){const offset=i*4;pixels[offset]=255;pixels[offset+1]=255;pixels[offset+2]=255;pixels[offset+3]=alpha;visible=true;}}
+    if(visible){state.rasterCanvas.getContext('2d').putImageData(state.rasterImage,0,0);emissionCanvas=state.rasterCanvas;}
+  }
+  if(!state.mask&&!emissionCanvas)return;
+  if(!state.mask){state.maskCanvas=trainSunWindowsCanvas1280(state.maskCanvas,state.width,state.height);trainSunWindowsClear1280(state.maskCanvas);state.mask=state.maskCanvas;}
+  const c=state.mask.getContext('2d');c.save();c.setTransform(1,0,0,1,0,0);trainSunWindowsClip1280(c,nearSky,state.width,state.height);c.globalAlpha=clamp(ctx.globalAlpha,0,1);c.imageSmoothingEnabled=true;c.globalCompositeOperation='destination-out';c.drawImage(scratch.canvas,0,0,scratch.w,scratch.h,minX,minY,boxW,boxH);if(emissionCanvas){c.globalCompositeOperation='source-over';c.drawImage(emissionCanvas,0,0,scratch.w,scratch.h,minX,minY,boxW,boxH);}c.restore();
+}
+function trainSunWindowsOcclude1280(ctx,faces,opacity,nearSky=null){
+  const state=trainSunWindowsState1280;if(!trainSunWindowsCurrent1280(ctx)||!state.mask)return;const c=state.mask.getContext('2d');c.save();c.setTransform(1,0,0,1,0,0);trainSunWindowsClip1280(c,nearSky,state.width,state.height);c.globalCompositeOperation='destination-out';c.fillStyle='#000';c.strokeStyle='#000';c.lineWidth=.45;c.lineJoin='round';
+  for(const face of faces){const p=face.points;if(p.every(q=>q[0]<-state.width||q[0]>state.width*2||q[1]<-state.height||q[1]>state.height*2))continue;c.globalAlpha=clamp(opacity*face.alpha,0,1);c.beginPath();c.moveTo(p[0][0],p[0][1]);c.lineTo(p[1][0],p[1][1]);c.lineTo(p[2][0],p[2][1]);c.closePath();c.fill();c.stroke();}c.restore();
+}
+function trainSunWindowsSnapshot1280(ctx){
+  const state=trainSunWindowsState1280;if(!trainSunWindowsCurrent1280(ctx)||!state.mask)return;state.snapshotCanvas=trainSunWindowsCanvas1280(state.snapshotCanvas,state.width,state.height);const c=trainSunWindowsClear1280(state.snapshotCanvas);c.drawImage(ctx.canvas,0,0);c.globalCompositeOperation='destination-in';c.drawImage(state.mask,0,0);c.globalCompositeOperation='source-over';state.snapshot=state.snapshotCanvas;
+}
+function trainSunWindowsRestore1280(ctx){
+  const state=trainSunWindowsState1280;try{if(!trainSunWindowsCurrent1280(ctx)||!state.snapshot)return;ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.filter='none';ctx.drawImage(state.snapshot,0,0);ctx.restore();}finally{trainSunWindowsEnd1280(ctx);}
+}
+function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor,captureSkyline1280=null){
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
   for(const face of faces)for(const p of face.points){
     if(p[0]<minX)minX=p[0];if(p[0]>maxX)maxX=p[0];
@@ -39271,6 +39390,7 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
   const rw=Math.max(1,Math.round(boxW*ss)),rh=Math.max(1,Math.round(boxH*ss));
   const scratch=kmzDepthScratchFor(rw,rh);
   const data=scratch.image.data,pixels32=scratch.pixels32,depthBuffer=scratch.depth;
+  const windowOwners1280=trainSunWindowsRaster1280(targetCtx,faces,rw,rh);
   /* 【v1202】模型をまとめても、それぞれの手前の地形による切り抜きを保つ。
      稜線は模型ごとに横一列だけ変換し、画素の内側では比較だけで済ませる。 */
   const skylineMasks=new Map();
@@ -39305,6 +39425,7 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
     if(bx1<bx0||by1<by0)return;
     const color=face.rgb||rgbFor(face.color||defaultColor,face.shade);
     const r=color[0],g=color[1],b=color[2],alpha=blend?face.alpha:1;
+    const windowStrength1280=Number.isFinite(face.sunWindow1280)?clamp(face.sunWindow1280,0,1):0;
     const packed=(KMZ_LITTLE_ENDIAN?((255<<24)|(b<<16)|(g<<8)|r):((r<<24)|(g<<16)|(b<<8)|255))>>>0;
     /* 重みも 1/z も x に対して直線的なので、
        1画素進むごとに足すだけですむ（割り算を内側から追い出す）。 */
@@ -39352,9 +39473,11 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
             data[o+2]=Math.round((b*alpha+data[o+2]*dstA*(1-alpha))/outA);
           }
           data[o+3]=Math.round(outA*255);
+          if(windowOwners1280)windowOwners1280[index]=windowStrength1280*alpha+windowOwners1280[index]*(1-alpha);
         }else{
           depthBuffer[index]=z;
           if(!face.occluderOnly1273)pixels32[index]=packed;
+          if(windowOwners1280)windowOwners1280[index]=face.occluderOnly1273?0:windowStrength1280;
         }
       }
     }
@@ -39375,6 +39498,7 @@ function drawKmzDepthBuffer(targetCtx,faces,W,H,rgbFor,defaultColor){
   const smoothing=targetCtx.imageSmoothingEnabled;
   targetCtx.imageSmoothingEnabled=true;
   targetCtx.drawImage(scratch.canvas,0,0,rw,rh,minX,minY,boxW,boxH);
+  trainSunWindowsCollect1280(targetCtx,scratch,minX,minY,boxW,boxH,windowOwners1280,captureSkyline1280);
   targetCtx.imageSmoothingEnabled=smoothing;
 }
 /* 【v1202】隣り合う長い車体は中心の距離だけでは前後が決まらない。
@@ -39778,6 +39902,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
       projected.push({points:[clippedPoints[0],clippedPoints[i],clippedPoints[i+1]],zs:[clippedZs[0],clippedZs[i],clippedZs[i+1]],depth:depth/3,local,color,alpha,glow:triangleGlow?(triangleGlow[triIndex]||0):0});
     }
   }
+  if(reflectionPass&&projected.length)railReflectionModel1280(slot,vertexProjectionCache,mirrorZ,eye,earthRadius,kmzProject);
   recordTrainPhotoPick(targetCtx,phase,slot,projected,nearSky,cfg);   /* 【v1208】描画済み面をタップ時に使う。 */
   projected.sort((a,b)=>b.depth-a.depth);const daylight=clamp(s.twilight,0,1),night=[4,5,8],day=[54,60,52];
   /* 【v931】シルエットの濃さ。0で今までどおり、100で真っ黒。 */
@@ -39798,6 +39923,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
   targetCtx.globalAlpha=cfg.opacity;targetCtx.lineWidth=.45;targetCtx.lineJoin="round";
   };
   targetCtx.save();applyBodyClip();
+  if(slot.glow||slot.silhouette)trainSunWindowsOcclude1280(targetCtx,projected,cfg.opacity,nearSky);
   if(slot.glow){
     /* 【v852】自ら光るもの（花火・イルミネーション）。
 
@@ -39924,14 +40050,15 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
         face.shade=2;
       }
     }
-    if(slot.train)trainBacklightWindows1279(projected,s,railBacklightAmount1279,reflectionPass,rgbFor,DEFAULT_COLOR);
+    if(slot.train){trainBacklightWindows1279(projected,s,railBacklightAmount1279,reflectionPass,rgbFor,DEFAULT_COLOR);trainSunWindowsMark1280(targetCtx,projected,s,railBacklightAmount1279,reflectionPass,rgbFor,DEFAULT_COLOR);}
     const paintFaces=()=>{
     const bridgeSeeds1273=reflectionPass?[]:bridgeJoinSlotSeeds1273(slot,projected,s,W,H);
-    if(kmzDepthBuffer||bridgeSeeds1273.length){
+    if(kmzDepthBuffer||bridgeSeeds1273.length||trainSunWindowsNeedsDepth1280(targetCtx,projected)){
       /* 【v903】1画素ごとに手前の面を選ぶ。globalAlpha は上で
          cfg.opacity にしてあるので、模型全体の濃さは今までどおり効く。 */
-      drawKmzDepthBuffer(targetCtx,bridgeSeeds1273.length?bridgeSeeds1273.concat(projected):projected,W,H,rgbFor,DEFAULT_COLOR);
+      drawKmzDepthBuffer(targetCtx,bridgeSeeds1273.length?bridgeSeeds1273.concat(projected):projected,W,H,rgbFor,DEFAULT_COLOR,nearSky);
     }else{
+      trainSunWindowsOcclude1280(targetCtx,projected,cfg.opacity,nearSky);
       for(const face of projected){
         const p=face.points;if(p.every(q=>q[0]<-W||q[0]>W*2||q[1]<-H||q[1]>H*2))continue;
         /* 隣り合う三角形のあいだには半画素の隙間ができ、背景が細い筋として透ける。
@@ -41671,6 +41798,7 @@ function drawPhoto(ctx,s){
   if(ctx===photoCtx)syncAzGuides(s);   /* 【v992】方位ガイド（本番の画面だけ） */
   const W=ctx.canvas.width, H=ctx.canvas.height;
   beginTrainPhotoPickFrame(ctx,s,W,H);   /* 【v1208】本番画面の最新フレームだけ。 */
+  trainSunWindowsBegin1280(ctx,W,H);
   let darumaSunActive=false;
   let darumaSunShape=null;
   drawPhoto._darumaSunShape=null;   /* 【v966】夕焼けの段から読む */
@@ -43969,6 +44097,7 @@ function drawPhoto(ctx,s){
               lc.strokeStyle=`rgba(${bp.edge.join(",")},${(a*.82).toFixed(3)})`;
               lc.lineWidth=Math.max(1.2,1.8*fade);lc.stroke(mv.edge[i]);
             }
+            railReflectionFade1280(lc,mv.fadeAxis1280,W,H);
             /* 【v1279】橋の鏡像も光を通さない。色だけ暗くし、鏡面の形と全体の濃さを保つ。 */
             const railMirrorAmount1279=railBacklight1279(s);
             if(railMirrorAmount1279>.002){
@@ -43994,7 +44123,9 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.globalCompositeOperation="source-over";
           kmzReflectionContext.globalAlpha=1;
           kmzReflectionContext.clearRect(0,0,W,H);
-          drawKmzModelSequence(kmzReflectionContext,s,toXY,W,H,"reflection",slots);
+          const fadeSamples1280=[];railReflectionGroup1280=fadeSamples1280;
+          try{drawKmzModelSequence(kmzReflectionContext,s,toXY,W,H,"reflection",slots);}finally{railReflectionGroup1280=null;}
+          railReflectionFade1280(kmzReflectionContext,railReflectionAxis1280(fadeSamples1280),W,H);
           if(slots.some(item=>!item.glow&&(item.train||item.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY)&&railBacklight1279(s,trainModelBearing1279(item,s))>.002))railReflectionCollect1279(kmzReflection,s,W,H);
           ctx.save();
           /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
@@ -46758,6 +46889,7 @@ function drawPhoto(ctx,s){
         /* 【v1158】同じ形を、鏡の面の反対側へもう一組。 */
         let bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
             bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths;
+        const bridgeMirrorFade1280=overlayCache?(overlayCache.bridgeMirrorFade1280||[]):[];
         const bridgeMirrorPlane=bridgeLinesVisible?waterMirrorSharedPlaneM():null;
         const bridgeJoinNow1273=overlayCache?overlayCache.bridgeJoinFrame1273:bridgeJoinFrame1273(terrainGeometryKey,s,W,H);
         let bridgeWaysForDisplay=[],activeBridgeSignatures=null;
@@ -47331,6 +47463,7 @@ function drawPhoto(ctx,s){
               if(sideDrawn)bridgeJoinAdd1273(bridgeJoinNow1273,bridgeJoinKey1273,sideFace,clipToView,projectGround,camForward);
             }
             if(frontDrawn||sideDrawn){
+              if(overlayMirrorZ!==null)for(const vector1280 of [top00,top10,top11,top01,bottom00,bottom10,bottom11,bottom01])railReflectionBridgeSample1280(bridgeMirrorFade1280,vector1280,overlayMirrorZ,eyeElevationNow,EARTH_DROP,projectGround);
               strokeGroundSegment(bridgePierEdgePaths[bucket],bottom00,top00);
               strokeGroundSegment(bridgePierEdgePaths[bucket],bottom10,top10);
               strokeGroundSegment(bridgePierEdgePaths[bucket],bottom11,top11);
@@ -47464,6 +47597,7 @@ function drawPhoto(ctx,s){
                   if(!firstCap)firstCap=capInfo;
                   lastCap=capInfo;
                   current.travel=travelM;
+                  if(overlayMirrorZ!==null&&previous)railReflectionBridgeSample1280(bridgeMirrorFade1280,current.centre,overlayMirrorZ,eyeElevationNow,EARTH_DROP,projectGround);
                   if(overlayMirrorZ===null&&previous)bridgePierVisualAdd1276(way,previous,current,projectGround,camForward,useDiagonalFisheye,totalM);
                   if(previous){
                     const bucket=bridgeBucketOf(current.distanceM);
@@ -47623,7 +47757,7 @@ function drawPhoto(ctx,s){
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,
             bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
-            bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths
+            bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths,bridgeMirrorFade1280
           };
         }
 
@@ -47745,7 +47879,7 @@ function drawPhoto(ctx,s){
           /* 【v1158】映り込み用。濃さは映り込みの段で決めるので、形と薄れ方だけ預ける。 */
           drawPhoto._bridgeMirrorOverlay=bridgeMirrorPaths?{
             key:terrainGeometryKey,buckets:FADE_BUCKETS,鏡の面:bridgeMirrorPlane,
-            dayFactor:terrainDayFactor,
+            dayFactor:terrainDayFactor,fadeAxis1280:railReflectionAxis1280(bridgeMirrorFade1280),
             fade:Array.from({length:FADE_BUCKETS},(_,i)=>bridgeFadeOfBucket(i)),
             deck:bridgeMirrorPaths,side:bridgeMirrorSidePaths,edge:bridgeMirrorEdgePaths,
             pier:bridgeMirrorPierPaths,pierShade:bridgeMirrorPierShadePaths,
@@ -49996,7 +50130,9 @@ function drawPhoto(ctx,s){
 
   /* 【v930】夕焼けモード。トーンのあと、魚眼の像円の外より前に掛ける。
      太陽の画面位置が要るので toXY をそのまま渡す。 */
+  trainSunWindowsSnapshot1280(ctx);
   {const __s0=performance.now();applySunsetMode(ctx,s,W,H,toXY);terrainStageProf.sunset+=performance.now()-__s0;}
+  trainSunWindowsRestore1280(ctx);
   updateSunsetModeReadout(s);
 
   /* 【v1261】太陽・月・地形の手前へ飛行機を描き、既存の魚眼像円で画面外を隠す。 */
@@ -50040,7 +50176,7 @@ function drawPhoto(ctx,s){
       meteorFisheye:useDiagonalFisheye,width:W,height:H};
   }
   terrainFrameComplete1233(ctx,s);
-  }catch(error){terrainFrameFailed1233(ctx,error);}
+  }catch(error){trainSunWindowsEnd1280(ctx);terrainFrameFailed1233(ctx,error);}
 }
 
 /* =========================================================
