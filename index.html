@@ -6749,6 +6749,72 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
 #tideOpenBtn1284:focus-visible{outline:2px solid #9ce6f4;outline-offset:3px;}
 body.ar-active #tideOpenBtn1284,body.home-screen-open1250 #tideOpenBtn1284,body.train-flow-map1265 #tideOpenBtn1284,body.truss-flow-map1269 #tideOpenBtn1284,body.object-flow-map1270 #tideOpenBtn1284{display:none!important;}
 </style>
+<style id="tideMapOnlyStyle1285">
+/* 【v1285】潮見表の入口はマップモードだけに表示する。 */
+#photoCanvasWrap:not(.osm-map-open) #tideOpenBtn1284{display:none!important;}
+</style>
+<style id="clockMoveStyle1286">
+/* 【v1286】日時表示の書式を保ったまま、時計の位置だけを調整する。 */
+#simulationClockOverlay{
+  box-sizing:border-box;min-height:44px;padding:3px 7px;
+  border:1px solid transparent;border-radius:8px;background:transparent;
+  pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none;cursor:pointer;
+}
+#simulationClockOverlay:focus-visible{
+  outline:2px solid #a9dfef;outline-offset:3px;
+}
+#simulationClockOverlay.clock-editing1286{
+  border-color:#e9c386;border-style:dashed;background:rgba(11,23,42,.55);
+  opacity:1;cursor:grab;
+}
+#simulationClockOverlay.clock-dragging1286{
+  opacity:1;cursor:grabbing;
+}
+#simulationClockOverlay.clock-positioned1286{
+  transform:none;right:auto;bottom:auto;
+}
+#clockMoveTools1286[hidden]{display:none!important;}
+#clockMoveTools1286{
+  box-sizing:border-box;position:absolute;z-index:20;
+  display:flex;flex-wrap:wrap;align-items:center;gap:7px;
+  width:300px;max-width:calc(100% - 12px);margin:0;padding:9px;
+  border:1px solid rgba(148,181,211,.72);border-radius:11px;
+  background:rgba(13,25,44,.96);color:#eef6ff;
+  box-shadow:0 5px 18px rgba(0,0,0,.35);
+  font:500 12px/1.5 system-ui,sans-serif;
+  pointer-events:auto;user-select:none;-webkit-user-select:none;
+}
+#clockMoveHint1286{
+  flex:0 0 100%;min-width:0;margin:0;color:#d5e7f2;
+  font:500 12px/1.5 system-ui,sans-serif;overflow-wrap:anywhere;
+}
+#clockMoveTools1286 button{
+  box-sizing:border-box;display:inline-flex;flex:1 1 0;align-items:center;justify-content:center;
+  min-width:44px;min-height:44px;margin:0;padding:8px 10px;
+  border:1px solid rgba(157,190,217,.7);border-radius:8px;
+  background:#213b54;color:#edf7ff;box-shadow:none;
+  font:600 12px/1.4 system-ui,sans-serif;white-space:normal;
+  cursor:pointer;touch-action:manipulation;
+}
+#clockMoveTools1286 button:hover{border-color:#b5edf7;background:#2a5268;}
+#clockMoveTools1286 button:active{transform:none;}
+#clockMoveTools1286 button:focus-visible{outline:2px solid #a9dfef;outline-offset:3px;}
+#clockMoveTools1286 #clockMoveDone1286{border-color:#b0e0ea;background:#c0e6ef;color:#143649;}
+#clockMoveTools1286 #clockMoveDone1286:hover{background:#d8f4f9;}
+@media(max-width:760px){
+  #clockMoveTools1286{width:300px;max-width:calc(100% - 12px);font-size:12px;}
+}/* A narrow viewport may wrap between the date and time while preserving each readable token. */
+#simulationClockOverlay{max-width:calc(100% - 12px);flex-wrap:wrap;row-gap:0;white-space:normal;}
+#simulationClockOverlay>span{white-space:nowrap;}
+#simulationClockOverlay.clock-positioned1286{z-index:16;}
+#simulationClockOverlay.clock-editing1286{z-index:21;}
+#simulationClockOverlay{width:max-content;}
+/* Keep the editor usable over the existing controller sticks (z-index 950/960). */
+#simulationClockOverlay.clock-positioned1286{z-index:970;}
+#clockMoveTools1286{z-index:1100;}
+#simulationClockOverlay.clock-editing1286{z-index:1101;}
+</style>
 </head>
 <body>
 <section id="driveLogReplayPanel1223" class="gps1223-replay" aria-label="GPSログのシミュレーションと再生" hidden>
@@ -8256,10 +8322,18 @@ body.ar-active #tideOpenBtn1284,body.home-screen-open1250 #tideOpenBtn1284,body.
                   <span class="drone-stick-knob"></span>
                 </div>
               </div>
-              <div id="simulationClockOverlay" class="simulation-clock-overlay" aria-live="off">
-                <span id="simulationClockDate" class="simulation-clock-date"></span>
-                <span id="simulationClockTime" class="simulation-clock-time"></span>
-              </div>
+<!-- clock-ui-start1286 -->
+<!-- 【v1286】時計の表示内容は既存の更新処理が管理し、位置調整は外側の要素で扱う。 -->
+<div id="simulationClockOverlay" class="simulation-clock-overlay" role="button" tabindex="0" aria-live="off" aria-pressed="false" aria-controls="clockMoveTools1286" title="タップして時計を移動">
+  <span id="simulationClockDate" class="simulation-clock-date"></span>
+  <span id="simulationClockTime" class="simulation-clock-time"></span>
+</div>
+<div id="clockMoveTools1286" role="group" aria-label="時計の位置調整" hidden>
+  <p id="clockMoveHint1286">時計をドラッグして移動</p>
+  <button id="clockMoveReset1286" type="button">元の位置</button>
+  <button id="clockMoveDone1286" type="button">完了</button>
+</div>
+<!-- clock-ui-end1286 -->
               <div class="plan-quick-actions" aria-label="撮影計画の保存と読込">
                 <button id="quickSavePlanBtn" type="button" class="icon-help-target sim-right-help" data-help="撮影計画を保存" aria-label="現在の観測値・撮影計画を保存" title="撮影計画を保存">
                   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3.5h12.8L21 6.7V20.5H3V3.5h2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 3.5v6h9v-6M7 20.2v-7h10v7" stroke="currentColor" stroke-width="1.5"/><path d="M13.5 5.5h1.8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -9710,7 +9784,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1284-tide-table";
+const APP_VERSION="1286-clock-position";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -22941,6 +23015,7 @@ if(el.droneAltitudeSpeedSlider) el.droneAltitudeSpeedSlider.addEventListener("in
 /* 上部の並びの高さを測って、時計をその下へ逃がす。
    高度表示・住所は出たり消えたりするので、固定値ではなく実際の高さで決める。 */
 function syncSimTopStack(){
+  if(typeof clockMoveState1286!=='undefined'&&clockMoveState1286?.position){clockMoveSchedule1286();return;} /* clock-position1286 */
   if(!el.simTopStack||!el.simulationClockOverlay) return;
   const stackTop=parseFloat(getComputedStyle(el.simTopStack).top)||20;
   const height=el.simTopStack.offsetHeight;
@@ -63717,6 +63792,89 @@ function tideIconLayout1284(){
   let raf=0;window.addEventListener('resize',()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;tideIconLayout1284();tideRender1284();});});tideIconLayout1284();
 })();
 /* tide-core-end1284 */
+
+/* clock-core-start1286 */
+/* 【v1286】The clock's presentation position is independent of observation/plan data. */
+var clockMoveState1286=null;
+function clockMoveClamp1286(n,a,b){return Math.max(a,Math.min(b,n));}
+function clockMoveStyle1286(node,key,value){if(node.style[key]!==value)node.style[key]=value;}
+function clockMoveRead1286(){try{const s=localStorage.getItem('starchase.clock.position.v1');if(!s||s.length>300)return null;const v=JSON.parse(s);return v?.version===1&&Number.isFinite(v.x)&&Number.isFinite(v.y)&&v.x>=0&&v.x<=1&&v.y>=0&&v.y<=1?{x:v.x,y:v.y}:null;}catch(_){return null;}}
+function clockMoveSave1286(){const s=clockMoveState1286;if(!s)return;try{if(s.position)localStorage.setItem('starchase.clock.position.v1',JSON.stringify({version:1,...s.position}));else localStorage.removeItem('starchase.clock.position.v1');s.saveFailed=false;}catch(_){s.saveFailed=true;}clockMoveHint1286();}
+function clockMoveHint1286(){const s=clockMoveState1286;if(s)s.hint.textContent=s.saveFailed?'この画面では位置を保持します。ブラウザへの保存はできませんでした。':'時計をドラッグして移動（矢印キーでも調整できます）';}
+function clockMoveBounds1286(){
+  const s=clockMoveState1286;if(!s||s.clock.classList.contains('hidden')||s.wrap.classList.contains('osm-map-open')||!s.clock.getClientRects().length||document.body.classList.contains('ar-active'))return null;
+  const host=s.wrap.getBoundingClientRect(),photo=s.canvas.getBoundingClientRect();if(!(host.width>0&&host.height>0&&photo.width>0&&photo.height>0))return null;
+  const sx=host.width/(s.wrap.clientWidth||host.width),sy=host.height/(s.wrap.clientHeight||host.height),safe=getComputedStyle(s.safe),num=v=>Math.max(0,parseFloat(v)||0),vv=window.visualViewport;
+  const vl=vv?vv.offsetLeft:0,vt=vv?vv.offsetTop:0,vw=vv?vv.width:document.documentElement.clientWidth,vh=vv?vv.height:document.documentElement.clientHeight;
+  const a={left:Math.max(host.left,photo.left),top:Math.max(host.top,photo.top),right:Math.min(host.right,photo.right),bottom:Math.min(host.bottom,photo.bottom)};
+  const b={left:Math.max(a.left,vl+num(safe.paddingLeft)),top:Math.max(a.top,vt+num(safe.paddingTop)),right:Math.min(a.right,vl+vw-num(safe.paddingRight)),bottom:Math.min(a.bottom,vt+vh-num(safe.paddingBottom))};
+  const local=r=>({left:(r.left-host.left)/sx+6,top:(r.top-host.top)/sy+6,right:(r.right-host.left)/sx-6,bottom:(r.bottom-host.top)/sy-6});
+  const full=local(a),visible=local(b);if(visible.right-visible.left<30||visible.bottom-visible.top<30)return null;
+  return {host,sx,sy,full,visible,key:[host.width,host.height,...Object.values(a),...Object.values(b)].map(n=>n.toFixed(2)).join('|')};
+}
+function clockMoveSize1286(b){const s=clockMoveState1286,w=Math.max(30,Math.min(b.full.right-b.full.left,b.visible.right-b.visible.left));clockMoveStyle1286(s.clock,'maxWidth',w.toFixed(3)+'px');clockMoveStyle1286(s.tools,'maxWidth',w.toFixed(3)+'px');}
+function clockMoveRange1286(b){const s=clockMoveState1286,r=s.clock.getBoundingClientRect(),w=r.width/b.sx,h=r.height/b.sy;const range=a=>({left:a.left,top:a.top,right:Math.max(a.left,a.right-w),bottom:Math.max(a.top,a.bottom-h)});return {full:range(b.full),visible:range(b.visible),w,h};}
+function clockMoveApply1286(left,top,remember=true,b=null){
+  const s=clockMoveState1286;b=b||clockMoveBounds1286();if(!s||!b)return null;clockMoveSize1286(b);const r=clockMoveRange1286(b),x=clockMoveClamp1286(left,r.visible.left,r.visible.right),y=clockMoveClamp1286(top,r.visible.top,r.visible.bottom);
+  if(!s.clock.classList.contains('clock-positioned1286'))s.clock.classList.add('clock-positioned1286');clockMoveStyle1286(s.clock,'left',x.toFixed(3)+'px');clockMoveStyle1286(s.clock,'top',y.toFixed(3)+'px');
+  if(remember)s.position={x:r.full.right>r.full.left?clockMoveClamp1286((x-r.full.left)/(r.full.right-r.full.left),0,1):0,y:r.full.bottom>r.full.top?clockMoveClamp1286((y-r.full.top)/(r.full.bottom-r.full.top),0,1):0};
+  return {left:x,top:y};
+}
+function clockMoveDefault1286(){const s=clockMoveState1286;if(!s)return;s.clock.classList.remove('clock-positioned1286');for(const k of ['left','top'])s.clock.style.removeProperty(k);syncSimTopStack();}
+function clockMoveTools1286(b){const s=clockMoveState1286;if(!s||!s.editing||s.tools.hidden||!b)return;const r=s.clock.getBoundingClientRect(),t=s.tools.getBoundingClientRect(),w=t.width/b.sx,h=t.height/b.sy,cl=(r.left-b.host.left)/b.sx,ct=(r.top-b.host.top)/b.sy,cb=(r.bottom-b.host.top)/b.sy;
+  const x=clockMoveClamp1286(cl,b.visible.left,Math.max(b.visible.left,b.visible.right-w)),below=cb+7,above=ct-h-7;
+  const y=below+h<=b.visible.bottom?below:above>=b.visible.top?above:clockMoveClamp1286(below,b.visible.top,Math.max(b.visible.top,b.visible.bottom-h));
+  clockMoveStyle1286(s.tools,'left',x.toFixed(3)+'px');clockMoveStyle1286(s.tools,'top',y.toFixed(3)+'px');
+}
+function clockMoveLayout1286(){
+  const s=clockMoveState1286;if(!s)return;const b=clockMoveBounds1286();if(!b){clockMoveCancel1286();clockMoveEdit1286(false);return;}
+  clockMoveSize1286(b);if(s.drag&&s.drag.key!==b.key)clockMoveCancel1286();
+  if(s.position){const r=clockMoveRange1286(b);clockMoveApply1286(r.full.left+s.position.x*(r.full.right-r.full.left),r.full.top+s.position.y*(r.full.bottom-r.full.top),false,b);}
+  clockMoveTools1286(b);
+}
+function clockMoveSchedule1286(){const s=clockMoveState1286;if(!s||s.raf)return;s.raf=requestAnimationFrame(()=>{s.raf=0;clockMoveLayout1286();});}
+function clockMoveEdit1286(on){const s=clockMoveState1286;if(!s)return;if(on&&!clockMoveBounds1286())return;s.editing=!!on;s.clock.classList.toggle('clock-editing1286',s.editing);s.clock.setAttribute('aria-pressed',String(s.editing));s.clock.title=s.editing?'ドラッグで移動。もう一度タップで完了':'タップして時計を移動';s.tools.hidden=!s.editing;if(s.editing){s.clock.focus({preventScroll:true});walkForward=walkStrafe=walkTurn=walkPitch=walkRise=0;walkFast=false;if(walkRaf)endWalk();clockMoveHint1286();clockMoveTools1286(clockMoveBounds1286());}}
+function clockMoveRelease1286(){const s=clockMoveState1286,d=s?.drag;if(!s||!d)return;s.drag=null;s.clock.classList.remove('clock-dragging1286');try{s.clock.releasePointerCapture(d.id);}catch(_){}return d;}
+function clockMoveCancel1286(clear=false){const s=clockMoveState1286;if(!s)return;const d=clockMoveRelease1286();if(d)s.ignoreClickUntil=Date.now()+600;if(d?.moved){s.position=d.before?{...d.before}:null;if(s.position){const b=clockMoveBounds1286();if(b){const r=clockMoveRange1286(b);clockMoveApply1286(r.full.left+s.position.x*(r.full.right-r.full.left),r.full.top+s.position.y*(r.full.bottom-r.full.top),false,b);}}else clockMoveDefault1286();s.ignoreClickUntil=Date.now()+600;}if(clear)s.touches.clear();}
+function clockMoveReset1286(){const s=clockMoveState1286;if(!s)return;clockMoveCancel1286(true);s.position=null;clockMoveDefault1286();clockMoveSave1286();clockMoveLayout1286();}
+function clockMoveBegin1286(e){
+  const s=clockMoveState1286;if(!s||e.isPrimary===false||(e.button!==undefined&&e.button!==0)||s.drag)return;
+  const b=clockMoveBounds1286();if(!b)return;clockMoveSize1286(b);e.preventDefault();e.stopPropagation();const r=s.clock.getBoundingClientRect();
+  s.drag={id:e.pointerId,startX:e.clientX,startY:e.clientY,left:(r.left-b.host.left)/b.sx,top:(r.top-b.host.top)/b.sy,key:b.key,moved:false,before:s.position?{...s.position}:null};
+  if(e.pointerType==='touch')s.touches.add(e.pointerId);try{s.clock.setPointerCapture(e.pointerId);}catch(_){}
+}
+function clockMovePointer1286(e){const s=clockMoveState1286,d=s?.drag;if(!d||d.id!==e.pointerId){if(s?.touches.has(e.pointerId)){e.preventDefault();e.stopPropagation();}return;}e.preventDefault();e.stopPropagation();const b=clockMoveBounds1286();if(!b||b.key!==d.key){clockMoveCancel1286();return;}if(!d.moved&&Math.hypot(e.clientX-d.startX,e.clientY-d.startY)<4)return;
+  if(!d.moved){d.moved=true;clockMoveEdit1286(true);s.clock.classList.add('clock-dragging1286');}clockMoveApply1286(d.left+(e.clientX-d.startX)/b.sx,d.top+(e.clientY-d.startY)/b.sy,true,b);clockMoveTools1286(b);
+}
+function clockMoveEnd1286(e,cancel=false){const s=clockMoveState1286;if(!s)return;const d=s.drag,active=d&&d.id===e.pointerId;if(!active&&!s.touches.has(e.pointerId))return;e.preventDefault();e.stopPropagation();if(active){if(cancel)clockMoveCancel1286();else{clockMoveRelease1286();if(d.moved){s.ignoreClickUntil=Date.now()+600;clockMoveSave1286();}}}s.touches.delete(e.pointerId);}
+function clockMoveKey1286(e){
+  const s=clockMoveState1286;if(!s||!(e.target===s.clock||s.clock.contains(e.target)||s.tools.contains(e.target)))return;e.stopImmediatePropagation();
+  if(e.key==='Escape'){e.preventDefault();clockMoveCancel1286(true);clockMoveEdit1286(false);s.clock.focus({preventScroll:true});return;}
+  if(e.target!==s.clock&&!s.clock.contains(e.target))return;
+  if(e.key==='Enter'||e.key===' '){e.preventDefault();clockMoveEdit1286(!s.editing);return;}
+  if(e.key==='Home'){e.preventDefault();clockMoveReset1286();return;}
+  const delta={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!delta)return;e.preventDefault();clockMoveCancel1286(true);clockMoveEdit1286(true);const b=clockMoveBounds1286();if(!b)return;const r=s.clock.getBoundingClientRect(),step=e.shiftKey?20:5;clockMoveApply1286((r.left-b.host.left)/b.sx+delta[0]*step,(r.top-b.host.top)/b.sy+delta[1]*step,true,b);clockMoveSave1286();clockMoveTools1286(b);
+}
+(function clockMoveInit1286(){
+  const clock=el.simulationClockOverlay,wrap=el.photoCanvasWrap,canvas=el.photoCanvas,tools=document.getElementById('clockMoveTools1286'),hint=document.getElementById('clockMoveHint1286');if(!clock||!wrap||!canvas||!tools)return;
+  const safe=document.createElement('div');safe.className='sim-info-safe-area1245';safe.setAttribute('aria-hidden','true');wrap.append(safe);
+  const s=clockMoveState1286={clock,wrap,canvas,tools,hint,safe,position:clockMoveRead1286(),editing:false,drag:null,touches:new Set(),ignoreClickUntil:0,raf:0,saveFailed:false};
+  const stop=e=>e.stopPropagation(),consume=e=>{e.preventDefault();e.stopPropagation();};
+  for(const node of [clock,tools])for(const type of ['pointerdown','pointermove','pointerup','pointercancel','mousedown','mousemove','mouseup','touchstart','touchmove','touchend','touchcancel','click','dblclick','wheel'])node.addEventListener(type,stop,{passive:true});
+  clock.addEventListener('pointerdown',clockMoveBegin1286);clock.addEventListener('click',e=>{consume(e);if(Date.now()<s.ignoreClickUntil)return;clockMoveEdit1286(!s.editing);});clock.addEventListener('contextmenu',consume);
+  document.addEventListener('pointerdown',e=>{if(s.touches.size&&e.pointerType==='touch'&&!s.touches.has(e.pointerId)){s.touches.add(e.pointerId);clockMoveCancel1286();consume(e);}else if(s.drag&&s.drag.id!==e.pointerId)clockMoveCancel1286();},{capture:true,passive:false});
+  document.addEventListener('pointermove',clockMovePointer1286,{capture:true,passive:false});document.addEventListener('pointerup',e=>clockMoveEnd1286(e),{capture:true,passive:false});document.addEventListener('pointercancel',e=>clockMoveEnd1286(e,true),{capture:true,passive:false});
+  clock.addEventListener('lostpointercapture',e=>{if(s.drag?.id===e.pointerId)clockMoveCancel1286();});
+  for(const type of ['touchstart','touchmove','touchend','touchcancel'])document.addEventListener(type,e=>{if(!s.touches.size)return;consume(e);if(e.touches&&e.touches.length===0)clockMoveCancel1286(true);},{capture:true,passive:false});
+  document.getElementById('clockMoveDone1286').addEventListener('click',()=>{clockMoveCancel1286(true);clockMoveEdit1286(false);clock.focus({preventScroll:true});});document.getElementById('clockMoveReset1286').addEventListener('click',clockMoveReset1286);
+  window.addEventListener('keydown',clockMoveKey1286,true);window.addEventListener('keyup',e=>{if(e.target===clock||clock.contains(e.target)||tools.contains(e.target))e.stopImmediatePropagation();},true);
+  if(typeof ResizeObserver==='function'){s.observer=new ResizeObserver(clockMoveSchedule1286);for(const n of [wrap,canvas,clock,tools])s.observer.observe(n);}
+  if(typeof MutationObserver==='function'){s.mutations=new MutationObserver(clockMoveSchedule1286);for(const n of [document.body,wrap,clock])s.mutations.observe(n,{attributes:true,attributeFilter:['class']});}
+  for(const type of ['resize','orientationchange','scroll'])window.addEventListener(type,clockMoveSchedule1286,{passive:true});document.addEventListener('fullscreenchange',()=>{clockMoveCancel1286(true);clockMoveSchedule1286();});
+  if(window.visualViewport)for(const type of ['resize','scroll'])window.visualViewport.addEventListener(type,clockMoveSchedule1286,{passive:true});
+  window.addEventListener('blur',e=>{if(e.target===window)clockMoveCancel1286(true);});document.addEventListener('visibilitychange',()=>{if(document.hidden){clockMoveCancel1286(true);clockMoveEdit1286(false);}});clockMoveSchedule1286();
+})();
+/* clock-core-end1286 */
 
 })();
 
