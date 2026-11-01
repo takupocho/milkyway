@@ -6929,6 +6929,12 @@ body.ar-active #tideOpenBtn1284,body.home-screen-open1250 #tideOpenBtn1284,body.
 @media(min-width:860px){.solar1289-overlay[data-solar-view="moon"] .solar1289-visual{position:sticky;top:0;}}
 @media(max-width:600px){.solar1290-learn{padding:11px;}.solar1289-overlay[data-solar-view="moon"] .solar1289-stage{height:clamp(250px,34dvh,330px);}.solar1290-compare svg{height:65px;}.solar1290-events{gap:4px;}.solar1290-events button{font-size:10px;}}
 /* v1291: 余白を絞った操作と、日付・再生速度のスライダー。 */
+.solar1292-calendar-guide[hidden]{display:none!important;}
+.solar1292-calendar-guide{margin:0 0 9px;padding:9px 11px;border:1px solid #887449;border-radius:10px;background:#172332;color:#e4e8ef;}
+.solar1292-calendar-guide>button{padding:3px 0;min-height:30px;border:0;background:transparent;color:#b9dfe9;font-size:11px;}
+.solar1292-calendar-guide h3{margin:3px 0 6px;font-size:14px;line-height:1.5;color:#f5d691;}
+.solar1292-calendar-guide p{margin:0;font-size:11px;line-height:1.65;color:#ccdce7;white-space:pre-line;overflow-wrap:anywhere;}
+@media(max-width:600px){.solar1292-calendar-guide{padding:7px 9px;}.solar1292-calendar-guide>button{min-height:30px;}.solar1292-calendar-guide h3{font-size:13px;}.solar1292-calendar-guide p{font-size:10.5px;line-height:1.6;}}
 .solar1291-seek{margin:7px 0 0;min-width:0;}
 .solar1291-seek-head{display:flex;align-items:center;justify-content:space-between;gap:7px;min-width:0;}
 .solar1291-seek-head>output{color:#d6e9f4;font-size:11px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
@@ -7116,7 +7122,7 @@ body.ar-active #tideOpenBtn1284,body.home-screen-open1250 #tideOpenBtn1284,body.
   <div class="supermoon-scroll1282">
     <div class="supermoon-intro1282">
       <p id="supermoonBasis1282" class="supermoon-basis1282"></p>
-      <p class="supermoon-hint1282">面積比は平均距離の月を100%とした比較です。日付を押すと詳しい情報を表示します。</p>
+      <p class="supermoon-hint1282">面積比は平均距離の月を100%とした比較です。満月を選ぶと、その日時の「地球と月」をガイド付きで表示します。</p>
       <div class="supermoon-legend1282" aria-label="年間の満月の凡例">
         <span><i class="supermoon-key1282 is-largest" aria-hidden="true"></i>年間で最も大きな満月</span>
         <span><i class="supermoon-key1282 is-smallest" aria-hidden="true"></i>年間で最も小さな満月</span>
@@ -9784,6 +9790,11 @@ window.StarChaseTideData1284=(function browserAPI(archive, inflate, decodeAnnual
     <header class="solar1289-header"><div><p>SOLAR SYSTEM</p><h2 id="solarSystemTitle1289" tabindex="-1">太陽系シミュレーター</h2></div><button id="solarClose1289" type="button" aria-label="太陽系シミュレーターを閉じる">×</button></header>
     <div class="solar1289-body">
       <div class="solar1289-visual">
+      <section id="solarCalendarGuide1292" class="solar1292-calendar-guide" hidden aria-labelledby="solarCalendarGuideTitle1292">
+        <button id="solarCalendarGuideReturn1292" type="button" data-solar-action="calendar-return">‹ スーパームーンカレンダーへ</button>
+        <h3 id="solarCalendarGuideTitle1292" tabindex="-1"></h3>
+        <p id="solarCalendarGuideBody1292"></p>
+      </section>
       <div class="solar1289-mode" role="group" aria-label="表示する範囲"><button type="button" data-solar-mode="all" aria-pressed="true">太陽系全体</button><button type="button" data-solar-mode="inner" aria-pressed="false">内側の惑星</button><button type="button" data-solar-mode="moon" aria-pressed="false">地球と月</button></div>
       <div class="solar1289-stage"><canvas id="solarCanvas1289" tabindex="0" role="img" aria-label="太陽系の位置関係。ドラッグで回転、ピンチやホイールで拡大。矢印キーでも回転できます。">太陽と、水星・金星・地球・火星・木星・土星・天王星・海王星、月の位置関係を表示します。</canvas><span id="solarScale1289" class="solar1289-scale">距離・天体の大きさは見やすく調整</span></div>
       <p id="solarSelected1289" class="solar1289-selected"></p>
@@ -10034,7 +10045,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1291-solar-controls";
+const APP_VERSION="1292-calendar-moon-link";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -64087,7 +64098,7 @@ function supermoonCard1282(event,index,data){
   const stage=make('span','supermoon-disc-space1282'),disc=make('span','supermoon-disc1282');disc.style.setProperty('--supermoon-scale1282',(event.angularDiameterDeg/data.referenceAngularDiameterDeg).toFixed(8));disc.setAttribute('aria-hidden','true');stage.appendChild(disc);
   const ratio=make('strong','supermoon-ratio1282',event.areaPct.toFixed(1)+'%'),caption=make('span','supermoon-ratio-label1282','面積比'),angle=make('span','supermoon-angle1282',event.angularDiameterDeg.toFixed(4)+'°'),distance=make('span','supermoon-distance1282',Math.round(event.distanceKm).toLocaleString('ja-JP')+' km');
   const badge=make('span','supermoon-badge1282',event.isLargest?'年間最大 · スーパームーン':event.isSmallest?'年間最小 · マイクロムーン':'満月');
-  button.setAttribute('aria-label',`${event.year}年${event.month}月${event.day}日 ${event.time} ${data.timezoneLabel} 満月。見かけの面積は平均距離の月の${event.areaPct.toFixed(1)}パーセント。${badge.textContent}。詳細を見る`);
+  button.setAttribute('aria-label',`${event.year}年${event.month}月${event.day}日 ${event.time} ${data.timezoneLabel} 満月。見かけの面積は平均距離の月の${event.areaPct.toFixed(1)}パーセント。${badge.textContent}。地球と月のシミュレーションを見る`);
   button.append(month,date,time,stage,ratio,caption,angle,distance,badge);return button;
 }
 function supermoonSelect1282(index,focus=false){
@@ -64110,7 +64121,7 @@ function supermoonRender1282(){
 }
 function supermoonView1282(open,{render=true,focus=true}={}){
   const state=supermoonCalendarState1282;state.active=!!open;const ui=moonCalendarUi1219,section=supermoonNode1282('Calendar'),button=document.getElementById('moonCalendarSupermoonBtn1282');
-  ui.Dialog.classList.toggle('supermoon-open1282',state.active);section.hidden=!state.active;button.setAttribute('aria-pressed',String(state.active));button.textContent=state.active?'月齢カレンダー':'スーパームーン';button.setAttribute('aria-label',state.active?'月齢カレンダーへ戻る':'スーパームーンカレンダーを開く');ui.Title.textContent=state.active?'スーパームーンカレンダー':'月齢カレンダー';document.getElementById('moonCalendarHelp').textContent=state.active?'一年の満月を、見かけの大きさで比べられます。':'移りゆく月の形を、ひと月まとめて。日付を押すと詳細が見られます。';ui.CloseBtn.setAttribute('aria-label',state.active?'スーパームーンカレンダーを閉じる':'月齢カレンダーを閉じる');
+  ui.Dialog.classList.toggle('supermoon-open1282',state.active);section.hidden=!state.active;button.setAttribute('aria-pressed',String(state.active));button.textContent=state.active?'月齢カレンダー':'スーパームーン';button.setAttribute('aria-label',state.active?'月齢カレンダーへ戻る':'スーパームーンカレンダーを開く');ui.Title.textContent=state.active?'スーパームーンカレンダー':'月齢カレンダー';document.getElementById('moonCalendarHelp').textContent=state.active?'一年の満月を見比べ、選んだ満月を地球と月の図で確認できます。':'移りゆく月の形を、ひと月まとめて。日付を押すと詳細が見られます。';ui.CloseBtn.setAttribute('aria-label',state.active?'スーパームーンカレンダーを閉じる':'月齢カレンダーを閉じる');
   if(state.active){if(moonCalendarChartRaf1219){cancelAnimationFrame(moonCalendarChartRaf1219);moonCalendarChartRaf1219=0;}if(render)supermoonRender1282();if(focus)supermoonNode1282('Year').focus({preventScroll:true});}
   else{if(render&&moonCalendarOpen1219)moonCalendarRender1219();if(focus&&moonCalendarOpen1219)button.focus({preventScroll:true});}
 }
@@ -64680,11 +64691,45 @@ const solarSystemRenderer1289=(()=>{
   return Object.freeze({draw,project,labelLayout,rotate,discRadius,lunarGeometry});
 })();
 /* solar-renderer-end1289 */
+/* solar-calendar-guide-start1292 */
+/* v1292: Annual full-Moon selection explained without changing any observing
+   state. Calendar percentages and distances are reused, not reclassified. */
+const solarFullMoonGuide1292=(()=>{
+  'use strict';
+  function describe(event,data,currentJd,tz){
+    if(!event||!data||!Array.isArray(data.events)||data.events.length<1||data.events.length>13||!Number.isInteger(data.year)||data.year<1900||data.year>2100||!Number.isFinite(event.jd)||!Number.isFinite(currentJd))return null;
+    const range=solarSystemModel1289.bounds(tz);
+    if(!range||event.jd<range.min||event.jd>range.max||currentJd<range.min||currentJd>range.max)return null;
+    // Match the immutable calendar entry, including its lunation key. Two
+    // full Moons can occur in one civil month; a month number is not an ID.
+    const selected=data.events.find(e=>e&&typeof e.key==='string'&&e.key===event.key&&Number.isFinite(e.jd)&&Math.abs(e.jd-event.jd)<1e-10);
+    if(!selected||![selected.distanceKm,selected.angularDiameterDeg,selected.diameterPct,selected.areaPct].every(n=>Number.isFinite(n)&&n>0)||selected.distanceKm<=1737.4||(selected.isLargest&&selected.isSmallest))return null;
+    const date=solarSystemModel1289.formatLocal(selected.jd,tz);
+    if(!date)return null;
+    const atEvent=Math.abs(currentJd-selected.jd)*86400<=1.0001,eventDate=date.date.replaceAll('-','/'),eventTime=date.time;
+    const kind=selected.isLargest?'largest':selected.isSmallest?'smallest':'ordinary';
+    const name=kind==='largest'?'この年で最も大きな満月です。':kind==='smallest'?'この年で最も小さな満月です。':'満月でも、地球からの距離は毎回変わります。';
+    const distance=Math.round(selected.distanceKm).toLocaleString('ja-JP'),size='直径'+selected.diameterPct.toFixed(1)+'%・面積'+selected.areaPct.toFixed(1)+'%';
+    const lines=atEvent?[
+      '月が太陽のほぼ反対側に来る満月です。図の陰影は俯瞰、下の輝面比は地球からの見え方です。',
+      '地球から約'+distance+' km。平均距離の月に対し、'+size+'。',
+      name+(kind==='smallest'?'月が遠いため、小さく見えます。':'月が近いほど、大きく見えます。')
+    ]:[
+      '日時を動かして比較中です。現在の月相・距離は図の下で確認できます。',
+      '選んだ満月のときは約'+distance+' km。平均距離の月に対し、'+size+'。',
+      name+'満月と、地球に近い時期が重なると大きく見えます。'
+    ];
+    const zone=tz===9?'JST':tz===0?'UTC':'UTC'+(tz>0?'+':'−')+Math.abs(tz);
+    return {title:(atEvent?'':'選んだ満月：')+eventDate+' '+eventTime+'（'+zone+'）'+(atEvent?' の満月':''),lines,atEvent,kind,sourceLabel:data.year+'年の満月カレンダー・'+zone+'／計算目安',eventJd:selected.jd,eventDate,eventTime};
+  }
+  return Object.freeze({describe});
+})();
+/* solar-calendar-guide-end1292 */
 /* solar-controller-start1289 */
 /* v1289: 太陽系の日時は独立した下書き。反映を押すまで撮影画面へ書き込まない。 */
 const solarSystemUi1289=(()=>{
   const doc=document,byId=id=>doc.getElementById(id),overlay=byId('solarSystemOverlay1289'),canvas=byId('solarCanvas1289');
-  const s={open:false,guide:false,returning:false,handing:false,jd:0,tz:9,mode:'all',yaw:-.3,tilt:.6,zoom:1,selected:'earth',playing:false,raf:0,lastDraw:-Infinity,playAnchor:0,playLastAt:0,playUnits:0,playRate:1.25,playUnit:'day',seek:null,seeking:false,dirty:true,hits:[],pointers:new Map(),gesture:null,focus:null,overflow:'',inert:[]};
+  const s={open:false,guide:false,returning:false,handing:false,jd:0,tz:9,mode:'all',yaw:-.3,tilt:.6,zoom:1,selected:'earth',playing:false,raf:0,lastDraw:-Infinity,playAnchor:0,playLastAt:0,playUnits:0,playRate:1.25,playUnit:'day',seek:null,seeking:false,dirty:true,hits:[],pointers:new Map(),gesture:null,focus:null,overflow:'',inert:[],calendar:null};
   const M=()=>solarSystemModel1289,R=()=>solarSystemRenderer1289,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function notice(text){const n=byId('solarNotice1289');if(n)n.textContent=text||'';}
   function view(){return {mode:s.mode,yaw:s.yaw,tilt:s.tilt,zoom:s.zoom,selected:s.selected};}
@@ -64748,6 +64793,14 @@ const solarSystemUi1289=(()=>{
     return base===null?null:base+(Number.isFinite(minute)?minute:0)/1440;
   }
   function clampDate(jd){const b=M().bounds(s.tz);return b&&Number.isFinite(jd)?clamp(jd,b.min,b.max):M().parseLocal('2000-01-01','12:00:00',s.tz);}
+  function calendarGuideSync(){
+    const box=byId('solarCalendarGuide1292');if(!box)return;
+    const context=s.calendar,description=context&&s.mode==='moon'&&typeof solarFullMoonGuide1292!=='undefined'?solarFullMoonGuide1292.describe(context.event,context.data,s.jd,s.tz):null;
+    box.hidden=!description;const dialog=overlay.querySelector('.solar1289-dialog');if(dialog)dialog.setAttribute('aria-describedby',description?'solarCalendarGuideBody1292':'');if(!description)return;
+    const title=byId('solarCalendarGuideTitle1292'),body=byId('solarCalendarGuideBody1292'),text=Array.isArray(description.lines)?description.lines.join('\n'):Array.isArray(description.body)?description.body.join('\n'):String(description.body||'');
+    if(title&&title.textContent!==description.title)title.textContent=description.title;
+    if(body&&body.textContent!==text)body.textContent=text;
+  }
   function sync(rewrite=true){
     const f=M().formatLocal(s.jd,s.tz);if(f&&rewrite){byId('solarDate1289').value=f.date;byId('solarTime1289').value=f.time;}
     byId('solarTimezone1289').textContent='時刻：UTC'+(s.tz>=0?'+':'')+s.tz+'（撮影画面と同じタイムゾーン）';
@@ -64755,7 +64808,7 @@ const solarSystemUi1289=(()=>{
     byId('solarPlay1289').textContent=s.playing?'❚❚ 一時停止':'▶ 自動再生';byId('solarPlay1289').setAttribute('aria-pressed',String(s.playing));
     overlay.dataset.solarView=s.mode;byId('solarLunarLearn1290').hidden=s.mode!=='moon';
     byId('solarScale1289').textContent=s.mode==='moon'?'距離は同比率・地球と月の大きさは拡大':s.mode==='inner'?'距離の比率は一定・天体の大きさは強調':'軌道の間隔と天体の大きさは見やすく調整';
-    speedSync();seekSync();
+    speedSync();seekSync();calendarGuideSync();
   }
   function mount(){if(!overlay)return;const host=doc.fullscreenElement||doc.body;if(host&&overlay.parentElement!==host)host.appendChild(overlay);}
   function setInert(on){
@@ -64822,15 +64875,35 @@ const solarSystemUi1289=(()=>{
     if(s.playing||s.dirty)s.raf=requestAnimationFrame(paint);
   }
   function request(){if(!s.open)return;s.dirty=true;if(!s.raf)s.raf=requestAnimationFrame(paint);}
-  function open(){
-    if(s.open)return true;s.tz=timezone();s.jd=clampDate(observation());s.mode='all';s.yaw=-.3;s.tilt=.6;s.zoom=1;s.selected='earth';s.seek=null;s.seeking=false;byId('solarStep1289').value='day';stop();
+  function open(seed=null){
+    if(s.open)return true;const context=seed?.kind==='calendar-full-moon1292'?seed.context:null;s.calendar=context;s.tz=context?context.data.tz:timezone();s.jd=context?context.event.jd:clampDate(observation());s.mode=context?'moon':'all';s.yaw=-.3;s.tilt=context?Math.PI/2:.6;s.zoom=1;s.selected=context?'moon':'earth';s.seek=null;s.seeking=false;byId('solarStep1289').value=context?'hour':'day';stop();
+    if(context){const earth=M().bodies(s.jd)?.bodies.find(b=>b.id==='earth');if(earth)s.yaw=Math.PI-Math.atan2(-earth.position[1],-earth.position[0]);}
     s.handing=true;guide(false);setHomeScreenOpen1250(false,{restoreFocus:false});s.handing=false;
     s.focus=byId('homeSolarSystem1289');mount();s.open=true;overlay.hidden=false;overlay.setAttribute('aria-hidden','false');s.overflow=doc.body.style.overflow;doc.body.style.overflow='hidden';setInert(true);
-    byId('solarApply1289').disabled=false;notice('日時を進めて、惑星の動きを眺められます。');sync();byId('solarClose1289').focus({preventScroll:true});request();return true;
+    byId('solarApply1289').disabled=false;notice(context?'カレンダーで選んだ満月の瞬間です。日時を動かして前後の様子も比べられます。':'日時を進めて、惑星の動きを眺められます。');sync();byId('solarClose1289').focus({preventScroll:true});const content=overlay.querySelector('.solar1289-body');if(content)content.scrollTop=0;request();return true;
   }
+  function openFullMoon(event,data){
+    if(s.open||typeof moonCalendarOpen1219==='undefined'||!moonCalendarOpen1219||typeof supermoonCalendarState1282==='undefined'||!supermoonCalendarState1282.active)return false;
+    const range=M().bounds(data?.tz),exact=data?.events?.find(e=>e.key===event?.key&&e.jd===event?.jd);if(data!==supermoonCalendarState1282.data||!range||!exact||!Number.isFinite(exact.jd)||exact.jd<range.min||exact.jd>range.max)return false;
+    const calendar=supermoonCalendarState1282,scroll=supermoonNode1282('Calendar')?.querySelector('.supermoon-scroll1282');
+    const snapshot={year:calendar.year,data:calendar.data,index:calendar.index,key:exact.key,scrollTop:scroll?.scrollTop||0,returnFocus:moonCalendarReturnFocus1219,follow:moonCalendarFollow1219,monthlyYear:moonCalendarYear1219,month:moonCalendarMonth1219,day:moonCalendarDay1219,observationKey:moonCalendarObservationKey1219};
+    // The calendar owns a document-capture keyboard trap; close it before the
+    // solar modal receives focus, and keep its own return target for later.
+    moonCalendarSetOpen1219(false);
+    return open({kind:'calendar-full-moon1292',context:{event:exact,data,snapshot}});
+  }
+  function restoreCalendar(context){
+    const snapshot=context.snapshot,calendar=supermoonCalendarState1282;moonCalendarSetOpen1219(true);
+    moonCalendarReturnFocus1219=snapshot.returnFocus;moonCalendarFollow1219=snapshot.follow;moonCalendarYear1219=snapshot.monthlyYear;moonCalendarMonth1219=snapshot.month;moonCalendarDay1219=snapshot.day;moonCalendarObservationKey1219=snapshot.observationKey;
+    calendar.year=snapshot.year;calendar.data=snapshot.data;calendar.index=snapshot.index;supermoonView1282(true,{render:true,focus:false});
+    const index=calendar.data?.events.findIndex(e=>e.key===snapshot.key);if(index>=0){supermoonSelect1282(index,false);const buttons=supermoonNode1282('Grid').querySelectorAll('button[data-supermoon-index]'),button=[...buttons].find(n=>Number(n.dataset.supermoonIndex)===index);button?.focus({preventScroll:true});}
+    const scroll=supermoonNode1282('Calendar')?.querySelector('.supermoon-scroll1282');if(scroll)scroll.scrollTop=snapshot.scrollTop;
+  }
+  function returnToCalendar(){if(!s.open||!s.calendar)return false;close(true);return true;}
   function close(back=true){
-    if(!s.open)return;stop();s.open=false;s.seeking=false;s.pointers.clear();s.gesture=null;s.hits=[];setInert(false);overlay.hidden=true;overlay.setAttribute('aria-hidden','true');doc.body.style.overflow=s.overflow;
-    if(back){s.returning=true;setHomeScreenOpen1250(true);guide(true);s.returning=false;byId('homeSolarSystem1289')?.focus({preventScroll:true});}
+    if(!s.open)return;const context=s.calendar;stop();s.open=false;s.calendar=null;s.seeking=false;s.pointers.clear();s.gesture=null;s.hits=[];setInert(false);overlay.hidden=true;overlay.setAttribute('aria-hidden','true');doc.body.style.overflow=s.overflow;calendarGuideSync();
+    if(back&&context)restoreCalendar(context);
+    else if(back){s.returning=true;setHomeScreenOpen1250(true);guide(true);s.returning=false;byId('homeSolarSystem1289')?.focus({preventScroll:true});}
   }
   function step(amount){stop();const next=M().shift(s.jd,amount,byId('solarStep1289').value,s.tz);if(next===null)return;byId('solarApply1289').disabled=false;notice(Math.abs(next-s.jd)<1e-10?'表示できる日付の端です。':'');s.jd=next;sync();request();}
   function input(){stop();const parsed=M().parseLocal(byId('solarDate1289').value,byId('solarTime1289').value,s.tz);if(parsed===null){notice('1900〜2100年の実在する日付と時刻を入力してください。');byId('solarApply1289').disabled=true;return false;}s.jd=parsed;byId('solarApply1289').disabled=false;notice('');seekSync();request();return true;}
@@ -64847,6 +64920,7 @@ const solarSystemUi1289=(()=>{
     el.dateInput.value=parts.date;if(!fineTimeOn&&timeRangeMode==='15h'){timeRangeMode='30h';applyTimeRangeMode();}playbackWriteMinutes1275(minute);update();scheduleSaveSettings();close(false);setHomeScreenOpen1250(false,{restoreFocus:false});el.popupHomeBtn?.focus({preventScroll:true});return true;
   }
   function action(name){
+    if(name==='calendar-return'){returnToCalendar();return;}
     if(name==='seek-center'){stop();s.seeking=false;seekSync(true);request();return;}
     if(/^lunar-(full|perigee|apogee)$/.test(name)){if(s.mode==='moon')lunarJump(name.slice(6));return;}
     if(name==='close'){close();return;}if(name==='previous'){step(-1);return;}if(name==='next'){step(1);return;}if(name==='play'){play();return;}if(name==='apply'){apply();return;}
@@ -64884,6 +64958,7 @@ const solarSystemUi1289=(()=>{
   function init(){
     if(!overlay||!canvas)return;
     byId('homeStarGuideBtn')?.addEventListener('click',showGuide);byId('homeSkyGuideBack1289')?.addEventListener('click',()=>{guide(false);byId('homeStarGuideBtn')?.focus({preventScroll:true});});byId('homeSolarSystem1289')?.addEventListener('click',open);byId('solarClose1289').addEventListener('click',()=>close());
+    byId('supermoonGrid1282')?.addEventListener('click',event=>{if(typeof supermoonCalendarState1282==='undefined')return;const card=event.target.closest?.('button[data-supermoon-index]'),calendar=supermoonCalendarState1282,index=Number(card?.dataset.supermoonIndex);if(!card||!Number.isInteger(index)||index<0||index>=calendar.data?.events.length)return;openFullMoon(calendar.data.events[index],calendar.data);});
     for(const b of overlay.querySelectorAll('[data-solar-mode]'))b.addEventListener('click',()=>setMode(b.dataset.solarMode));for(const b of overlay.querySelectorAll('[data-solar-action]'))b.addEventListener('click',()=>action(b.dataset.solarAction));
     for(const id of ['solarDate1289','solarTime1289']){byId(id).addEventListener('change',input);byId(id).addEventListener('focus',()=>{if(s.playing)stop();});}byId('solarStep1289').addEventListener('change',stepUnitInput);byId('solarSpeed1289').addEventListener('input',speedInput);byId('solarSpeed1289').addEventListener('change',speedInput);
     const seek=byId('solarSeek1291');seek.addEventListener('pointerdown',seekBegin);seek.addEventListener('input',seekInput);seek.addEventListener('change',()=>{seekInput();seekEnd();});seek.addEventListener('pointerup',seekEnd);seek.addEventListener('pointercancel',seekEnd);seek.addEventListener('lostpointercapture',seekEnd);seek.addEventListener('blur',seekEnd);
@@ -64895,7 +64970,7 @@ const solarSystemUi1289=(()=>{
     const oldRail=homeRailScreenSet1255;homeRailScreenSet1255=function(on){if(on&&s.guide)guide(false);return oldRail.apply(this,arguments);};
   }
   init();
-  return {open,close,showGuide,guide,action,setMode,input,step,apply,stop,request,paint,pointerDown,pointerMove,pointerEnd,rebaseGesture,lunarLearning,lunarJump,speedRate,speedInput,advance,seekInput,seekBegin,seekEnd,stepUnitInput,getState:()=>({open:s.open,guide:s.guide,jd:s.jd,tz:s.tz,playing:s.playing,raf:s.raf,rate:s.playRate,playUnits:s.playUnits,seek:s.seek?{...s.seek,ticks:s.seek.ticks?.map(t=>({...t}))}:null,seeking:s.seeking,view:view(),pointerCount:s.pointers.size,gesture:s.gesture?{...s.gesture}:null})};
+  return {open,openFullMoon,returnToCalendar,close,showGuide,guide,action,setMode,input,step,apply,stop,request,paint,pointerDown,pointerMove,pointerEnd,rebaseGesture,lunarLearning,lunarJump,speedRate,speedInput,advance,seekInput,seekBegin,seekEnd,stepUnitInput,getState:()=>({open:s.open,guide:s.guide,jd:s.jd,tz:s.tz,playing:s.playing,raf:s.raf,calendar:s.calendar?{key:s.calendar.event.key,jd:s.calendar.event.jd,year:s.calendar.data.year,tz:s.calendar.data.tz}:null,rate:s.playRate,playUnits:s.playUnits,seek:s.seek?{...s.seek,ticks:s.seek.ticks?.map(t=>({...t}))}:null,seeking:s.seeking,view:view(),pointerCount:s.pointers.size,gesture:s.gesture?{...s.gesture}:null})};
 })();
 /* solar-controller-end1289 */
 
