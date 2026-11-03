@@ -6360,6 +6360,8 @@ body.truss-flow-map1269 #osmMap .leaflet-top.leaflet-left{top:auto!important;bot
 #mapPlaceBar.object-flow-active1270 #objectFlow1270 button:disabled{opacity:.5;cursor:default;}
 #osmMap .object-context-hit1270,#osmMap .object-context-hit1270 *{pointer-events:auto;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;}
 #osmMap .map-kmz-icon.object{width:36px;height:36px;font-size:20px;}
+#osmMap .map-kmz-icon.sweetgum1300{background:var(--sweetgum-leaf1300,#d77b28);}
+#osmMap .map-kmz-icon.sweetgum1300 svg{width:23px;height:23px;pointer-events:none;}
 #osmMap .object-context-hit1270:focus-visible{outline:3px solid #64d5ff;outline-offset:3px;}
 body.object-flow-map1270 #popupHomeBtn,body.object-flow-map1270 #mobileSettingsBtn,
 body.object-flow-map1270 #mobileDisplayOptionsBtn,body.object-flow-map1270 #iconInfoBtn,
@@ -6412,6 +6414,9 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
 #mapPlaceBar.object-flow-active1270 .object-flow-actions1270{
   margin-top:2px;
 }
+
+#mapPlaceBar.object-flow-active1270 #objectFlowBatch1270{display:grid;gap:8px;}
+#mapPlaceBar.object-flow-active1270 #objectFlowBatchApply1270{background:#189b39;color:#fff;}
 
 .bridge-height-ui1271{position:fixed;inset:0;z-index:190000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;background:rgba(3,9,20,.72);color:#eef7ff;font-family:inherit;line-height:1.55;overscroll-behavior:contain}
 .bridge-height-ui1271[hidden],.bridge-height-ui1271 [hidden]{display:none!important}
@@ -8794,6 +8799,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
   </div>
   <div id="objectFlowManage1270" class="object-flow-manage1270" role="group" aria-label="配置したオブジェクトの操作" hidden>
     <button id="objectFlowReposition1270" type="button">再配置</button>
+    <button id="objectFlowBatchOpen1270" type="button" hidden>まとめて再配置</button>
     <button id="objectFlowColorOpen1270" type="button" hidden>葉の色を変更</button>
     <button id="objectFlowDelete1270" type="button">削除</button>
     <button id="objectFlowStop1270" type="button">やめる</button>
@@ -8808,6 +8814,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
     </div>
     <button id="objectFlowColorApply1270" type="button">この木に反映</button>
     <button id="objectFlowColorBack1270" type="button">戻る</button>
+  </div>
+  <div id="objectFlowBatch1270" hidden>
+    <p class="object-flow-message1270">木のアイコンを1本ずつドラッグしてください。</p>
+    <p id="objectFlowBatchStatus1270" class="object-flow-hint1270" role="status"></p>
+    <div class="object-flow-actions1270">
+      <button id="objectFlowBatchApply1270" type="button">変更を確定</button>
+      <button id="objectFlowBatchCancel1270" type="button">取り消す</button>
+    </div>
   </div>
   <div id="objectFlowActions1270" class="object-flow-actions1270">
     <button id="objectFlowConfirm1270" class="object-flow-confirm1270" type="button" disabled hidden>決定</button>
@@ -10189,7 +10203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1299-map-placement-panels";
+const APP_VERSION="1300-sweetgum-batch-placement";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -20778,6 +20792,28 @@ function updateOsmRunningTrainMarkers(){
     if(Math.abs(previous.lat-ll[0])>1e-7||Math.abs(previous.lng-ll[1])>1e-7)marker.setLatLng(ll);
   }
 }
+function sweetgumMapColor1300(spec){
+  const color=spec?.foliageColor;
+  return typeof color==="string"&&/^#[0-9a-f]{6}$/i.test(color)?color:"#d77b28";
+}
+function sweetgumMapIcon1300(spec){
+  const color=sweetgumMapColor1300(spec);
+  const leaf='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff8e8" stroke="#252018" stroke-width="1.2" stroke-linejoin="round" d="M12 2l2.6 6 4.3-3.3-.6 5.9 4.5.3-3.6 3.5 1 3.1-6.7.9v3.1h-2.8v-3.1l-6.7-.9 1-3.1L1.4 11l4.6-.3-.6-5.9 4.2 3.3z"/></svg>';
+  return L.divIcon({className:"",html:'<div class="map-kmz-icon object sweetgum1300" style="--sweetgum-leaf1300:'+color+'">'+leaf+'</div>',iconSize:[36,36],iconAnchor:[18,18]});
+}
+function syncSweetgumMapIcon1300(marker,spec){
+  const icon=marker.getElement?.()?.firstElementChild;
+  if(!icon?.classList.contains("object"))return;
+  const sweetgum=spec.kind==="sweetgum";
+  if(sweetgum!==icon.classList.contains("sweetgum1300")){
+    marker.setIcon(sweetgum?sweetgumMapIcon1300(spec):L.divIcon({className:"",html:'<div class="map-kmz-icon object">🧱</div>',iconSize:[36,36],iconAnchor:[18,18]}));
+    return;
+  }
+  if(sweetgum){
+    const color=sweetgumMapColor1300(spec);
+    if(icon.style.getPropertyValue("--sweetgum-leaf1300")!==color)icon.style.setProperty("--sweetgum-leaf1300",color);
+  }
+}
 function updateOsmKmzMarkers(){
   if(!osmMapInstance||typeof kmzSlots==="undefined")return;
   /* 【v1069】地図を閉じているときは何もしない。以前はここで赤丸を全部消し、選んだ被写体（mapKmzTargetId）も解除していたので、
@@ -20796,7 +20832,7 @@ function updateOsmKmzMarkers(){
       if(!m&&iconKind){
         /* 【v1185】列車・駅は、赤丸ではなくアイコン（🚃／🚉）にする。 */
         m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,autoPanOnFocus:iconKind!=="truss"&&iconKind!=="object",zIndexOffset:iconKind==="station"?600:0,   /* 【v1190】駅を列車より上に */
-          icon:L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":iconKind==="truss"?"🌉":iconKind==="object"?(slot.object?.kind==="sweetgum"?"🍁":"🧱"):"🚉"}</div>`,iconSize:iconKind==="station"?[24,24]:[36,36],iconAnchor:iconKind==="station"?[12,12]:[18,18]})}).addTo(osmMapInstance);
+          icon:iconKind==="object"&&slot.object.kind==="sweetgum"?sweetgumMapIcon1300(slot.object):L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":iconKind==="truss"?"🌉":iconKind==="object"?"🧱":"🚉"}</div>`,iconSize:iconKind==="station"?[24,24]:[36,36],iconAnchor:iconKind==="station"?[12,12]:[18,18]})}).addTo(osmMapInstance);
         m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();if(iconKind==="train")trainTapSelect(slot);updateOsmFovOverlay();});
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
@@ -20822,6 +20858,7 @@ function updateOsmKmzMarkers(){
         if(typeof window.trussContextInstall1269==='function')window.trussContextInstall1269(m,slot);
       }
       if(objectSlotIsFree1270(slot)){
+        syncSweetgumMapIcon1300(m,slot.object);
         const box=m.getElement&&m.getElement();
         if(box){const name=String(slot.object.name||'オブジェクト');if(box.title!==name)box.title=name;box.setAttribute('aria-label',name+'（長押しで再配置・削除）');}
         if(typeof window.objectContextInstall1270==='function')window.objectContextInstall1270(m,slot);
@@ -62930,13 +62967,15 @@ function objectFlowFingerprint1270(slot){return JSON.stringify([slot.object,slot
 function objectFlowCurrent1270(){
   const s=objectPlaceFlow1270,now=trainFlowContext1265();
   if(!s.active||!s.context||!Object.keys(now).every(key=>s.context[key]===now[key]))return false;
+  if(s.phase==='batch')return objectFlowBatchCurrent1300();
   const slot=s.editSlot||s.menuSlot;
   return !slot||(objectSlotIsFree1270(slot)&&kmzSlots.includes(slot)&&s.fingerprint===objectFlowFingerprint1270(slot));
 }
-function objectFlowOriginalHidden1270(slot){return objectPlaceFlow1270.active&&objectPlaceFlow1270.mask?.slot===slot;}
+function objectFlowOriginalHidden1270(slot){return objectPlaceFlow1270.active&&(objectPlaceFlow1270.mask?.slot===slot||objectFlowBatchOriginalHidden1300(slot));}
 function objectFlowClearPreview1270(){const s=objectPlaceFlow1270;if(s.preview&&s.previewMap)try{s.previewMap.removeLayer(s.preview);}catch(_error){}s.preview=null;s.previewMap=null;}
 function objectFlowCancel1270(note=null){
   const s=objectPlaceFlow1270;if(!s.active)return;
+  objectFlowBatchClear1300();
   const mask=s.mask;s.serial++;s.active=false;s.phase='position';s.spec=null;s.model=null;s.draft=null;s.editSlot=null;s.menuSlot=null;s.context=null;s.fingerprint=null;s.mask=null;s.message='';s.recolor1298=false;
   objectFlowClearPreview1270();document.body.classList.remove('object-flow-map1270','map-place');
   const bar=document.getElementById('mapPlaceBar');bar.classList.remove('object-flow-active1270');bar.hidden=true;objectFlowNode1270('').hidden=true;
@@ -62950,6 +62989,13 @@ function objectFlowSync1270(){
   const menu=s.phase==='menu',busy=s.phase==='height'||s.phase==='committing',ready=s.phase==='ready';
   const bar=document.getElementById('mapPlaceBar'),first=!document.body.classList.contains('object-flow-map1270');
   bar.classList.add('object-flow-active1270');bar.hidden=false;document.body.classList.add('object-flow-map1270','map-place');objectFlowNode1270('').hidden=false;
+  if(s.phase==='batch'){
+    objectFlowBatchSync1300();
+    if(typeof simUiLayoutSchedule1256==='function')simUiLayoutSchedule1256();
+    return;
+  }
+  objectFlowNode1270('Batch').hidden=true;
+  objectFlowNode1270('BatchOpen').hidden=!menu||s.menuSlot?.object?.kind!=='sweetgum';
   objectFlowNode1270('Title').textContent=menu?(s.menuSlot.object.name+'をどうしますか？'):s.spec.name;
   objectFlowNode1270('Message').hidden=menu;objectFlowNode1270('Hint').hidden=menu;
   objectFlowNode1270('Message').textContent=s.phase==='height'?'地面の高さを確認しています…':s.phase==='committing'?'配置しています…':s.message||(ready?'ここに配置しますか？':'どこに配置しますか？');
@@ -62973,7 +63019,7 @@ function objectFlowPreview1270(){
   const r=s.heading*D2R,cs=Math.cos(r),sn=Math.sin(r),scale=s.editSlot?.scale||1;
   const ll=(x,y)=>trainLL(d.lat,d.lon,(x*cs+y*sn)*scale,(-x*sn+y*cs)*scale);
   const outline=[[lo[0],lo[1]],[hi[0],lo[1]],[hi[0],hi[1]],[lo[0],hi[1]]].map(([x,y])=>ll(x,y));
-  const arrowLength=Math.max(12,Math.abs(hi[1])+8),layers=[L.polygon(outline,{interactive:false,color:'#5ccbed',weight:3,fillOpacity:.24}),L.polyline([ll(0,0),ll(0,arrowLength),ll(-3,arrowLength-5),ll(0,arrowLength),ll(3,arrowLength-5)],{interactive:false,color:'#ed5e55',weight:4}),L.marker(ll(0,0),{interactive:false,keyboard:false,icon:L.divIcon({className:'',html:s.spec.kind==='sweetgum'?'<div class="map-place-pin">🍁</div>':'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]})})];
+  const arrowLength=Math.max(12,Math.abs(hi[1])+8),layers=[L.polygon(outline,{interactive:false,color:'#5ccbed',weight:3,fillOpacity:.24}),L.polyline([ll(0,0),ll(0,arrowLength),ll(-3,arrowLength-5),ll(0,arrowLength),ll(3,arrowLength-5)],{interactive:false,color:'#ed5e55',weight:4}),L.marker(ll(0,0),{interactive:false,keyboard:false,icon:s.spec.kind==='sweetgum'?sweetgumMapIcon1300(s.spec):L.divIcon({className:'',html:'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]})})];
   s.preview=L.layerGroup(layers).addTo(osmMapInstance);s.previewMap=osmMapInstance;
 }
 function objectFlowSetHeading1270(value){
@@ -63005,7 +63051,7 @@ async function objectFlowBegin1270(rawSpec,editSlot=null){
 function objectFlowMapClick1270(event){
   const s=objectPlaceFlow1270;if(!s.active)return false;
   if(!objectFlowCurrent1270()){objectFlowCancel1270('撮影条件が変わりました。配置をやり直してください。');return true;}
-  if(s.phase==='menu'||s.phase==='committing')return true;
+  if(s.phase==='menu'||s.phase==='committing'||s.phase==='batch')return true;
   const lat=event?.latlng?.lat,lon=event?.latlng?.lng;if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return true;
   const serial=++s.serial,draft={lat,lon,altitude:null};s.phase='height';s.draft=draft;s.message='';objectFlowPreview1270();objectFlowSync1270();
   const current=()=>s.active&&s.serial===serial&&s.draft===draft&&s.phase==='height'&&objectFlowCurrent1270();
@@ -63086,6 +63132,170 @@ function objectFlowColorApply1298(){
   scheduleSaveSettings();
   setKmzBuildingStatus('選んだモミジバフウの葉の色を変更しました。','ready');
 }
+let objectFlowBatch1300=null;
+
+function objectFlowBatchCurrent1300(){
+  const batch=objectFlowBatch1300;
+  if(!batch||batch.map!==osmMapInstance||!osmMapScreenOpen)return false;
+  const currentSlots=new Set(kmzSlots);
+  return batch.entries.every(({slot,fingerprint})=>currentSlots.has(slot)&&objectFlowFingerprint1270(slot)===fingerprint);
+}
+
+function objectFlowBatchOriginalHidden1300(slot){
+  return !!objectFlowBatch1300?.slots.has(slot);
+}
+
+function objectFlowBatchClear1300(){
+  const batch=objectFlowBatch1300;
+  objectFlowBatch1300=null;
+  if(!batch)return;
+  for(const {marker} of batch.entries){
+    if(!marker)continue;
+    marker.off('dragstart dragend');
+    batch.map.removeLayer(marker);
+  }
+}
+
+function objectFlowBatchSync1300(){
+  const batch=objectFlowBatch1300;
+  if(!batch)return;
+  objectFlowNode1270('Title').textContent='モミジバフウをまとめて再配置';
+  for(const id of ['Message','Hint','Rotations','Confirm','Repeat','Actions','Manage','ColorPanel']){
+    objectFlowNode1270(id).hidden=true;
+  }
+  objectFlowNode1270('Batch').hidden=false;
+  objectFlowNode1270('BatchStatus').textContent=batch.message||
+    (batch.changed.size?'変更した木：'+batch.changed.size+'本':'編集中：'+batch.entries.length+'本');
+  objectFlowNode1270('BatchApply').disabled=batch.busy||batch.dragging.size>0||batch.changed.size===0;
+}
+
+function objectFlowBatchWrapLon1300(lon){
+  return lon>=-180&&lon<=180?lon:((lon+180)%360+360)%360-180;
+}
+
+function objectFlowBatchOpen1300(){
+  const s=objectPlaceFlow1270;
+  if(s.phase!=='menu'||!osmMapInstance||!objectFlowCurrent1270()||s.menuSlot?.object?.kind!=='sweetgum')return;
+  const map=osmMapInstance;
+  const entries=[];
+  for(const slot of kmzSlots){
+    if(slot.visible===false||!slot.model||slot.object?.kind!=='sweetgum'||!objectSlotIsFree1270(slot))continue;
+    const cfg=kmzSlotSettings(slot);
+    if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))continue;
+    entries.push({slot,fingerprint:objectFlowFingerprint1270(slot),lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,marker:null});
+  }
+  if(!entries.length)return;
+  const batch={map,entries,slots:new Set(entries.map(entry=>entry.slot)),changed:new Map(),dragging:new Set(),busy:false,message:''};
+  objectFlowBatch1300=batch;
+  s.phase='batch';
+  s.serial++;
+  const target=entries.find(entry=>entry.slot.id===mapKmzTargetId);
+  if(target){
+    s.mask={slot:target.slot,target:mapKmzTargetId};
+    mapKmzTargetId=null;
+  }
+  try{
+    for(const entry of entries){
+      const marker=L.marker([entry.lat,entry.lon],{
+        pane:'markerPane',icon:sweetgumMapIcon1300(entry.slot.object),draggable:true,
+        autoPan:false,autoPanOnFocus:false,keyboard:false,bubblingMouseEvents:false,
+        title:entry.slot.object.name+'（ドラッグで移動）'
+      });
+      entry.marker=marker;
+      marker.on('dragstart',()=>{
+        if(objectFlowBatch1300!==batch||batch.busy)return;
+        batch.dragging.add(entry);
+        batch.message='';
+        objectFlowBatchSync1300();
+      });
+      marker.on('dragend',()=>{
+        if(objectFlowBatch1300!==batch||batch.busy)return;
+        batch.dragging.delete(entry);
+        const {lat,lng}=marker.getLatLng(),lon=objectFlowBatchWrapLon1300(lng);
+        if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90){
+          const last=batch.changed.get(entry)||entry;
+          marker.setLatLng([last.lat,last.lon]);
+        }else if(Math.abs(lat-entry.lat)>1e-9||Math.abs(objectFlowBatchWrapLon1300(lon-entry.lon))>1e-9){
+          batch.changed.set(entry,{lat,lon});
+        }else{
+          batch.changed.delete(entry);
+        }
+        objectFlowBatchSync1300();
+      });
+      marker.addTo(map);
+    }
+    updateOsmKmzMarkers();
+    objectFlowSync1270();
+    objectFlowNode1270('BatchCancel').focus({preventScroll:true});
+  }catch(_error){
+    objectFlowCancel1270('木のアイコンを編集用に表示できませんでした。');
+  }
+}
+
+async function objectFlowBatchApply1300(){
+  const batch=objectFlowBatch1300,s=objectPlaceFlow1270;
+  if(s.phase!=='batch'||!batch||batch.busy||batch.dragging.size||!batch.changed.size)return;
+  if(!objectFlowCurrent1270()){
+    objectFlowCancel1270('撮影条件や元のオブジェクトが変わりました。配置をやり直してください。');
+    return;
+  }
+  batch.busy=true;
+  batch.message='移動先の地面の高さを確認しています…';
+  for(const {marker} of batch.entries)marker.dragging.disable();
+  objectFlowBatchSync1300();
+  const changes=[...batch.changed];
+  const positions=[];
+  try{
+    for(let i=0;i<changes.length;i+=8){
+      const chunk=await Promise.all(changes.slice(i,i+8).map(async([entry,destination])=>{
+        const altitude=await fireworkGroundElevation(destination.lat,destination.lon);
+        if(!Number.isFinite(altitude))throw new Error('地面の高さを取得できない木があります。位置を調整してもう一度お試しください。');
+        const slot=entry.slot,latDelta=destination.lat-entry.lat;
+        const lonDelta=objectFlowBatchWrapLon1300(destination.lon-entry.lon);
+        const altDelta=altitude-entry.altitude;
+        const patch={lat:slot.lat+latDelta,lon:objectFlowBatchWrapLon1300(slot.lon+lonDelta),altitude:(slot.altitude||0)+altDelta};
+        if(slot.move?.on&&kmzMoveReady(slot.move)){
+          const shift=point=>{
+            const moved={...point,lat:point.lat+latDelta,lon:objectFlowBatchWrapLon1300(point.lon+lonDelta)};
+            if(Number.isFinite(point.altitude))moved.altitude=point.altitude+altDelta;
+            return moved;
+          };
+          patch.move={...slot.move,from:shift(slot.move.from),to:shift(slot.move.to)};
+        }
+        return {slot,patch};
+      }));
+      if(objectFlowBatch1300!==batch)return;
+      if(!objectFlowCurrent1270()){
+        objectFlowCancel1270('撮影条件や元のオブジェクトが変わりました。配置をやり直してください。');
+        return;
+      }
+      positions.push(...chunk);
+    }
+    const active=kmzActiveSlot();
+    for(const {slot,patch} of positions)Object.assign(slot,patch);
+    if(positions.some(({slot})=>slot===active)){
+      trainFlowEditorPrecision1268={slot:active};
+      kmzLoadEditor();
+    }
+    objectFlowCancel1270();
+    renderKmzList();
+    refreshKmzBuildingControls(false);
+    drawPhoto._terrainRenderKey='';
+    update();
+    scheduleSaveSettings();
+    setKmzBuildingStatus(positions.length+'本のモミジバフウを再配置しました。','ready');
+  }catch(error){
+    if(objectFlowBatch1300!==batch)return;
+    if(!objectFlowCurrent1270()){
+      objectFlowCancel1270('撮影条件や元のオブジェクトが変わりました。配置をやり直してください。');
+      return;
+    }
+    batch.busy=false;
+    batch.message=error?.message||'木を再配置できませんでした。';
+    for(const {marker} of batch.entries)marker.dragging.enable();
+    objectFlowBatchSync1300();
+  }
+}
 function objectPlaceMenuOpen1270(slot){
   if(!objectSlotIsFree1270(slot)||slot.visible===false||!kmzSlots.includes(slot)||!osmMapScreenOpen)return false;
   homeRailCancelPlacement1255();const s=objectPlaceFlow1270;Object.assign(s,{active:true,phase:'menu',menuSlot:slot,editSlot:null,context:trainFlowContext1265(),fingerprint:objectFlowFingerprint1270(slot),spec:null,model:null,draft:null,mask:null,message:''});s.serial++;
@@ -63097,6 +63307,9 @@ function objectPlaceMenuOpen1270(slot){
   objectFlowNode1270('Confirm').addEventListener('click',()=>objectFlowConfirm1270());
   objectFlowNode1270('Repeat').addEventListener('click',()=>objectFlowConfirm1270(true));
   objectFlowNode1270('ColorOpen').addEventListener('click',objectFlowColorOpen1298);
+  objectFlowNode1270('BatchOpen').addEventListener('click',objectFlowBatchOpen1300);
+  objectFlowNode1270('BatchApply').addEventListener('click',objectFlowBatchApply1300);
+  objectFlowNode1270('BatchCancel').addEventListener('click',()=>objectFlowCancel1270());
   objectFlowNode1270('ColorBack').addEventListener('click',objectFlowColorBack1298);
   objectFlowNode1270('ColorApply').addEventListener('click',objectFlowColorApply1298);
   for(const button of objectFlowNode1270('ColorPanel').querySelectorAll('[data-object-leaf-color]')){
