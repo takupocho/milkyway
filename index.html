@@ -10338,7 +10338,67 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1303-road-centerlines";
+const APP_VERSION="1304-correction-cloud-sync";
+function correctionCloudLocalMeta1304(kind) {
+  const store = correctionCloudLocalMeta1304.store ||= new Map();
+  if (!store.has(kind)) store.set(kind,new Map());
+  return store.get(kind);
+}
+
+function correctionCloudLocalLoadMeta1304(kind,rows) {
+  const values = rows[0]?.correctionSync1304;
+  if (!Array.isArray(values)) return;
+  const meta = correctionCloudLocalMeta1304(kind);
+  for (const row of values) {
+    if (!Array.isArray(row)) continue;
+    const [id,at,deleted] = row;
+    if (typeof id === 'string' && id.trim() && id.length <= 120 && Number.isSafeInteger(at) && at > 0 && typeof deleted === 'boolean') {
+      meta.set(id,{at,deleted});
+    }
+  }
+}
+
+function correctionCloudLocalRead1304(kind) {
+  const values = kind === 'road' ? roadMarkSaved1303() : gradeTerrainSaved1302();
+  const meta = correctionCloudLocalMeta1304(kind);
+  const entries = values.map(value => ({kind,id:value.id,updatedAt:meta.get(value.id)?.at || 0,value}));
+  const active = new Set(values.map(value => value.id));
+  for (const [id,{at,deleted}] of meta) {
+    if (deleted && !active.has(id)) entries.push({kind,id,updatedAt:at,value:null});
+  }
+  return entries;
+}
+
+function correctionCloudLocalWrite1304(kind,values,meta) {
+  const key = kind === 'road' ? roadMarkStorageKey1303 : gradeTerrainStorageKey1302;
+  const rows = [{correctionSync1304:[...meta].map(([id,{at,deleted}]) => [id,at,deleted])},...values];
+  localStorage.setItem(key,JSON.stringify(rows));
+  correctionCloudLocalMeta1304.store.set(kind,meta);
+}
+
+function correctionCloudLocalEdit1304(kind,values,id) {
+  const meta = new Map(correctionCloudLocalMeta1304(kind));
+  let at = Date.now();
+  for (const entry of meta.values()) at = Math.max(at,entry.at + 1);
+  meta.set(id,{at,deleted:!values.some(value => value.id === id)});
+  correctionCloudLocalWrite1304(kind,values,meta);
+}
+
+function correctionCloudLocalApply1304(kind,entries) {
+  const values = entries.filter(entry => entry.value !== null).map(entry => entry.value);
+  if (values.length > (kind === 'road' ? 100 : 200)) throw Error('端末に保存できる補正の件数を超えました');
+  const meta = new Map(entries.filter(entry => entry.updatedAt > 0)
+    .map(entry => [entry.id,{at:entry.updatedAt,deleted:entry.value === null}]));
+  correctionCloudLocalWrite1304(kind,values,meta);
+  if (kind === 'road') {
+    roadMarkLibrary1303 = values;
+    roadMarkRefresh1303();
+  } else {
+    gradeTerrainLibrary1302 = values;
+    gradeTerrainRefresh1302();
+  }
+}
+
 const roadMarkStorageKey1303 = 'starchase-road-centerlines-v1';
 const roadMarkKinds1303 = new Set(['dashed', 'white', 'yellow', 'none']);
 const roadMarkMetres1303 = 111195;
@@ -10422,6 +10482,7 @@ function roadMarkLoad1303() {
   try {
     const rows = JSON.parse(localStorage.getItem(roadMarkStorageKey1303) || '[]');
     if (!Array.isArray(rows)) return;
+    correctionCloudLocalLoadMeta1304('road',rows);
     const byId = new Map();
     for (const row of rows.slice(-100)) {
       const region = roadMarkNormalize1303(row);
@@ -10458,7 +10519,7 @@ function roadMarkSetPreview1303(region) {
 
 function roadMarkWrite1303(regions,id) {
   try {
-    localStorage.setItem(roadMarkStorageKey1303, JSON.stringify(regions));
+    correctionCloudLocalEdit1304('road',regions,id);
   } catch (_) {
     return false;
   }
@@ -10779,6 +10840,7 @@ function gradeTerrainLoad1302() {
   try {
     const rows = JSON.parse(localStorage.getItem(gradeTerrainStorageKey1302) || '[]');
     if (!Array.isArray(rows)) return;
+    correctionCloudLocalLoadMeta1304('terrain',rows);
     const entries = new Map();
     for (const row of rows.slice(-200)) {
       const valid = gradeTerrainValidate1302(row);
@@ -10824,7 +10886,7 @@ function gradeTerrainSetPreview1302(region) {
 
 function gradeTerrainWrite1302(regions, id) {
   try {
-    localStorage.setItem(gradeTerrainStorageKey1302, JSON.stringify(regions));
+    correctionCloudLocalEdit1304('terrain',regions,id);
   } catch (_) {
     return false;
   }
@@ -33871,6 +33933,161 @@ async function planCloudPut(code,kind,id,value,updatedAt,label){
   return {skipped:false};
 }
 /* ── 同期の本体 ── */
+const correctionCloudPrefix1304 = '__part__correction_v1__';
+const correctionCloudKinds1304 = ['road','terrain','bridge'];
+
+function correctionCloudNormalize1304(entry) {
+  if (!entry || !correctionCloudKinds1304.includes(entry.kind)
+    || typeof entry.id !== 'string' || !entry.id.trim() || entry.id.length > 160
+    || !Number.isSafeInteger(entry.updatedAt) || entry.updatedAt < 0) return null;
+  const {kind,id,updatedAt} = entry;
+  if (kind === 'bridge' && !bridgeLibraryKey1277(id)) return null;
+  if (entry.value === null) return updatedAt > 0 ? {kind,id,updatedAt,value:null} : null;
+  const value = kind === 'road' ? roadMarkNormalize1303(entry.value)
+    : kind === 'terrain' ? gradeTerrainValidate1302(entry.value) : bridgeHeightClean1271(entry.value);
+  if (!value || (kind === 'bridge' ? value.key : value.id) !== id) return null;
+  return {kind,id,updatedAt,value};
+}
+
+function correctionCloudWinner1304(local,remote) {
+  if (!local || !remote) return local || remote;
+  if (local.updatedAt !== remote.updatedAt) return local.updatedAt > remote.updatedAt ? local : remote;
+  if (local.value === null) return local;
+  if (remote.value === null) return remote;
+  return JSON.stringify(local.value) >= JSON.stringify(remote.value) ? local : remote;
+}
+
+function correctionCloudDocId1304(kind,id) {
+  const hex = id.split('').map(char => char.charCodeAt(0).toString(16).padStart(4,'0')).join('');
+  return correctionCloudPrefix1304 + kind + '__' + hex;
+}
+
+function correctionCloudDocKey1304(docId) {
+  if (!docId.startsWith(correctionCloudPrefix1304)) return null;
+  const match = /^(road|terrain|bridge)__([a-f0-9]{4,640})$/.exec(docId.slice(correctionCloudPrefix1304.length));
+  if (!match || match[2].length % 4) return null;
+  const id = match[2].match(/.{4}/g).map(hex => String.fromCharCode(parseInt(hex,16))).join('');
+  return id.trim() ? {kind:match[1],id} : null;
+}
+
+function correctionCloudBridgeEntries1304(document) {
+  return document.entries.map(({key,record,updatedAt}) => ({kind:'bridge',id:key,updatedAt,value:record}))
+    .concat(document.tombstones.map(({key,deletedAt}) => ({kind:'bridge',id:key,updatedAt:deletedAt,value:null})));
+}
+
+async function correctionCloudLocalSnapshot1304() {
+  await bridgeLibraryLoad1277();
+  return [
+    ...correctionCloudLocalRead1304('road'), ...correctionCloudLocalRead1304('terrain'),
+    ...correctionCloudBridgeEntries1304(bridgeLibraryStateGet1277().document)
+  ].map(correctionCloudNormalize1304).filter(Boolean);
+}
+
+function correctionCloudMerge1304(local,incoming) {
+  const merged = new Map(local.map(entry => [entry.id,entry]));
+  let count = 0;
+  for (const entry of incoming) {
+    const old = merged.get(entry.id);
+    if (correctionCloudWinner1304(old,entry) !== entry) continue;
+    merged.set(entry.id,entry);
+    count++;
+  }
+  return {entries:[...merged.values()],count};
+}
+
+function correctionCloudApplyBridge1304(incoming,current) {
+  if (!incoming.length) return 0;
+  return bridgeLibraryEnqueue1277(async () => {
+    await bridgeLibraryRead1277();
+    bridgeLibraryGuard1277(current);
+    const document = bridgeLibraryClone1277(bridgeLibraryStateGet1277().document);
+    const {entries,count} = correctionCloudMerge1304(correctionCloudBridgeEntries1304(document),incoming);
+    if (!count) return 0;
+    document.entries = entries.filter(entry => entry.value !== null)
+      .map(({id,updatedAt,value}) => ({key:id,updatedAt,record:value}));
+    document.tombstones = entries.filter(entry => entry.value === null)
+      .map(({id,updatedAt}) => ({key:id,deletedAt:updatedAt}));
+    await bridgeLibraryCommit1277(document,current);
+    bridgeLibraryClearPending1277(new Set(incoming.map(entry => entry.id)));
+    return count;
+  });
+}
+
+async function correctionCloudGet1304(code,docId,key) {
+  const response = await cloudFetch(planCloudDocUrl(code,'plans',docId),{cache:'no-store'},{kind:'read',docs:1});
+  if (response.status === 404) return null;
+  if (!response.ok) throw planCloudError(response.status,response.text,'補正の取得');
+  const document = response.json();
+  let entry;
+  try { entry = correctionCloudNormalize1304(JSON.parse(document.fields?.data?.stringValue)); } catch (_) {}
+  if (!entry || entry.kind !== key.kind || entry.id !== key.id || typeof document.updateTime !== 'string') {
+    throw Error('クラウドの補正データの形式を確認できませんでした');
+  }
+  return {entry,updateTime:document.updateTime};
+}
+
+async function correctionCloudPut1304(code,docId,entry,remote) {
+  const query = remote ? '&currentDocument.updateTime=' + encodeURIComponent(remote.updateTime)
+    : '&currentDocument.exists=false';
+  const body = {fields:{
+    data:{stringValue:JSON.stringify(entry)}, updatedAt:{integerValue:String(Math.max(1,entry.updatedAt))},
+    app:{stringValue:PLAN_SYNC_APP}
+  }};
+  const response = await cloudFetch(planCloudDocUrl(code,'plans',docId) + query,
+    {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},{kind:'write',docs:1});
+  if (response.status === 409 || response.status === 412 || response.status === 404) return false;
+  if (response.status === 400) {
+    let status;
+    try { status = response.json().error?.status; } catch (_) {}
+    if (status === 'FAILED_PRECONDITION') return false;
+  }
+  if (!response.ok) throw planCloudError(response.status,response.text,'補正の送信');
+  return true;
+}
+
+async function correctionCloudSync1304(code,index) {
+  const current = () => memoSyncCode === code;
+  const local = new Map((await correctionCloudLocalSnapshot1304()).map(entry => [correctionCloudDocId1304(entry.kind,entry.id),entry]));
+  const ids = new Set([...local.keys(),...Array.from(index.keys()).filter(id => correctionCloudDocKey1304(id))]);
+  const incoming = {road:[],terrain:[],bridge:[]};
+  let sent = 0;
+  for (const docId of ids) {
+    bridgeLibraryGuard1277(current);
+    const key = correctionCloudDocKey1304(docId);
+    const mine = local.get(docId);
+    let finished = false;
+    for (let attempt=0;attempt<3;attempt++) {
+      const remote = attempt || index.has(docId) ? await correctionCloudGet1304(code,docId,key) : null;
+      const winner = correctionCloudWinner1304(mine,remote?.entry);
+      if (!winner) { finished = true; break; }
+      if (winner === remote?.entry) {
+        incoming[key.kind].push(winner);
+        finished = true;
+        break;
+      }
+      if (remote && JSON.stringify(mine) === JSON.stringify(remote.entry)) { finished = true; break; }
+      bridgeLibraryGuard1277(current);
+      if (await correctionCloudPut1304(code,docId,mine,remote)) {
+        sent++;
+        finished = true;
+        break;
+      }
+    }
+    if (!finished) throw Error('別の端末で補正が更新されました。もう一度同期してください');
+  }
+  bridgeLibraryGuard1277(current);
+  let received = 0;
+  for (const kind of ['road','terrain']) {
+    if (!incoming[kind].length) continue;
+    const {entries,count} = correctionCloudMerge1304(correctionCloudLocalRead1304(kind),incoming[kind]);
+    if (!count) continue;
+    await correctionCloudLocalApply1304(kind,entries);
+    received += count;
+  }
+  received += await correctionCloudApplyBridge1304(incoming.bridge,current);
+  return {sent,received};
+}
+
 async function planCloudSync(){
   if(planSyncBusy)return;
   planSyncBusy=true;
@@ -34006,8 +34223,15 @@ async function planCloudSync(){
       renderSavedLocationSelect();renderSavedPlansList(el.planLoadSearch?el.planLoadSearch.value:"");
       if(typeof favImportFromPlans==="function")favImportFromPlans();
     }
+    let corrections=null, correctionError='';
+    try {
+      corrections=await correctionCloudSync1304(code,remote);
+    } catch(error) {
+      correctionError=error?.message==='RULES'?'クラウドのアクセスが許可されませんでした':String(error?.message||error);
+    }
     const when=new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
     const parts=[];
+    if(corrections&&(corrections.received||corrections.sent))parts.push(`補正↓${corrections.received}・↑${corrections.sent}`);
     if(stat.取得)parts.push(`受信${stat.取得}件`);
     if(stat.送信)parts.push(`送信${stat.送信}件`);
     if(stat.削除)parts.push(`削除${stat.削除}件`);
@@ -34017,7 +34241,10 @@ async function planCloudSync(){
       +(parts.length?` ／ ${parts.join("・")}`:"／ 変更なし")+`）`
       +(stat.縮小?`　※写真${stat.縮小}件は大きすぎたため縮小版を同期しました。` : "")
       +(skipped.length?`　⚠ ${skipped.length}件を送れませんでした：${skipped.join("／")}` : ""));
-    if(skipped.length)planSyncSay(document.getElementById("planSyncStatus").textContent,true);
+    if(skipped.length||correctionError){
+      const status=document.getElementById("planSyncStatus")?.textContent||'';
+      planSyncSay(status+(correctionError?`　補正の同期を完了できませんでした。${correctionError}`:''),true);
+    }
     if(typeof renderCloudUsage==="function")renderCloudUsage();
   }catch(e){
     if(e&&e.message==="RULES")
