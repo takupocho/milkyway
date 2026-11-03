@@ -10203,7 +10203,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1300-sweetgum-batch-placement";
+const APP_VERSION="1301-placement-marker-drag";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -16292,12 +16292,12 @@ function kmzApplyReplace(newSlot){
    ほかと違うのは、タップしたあとに**線路を取りに行って寄せる**ところ。
    通信を待つので、いったん仮のピンを置いてから、返ってきた時点で置き直す。 */
 let trainPlacing=null,trainPlaceMarker=null,trainPreviewLayer=null,trainSnapToken=0;
-function trainBeginPlacement(spec){
+function trainBeginPlacement(spec,{keepMapLayout=false}={}){
   const checked=trainSpecOf(spec);
   if(!checked)return;
   /* 【v1266】スマホは既存の全画面へ先に移してから、同じ枠の地図を開く。完了・取消後も通常の全画面操作へ戻る。 */
-  if(fsSimAvailable()&&!fsSimActive)enterFullscreenSim();
-  trainPlacing={spec:checked,lat:null,lon:null,path:[],reverse:false,snap:null,busy:false};
+  if(!keepMapLayout&&fsSimAvailable()&&!fsSimActive)enterFullscreenSim();
+  trainPlacing={spec:checked,lat:null,lon:null,path:[],reverse:false,snap:null,busy:false,dragging:false,snapMessage:""};
   fireworkPlacing=null;objectPlacing=null;launchSitePlacing=null;   /* 同じ帯を使うので譲る */
   document.getElementById("kmzAddChooser").hidden=true;
   if(el.trainPanel)el.trainPanel.hidden=true;
@@ -16368,12 +16368,29 @@ function trainUpdatePlaceText(){
 /* 地図の click から呼ぶ。配置中なら仮ピンを置いて true。 */
 function trainMapClick(e){
   if(!trainPlacing||!osmMapInstance)return false;
-  const lat=e.latlng.lat,lon=e.latlng.lng;
-  trainPlacing.lat=lat;trainPlacing.lon=lon;
-  trainPlacing.path=[];trainPlacing.snap=null;trainPlacing.busy=true;
-  const icon=L.divIcon({className:"",html:'<div class="map-place-pin">🚃</div>',iconSize:[0,0],iconAnchor:[0,0]});
-  if(!trainPlaceMarker)trainPlaceMarker=L.marker(e.latlng,{pane:"markerPane",interactive:false,icon}).addTo(osmMapInstance);
-  else trainPlaceMarker.setLatLng(e.latlng);
+  const draft=trainPlacing,lat=e.latlng.lat,lon=e.latlng.lng;
+  const previous=e.dragDraft1301&&draft.snap?{lat:draft.lat,lon:draft.lon,path:draft.path,snap:draft.snap}:null;
+  Object.assign(draft,{lat,lon,path:[],snap:null,busy:true,snapMessage:''});
+  if(!trainPlaceMarker){
+    const icon=L.divIcon({className:'',html:'<div class="map-kmz-icon train target">🚃</div>',iconSize:[36,36],iconAnchor:[18,18]});
+    const marker=L.marker(e.latlng,{pane:'markerPane',draggable:true,autoPanOnFocus:false,bubblingMouseEvents:false,zIndexOffset:2100,
+      title:'列車の配置位置（ドラッグで調整）',icon}).addTo(osmMapInstance);
+    trainPlaceMarker=marker;
+    marker.on('dragstart',()=>{
+      if(trainPlacing!==draft||trainPlaceMarker!==marker)return;
+      draft.dragging=true;
+      trainSnapToken++;
+      document.getElementById('mapPlaceOkBtn').disabled=true;
+      trainClearPreview();
+      trainFlowRemoveArrow1265();
+      trainFlowSync1265();
+    });
+    marker.on('dragend',()=>{
+      if(trainPlacing!==draft||trainPlaceMarker!==marker)return;
+      draft.dragging=false;
+      trainMapClick({latlng:marker.getLatLng(),dragDraft1301:true});
+    });
+  }else trainPlaceMarker.setLatLng(e.latlng);
   document.getElementById("mapPlaceOkBtn").disabled=true;
   trainDrawPreview();
   trainUpdatePlaceText();
@@ -16381,23 +16398,20 @@ function trainMapClick(e){
   const runSpec=trainPlacing.spec.run;
   /* 【v1156】8分ぶん・最大4km。半径は +0.6km で最大5km（タイルの取りすぎを避ける）。 */
   const wantReach=trainPlaceFlowNeedsGuide1265()?4000:(runSpec?clamp(runSpec.speedKmh*1000/60*8,800,4000):0);
-  trainRailSnap(lat,lon,trainPlacing.spec.cars,wantReach).then(snap=>snap?trainFillPathElevations(snap):snap).then(snap=>{
-    if(token!==trainSnapToken||!trainPlacing)return;   /* 待っている間にやめた・置き直した */
-    trainPlacing.busy=false;
-    if(snap){
-      trainPlacing.lat=snap.lat;trainPlacing.lon=snap.lon;
-      trainPlacing.path=snap.path;trainPlacing.snap=snap;
-      if(trainPlaceMarker)trainPlaceMarker.setLatLng([snap.lat,snap.lon]);
+  const settle=snap=>{
+    if(token!==trainSnapToken||trainPlacing!==draft)return;
+    draft.busy=false;
+    if(snap)Object.assign(draft,{lat:snap.lat,lon:snap.lon,path:snap.path,snap});
+    else if(previous){
+      Object.assign(draft,previous);
+      draft.snapMessage='線路に合わせられなかったため、直前の位置に戻しました。';
     }
-    document.getElementById("mapPlaceOkBtn").disabled=false;
+    trainPlaceMarker?.setLatLng([draft.lat,draft.lon]);
+    document.getElementById('mapPlaceOkBtn').disabled=false;
     trainDrawPreview();
     trainUpdatePlaceText();
-  }).catch(()=>{
-    if(token!==trainSnapToken||!trainPlacing)return;
-    trainPlacing.busy=false;
-    document.getElementById("mapPlaceOkBtn").disabled=false;
-    trainUpdatePlaceText();
-  });
+  };
+  trainRailSnap(lat,lon,draft.spec.cars,wantReach).then(snap=>snap?trainFillPathElevations(snap):snap).then(settle,()=>settle(null));
   return true;
 }
 let objectPlacing=null,objectPlaceMarker=null;
@@ -20814,6 +20828,51 @@ function syncSweetgumMapIcon1300(marker,spec){
     if(icon.style.getPropertyValue("--sweetgum-leaf1300")!==color)icon.style.setProperty("--sweetgum-leaf1300",color);
   }
 }
+const placementMarkerDrags1301=new WeakMap();
+
+function placementMarkerDragBusy1301(){
+  return !!(trainPlaceFlow1265?.active||trussPlaceFlow1269?.active||objectPlaceFlow1270?.active||
+    document.body.classList.contains('map-place'));
+}
+
+function installPlacementMarkerDrag1301(marker,slot,onDrop){
+  if(!marker.dragging)return;
+  let entry=placementMarkerDrags1301.get(marker);
+  if(!entry){
+    entry={slot,onDrop,moving:false,allowed:false};
+    placementMarkerDrags1301.set(marker,entry);
+    marker.on('dragstart',()=>{
+      entry.moving=true;
+      entry.allowed=!!entry.onDrop&&!placementMarkerDragBusy1301();
+    });
+    marker.on('dragend',()=>{
+      entry.moving=false;
+      const destination=marker.getLatLng();
+      const {slot,onDrop,allowed}=entry;
+      entry.allowed=false;
+      if(!kmzSlots.includes(slot)||!osmMapScreenOpen)return;
+      const original=kmzSlotSettings(slot);
+      marker.setLatLng([original.lat,original.lon]);
+      if(!allowed||!onDrop||placementMarkerDragBusy1301())return;
+      if(!Number.isFinite(destination.lat)||!Number.isFinite(destination.lng)||Math.abs(destination.lat)>90)return;
+      const longitude=((destination.lng+180)%360+360)%360-180;
+      if(Math.abs(destination.lat-original.lat)<1e-8&&Math.abs(longitude-original.lon)<1e-8)return;
+      onDrop(slot,{lat:destination.lat,lng:longitude});
+    });
+  }
+  entry.slot=slot;
+  entry.onDrop=onDrop;
+  const enabled=!!onDrop&&!placementMarkerDragBusy1301();
+  if(!entry.moving&&enabled!==marker.dragging.enabled()){
+    if(enabled)marker.dragging.enable();
+    else marker.dragging.disable();
+  }
+}
+
+function objectPlacementDrop1301(slot,latlng){
+  objectFlowBegin1270(slot.object,slot,{drop:latlng});
+}
+
 function updateOsmKmzMarkers(){
   if(!osmMapInstance||typeof kmzSlots==="undefined")return;
   /* 【v1069】地図を閉じているときは何もしない。以前はここで赤丸を全部消し、選んだ被写体（mapKmzTargetId）も解除していたので、
@@ -20846,7 +20905,7 @@ function updateOsmKmzMarkers(){
         m=L.circleMarker([cfg.lat,cfg.lon],{pane:"markerPane",radius:9,color:"#fff",weight:2.5,opacity:1,fillColor:"#ff2a2a",fillOpacity:1,bubblingMouseEvents:false,className:"map-kmz-dot"}).addTo(osmMapInstance);
         m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();updateOsmFovOverlay();});   /* 【v1067】選んだら向ける */
         mapKmzMarkers.set(slot.id,m);
-      }else{const ll=m.getLatLng();if(Math.abs(ll.lat-cfg.lat)>1e-7||Math.abs(ll.lng-cfg.lon)>1e-7)m.setLatLng([cfg.lat,cfg.lon]);}   /* 【v1191】動いたときだけ */
+      }else if(!placementMarkerDrags1301.get(m)?.moving){const ll=m.getLatLng();if(Math.abs(ll.lat-cfg.lat)>1e-7||Math.abs(ll.lng-cfg.lon)>1e-7)m.setLatLng([cfg.lat,cfg.lon]);}   /* 【v1191】動いたときだけ */
       if(iconKind==="train"){
         const box=m.getElement&&m.getElement();
         if(box){const name=trainDisplayName(slot);if(box.title!==name)box.title=name;box.setAttribute("aria-label",name);}
@@ -20863,6 +20922,10 @@ function updateOsmKmzMarkers(){
         if(box){const name=String(slot.object.name||'オブジェクト');if(box.title!==name)box.title=name;box.setAttribute('aria-label',name+'（長押しで再配置・削除）');}
         if(typeof window.objectContextInstall1270==='function')window.objectContextInstall1270(m,slot);
       }
+      const onDrop=iconKind==="train"&&!slot.train.run?.sim?trainPlacementDrop1301:
+        iconKind==="truss"?trussPlacementDrop1301:
+        iconKind==="object"&&slot.object?.kind==="sweetgum"?objectPlacementDrop1301:null;
+      if(onDrop||placementMarkerDrags1301.has(m))installPlacementMarkerDrag1301(m,slot,onDrop);
       const isTarget=slot.id===mapKmzTargetId;
       if((iconKind==="train"||iconKind==="truss"||iconKind==="object")&&m.setZIndexOffset)m.setZIndexOffset(isTarget?2000:0);
       if(m.setRadius){
@@ -20874,7 +20937,7 @@ function updateOsmKmzMarkers(){
       }
     }
   }
-  for(const [id,m] of mapKmzMarkers){if(!seen.has(id)){if(typeof window.trainContextDispose1265==='function')window.trainContextDispose1265(m);if(typeof window.trussContextDispose1269==='function')window.trussContextDispose1269(m);if(typeof window.objectContextDispose1270==='function')window.objectContextDispose1270(m);osmMapInstance.removeLayer(m);mapKmzMarkers.delete(id);}}
+  for(const [id,m] of mapKmzMarkers){if(!seen.has(id)){const drag=placementMarkerDrags1301.get(m);if(drag)drag.allowed=false;if(typeof window.trainContextDispose1265==='function')window.trainContextDispose1265(m);if(typeof window.trussContextDispose1269==='function')window.trussContextDispose1269(m);if(typeof window.objectContextDispose1270==='function')window.objectContextDispose1270(m);osmMapInstance.removeLayer(m);mapKmzMarkers.delete(id);}}
   if(mapKmzTargetId!==null&&!seen.has(mapKmzTargetId))mapKmzTargetId=null;
   const target=mapKmzTargetLatLng();
   if(target&&Number.isFinite(osmCandidateLat)&&Number.isFinite(osmCandidateLon)){
@@ -61874,9 +61937,16 @@ function finishMapMarkerDrag1299(map){
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    const drag=placementMarkerDrags1301.get(state.marker);
+    if(drag?.moving){suppression=null;return false;}
+    const markerDragging=held&&drag&&state.marker.dragging?.enabled()?state.marker.dragging:null;
+    if(markerDragging)markerDragging.disable();
     if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
-    if(!accepted)suppression=null;
+    if(!accepted){
+      suppression=null;
+      if(markerDragging)markerDragging.enable();
+    }
     return accepted;
   }
   function begin(state,e,id,kind,source){
@@ -62116,7 +62186,7 @@ async function trussRailAssist1269(lat,lon,model,{isCurrent=()=>true,scale=1}={}
 }
 
 /* 【v1269】自由トラス：地図ガイド、線路へのアシスト、確定まで元スロットを保持。 */
-var trussPlaceFlow1269={active:false,phase:'position',serial:0,model:null,draft:null,editSlot:null,menuSlot:null,context:null,fingerprint:null,preview:null,previewMap:null,mask:null,message:'',after:0};
+var trussPlaceFlow1269={active:false,phase:'position',serial:0,model:null,draft:null,editSlot:null,menuSlot:null,context:null,fingerprint:null,preview:null,previewMap:null,dragging:false,mask:null,message:'',after:0};
 var trussFreeModelPromise1269=null;
 function trussSlotIsFree1269(slot){return !!slot&&!slot.builtin&&!slot.railStructure&&!slot.train&&!slot.object&&slot.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY;}
 async function trussFreeModel1269(){
@@ -62156,7 +62226,7 @@ function trussFlowCurrent1269(){
 }
 function trussFlowOriginalHidden1269(slot){return trussPlaceFlow1269.active&&trussPlaceFlow1269.mask?.slot===slot;}
 function trussFlowClearPreview1269(){
-  const s=trussPlaceFlow1269;if(s.preview&&s.previewMap)try{s.previewMap.removeLayer(s.preview);}catch(_error){}s.preview=null;s.previewMap=null;
+  const s=trussPlaceFlow1269;s.dragging=false;if(s.preview&&s.previewMap)try{s.previewMap.removeLayer(s.preview);}catch(_error){}s.preview=null;s.previewMap=null;
 }
 function trussFlowCancel1269(note=null){
   const s=trussPlaceFlow1269;if(!s.active)return;
@@ -62177,8 +62247,8 @@ function trussFlowSync1269(){
   trussFlowNode1269('').hidden=false;trussFlowNode1269('Title').textContent=menu?'トラスをどうしますか？':'トラスを';
   trussFlowNode1269('Message').textContent=s.phase==='loading'?'トラスを準備しています…':s.phase==='snapping'?'線路と高さを調べています…':s.phase==='committing'?'トラスを配置しています…':menu?'':s.message||(ready?'線路に合わせました。':'どこに置きますか？');
   trussFlowNode1269('Message').hidden=menu;
-  trussFlowNode1269('Hint').textContent=menu?'':ready?'位置と向きを確認して「決定」を押してください。':busy?'そのままお待ちください。':'線路近くを地図でタップしてください。';trussFlowNode1269('Hint').hidden=menu;
-  trussFlowNode1269('Confirm').hidden=menu||!ready;trussFlowNode1269('Confirm').disabled=busy;
+  trussFlowNode1269('Hint').textContent=menu?'':ready?'アイコンをドラッグして位置を調整できます。よければ「決定」を押してください。':busy?'そのままお待ちください。':'線路近くを地図でタップしてください。';trussFlowNode1269('Hint').hidden=menu;
+  trussFlowNode1269('Confirm').hidden=menu||!ready;trussFlowNode1269('Confirm').disabled=busy||s.dragging;
   trussFlowNode1269('Cancel').hidden=menu;trussFlowNode1269('Manage').hidden=!menu;
   for(const id of ['Reposition','Delete','Stop','Cancel'])trussFlowNode1269(id).disabled=false;
   if(first&&typeof trainFlowMapResize1265==='function')trainFlowMapResize1265();
@@ -62191,9 +62261,24 @@ function trussFlowPreview1269(){
   const outline=[[lo[0],lo[1]],[hi[0],lo[1]],[hi[0],hi[1]],[lo[0],hi[1]]].map(([x,y])=>trainLL(d.lat,d.lon,(x*cs+y*sn)*scale,(-x*sn+y*cs)*scale));
   const layers=[L.polygon(outline,{pane:'overlayPane',interactive:false,color:'#5ccbed',weight:3,fillColor:'#5ccbed',fillOpacity:.24})];
   if(Array.isArray(d.guideLine)&&d.guideLine.length>1)layers.push(L.polyline(d.guideLine,{pane:'overlayPane',interactive:false,color:'#ffbb65',weight:3,dashArray:'6 5'}));
+  const marker=L.marker([d.centerLat??d.lat,d.centerLon??d.lon],{
+    draggable:true,autoPanOnFocus:false,bubblingMouseEvents:false,zIndexOffset:2100,
+    title:'トラスの配置位置（ドラッグで調整）',
+    icon:L.divIcon({className:'',html:'<div class="map-kmz-icon truss target">🌉</div>',iconSize:[36,36],iconAnchor:[18,18]})
+  });
+  marker.on('dragstart',()=>{
+    if(s.draft!==d||s.phase!=='ready')return;
+    s.dragging=true;trussFlowNode1269('Confirm').disabled=true;
+  });
+  marker.on('dragend',()=>{
+    if(s.draft!==d||s.phase!=='ready')return;
+    s.dragging=false;
+    trussFlowPick1301(marker.getLatLng(),{dragged:true});
+  });
+  layers.push(marker);
   s.preview=L.layerGroup(layers).addTo(osmMapInstance);s.previewMap=osmMapInstance;
 }
-async function trussFlowBegin1269(editSlot=null){
+async function trussFlowBegin1269(editSlot=null,drop=null){
   if(editSlot&&(!trussSlotIsFree1269(editSlot)||!kmzSlots.includes(editSlot)))return false;
   homeRailCancelPlacement1255();setHomeScreenOpen1250(false,{restoreFocus:false});
   if(fsSimAvailable()&&!fsSimActive)enterFullscreenSim();if(!osmMapScreenOpen)setOsmMapScreenOpen(true);
@@ -62208,7 +62293,8 @@ async function trussFlowBegin1269(editSlot=null){
   try{
     const model=await trussFreeModel1269();if(!current()){if(s.active&&s.serial===serial)trussFlowCancel1269();return false;}
     s.model=model;s.phase='position';trussFlowSync1269();trussFlowNode1269('Message').tabIndex=-1;trussFlowNode1269('Message').focus({preventScroll:true});
-    if(editSlot&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
+    if(drop)trussFlowPick1301(drop,{dragged:true});
+    else if(editSlot&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
       const map=osmMapInstance;if(!current()||s.phase!=='position'||!map?.setView||!map?.getSize||!map?.panBy)return;
       map.setView([editSlot.lat,editSlot.lon],Math.max(map.getZoom?.()||15,16),{animate:false});
       const size=map.getSize();map.panBy([0,size.y/2-Math.max(size.y*.68,size.y-105)],{animate:false});
@@ -62216,29 +62302,44 @@ async function trussFlowBegin1269(editSlot=null){
     return true;
   }catch(error){if(s.active&&s.serial===serial)trussFlowCancel1269(error?.message||'トラスを準備できませんでした。もう一度お試しください。');return false;}
 }
+function trussPlacementDrop1301(slot,latlng){
+  if(!Number.isFinite(latlng?.lat)||!Number.isFinite(latlng?.lng))return false;
+  return trussFlowBegin1269(slot,latlng);
+}
 function trussFlowMapClick1269(event){
-  const s=trussPlaceFlow1269;if(!s.active)return false;
-  if(!trussFlowCurrent1269()){trussFlowCancel1269('撮影条件が変わりました。配置をやり直してください。');return true;}
-  if(['menu','loading','committing'].includes(s.phase))return true;
-  const lat=event?.latlng?.lat,lon=event?.latlng?.lng;if(!Number.isFinite(lat)||!Number.isFinite(lon))return true;
-  const serial=++s.serial,model=s.model,scale=s.editSlot?.scale||1;s.phase='snapping';s.draft=null;s.message='';trussFlowClearPreview1269();trussFlowSync1269();
+  if(!trussPlaceFlow1269.active)return false;
+  if(trussPlaceFlow1269.phase==='position')trussFlowPick1301(event?.latlng);
+  return true;
+}
+function trussFlowPick1301(latlng,{dragged=false}={}){
+  const s=trussPlaceFlow1269;
+  if(!trussFlowCurrent1269()){trussFlowCancel1269('撮影条件が変わりました。配置をやり直してください。');return;}
+  const lat=latlng?.lat,lon=latlng?.lng;
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)){trussFlowSync1269();return;}
+  const previous=s.draft,serial=++s.serial,model=s.model,scale=s.editSlot?.scale||1;
+  s.phase='snapping';s.draft=null;s.message='';trussFlowClearPreview1269();trussFlowSync1269();
+  const retry=message=>{
+    s.draft=previous;s.phase=previous?'ready':'position';s.message=message;
+    if(previous)trussFlowPreview1269();
+    trussFlowSync1269();
+  };
   const current=()=>s.active&&s.serial===serial&&s.phase==='snapping'&&s.model===model&&trussFlowCurrent1269();
   (async()=>{
     try{
       const result=await trussRailAssist1269(lat,lon,model,{isCurrent:current,scale});if(!current())return;
-      if(!result?.ok){s.phase='position';s.message=result?.message||'線路に合わせられませんでした。線路近くをもう一度タップしてください。';trussFlowSync1269();return;}
+      if(!result?.ok){retry(previous?'線路に合わせられなかったため、直前の位置に戻しました。':result?.message||'線路に合わせられませんでした。線路近くをもう一度タップしてください。');return;}
       if(![result.lat,result.lon,result.altitude,result.heading].every(Number.isFinite))throw Error('線路の位置と高さを確認できませんでした。');
       s.draft=result;s.phase='ready';s.message='';s.after=performance.now()+400;trussFlowPreview1269();trussFlowSync1269();
-      if(osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){
+      if(!dragged&&osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){
         const size=osmMapInstance.getSize(),point=osmMapInstance.latLngToContainerPoint([result.centerLat??result.lat,result.centerLon??result.lon]);
         osmMapInstance.panBy([point.x-size.x/2,point.y-Math.max(size.y*.68,size.y-105)],{animate:false});
       }
-    }catch(error){if(!current())return;s.phase='position';s.message=error?.message||'線路を取得できませんでした。もう一度タップしてください。';trussFlowSync1269();}
+    }catch(error){if(!current())return;retry(error?.message||'線路を取得できませんでした。');}
     finally{if(s.active&&s.serial===serial&&!trussFlowCurrent1269())trussFlowCancel1269('設定が変わったため配置を中止しました。');}
-  })();return true;
+  })();
 }
 async function trussFlowConfirm1269(){
-  const s=trussPlaceFlow1269;if(!s.active||s.phase!=='ready'||!s.draft||performance.now()<s.after)return;
+  const s=trussPlaceFlow1269;if(!s.active||s.phase!=='ready'||s.dragging||!s.draft||performance.now()<s.after)return;
   if(!trussFlowCurrent1269()){trussFlowCancel1269('撮影条件や元のトラスが変わりました。配置をやり直してください。');return;}
   const draft=s.draft,edit=s.editSlot,model=s.model,serial=++s.serial;s.phase='committing';trussFlowSync1269();
   const current=()=>s.active&&s.serial===serial&&s.phase==='committing'&&s.draft===draft&&s.model===model&&trussFlowCurrent1269();
@@ -62810,9 +62911,16 @@ async function bridgeLibraryManagerImport1277(file){
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    const drag=placementMarkerDrags1301.get(state.marker);
+    if(drag?.moving){suppression=null;return false;}
+    const markerDragging=held&&drag&&state.marker.dragging?.enabled()?state.marker.dragging:null;
+    if(markerDragging)markerDragging.disable();
     if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
-    if(!accepted)suppression=null;
+    if(!accepted){
+      suppression=null;
+      if(markerDragging)markerDragging.enable();
+    }
     return accepted;
   }
   function begin(state,e,id,kind,source){
@@ -62976,6 +63084,7 @@ function objectFlowClearPreview1270(){const s=objectPlaceFlow1270;if(s.preview&&
 function objectFlowCancel1270(note=null){
   const s=objectPlaceFlow1270;if(!s.active)return;
   objectFlowBatchClear1300();
+  s.dragging1301=false;
   const mask=s.mask;s.serial++;s.active=false;s.phase='position';s.spec=null;s.model=null;s.draft=null;s.editSlot=null;s.menuSlot=null;s.context=null;s.fingerprint=null;s.mask=null;s.message='';s.recolor1298=false;
   objectFlowClearPreview1270();document.body.classList.remove('object-flow-map1270','map-place');
   const bar=document.getElementById('mapPlaceBar');bar.classList.remove('object-flow-active1270');bar.hidden=true;objectFlowNode1270('').hidden=true;
@@ -63000,10 +63109,11 @@ function objectFlowSync1270(){
   objectFlowNode1270('Message').hidden=menu;objectFlowNode1270('Hint').hidden=menu;
   objectFlowNode1270('Message').textContent=s.phase==='height'?'地面の高さを確認しています…':s.phase==='committing'?'配置しています…':s.message||(ready?'ここに配置しますか？':'どこに配置しますか？');
   objectFlowNode1270('Hint').textContent=ready?(Number.isFinite(s.heading)?'回転で向きを調整し「決定」を押してください。':'向きの角度を入力してください。'):busy?'そのままお待ちください。':'置きたい場所を地図でタップしてください。';
+  if(ready&&s.spec?.kind==='sweetgum')objectFlowNode1270('Hint').textContent='アイコンをドラッグで調整し「決定」を押してください。';
   objectFlowNode1270('Rotations').hidden=menu||!s.draft;objectFlowNode1270('Angle').disabled=s.phase==='committing';
   for(const id of ['Left','Right'])objectFlowNode1270(id).disabled=s.phase==='committing';
   if(document.activeElement!==objectFlowNode1270('Angle'))objectFlowNode1270('Angle').value=Number.isFinite(s.heading)?String(s.heading):'';
-  objectFlowNode1270('Confirm').hidden=menu||!s.draft;objectFlowNode1270('Confirm').disabled=!ready||!Number.isFinite(s.heading)||busy;
+  objectFlowNode1270('Confirm').hidden=menu||!s.draft;objectFlowNode1270('Confirm').disabled=!ready||!Number.isFinite(s.heading)||busy||!!s.dragging1301;
   const repeat=objectFlowNode1270('Repeat');
   repeat.hidden=menu||!s.draft||!!s.editSlot||s.spec?.kind!=='sweetgum';
   repeat.disabled=objectFlowNode1270('Confirm').disabled;
@@ -63020,6 +63130,25 @@ function objectFlowPreview1270(){
   const ll=(x,y)=>trainLL(d.lat,d.lon,(x*cs+y*sn)*scale,(-x*sn+y*cs)*scale);
   const outline=[[lo[0],lo[1]],[hi[0],lo[1]],[hi[0],hi[1]],[lo[0],hi[1]]].map(([x,y])=>ll(x,y));
   const arrowLength=Math.max(12,Math.abs(hi[1])+8),layers=[L.polygon(outline,{interactive:false,color:'#5ccbed',weight:3,fillOpacity:.24}),L.polyline([ll(0,0),ll(0,arrowLength),ll(-3,arrowLength-5),ll(0,arrowLength),ll(3,arrowLength-5)],{interactive:false,color:'#ed5e55',weight:4}),L.marker(ll(0,0),{interactive:false,keyboard:false,icon:s.spec.kind==='sweetgum'?sweetgumMapIcon1300(s.spec):L.divIcon({className:'',html:'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]})})];
+  if(s.spec.kind==='sweetgum'&&s.phase==='ready'){
+    const marker=layers[layers.length-1];
+    marker.options.interactive=true;
+    marker.options.draggable=true;
+    marker.options.autoPan=false;
+    marker.options.autoPanOnFocus=false;
+    marker.options.bubblingMouseEvents=false;
+    marker.options.title='ドラッグで位置を調整';
+    marker.on('dragstart',()=>{
+      if(s.draft!==d)return;
+      s.dragging1301=true;
+      objectFlowSync1270();
+    });
+    marker.on('dragend',()=>{
+      if(s.draft!==d)return;
+      s.dragging1301=false;
+      objectFlowMapClick1270({latlng:marker.getLatLng(),fromDrag1301:true});
+    });
+  }
   s.preview=L.layerGroup(layers).addTo(osmMapInstance);s.previewMap=osmMapInstance;
 }
 function objectFlowSetHeading1270(value){
@@ -63031,7 +63160,7 @@ function objectFlowRotate1270(delta){
   const s=objectPlaceFlow1270;if(!s.active||s.phase==='menu'||s.phase==='committing')return;
   objectFlowSetHeading1270((Number.isFinite(s.heading)?s.heading:0)+delta);objectFlowNode1270('Angle').value=String(s.heading);
 }
-async function objectFlowBegin1270(rawSpec,editSlot=null){
+async function objectFlowBegin1270(rawSpec,editSlot=null,{drop=null}={}){
   let spec,model;try{spec=objectSpecOf(rawSpec);if(!spec)return false;model=buildObjectModel(spec);if(!model?.triangles?.length)return false;}catch(_error){setKmzBuildingStatus('オブジェクトの形を読み込めませんでした。','error');return false;}
   if(editSlot&&(!objectSlotIsFree1270(editSlot)||!kmzSlots.includes(editSlot)))return false;
   homeRailCancelPlacement1255();setHomeScreenOpen1250(false,{restoreFocus:false});
@@ -63043,7 +63172,8 @@ async function objectFlowBegin1270(rawSpec,editSlot=null){
   const s=objectPlaceFlow1270;Object.assign(s,{active:true,phase:'position',spec,model,draft:null,heading:Number.isFinite(editSlot?.heading)?norm360(editSlot.heading):0,editSlot,menuSlot:null,context:trainFlowContext1265(),fingerprint:editSlot?objectFlowFingerprint1270(editSlot):null,mask:editSlot?{slot:editSlot,target:mapKmzTargetId===editSlot.id?editSlot.id:null}:null,message:'',after:0});
   const serial=++s.serial;if(s.mask&&s.mask.target!==null)mapKmzTargetId=null;
   objectFlowSync1270();updateOsmKmzMarkers();objectFlowNode1270('Message').tabIndex=-1;objectFlowNode1270('Message').focus({preventScroll:true});
-  if(editSlot&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
+  if(drop)objectFlowMapClick1270({latlng:drop,fromDrag1301:true});
+  if(editSlot&&!drop&&typeof requestAnimationFrame==='function')requestAnimationFrame(()=>{
     const map=osmMapInstance;if(!s.active||s.serial!==serial||s.phase!=='position'||!objectFlowCurrent1270()||!map?.setView||!map?.getSize||!map?.panBy)return;
     map.setView([editSlot.lat,editSlot.lon],Math.max(map.getZoom?.()||15,16),{animate:false});const size=map.getSize();map.panBy([0,size.y/2-Math.max(size.y*.68,size.y-105)],{animate:false});
   });return true;
@@ -63052,21 +63182,30 @@ function objectFlowMapClick1270(event){
   const s=objectPlaceFlow1270;if(!s.active)return false;
   if(!objectFlowCurrent1270()){objectFlowCancel1270('撮影条件が変わりました。配置をやり直してください。');return true;}
   if(s.phase==='menu'||s.phase==='committing'||s.phase==='batch')return true;
-  const lat=event?.latlng?.lat,lon=event?.latlng?.lng;if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)return true;
+  const fromDrag=event?.fromDrag1301===true;
+  if(s.dragging1301||(s.spec.kind==='sweetgum'&&s.draft&&!fromDrag))return true;
+  const lat=event?.latlng?.lat,rawLon=event?.latlng?.lng;
+  if(!Number.isFinite(lat)||!Number.isFinite(rawLon)||Math.abs(lat)>90){
+    if(fromDrag){objectFlowPreview1270();objectFlowSync1270();}
+    return true;
+  }
+  const lon=fromDrag?((rawLon+180)%360+360)%360-180:rawLon;
+  if(Math.abs(lon)>180)return true;
+  const previous=fromDrag&&Number.isFinite(s.draft?.altitude)?s.draft:null;
   const serial=++s.serial,draft={lat,lon,altitude:null};s.phase='height';s.draft=draft;s.message='';objectFlowPreview1270();objectFlowSync1270();
   const current=()=>s.active&&s.serial===serial&&s.draft===draft&&s.phase==='height'&&objectFlowCurrent1270();
   (async()=>{
     try{
       const altitude=await fireworkGroundElevation(lat,lon);if(!current())return;
       if(!Number.isFinite(altitude))throw Error('地面の高さを取得できませんでした。別の場所をタップするか、もう一度お試しください。');
-      draft.altitude=altitude;s.phase='ready';s.after=performance.now()+400;objectFlowSync1270();
-      if(osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){const size=osmMapInstance.getSize(),point=osmMapInstance.latLngToContainerPoint([lat,lon]);osmMapInstance.panBy([point.x-size.x/2,point.y-Math.max(size.y*.68,size.y-105)],{animate:false});}
-    }catch(error){if(!current())return;s.phase='position';s.draft=null;s.message=error?.message||'高さを確認できませんでした。地図をもう一度タップしてください。';objectFlowClearPreview1270();objectFlowSync1270();}
+      draft.altitude=altitude;s.phase='ready';s.after=performance.now()+400;if(s.spec.kind==='sweetgum')objectFlowPreview1270();objectFlowSync1270();
+      if(s.spec.kind!=='sweetgum'&&!fromDrag&&osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){const size=osmMapInstance.getSize(),point=osmMapInstance.latLngToContainerPoint([lat,lon]);osmMapInstance.panBy([point.x-size.x/2,point.y-Math.max(size.y*.68,size.y-105)],{animate:false});}
+    }catch(error){if(!current())return;s.phase=previous?'ready':'position';s.draft=previous;s.message=error?.message||'高さを確認できませんでした。もう一度お試しください。';objectFlowPreview1270();objectFlowSync1270();}
     finally{if(s.active&&s.serial===serial&&!objectFlowCurrent1270())objectFlowCancel1270('設定が変わったため配置を中止しました。');}
   })();return true;
 }
 async function objectFlowConfirm1270(repeat=false){
-  const s=objectPlaceFlow1270;if(!s.active||s.phase!=='ready'||!s.draft||!Number.isFinite(s.heading)||performance.now()<s.after)return;
+  const s=objectPlaceFlow1270;if(!s.active||s.dragging1301||s.phase!=='ready'||!s.draft||!Number.isFinite(s.heading)||performance.now()<s.after)return;
   if(!objectFlowCurrent1270()){objectFlowCancel1270('撮影条件や元のオブジェクトが変わりました。配置をやり直してください。');return;}
   const draft=s.draft,heading=s.heading,edit=s.editSlot,serial=++s.serial;s.phase='committing';objectFlowSync1270();
   const current=()=>s.active&&s.serial===serial&&s.phase==='committing'&&s.draft===draft&&objectFlowCurrent1270();
@@ -63393,9 +63532,16 @@ function objectPlaceMenuOpen1270(slot){
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    const drag=placementMarkerDrags1301.get(state.marker);
+    if(drag?.moving){suppression=null;return false;}
+    const markerDragging=held&&drag&&state.marker.dragging?.enabled()?state.marker.dragging:null;
+    if(markerDragging)markerDragging.disable();
     if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
-    if(!accepted)suppression=null;
+    if(!accepted){
+      suppression=null;
+      if(markerDragging)markerDragging.enable();
+    }
     return accepted;
   }
   function begin(state,e,id,kind,source){
@@ -64358,7 +64504,7 @@ function trainFlowRemoveArrow1265(){
 function trainFlowArrow1265(){
   const s=trainPlaceFlow1265,d=trainPlacing;
   trainFlowRemoveArrow1265();
-  if(!s.active||s.editMode1268==='time'||s.draft!==d||!d||d.busy||!Number.isFinite(d.lat)||!osmMapInstance)return;
+  if(!s.active||s.editMode1268==='time'||s.draft!==d||!d||d.busy||d.dragging||!Number.isFinite(d.lat)||!osmMapInstance)return;
   const spec=trainSpecOf({...d.spec,path:d.path,reverse:d.reverse});if(!spec)return;
   const bearings=trainHeadBearings(spec),bearing=norm360(bearings[d.reverse?'backward':'forward']),r=bearing*Math.PI/180;
   const x=Math.sin(r)*64,y=-Math.cos(r)*64,right=x>30;
@@ -64407,7 +64553,7 @@ function trainFlowSync1265(){
   else if(s.phase==='auto'){message='時刻表で動く列車です。';hint='ホームの鉄道シミュレーションで路線の ON／OFF を変更できます。';}
   else if(s.phase==='committing'){message='列車を配置しています…';hint='地面の高さを確認しています。';}
   else if(motion){hint='この場所を通過する\n時刻を設定しますか？';if(!rail)message='線路が見つからないため、この場所に停止して配置します。';}
-  else if(direction){message=rail?'線路に合わせました。':'近くに線路が見つかりません。';hint=rail?'進行方向を選択してください':'向きを選ぶか、線路の近くをもう一度タップしてください。';}
+  else if(direction){message=d.snapMessage||(rail?'線路に合わせました。':'近くに線路が見つかりません。');hint=rail?'進行方向を選択してください。アイコンをドラッグして位置を調整できます。':'向きを選ぶか、線路の近くへドラッグ・タップしてください。';}
   else{message=busy?'線路を探しています…':'どこに置きますか？';hint=busy?'そのままお待ちください。':'線路近くを地図でタップしてください。';}
   if(motion&&s.editMode1268==='time'){hint='走行と通過時刻を変更します。';if(!rail)message='通過時刻を設定するには、配置の変更で線路上へ置いてください。';}
   const msg=trainFlowNode1265('Message'),help=trainFlowNode1265('Hint');msg.textContent=message;msg.hidden=!message;help.textContent=hint;help.hidden=!hint;
@@ -64420,7 +64566,11 @@ function trainFlowSync1265(){
   trainFlowNode1265('Move').disabled=!rail;
   trainFlowNode1265('Move').setAttribute('aria-pressed',String(s.moving===true));trainFlowNode1265('Still').setAttribute('aria-pressed',String(s.moving===false));
   trainFlowNode1265('TimeNote').textContent=(s.dayOffset===1?'翌日の ':s.dayOffset>1?s.dayOffset+'日後の ':s.dayOffset<0?(-s.dayOffset)+'日前の ':'')+'指定時刻にこの場所を通過させる';
-  trainFlowNode1265('Confirm').disabled=busy||(motion&&s.moving===null);
+  trainFlowNode1265('Confirm').disabled=busy||!!d?.dragging||(motion&&s.moving===null);
+  if(trainPlaceMarker?.dragging){
+    if(s.phase==='committing')trainPlaceMarker.dragging.disable();
+    else trainPlaceMarker.dragging.enable();
+  }
   for(const id of ['Forward','Backward','Move','Still','Time','Speed'])if(s.phase==='committing')trainFlowNode1265(id).disabled=true;else if(id!=='Move')trainFlowNode1265(id).disabled=false;
   trainFlowNode1265('Cancel').disabled=false;
   trainFlowShow1265();
@@ -64433,7 +64583,7 @@ function trainPlacePickerCommit1265(){
 }
 async function trainFlowConfirm1265(){
   const s=trainPlaceFlow1265,d=trainPlacing;
-  if(!s.active||!d||s.draft!==d||d.busy||s.phase==='committing')return;
+  if(!s.active||!d||s.draft!==d||d.busy||d.dragging||s.phase==='committing')return;
   if(!trainFlowCurrent1265()){trainFlowCancel1265();return;}
   if(s.editMode1268==='position'||s.editMode1268==='time'){await trainFlowPartialConfirm1268();return;}
   if(s.phase==='direction'){
@@ -64515,7 +64665,7 @@ function trainFlowEditContextCurrent1268(context){
 function trainFlowEditIntentCurrent1268(intent){
   return !!intent&&kmzSlots.includes(intent.slot)&&!intent.slot.train?.run?.sim&&trainFlowEditContextCurrent1268(intent.context)&&intent.fingerprint===trainFlowEditFingerprint1268(intent.slot);
 }
-function trainFlowEdit1268(mode){
+function trainFlowEdit1268(mode,drop=null){
   const s=trainPlaceFlow1265,slot=s.menuSlot;
   if(!['all','body','cars','position','time'].includes(mode)||!slot||slot.train?.run?.sim||!kmzSlots.includes(slot))return;
   if(!trainFlowEditContextCurrent1268(s.context)){trainFlowCancel1265();setKmzBuildingStatus('撮影位置や日付・計画が変わりました。列車を選び直してください。','error');return;}
@@ -64523,7 +64673,9 @@ function trainFlowEdit1268(mode){
   const intent={slot,mode,plan:activeLoadedPlanId,restore:kmzBuildingRestoreToken,context:trainFlowContext1265(),fingerprint:trainFlowEditFingerprint1268(slot),handingOff:false,after:performance.now()+400};
   trainFlowCancel1265();
   if(mode==='position'||mode==='time'){
-    intent.handingOff=true;trainPlaceEditIntent1265=intent;trainBeginPlacement(spec);return;
+    intent.handingOff=true;trainPlaceEditIntent1265=intent;trainBeginPlacement(spec,{keepMapLayout:!!drop});
+    if(drop&&s.draft===trainPlacing)trainMapClick({latlng:drop,dragDraft1301:true});
+    return;
   }
   setHomeScreenOpen1250(true);homeRailScreenSet1255(true);
   if(!trainPickerOpen1264())return;
@@ -64531,6 +64683,14 @@ function trainFlowEdit1268(mode){
   const index=trainPickerBodies1264.findIndex(item=>item.body===spec.body);
   trainPickerSelect1264(Math.max(0,index));trainPickerCount1264(Math.min(4,spec.cars));trainPickerStep1264(mode==='cars'?2:1);
   if(mode==='cars'&&spec.cars>4){const error=document.getElementById('trainPickerError1264');error.hidden=false;error.textContent='現在は'+spec.cars+'両です。変更する場合は1〜4両を選んで決定してください。';}
+}
+function trainPlacementDrop1301(slot,latlng){
+  if(!osmMapScreenOpen||!slot?.train||slot.train.run?.sim||!kmzSlots.includes(slot))return false;
+  const s=trainPlaceFlow1265;
+  s.menuSlot=slot;
+  s.context=trainFlowContext1265();
+  trainFlowEdit1268('position',latlng);
+  return s.active&&s.editSlot===slot;
 }
 function trainPickerEditSync1268(){
   const mode=trainPlaceEditIntent1265?.mode,s=trainPickerState1264,target=mode==='body'||mode==='cars';
@@ -64614,10 +64774,10 @@ async function trainFlowPartialConfirm1268(){
 
 (function initTrainFlow1265(){
   if(!trainFlowNode1265(''))return;
-  const oldBegin=trainBeginPlacement;trainBeginPlacement=function(spec){
+  const oldBegin=trainBeginPlacement;trainBeginPlacement=function(spec,options){
     const intent=trainPlaceEditIntent1265;
     const edit=intent?.handingOff&&kmzSlots.includes(intent.slot)&&intent.plan===activeLoadedPlanId&&intent.restore===kmzBuildingRestoreToken?intent.slot:kmzSlots.find(slot=>slot.id===kmzReplaceSlotId&&slot.train&&!slot.train.run?.sim)||null;
-    trainFlowClose1265();oldBegin(spec);if(!trainPlacing)return;
+    trainFlowClose1265();oldBegin(spec,options);if(!trainPlacing)return;
     trainPlaceEditIntent1265=null;
     const s=trainPlaceFlow1265,oldRun=edit?.train?.run,minute=oldRun?oldRun.atMin:kmzTimelineMinutes();
     Object.assign(s,{active:true,phase:'position',draft:trainPlacing,editSlot:edit,context:trainFlowContext1265(),moving:oldRun?true:null,dayOffset:minute>=1440?1:0,after:0,editMode1268:intent?.mode||'all',originalFingerprint1268:edit?trainFlowEditFingerprint1268(edit):null});
@@ -64632,11 +64792,17 @@ async function trainFlowPartialConfirm1268(){
   const oldEnd=trainEndPlacement;trainEndPlacement=function(note){
     const active=trainPlaceFlow1265.active;trainFlowClose1265();
     if(!trainPlaceEditIntent1265?.handingOff)trainPlaceEditIntent1265=null;
-    return oldEnd(active?null:note);
+    const result=oldEnd(active?null:note);
+    if(active&&osmMapScreenOpen)updateOsmKmzMarkers();
+    return result;
   };
   const oldClick=trainMapClick;trainMapClick=function(event){
     const s=trainPlaceFlow1265;if(s.active&&(s.phase==='committing'||s.editMode1268==='time'||['menu','editmenu','auto'].includes(s.phase)))return true;
-    if(s.active&&s.draft===trainPlacing){s.phase='position';s.framed=false;}return oldClick(event);
+    if(s.active&&s.draft===trainPlacing){
+      if(!event.dragDraft1301&&(s.draft?.snap||s.draft?.busy||s.draft?.dragging))return true;
+      s.phase='position';s.framed=!!event.dragDraft1301;
+    }
+    return oldClick(event);
   };
   const framedMaps=new WeakSet();
   const oldText=trainUpdatePlaceText;trainUpdatePlaceText=function(){
