@@ -6440,6 +6440,13 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
 #bridgeHeightStatus1271{min-height:24px;color:#bfe3ef}#bridgeHeightStatus1271[data-error=true]{color:#ffb9ac}
 .bridge-height-piers1272{border:1px solid #395b73;border-radius:12px;padding:8px 12px;margin:14px 0;min-width:0}.bridge-height-piers1272 legend{padding:0 5px;font-weight:700}.bridge-height-pier-row1272{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;margin:10px 0}.bridge-height-pier-row1272 label{display:grid;gap:5px}.bridge-height-pier-row1272 button{min-width:64px}.bridge-height-pier-diagram1272{position:relative;margin:25px 16px 20px;height:18px;border-top:4px solid #8ce6ff}.bridge-height-bar-label1272{position:absolute;left:-6px;top:-24px;color:#bfe3ef;font-size:13px}.bridge-height-bar-label1272.end1272{left:auto;right:-5px}.bridge-height-pier-mark1272{position:absolute;top:0;height:17px;width:7px;margin-left:-3.5px;background:#ffd38a;border-radius:0 0 2px 2px}.bridge-height-piers1272 p{margin-bottom:8px}
 .bridge-height-reference1271{font-size:13px;margin-top:18px;border-top:1px solid #39526a;padding-top:12px;color:#bad0e0}.bridge-height-reference1271 a{color:#83daf5}.bridge-height-reference1271 summary{cursor:pointer}
+#roadMarkUi1303 .road-mark-saved1303 {display:grid;gap:8px;margin:10px 0;}
+#roadMarkUi1303 .road-mark-saved1303 button {text-align:left;overflow-wrap:anywhere;}
+#roadMarkUi1303 .road-mark-saved1303 small {display:block;}
+#roadMarkUi1303 [data-error="true"] {color:#ffb6a2;}
+#roadMarkUi1303 [aria-busy="true"] {cursor:progress;}
+.road-mark-map-pick1303.leaflet-container {cursor:crosshair;}
+.road-mark-map-pick1303 .leaflet-marker-icon {pointer-events:none!important;}
 #terrainGrade1302.compact1271 .bridge-height-dialog1271 {width:min(440px,100%);}
 #terrainGrade1302 .terrain-grade-grid1302 {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;}
 #terrainGrade1302 .terrain-grade-grid1302 label {min-width:0;}
@@ -9181,6 +9188,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                       <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M20 4v9M20 27v9M4 20h9M27 20h9M8 8l7 7M25 25l7 7M32 8l-7 7M15 25l-7 7M14 3l2 5M26 32l2 5M3 26l5-2M32 14l5-2"/><circle cx="20" cy="20" r="2.5"/></svg>
                       <span class="home-screen-card-title1250">花火</span><span class="home-screen-card-subtitle1250">シミュレーション</span><span class="home-screen-card-pending1250">準備中</span>
                     </button>
+                    <button id="homeRoadMark1303" type="button" class="home-screen-card1250 home-screen-card-ready1250" style="--home-card-color:#eed286;">
+                      <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M12 6L4 34M28 6l8 28M20 6v5m0 6v6m0 6v5"/></svg>
+                      <span class="home-screen-card-title1250">道路の中央線</span><span class="home-screen-card-subtitle1250">選んだ区間の線を設定</span>
+                    </button>
                     <button id="homeTerrainGrade1302" type="button" class="home-screen-card1250 home-screen-card-ready1250" style="--home-card-color:#9ad7bc;">
                       <svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M4 29l8-12 6 6 7-11 11 17M4 34h32M13 28h14"/></svg>
                       <span class="home-screen-card-title1250">地形補正</span><span class="home-screen-card-subtitle1250">道路・並木の高さをならす</span>
@@ -9227,6 +9238,60 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                       </div>
                       <p id="objectHubStatus1270" class="object-hub-status1270" role="status" aria-live="polite"></p>
                     </section>
+<div id="roadMarkUi1303" class="bridge-height-ui1271" hidden>
+  <section class="bridge-height-dialog1271" role="dialog" aria-modal="true" aria-labelledby="roadMarkTitle1303">
+    <header class="bridge-height-header1271">
+      <h2 id="roadMarkTitle1303" tabindex="-1">道路の中央線</h2>
+      <button data-road-mark="close" class="bridge-height-close1271" type="button" aria-label="道路の中央線を閉じる">×</button>
+    </header>
+    <p data-road-mark="status" role="status"></p>
+    <div data-road-mark="list">
+      <p>地図で選んだ道路区間の中央線を設定します。設定はこのブラウザに保存されます。</p>
+      <button data-road-mark="new" class="bridge-height-primary1271" type="button">地図で新しい区間を選ぶ</button>
+      <h3>保存した区間</h3>
+      <div data-road-mark="saved" class="road-mark-saved1303"></div>
+    </div>
+    <div data-road-mark="pick" hidden>
+      <div class="bridge-height-actions1271">
+        <button data-road-mark="retry" type="button" hidden>始点から選び直す</button>
+        <button data-road-mark="cancelPick" type="button">戻る</button>
+      </div>
+    </div>
+    <div data-road-mark="edit" hidden>
+      <p data-road-mark="length" class="bridge-height-small1271"></p>
+      <label class="bridge-height-field1271">設定の名前<input data-road-mark="name" type="text" maxlength="80"></label>
+      <label class="bridge-height-field1271">中央線の種類
+        <select data-road-mark="style">
+          <option value="dashed">白の破線</option>
+          <option value="white">白の実線</option>
+          <option value="yellow">黄色の実線</option>
+          <option value="none">線なし</option>
+        </select>
+      </label>
+      <div class="bridge-height-actions1271">
+        <button data-road-mark="locate" type="button">地図で区間を確認</button>
+        <button data-road-mark="preview" class="bridge-height-primary1271" type="button">3Dで確認</button>
+      </div>
+      <div class="bridge-height-actions1271">
+        <button data-road-mark="backList" type="button">一覧に戻る</button>
+        <button data-road-mark="remove" class="bridge-height-danger1271" type="button" hidden>この設定を削除</button>
+      </div>
+    </div>
+    <div data-road-mark="locateView" hidden>
+      <div class="bridge-height-actions1271">
+        <button data-road-mark="repick" type="button">区間を選び直す</button>
+        <button data-road-mark="editFromMap" type="button">設定に戻る</button>
+      </div>
+    </div>
+    <div data-road-mark="previewView" hidden>
+      <div class="bridge-height-actions1271">
+        <button data-road-mark="showRoad" type="button" hidden>道路の表示をオンにする</button>
+        <button data-road-mark="editFromPreview" type="button">設定に戻る</button>
+        <button data-road-mark="save" class="bridge-height-primary1271" type="button">この設定を保存</button>
+      </div>
+    </div>
+  </section>
+</div>
 <div id="terrainGrade1302" class="bridge-height-ui1271" hidden>
   <section class="bridge-height-dialog1271" role="dialog" aria-modal="true" aria-labelledby="terrainGradeTitle1302">
     <header class="bridge-height-header1271">
@@ -10273,7 +10338,385 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1302-local-terrain-grading";
+const APP_VERSION="1303-road-centerlines";
+const roadMarkStorageKey1303 = 'starchase-road-centerlines-v1';
+const roadMarkKinds1303 = new Set(['dashed', 'white', 'yellow', 'none']);
+const roadMarkMetres1303 = 111195;
+const roadMarkTolerance1303 = 0.9;
+let roadMarkRevision1303 = 0;
+let roadMarkLibrary1303 = [];
+let roadMarkPreview1303 = null;
+let roadMarkEffective1303 = [];
+let roadMarkBoundsCache1303 = [];
+
+function roadMarkNormalize1303(region) {
+  if (!region || typeof region.id !== 'string' || !region.id.trim() || region.id.length > 120
+    || !roadMarkKinds1303.has(region.style) || !Array.isArray(region.points)
+    || region.points.length < 2 || region.points.length > 3000) return null;
+  const points = [];
+  let length = 0;
+  for (const point of region.points) {
+    if (!Array.isArray(point) || !Number.isFinite(point[0]) || !Number.isFinite(point[1])
+      || Math.abs(point[0]) > 85 || Math.abs(point[1]) > 180) return null;
+    const [lat, lon] = point;
+    const previous = points.at(-1);
+    if (previous) {
+      const north = (lat - previous[0]) * roadMarkMetres1303;
+      const east = gradeTerrainLongitudeDelta1302(lon, previous[1]) * roadMarkMetres1303
+        * Math.cos((lat + previous[0]) * Math.PI / 360);
+      const segmentLength = Math.hypot(north, east);
+      if (segmentLength < .01) continue;
+      length += segmentLength;
+    }
+    points.push([lat, lon]);
+  }
+  if (length < 3 || length > 6000) return null;
+  return {id:region.id, name:String(region.name ?? '').trim().slice(0,80) || '道路の中央線', style:region.style, points};
+}
+
+function roadMarkCompile1303(region) {
+  const [originLat, originLon] = region.points[0];
+  const scale = roadMarkMetres1303 * Math.cos(originLat * Math.PI / 180);
+  const segments = [];
+  const bounds = {minEast:Infinity, maxEast:-Infinity, minNorth:Infinity, maxNorth:-Infinity};
+  const tolerance = roadMarkTolerance1303;
+  let previous;
+  for (const [lat,lon] of region.points) {
+    const east = gradeTerrainLongitudeDelta1302(lon, originLon) * scale;
+    const north = (lat - originLat) * roadMarkMetres1303;
+    if (previous) {
+      const dx = east - previous.east;
+      const dy = north - previous.north;
+      const length = Math.hypot(dx,dy);
+      segments.push({
+        east:previous.east, north:previous.north, ux:dx/length, uy:dy/length, length,
+        minEast:Math.min(previous.east,east)-tolerance, maxEast:Math.max(previous.east,east)+tolerance,
+        minNorth:Math.min(previous.north,north)-tolerance, maxNorth:Math.max(previous.north,north)+tolerance
+      });
+    }
+    bounds.minEast = Math.min(bounds.minEast, east-tolerance);
+    bounds.maxEast = Math.max(bounds.maxEast, east+tolerance);
+    bounds.minNorth = Math.min(bounds.minNorth, north-tolerance);
+    bounds.maxNorth = Math.max(bounds.maxNorth, north+tolerance);
+    previous = {east,north};
+  }
+  return {style:region.style, originLat, originLon, scale, segments, ...bounds};
+}
+
+function roadMarkRebuild1303() {
+  const regions = roadMarkLibrary1303.filter(region => region.id !== roadMarkPreview1303?.id);
+  if (roadMarkPreview1303) regions.push(roadMarkPreview1303);
+  roadMarkEffective1303 = regions.map(roadMarkCompile1303).reverse();
+  roadMarkBoundsCache1303 = roadMarkEffective1303.flatMap(entry => {
+    const south = entry.originLat + entry.minNorth / roadMarkMetres1303;
+    const north = entry.originLat + entry.maxNorth / roadMarkMetres1303;
+    const west = entry.originLon + entry.minEast / entry.scale;
+    const east = entry.originLon + entry.maxEast / entry.scale;
+    if (west < -180) return [{south,north,west:west+360,east:180},{south,north,west:-180,east}];
+    if (east > 180) return [{south,north,west,east:180},{south,north,west:-180,east:east-360}];
+    return [{south,north,west,east}];
+  });
+}
+
+function roadMarkLoad1303() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(roadMarkStorageKey1303) || '[]');
+    if (!Array.isArray(rows)) return;
+    const byId = new Map();
+    for (const row of rows.slice(-100)) {
+      const region = roadMarkNormalize1303(row);
+      if (region) byId.set(region.id, region);
+    }
+    roadMarkLibrary1303 = [...byId.values()];
+    roadMarkRebuild1303();
+  } catch (_) {}
+}
+roadMarkLoad1303();
+
+function roadMarkBounds1303() {
+  return roadMarkBoundsCache1303;
+}
+
+function roadMarkSaved1303() {
+  return roadMarkLibrary1303.map(region => ({...region, points:region.points.map(point => [...point])}));
+}
+
+function roadMarkRefresh1303() {
+  roadMarkRebuild1303();
+  roadMarkRevision1303++;
+  scheduleUpdate();
+}
+
+function roadMarkSetPreview1303(region) {
+  const valid = region === null ? null : roadMarkNormalize1303(region);
+  if (region !== null && !valid) return false;
+  if (JSON.stringify(valid) === JSON.stringify(roadMarkPreview1303)) return true;
+  roadMarkPreview1303 = valid;
+  roadMarkRefresh1303();
+  return true;
+}
+
+function roadMarkWrite1303(regions,id) {
+  try {
+    localStorage.setItem(roadMarkStorageKey1303, JSON.stringify(regions));
+  } catch (_) {
+    return false;
+  }
+  roadMarkLibrary1303 = regions;
+  if (roadMarkPreview1303?.id === id) roadMarkPreview1303 = null;
+  roadMarkRefresh1303();
+  return true;
+}
+
+function roadMarkSave1303(region) {
+  const valid = roadMarkNormalize1303(region);
+  if (!valid) return false;
+  const remaining = roadMarkLibrary1303.filter(saved => saved.id !== valid.id);
+  return remaining.length < 100 && roadMarkWrite1303([...remaining, valid], valid.id);
+}
+
+function roadMarkDelete1303(id) {
+  const remaining = roadMarkLibrary1303.filter(region => region.id !== id);
+  return remaining.length !== roadMarkLibrary1303.length && roadMarkWrite1303(remaining,id);
+}
+
+function roadMarkStyle1303(lat,lon,bearing) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(bearing)) return null;
+  const radians = bearing * Math.PI / 180;
+  const eastDirection = Math.sin(radians);
+  const northDirection = Math.cos(radians);
+  for (const region of roadMarkEffective1303) {
+    const north = (lat - region.originLat) * roadMarkMetres1303;
+    if (north < region.minNorth || north > region.maxNorth) continue;
+    const east = gradeTerrainLongitudeDelta1302(lon, region.originLon) * region.scale;
+    if (east < region.minEast || east > region.maxEast) continue;
+    for (const segment of region.segments) {
+      if (east < segment.minEast || east > segment.maxEast || north < segment.minNorth || north > segment.maxNorth) continue;
+      if (Math.abs(segment.ux*eastDirection + segment.uy*northDirection) < .94) continue;
+      const x = east - segment.east;
+      const y = north - segment.north;
+      const along = x*segment.ux + y*segment.uy;
+      if (along < -.02 || along > segment.length + .02) continue;
+      if (Math.abs(x*segment.uy - y*segment.ux) <= roadMarkTolerance1303) return region.style;
+    }
+  }
+  return null;
+}
+
+/* Follow the same road geometry used by the 3D renderer, including across tile seams. */
+async function roadMarkSnap1303(a, b) {
+  const pointOk = point => Number.isFinite(point?.lat) && Math.abs(point.lat) <= 85
+    && Number.isFinite(point?.lon) && Math.abs(point.lon) <= 180;
+  if (!pointOk(a) || !pointOk(b)) return null;
+  const lonSpan = gradeTerrainLongitudeDelta1302(b.lon, a.lon);
+  const lat = (a.lat + b.lat) / 2;
+  const lon = gradeTerrainLongitudeDelta1302(a.lon + lonSpan / 2, 0);
+  const lonScale = roadMarkMetres1303 * Math.cos(lat * Math.PI / 180);
+  const xy = (pointLat, pointLon) => [
+    gradeTerrainLongitudeDelta1302(pointLon, lon) * lonScale,
+    (pointLat - lat) * roadMarkMetres1303
+  ];
+  const ll = ([east, north]) => [
+    lat + north / roadMarkMetres1303,
+    gradeTerrainLongitudeDelta1302(lon + east / lonScale, 0)
+  ];
+  const from = xy(a.lat, a.lon);
+  const to = xy(b.lat, b.lon);
+  const direct = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  if (direct < 3 || direct > 1500) return null;
+  let ways;
+  try {
+    // Dedicated radius and cache entry; the observer's normal 1.2 km query has a different center.
+    ways = await fetchOsmRoadWays(lat, lon, 2.4);
+  } catch (_) {
+    return null;
+  }
+  if (!Array.isArray(ways) || !ways.length) return null;
+  const path = roadMarkRoute1303(ways, from, to, xy, direct);
+  return path ? {points:path.map(ll)} : null;
+}
+
+function roadMarkRoute1303(ways, from, to, xy, direct) {
+  const bins = new Map();
+  const nodes = new Map();
+  const segments = [];
+  const endpoints = [];
+  const cell = value => Math.floor(value / 40);
+  const key = (x,y) => x + ':' + y;
+  const node = p => {
+    const id = key(Math.round(p[0] * 100), Math.round(p[1] * 100));
+    if (!nodes.has(id)) nodes.set(id, {point:p, edges:[]});
+    return nodes.get(id);
+  };
+  const inset = direct / 2 + Math.max(180, direct * .55);
+  const addSegment = (start, end, way) => {
+    const [x,y] = start.point;
+    const [endX,endY] = end.point;
+    const minX = Math.min(x,endX), maxX = Math.max(x,endX);
+    const minY = Math.min(y,endY), maxY = Math.max(y,endY);
+    if (minX > inset || maxX < -inset || minY > inset || maxY < -inset) return null;
+    const dx = endX - x, dy = endY - y;
+    const length = Math.hypot(dx,dy);
+    if (length < .03) return null;
+    const segment = {start,end,way,x,y,dx,dy,length,cuts:[{t:0,node:start},{t:1,node:end}]};
+    segments.push(segment);
+    for (let i=cell(Math.max(minX,-inset));i<=cell(Math.min(maxX,inset));i++) {
+      for (let j=cell(Math.max(minY,-inset));j<=cell(Math.min(maxY,inset));j++) {
+        const id = key(i,j);
+        if (!bins.has(id)) bins.set(id, []);
+        bins.get(id).push(segment);
+      }
+    }
+    return segment;
+  };
+  for (const way of ways) {
+    if (!Array.isArray(way?.points) || way.points.length < 2) continue;
+    const points = way.points.filter(p => Number.isFinite(p?.[0]) && Number.isFinite(p?.[1]))
+      .map(p => node(xy(p[0],p[1])));
+    const edges = [];
+    for (let i=1;i<points.length;i++) {
+      const edge = addSegment(points[i-1],points[i],way);
+      if (edge) edges.push(edge);
+    }
+    if (edges.length) {
+      endpoints.push({node:edges[0].start,edge:edges[0],sign:-1});
+      endpoints.push({node:edges.at(-1).end,edge:edges.at(-1),sign:1});
+    }
+  }
+  const nearSegments = (point, radius) => {
+    const result = new Set();
+    for (let i=cell(point[0]-radius);i<=cell(point[0]+radius);i++) {
+      for (let j=cell(point[1]-radius);j<=cell(point[1]+radius);j++) {
+        for (const segment of bins.get(key(i,j)) || []) result.add(segment);
+      }
+    }
+    return result;
+  };
+  const project = ([east,north], segment) => {
+    const {x,y,dx,dy,length} = segment;
+    const t = Math.max(0,Math.min(1,((east-x)*dx+(north-y)*dy)/(length*length)));
+    const point = [x+dx*t,y+dy*t];
+    return {segment,t,point,distance:Math.hypot(east-point[0],north-point[1])};
+  };
+  const cut = hit => {
+    const target = node(hit.point);
+    hit.segment.cuts.push({t:hit.t,node:target});
+    return target;
+  };
+  const clickTargets = point => {
+    const near = [...nearSegments(point,18)].map(segment => project(point,segment))
+      .filter(hit => hit.distance <= 18).sort((a,b) => a.distance-b.distance);
+    return near.filter(hit => hit.distance <= near[0].distance+.6).slice(0,12)
+      .map(hit => ({node:cut(hit),distance:hit.distance}));
+  };
+  const starts = clickTargets(from);
+  const finishes = clickTargets(to);
+  if (!starts.length || !finishes.length) return null;
+
+  const links = [];
+  for (const {node:tip,edge,sign} of endpoints) {
+    const nearby = nearSegments(tip.point,2);
+    for (const segment of nearby) {
+      if (segment.way === edge.way) continue;
+      const hit = project(tip.point,segment);
+      const dot = (edge.dx*segment.dx+edge.dy*segment.dy)/(edge.length*segment.length);
+      // Rounded/overlapping tile clips may end on the interior of an adjacent fragment.
+      // A non-aligned connection is allowed only at an almost coincident junction.
+      if (hit.distance > 2 || (Math.abs(dot) < .75 && hit.distance > .25)) continue;
+      if (hit.distance > .25) {
+        const gx = hit.point[0] - tip.point[0], gy = hit.point[1] - tip.point[1];
+        const forward = sign*(edge.dx*gx+edge.dy*gy)/edge.length;
+        const endHit = hit.t < .001 || hit.t > .999;
+        if (endHit && forward < hit.distance*.45) continue;
+        if (!endHit && hit.distance > .85) continue;
+      }
+      const other = cut(hit);
+      if (other !== tip) links.push([tip,other]);
+    }
+  }
+  let edgeId = 0;
+  const connect = (start,end,join=false) => {
+    if (start === end) return;
+    const dx = end.point[0]-start.point[0], dy = end.point[1]-start.point[1];
+    const length = Math.hypot(dx,dy);
+    if (length < .001) return;
+    const ux = dx/length, uy = dy/length;
+    start.edges.push({id:++edgeId,to:end,length,ux,uy,join});
+    end.edges.push({id:++edgeId,to:start,length,ux:-ux,uy:-uy,join});
+  };
+  for (const segment of segments) {
+    segment.cuts.sort((a,b) => a.t-b.t);
+    for (let i=1;i<segment.cuts.length;i++) connect(segment.cuts[i-1].node,segment.cuts[i].node);
+  }
+  for (const [start,end] of links) connect(start,end,true);
+
+  return roadMarkFindPath1303(starts,finishes,direct);
+}
+
+function roadMarkFindPath1303(starts, finishes, direct) {
+  const heap = [];
+  const push = entry => {
+    let i = heap.length;
+    heap.push(entry);
+    while (i > 0) {
+      const parent = (i-1) >> 1;
+      if (heap[parent].score <= entry.score) break;
+      heap[i] = heap[parent];
+      i = parent;
+    }
+    heap[i] = entry;
+  };
+  const pop = () => {
+    const first = heap[0], last = heap.pop();
+    if (heap.length) {
+      let i = 0;
+      while (i*2+1 < heap.length) {
+        let child = i*2+1;
+        if (child+1 < heap.length && heap[child+1].score < heap[child].score) child++;
+        if (heap[child].score >= last.score) break;
+        heap[i] = heap[child];
+        i = child;
+      }
+      heap[i] = last;
+    }
+    return first;
+  };
+  const finishCosts = new Map();
+  for (const {node,distance} of finishes) {
+    finishCosts.set(node, Math.min(finishCosts.get(node) ?? Infinity, distance * 12));
+  }
+  const bestForEdge = new Map();
+  for (const {node,distance} of starts) push({node,score:distance*12,length:0,parent:null,via:null,direction:null});
+  const limit = Math.min(2200,direct*2.5+60);
+  let best = null, bestScore = Infinity;
+  while (heap.length) {
+    const current = pop();
+    if (current.score >= bestScore) break;
+    if (current.via && bestForEdge.get(current.via.id) !== current.score) continue;
+    const finish = finishCosts.get(current.node);
+    if (finish !== undefined && current.length >= 3 && current.score+finish < bestScore) {
+      best = current;
+      bestScore = current.score+finish;
+    }
+    for (const edge of current.node.edges) {
+      if (edge.to === current.parent?.node || (edge.join && current.via?.join)) continue;
+      const length = current.length+edge.length;
+      if (length > limit) continue;
+      const previous = current.direction;
+      const dot = previous ? previous.ux*edge.ux+previous.uy*edge.uy : 1;
+      const turn = edge.join ? 0 : 40*Math.max(0,1-dot);
+      const score = current.score+edge.length+turn+(edge.join?4:0);
+      if (score >= bestScore || score >= (bestForEdge.get(edge.id) ?? Infinity)) continue;
+      bestForEdge.set(edge.id,score);
+      push({node:edge.to,score,length,parent:current,via:edge,direction:edge.join ? previous : edge});
+    }
+  }
+  if (!best) return null;
+  const result = [];
+  for (let step=best;step;step=step.parent) result.push(step.node.point);
+  return result.reverse();
+}
+
 const gradeTerrainStorageKey1302 = 'starchase-terrain-grades-v1';
 const gradeTerrainMetersPerDegree1302 = 111195;
 let gradeTerrainRevision1302 = 0;
@@ -21391,6 +21834,7 @@ function initOsmMap(){
   osmLightPollutionLayer.on("tileerror",e=>retryMapTile(e.tile,"lightpollution"));
   syncOsmBaseLayer();
   osmMapInstance.on("click",e=>{
+    if(roadMarkUiMapClick1303(e))return;
     if(gradeUiMapClick1302(e))return;
     if(objectFlowMapClick1270(e))return;
     if(trussFlowMapClick1269(e))return;
@@ -45246,6 +45690,7 @@ function drawPhoto(ctx,s){
         highDetailCacheIdentity1246(),
         "bridge-height-"+bridgeHeightRevision1271,
         "terrain-grade-"+gradeTerrainRevision1302,
+        "road-mark-"+roadMarkRevision1303,
         "bridge-pick-"+bridgePickState1272.epoch,
         normalWaterFineLevelValue(),
         localDetailMeshStepValue(),
@@ -48997,6 +49442,18 @@ function drawPhoto(ctx,s){
          どちらも「その方位・その距離で実際に見えている高さ」と一致する点だけを描くので、
          手前の地形に隠れる部分には出ない。
          --------------------------------------------------------- */
+      function roadMarkColor1303(style,factor){
+        const night=style==='yellow'?[173,135,53]:[159,164,175];
+        const day=style==='yellow'?[250,196,67]:[245,245,240];
+        return night.map((value,index)=>Math.round(lerp(value,day[index],factor))).join(',');
+      }
+      function fillBridgeRoadMarks1303(context,paths,index,factor,alpha){
+        if(!paths)return;
+        for(const style of ['white','yellow']){
+          context.fillStyle='rgba('+roadMarkColor1303(style,factor)+','+(alpha*.75).toFixed(3)+')';
+          context.fill(paths[style][index]);
+        }
+      }
       function drawGroundOverlays(columns,altGrid,waterGrid,layerKm,layerCount){
         if(!(bridgeLinesVisible&&(osmBridgeState.ways||bridgeHeightActive1271().length||bridgePickState1272.active))){drawPhoto._bridgeForegroundOverlay=null;drawPhoto._bridgeMirrorOverlay=null;}
         if(!(roadLinesVisible&&osmRoadState.ways)&&!(railLinesVisible&&(osmRailState.ways||bridgeHeightActive1271().length))) drawPhoto._roadForegroundOverlay=null;   /* 【v1043】 */
@@ -49107,12 +49564,13 @@ function drawPhoto(ctx,s){
            破線の間隔が奥ほど詰まって奥行きの手がかりになる。 */
         let flowerFieldRecords1220=[];
         let trailPaths;   /* 【v1101】登山道 */
-        let gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,
+        let gridPaths,contourPaths,roadPaths,roadCentrePaths,roadWhitePaths,roadYellowPaths,railPaths,railTiePaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
             bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths;
         /* 【v1158】同じ形を、鏡の面の反対側へもう一組。 */
         let bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
             bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths;
+        let bridgeCustomRoadMarks;
         const bridgeMirrorFade1280=overlayCache?(overlayCache.bridgeMirrorFade1280||[]):[];
         const bridgeMirrorPlane=bridgeLinesVisible?waterMirrorSharedPlaneM():null;
         const bridgeJoinNow1273=overlayCache?overlayCache.bridgeJoinFrame1273:bridgeJoinFrame1273(terrainGeometryKey,s,W,H);
@@ -49121,6 +49579,7 @@ function drawPhoto(ctx,s){
           flowerFieldRecords1220=overlayCache.flowerFieldRecords1220||[];
           gridPaths=overlayCache.gridPaths;contourPaths=overlayCache.contourPaths;
           roadPaths=overlayCache.roadPaths;roadCentrePaths=overlayCache.roadCentrePaths;
+          roadWhitePaths=overlayCache.roadWhitePaths;roadYellowPaths=overlayCache.roadYellowPaths;
           railPaths=overlayCache.railPaths;railTiePaths=overlayCache.railTiePaths;
           trailPaths=overlayCache.trailPaths;   /* 【v1101】 */
           bridgePaths=overlayCache.bridgePaths;bridgeSidePaths=overlayCache.bridgeSidePaths;
@@ -49128,6 +49587,7 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=overlayCache.bridgePierShadePaths;
           bridgePierEdgePaths=overlayCache.bridgePierEdgePaths;
           bridgeRailMarkPaths=overlayCache.bridgeRailMarkPaths;
+          bridgeCustomRoadMarks=overlayCache.bridgeCustomRoadMarks;
           bridgeMirrorPaths=overlayCache.bridgeMirrorPaths;bridgeMirrorSidePaths=overlayCache.bridgeMirrorSidePaths;
           bridgeMirrorEdgePaths=overlayCache.bridgeMirrorEdgePaths;bridgeMirrorPierPaths=overlayCache.bridgeMirrorPierPaths;
           bridgeMirrorPierShadePaths=overlayCache.bridgeMirrorPierShadePaths;
@@ -49138,6 +49598,8 @@ function drawPhoto(ctx,s){
           contourPaths=contourLinesVisible?newPaths():null;
           roadPaths=(roadLinesVisible&&osmRoadState.ways)?newPaths():null;
           roadCentrePaths=roadPaths?newPaths():null;
+          roadWhitePaths=roadPaths?newPaths():null;
+          roadYellowPaths=roadPaths?newPaths():null;
           railPaths=(railLinesVisible&&(osmRailState.ways||bridgeHeightActive1271().length))?newPaths():null;
           railTiePaths=railPaths?newPaths():null;
           trailPaths=(trailLinesVisible&&osmTrailState.ways)?newPaths():null;   /* 【v1101】 */
@@ -49149,6 +49611,7 @@ function drawPhoto(ctx,s){
           bridgePierShadePaths=bridgePaths?newPaths():null;
           bridgePierEdgePaths=bridgePaths?newPaths():null;
           bridgeRailMarkPaths=bridgePaths?newPaths():null;
+          bridgeCustomRoadMarks=bridgePaths?{white:newPaths(),yellow:newPaths()}:null;
           /* 【v1158】水が見つかっているときだけ、映り込み用の形も用意する。 */
           const wantMirror=!!bridgePaths&&Number.isFinite(bridgeMirrorPlane);
           bridgeMirrorPaths=wantMirror?newPaths():null;
@@ -49550,6 +50013,91 @@ function drawPhoto(ctx,s){
           /* 道路も線路も「中心線を実寸の幅に開いて面にする」処理は同じ。
              違うのは路面の模様だけ(道路=センターラインの破線、線路=枕木)なので、
              模様の描き方だけを引数で切り替えて1つの処理を共有する。 */
+          const roadMarkBounds=roadMarkBounds1303().map(bounds=>({
+            minEast:(bounds.west-originLon)*metrePerDegLon,maxEast:(bounds.east-originLon)*metrePerDegLon,
+            minNorth:(bounds.south-originLat)*111320,maxNorth:(bounds.north-originLat)*111320
+          }));
+          const roadMarkTouches=(a,b)=>roadMarkBounds.some(rect=>
+            Math.max(a.eastM,b.eastM)>=rect.minEast&&Math.min(a.eastM,b.eastM)<=rect.maxEast&&
+            Math.max(a.northM,b.northM)>=rect.minNorth&&Math.min(a.northM,b.northM)<=rect.maxNorth);
+          const roadMarkInterpolate=(a,b,f)=>({
+            centre:mixVec(a.centre,b.centre,f),
+            left:mixVec(a.left,b.left,f),
+            right:mixVec(a.right,b.right,f)
+          });
+          const drawRoadMarkSpans=(previous,current,way,halfWidth,bucket,bearing,bridge=false)=>{
+            const start=previous.travel,end=current.travel;
+            const length=end-start;
+            if(length<=0)return;
+            const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
+            const frac=Math.min(1,Math.max(CENTRE_HALF_M,minHalfMetresAt(current.distanceM))/Math.max(.05,halfWidth));
+            const styleAt=f=>roadMarkStyle1303(
+              originLat+lerp(previous.northM,current.northM,f)/111320,
+              originLon+lerp(previous.eastM,current.eastM,f)/metrePerDegLon,
+              bearing
+            );
+            const draw=(paths,from,to)=>{
+              if(to<=from)return;
+              const a=roadMarkInterpolate(previous,current,(from-start)/length);
+              const b=roadMarkInterpolate(previous,current,(to-start)/length);
+              fillGroundPolygon(paths[bucket],ribbonQuad(a,b,frac));
+            };
+            const drawSpan=(style,from,to)=>{
+              if(style==='none'||(style===null&&way.widthM<6))return;
+              if(style===null&&bridge){
+                strokeGroundSegment(bridgeRailMarkPaths[bucket],
+                  mixVec(previous.centre,current.centre,(from-start)/length),
+                  mixVec(previous.centre,current.centre,(to-start)/length));
+                return;
+              }
+              // The existing water mirror intentionally omits bridge surface markings.
+              if(bridge&&overlayMirrorZ!==null)return;
+              const white=bridge?bridgeCustomRoadMarks.white:roadWhitePaths;
+              const yellow=bridge?bridgeCustomRoadMarks.yellow:roadYellowPaths;
+              if(style==='white'||style==='yellow'){
+                draw(style==='yellow'?yellow:white,from,to);
+                return;
+              }
+              const paths=style==='dashed'?white:roadCentrePaths;
+              for(let dash=Math.floor(from/cycle)*cycle;dash<to;dash+=cycle){
+                draw(paths,Math.max(dash,from),Math.min(dash+CENTRE_DASH_M,to));
+              }
+            };
+            // Use a short search step around the chosen section, then find each
+            // transition to centimetre precision without resampling the ground.
+            const samples=Math.max(2,Math.ceil(length/.5));
+            let style=styleAt(0),spanStart=start;
+            for(let i=1;i<=samples;i++){
+              const f=i/samples,next=styleAt(f);
+              if(next===style)continue;
+              let lo=(i-1)/samples,hi=f;
+              for(let step=0;step<6;step++){
+                const mid=(lo+hi)/2;
+                if(styleAt(mid)===style)lo=mid;else hi=mid;
+              }
+              const edge=start+length*(lo+hi)/2;
+              drawSpan(style,spanStart,edge);
+              spanStart=edge;
+              style=next;
+            }
+            drawSpan(style,spanStart,end);
+          };
+          const roadMarkWayHasOverride=way=>{
+            if(!roadMarkBounds.length)return false;
+            for(let index=1;index<way.points.length;index++){
+              const [aLat,aLon]=way.points[index-1], [bLat,bLon]=way.points[index];
+              const a={eastM:(aLon-originLon)*metrePerDegLon,northM:(aLat-originLat)*111320};
+              const b={eastM:(bLon-originLon)*metrePerDegLon,northM:(bLat-originLat)*111320};
+              if(!roadMarkTouches(a,b))continue;
+              const bearing=norm360(atan2d(b.eastM-a.eastM,b.northM-a.northM));
+              const count=Math.ceil(Math.hypot(b.eastM-a.eastM,b.northM-a.northM));
+              for(let sample=0;sample<=count;sample++){
+                const fraction=count?sample/count:0;
+                if(roadMarkStyle1303(lerp(aLat,bLat,fraction),lerp(aLon,bLon,fraction),bearing)!==null)return true;
+              }
+            }
+            return false;
+          };
           const buildRibbon=(ways,fillPaths,markPaths,markKind,opts)=>{
           const bucketFor=(opts&&opts.bucketOf)||roadBucketOf;
           const rangeLimitM=(opts&&opts.rangeM)||roadRangeM;
@@ -49568,6 +50116,7 @@ function drawPhoto(ctx,s){
               // 進行方向を90度回した向きが道幅の方向。
               const dirEast=(bx-ax)/segmentM, dirNorth=(by-ay)/segmentM;
               const perpEast=dirNorth, perpNorth=-dirEast;
+              const markBearing=markKind==="centre"&&roadMarkBounds.length?norm360(atan2d(dirEast,dirNorth)):0;
               /* 足元は1歩ぶんの距離で見かけが大きく変わるので、近い区間だけ細かく刻む。 */
               const nearestM=Math.min(Math.hypot(ax,ay),Math.hypot(bx,by));
               const stepM=nearestM<30?1.5:sampleM;
@@ -49583,6 +50132,7 @@ function drawPhoto(ctx,s){
                 if(outsideView(eastM,northM,halfWidth)){previous=null;continue;}
                 const current=sectionAt(eastM,northM,perpEast,perpNorth,halfWidth,markKind==="ties");
                 if(!current){previous=null;continue;}
+                current.eastM=eastM;current.northM=northM;current.travel=here;
                 if(previous){
                   // 前の断面との間を1枚の四角形として塗る。距離でバケツ分けして濃さを変える。
                   const bucket=bucketFor(current.distanceM);
@@ -49590,7 +50140,9 @@ function drawPhoto(ctx,s){
                   if(markKind==="centre"){
                     // センターラインは実距離で刻む。奥ほど破線が詰まって見える。
                     const cycle=CENTRE_DASH_M+CENTRE_GAP_M;
-                    if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
+                    if(roadMarkTouches(previous,current)){
+                      drawRoadMarkSpans(previous,current,way,halfWidth,bucket,markBearing);
+                    }else if(way.widthM>=6&&(previous.travel%cycle)<CENTRE_DASH_M&&(here%cycle)<CENTRE_DASH_M){
                       /* 線ではなく、幅15cmの帯として面で塗る。
                          実寸なので奥へ行くほど細くなり、それが奥行きになる。 */
                       const wantHalf=Math.max(CENTRE_HALF_M,minHalfMetresAt(current.distanceM));
@@ -49604,7 +50156,6 @@ function drawPhoto(ctx,s){
                     }
                   }
                 }
-                current.travel=here;
                 previous=current;
               }
               travelM+=segmentM;
@@ -49846,7 +50397,7 @@ function drawPhoto(ctx,s){
                     distanceM:current.distanceM,left:current.left,right:current.right};
                   if(!firstCap)firstCap=capInfo;
                   lastCap=capInfo;
-                  current.travel=travelM;
+                  current.travel=travelM;current.eastM=eastM;current.northM=northM;
                   if(overlayMirrorZ!==null&&previous)railReflectionBridgeSample1280(bridgeMirrorFade1280,current.centre,overlayMirrorZ,eyeElevationNow,EARTH_DROP,projectGround);
                   if(overlayMirrorZ===null&&previous)bridgePierVisualAdd1276(way,previous,current,projectGround,camForward,useDiagonalFisheye,totalM);
                   if(previous){
@@ -49866,6 +50417,9 @@ function drawPhoto(ctx,s){
                     strokeGroundSegment(bridgeEdgePaths[bucket],previous.right,current.right);
                     if(way.kind==="rail"){
                       if(Math.floor(previous.travel/TIE_INTERVAL_M)!==Math.floor(travelM/TIE_INTERVAL_M)) strokeGroundSegment(bridgeRailMarkPaths[bucket],current.left,current.right);
+                    }else if(roadMarkTouches(previous,current)){
+                      const bearing=norm360(atan2d(dirEast,dirNorth));
+                      drawRoadMarkSpans(previous,current,way,displayHalfWidth,bucket,bearing,true);
                     }else if(way.widthM>=6){
                       strokeGroundSegment(bridgeRailMarkPaths[bucket],previous.centre,current.centre);
                     }
@@ -49931,7 +50485,7 @@ function drawPhoto(ctx,s){
           };
           if(roadPaths){
             let ways=activeBridgeSignatures?osmRoadState.ways.filter(way=>!activeBridgeSignatures.has(`road:${bridgeEndpointSignature(way.points)}`)):osmRoadState.ways;
-            if(!minorRoadsVisible)ways=ways.filter(way=>!way.minor);   /* 【v995】細い道は ON のときだけ */
+            if(!minorRoadsVisible)ways=ways.filter(way=>!way.minor||roadMarkWayHasOverride(way));   /* 【v995】細い道は ON のときだけ */
             buildRibbon(ways,roadPaths,roadCentrePaths,"centre");
           }
           if(railPaths){
@@ -50003,9 +50557,9 @@ function drawPhoto(ctx,s){
         if(!overlayCache&&sharedTerrainProjectionPass==="commands"&&sharedTerrainProjectionCache){
           sharedTerrainProjectionCache.groundOverlayPaths={
             key:terrainGeometryKey,bridgeJoinFrame1273:bridgeJoinNow1273,flowerFieldRecords1220,
-            gridPaths,contourPaths,roadPaths,roadCentrePaths,railPaths,railTiePaths,trailPaths,
+            gridPaths,contourPaths,roadPaths,roadCentrePaths,roadWhitePaths,roadYellowPaths,railPaths,railTiePaths,trailPaths,
             bridgePaths,bridgeSidePaths,bridgeEdgePaths,bridgePierPaths,
-            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,
+            bridgePierShadePaths,bridgePierEdgePaths,bridgeRailMarkPaths,bridgeCustomRoadMarks,
             bridgeMirrorPaths,bridgeMirrorSidePaths,bridgeMirrorEdgePaths,bridgeMirrorPierPaths,
             bridgeMirrorPierShadePaths,bridgeMirrorPierEdgePaths,bridgeMirrorMarkPaths,bridgeMirrorFade1280
           };
@@ -50063,7 +50617,7 @@ function drawPhoto(ctx,s){
         /* 【v1043】水面の合成のあとで、水面の範囲だけ道路・線路を描き直すために形を預ける。 */
         drawPhoto._roadForegroundOverlay=(roadPaths||railPaths)?{
           key:terrainGeometryKey,buckets:FADE_BUCKETS,
-          road:roadPaths,roadCentre:roadCentrePaths,rail:railPaths,railTie:railTiePaths,
+          road:roadPaths,roadCentre:roadCentrePaths,roadWhite:roadWhitePaths,roadYellow:roadYellowPaths,rail:railPaths,railTie:railTiePaths,
           pixelsPerDegree:W/Math.max(1,s.fovH),roadRangeM
         }:null;
         if(roadPaths){
@@ -50072,6 +50626,7 @@ function drawPhoto(ctx,s){
           const baseAlpha=roadSurfaceBaseAlpha;
           // センターラインは路面より明るいグレー。
           const centreColor=roadMarkRGB.join(",");
+          const white=roadMarkColor1303("white",terrainDayFactor),yellow=roadMarkColor1303("yellow",terrainDayFactor);
           for(let i=0;i<FADE_BUCKETS;i++){
             const fade=roadFadeOfBucket(i);
             if(fade<=0) continue;
@@ -50084,6 +50639,8 @@ function drawPhoto(ctx,s){
               // 幅15cmの帯を面で塗る。線幅固定のストロークと違い、奥で細くなる。
               tctx.fillStyle=`rgba(${centreColor},${centreAlpha.toFixed(3)})`;
               tctx.fill(roadCentrePaths[i]);
+              tctx.fillStyle=`rgba(${white},${centreAlpha.toFixed(3)})`;tctx.fill(roadWhitePaths[i]);
+              tctx.fillStyle=`rgba(${yellow},${centreAlpha.toFixed(3)})`;tctx.fill(roadYellowPaths[i]);
             }
           }
         }
@@ -50124,7 +50681,7 @@ function drawPhoto(ctx,s){
             key:terrainGeometryKey,join1273:bridgeJoinNow1273,railShapeLens1279:[s.focalLength,s.sensor.crop,mobileLensMode].join('|'),buckets:FADE_BUCKETS,
             deck:bridgePaths,side:bridgeSidePaths,edge:bridgeEdgePaths,
             pier:bridgePierPaths,pierShade:bridgePierShadePaths,pierEdge:bridgePierEdgePaths,
-            mark:bridgeRailMarkPaths
+            mark:bridgeRailMarkPaths,customRoadMarks:bridgeCustomRoadMarks
           };
           /* 【v1158】映り込み用。濃さは映り込みの段で決めるので、形と薄れ方だけ預ける。 */
           drawPhoto._bridgeMirrorOverlay=bridgeMirrorPaths?{
@@ -50163,6 +50720,7 @@ function drawPhoto(ctx,s){
             tctx.lineWidth=Math.max(1.2,1.8*fade);tctx.stroke(bridgeEdgePaths[i]);
             tctx.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;
             tctx.lineWidth=Math.max(1.05,1.45*fade);tctx.stroke(bridgeRailMarkPaths[i]);
+            fillBridgeRoadMarks1303(tctx,bridgeCustomRoadMarks,i,terrainDayFactor,alpha);
           }
           tctx.lineWidth=1;
         }
@@ -50214,6 +50772,7 @@ function drawPhoto(ctx,s){
           restoreCtx.lineWidth=Math.max(1.2,1.8*fade);restoreCtx.stroke(overlay.edge[i]);
           restoreCtx.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;
           restoreCtx.lineWidth=Math.max(1.05,1.45*fade);restoreCtx.stroke(overlay.mark[i]);
+          fillBridgeRoadMarks1303(restoreCtx,overlay.customRoadMarks,i,dayFactor,alpha);
         }
         restoreCtx.restore();
         /* 反射が橋を覆った水域画素だけを残す。陸上の橋は元の地形レイヤーをそのまま使う。 */
@@ -50239,13 +50798,18 @@ function drawPhoto(ctx,s){
         if(overlay.road){
           const scale=overlayAlphaScale("road",factor);
           const color=overlayPartRGB("road","main",factor).join(","),centre=overlayPartRGB("road","mark",factor).join(",");
+          const white=roadMarkColor1303("white",factor),yellow=roadMarkColor1303("yellow",factor);
           const baseAlpha=lerp(.62,.86,factor)*scale;
           for(let i=0;i<overlay.buckets;i++){
             const fade=fadeOf(i);if(fade<=0)continue;
             const alpha=baseAlpha*fade;if(alpha<.012)continue;
             c.fillStyle=`rgba(${color},${alpha.toFixed(3)})`;c.fill(overlay.road[i]);
             const centreAlpha=lerp(.45,.8,factor)*scale*fade;
-            if(centreAlpha>=.02&&overlay.roadCentre){c.fillStyle=`rgba(${centre},${centreAlpha.toFixed(3)})`;c.fill(overlay.roadCentre[i]);}
+            if(centreAlpha>=.02&&overlay.roadCentre){
+              c.fillStyle=`rgba(${centre},${centreAlpha.toFixed(3)})`;c.fill(overlay.roadCentre[i]);
+              c.fillStyle=`rgba(${white},${centreAlpha.toFixed(3)})`;c.fill(overlay.roadWhite[i]);
+              c.fillStyle=`rgba(${yellow},${centreAlpha.toFixed(3)})`;c.fill(overlay.roadYellow[i]);
+            }
             painted=true;
           }
         }
@@ -50296,6 +50860,7 @@ function drawPhoto(ctx,s){
           targetContext.fillStyle=`rgba(${deckRGB.join(",")},${alpha.toFixed(3)})`;targetContext.fill(overlay.deck[i]);
           targetContext.strokeStyle=`rgba(${edgeRGB.join(",")},${(alpha*.82).toFixed(3)})`;targetContext.lineWidth=Math.max(1.2,1.8*fade);targetContext.stroke(overlay.edge[i]);
           targetContext.strokeStyle=`rgba(${markRGB.join(",")},${(alpha*.75).toFixed(3)})`;targetContext.lineWidth=Math.max(1.05,1.45*fade);targetContext.stroke(overlay.mark[i]);
+          fillBridgeRoadMarks1303(targetContext,overlay.customRoadMarks,i,factor,alpha);
         }
         targetContext.restore();return true;
       }
@@ -63529,6 +64094,367 @@ function gradeUiRead1302(requireHeight) {
       }
     }
   }, true);
+})();
+
+const roadMarkUiState1303 = {
+  open:false, view:'list', draft:null, saved:false, previous:null, start:null,
+  requestedEnd:null, token:0, pending:false, marks:null, markMap:null,
+  mapBefore:false, switchingMap:false, removeArmed:false, returnFocus:null
+};
+const roadMarkUiRoot1303 = document.getElementById('roadMarkUi1303');
+const roadMarkUiNode1303 = key => roadMarkUiRoot1303.querySelector('[data-road-mark="' + key + '"]');
+const roadMarkUiLabels1303 = {dashed:'白の破線', white:'白の実線', yellow:'黄色の実線', none:'線なし'};
+
+function roadMarkUiStatus1303(message, error=false) {
+  const status = roadMarkUiNode1303('status');
+  status.textContent = message;
+  status.dataset.error = String(error);
+}
+
+function roadMarkUiMount1303() {
+  const host = document.fullscreenElement || document.body;
+  if (roadMarkUiRoot1303.parentElement !== host) host.appendChild(roadMarkUiRoot1303);
+}
+
+function roadMarkUiShow1303(view) {
+  const state = roadMarkUiState1303;
+  state.view = view;
+  state.removeArmed = false;
+  roadMarkUiNode1303('remove').textContent = 'この設定を削除';
+  const compact = ['pick','locateView','previewView'].includes(view);
+  roadMarkUiRoot1303.classList.toggle('compact1271', compact);
+  const dialog = roadMarkUiRoot1303.querySelector('[role="dialog"]');
+  dialog.setAttribute('aria-modal', String(!compact));
+  dialog.scrollTop = 0;
+  for (const key of ['list','pick','edit','locateView','previewView']) {
+    roadMarkUiNode1303(key).hidden = key !== view;
+  }
+  el.osmMap.classList.toggle('road-mark-map-pick1303', view === 'pick' || view === 'locateView');
+  document.getElementById('roadMarkTitle1303').focus({preventScroll:true});
+}
+
+function roadMarkUiSetPending1303(pending) {
+  roadMarkUiState1303.pending = pending;
+  roadMarkUiNode1303('status').setAttribute('aria-busy', String(pending));
+}
+
+function roadMarkUiClearMap1303() {
+  const state = roadMarkUiState1303;
+  if (state.marks && state.markMap) state.markMap.removeLayer(state.marks);
+  state.marks = null;
+  state.markMap = null;
+}
+
+function roadMarkUiDrawMap1303(fit=false) {
+  roadMarkUiClearMap1303();
+  const state = roadMarkUiState1303;
+  if (!state.open || !osmMapScreenOpen || !osmMapInstance) return;
+  const route = state.draft?.points;
+  const start = route ? route[0] : state.start && [state.start.lat,state.start.lon];
+  const end = route ? route[route.length-1] : state.requestedEnd && [state.requestedEnd.lat,state.requestedEnd.lon];
+  if (!start) return;
+  const visibleLon = osmMapInstance.getCenter().lng;
+  const nearest = ([lat,lon]) => [lat,lon + Math.round((visibleLon-lon)/360)*360];
+  const layers = [];
+  if (route) {
+    const points = route.map(nearest);
+    layers.push(L.polyline(points,{interactive:false,color:'#132534',opacity:.85,weight:10}));
+    layers.push(L.polyline(points,{interactive:false,color:'#8ee5ff',opacity:.95,weight:5}));
+  }
+  for (const [point,label] of [[start,'A'],[end,'B']]) {
+    if (!point) continue;
+    layers.push(L.marker(nearest(point),{interactive:false,keyboard:false,icon:L.divIcon({
+      className:'terrain-grade-pin1302',html:label,iconSize:[24,24],iconAnchor:[12,12]
+    })}));
+  }
+  state.markMap = osmMapInstance;
+  state.marks = L.featureGroup(layers).addTo(state.markMap);
+  if (fit && route) state.markMap.fitBounds(state.marks.getBounds(), {padding:[30,48],maxZoom:19,animate:false});
+}
+
+function roadMarkUiSwitchMap1303(open, fit=false) {
+  const state = roadMarkUiState1303;
+  if (open && typeof L === 'undefined') {
+    roadMarkUiList1303('地図を開けませんでした。通信を確認して、もう一度お試しください。',true);
+    return;
+  }
+  if (osmMapScreenOpen !== open) {
+    state.switchingMap = true;
+    try {setOsmMapScreenOpen(open);}
+    finally {state.switchingMap = false;}
+  }
+  if (!open) roadMarkUiClearMap1303();
+  else requestAnimationFrame(() => {
+    if (!state.open || !['pick','locateView'].includes(state.view)) return;
+    if (!osmMapScreenOpen || !osmMapInstance) {
+      roadMarkUiList1303('地図を開けませんでした。もう一度お試しください。',true);
+      return;
+    }
+    roadMarkUiDrawMap1303(fit);
+  });
+}
+
+function roadMarkUiLength1303(points) {
+  let metres = 0;
+  for (let i=1; i<points.length; i++) {
+    const [lat,lon] = points[i-1];
+    const [nextLat,nextLon] = points[i];
+    metres += terrainDistanceAndBearing(lat,lon,nextLat,nextLon).distanceKm * 1000;
+  }
+  return Math.round(metres);
+}
+
+function roadMarkUiList1303(message='', error=false) {
+  const state = roadMarkUiState1303;
+  state.token++;
+  Object.assign(state,{draft:null,saved:false,previous:null,start:null,requestedEnd:null});
+  roadMarkUiSetPending1303(false);
+  roadMarkSetPreview1303(null);
+  roadMarkUiClearMap1303();
+  const saved = roadMarkUiNode1303('saved');
+  saved.replaceChildren();
+  for (const region of [...roadMarkSaved1303()].reverse()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = region.name;
+    const detail = document.createElement('small');
+    detail.textContent = roadMarkUiLabels1303[region.style] + ' ／ 約' + roadMarkUiLength1303(region.points) + ' m';
+    button.appendChild(detail);
+    button.addEventListener('click', () => {
+      state.draft = region;
+      state.saved = true;
+      roadMarkUiEdit1303();
+    });
+    saved.appendChild(button);
+  }
+  if (!saved.childElementCount) saved.textContent = '保存した区間はありません。';
+  roadMarkUiShow1303('list');
+  roadMarkUiStatus1303(message,error);
+}
+
+function roadMarkUiClose1303({restoreMap=true,focus=true}={}) {
+  const state = roadMarkUiState1303;
+  if (!state.open) return;
+  state.open = false;
+  state.token++;
+  roadMarkUiSetPending1303(false);
+  roadMarkUiRoot1303.hidden = true;
+  el.osmMap.classList.remove('road-mark-map-pick1303');
+  roadMarkSetPreview1303(null);
+  roadMarkUiClearMap1303();
+  if (restoreMap && osmMapScreenOpen !== state.mapBefore) setOsmMapScreenOpen(state.mapBefore);
+  if (focus) {
+    const target = state.returnFocus?.getClientRects().length ? state.returnFocus : el.popupHomeBtn;
+    target?.focus({preventScroll:true});
+  }
+}
+
+function roadMarkUiOpen1303() {
+  const state = roadMarkUiState1303;
+  if (state.open) return;
+  const mapBefore = osmMapScreenOpen;
+  const returnFocus = document.activeElement;
+  if (mapMeasureOn) stopMapMeasure();
+  homeRailCancelPlacement1255();
+  setHomeScreenOpen1250(false,{restoreFocus:false});
+  setMobileSettingsOpen(false);
+  Object.assign(state,{open:true,mapBefore,returnFocus});
+  roadMarkUiMount1303();
+  roadMarkUiRoot1303.hidden = false;
+  roadMarkUiList1303();
+}
+
+function roadMarkUiPick1303(previous=null) {
+  const state = roadMarkUiState1303;
+  state.token++;
+  Object.assign(state,{previous,draft:null,start:null,requestedEnd:null});
+  if (!previous) state.saved = false;
+  roadMarkUiSetPending1303(false);
+  roadMarkUiShow1303('pick');
+  roadMarkUiNode1303('retry').hidden = true;
+  roadMarkUiStatus1303('中央線を設定する道路の中心で、始点 A を選んでください。');
+  roadMarkUiSwitchMap1303(true);
+}
+
+function roadMarkUiMapClick1303(event) {
+  const state = roadMarkUiState1303;
+  if (!state.open || !['pick','locateView'].includes(state.view)) return false;
+  if (state.view !== 'pick' || state.pending) return true;
+  const {lat,lng} = event.latlng;
+  if (!Number.isFinite(lat) || Math.abs(lat)>85 || !Number.isFinite(lng)) return true;
+  const point = {lat,lon:((lng+180)%360+360)%360-180};
+  if (!state.start) {
+    state.start = point;
+    roadMarkUiNode1303('retry').hidden = false;
+    roadMarkUiDrawMap1303();
+    roadMarkUiStatus1303('同じ道路の中心で、終点 B を選んでください。');
+    return true;
+  }
+  const token = ++state.token;
+  state.requestedEnd = point;
+  roadMarkUiSetPending1303(true);
+  roadMarkUiDrawMap1303();
+  roadMarkUiStatus1303('道路に沿った区間を確認しています…');
+  void roadMarkUiResolve1303(state.start,point,token);
+  return true;
+}
+
+async function roadMarkUiResolve1303(start,end,token) {
+  const state = roadMarkUiState1303;
+  let match;
+  try {match = await roadMarkSnap1303(start,end);}
+  catch (_) {
+    if (!state.open || state.token !== token) return;
+    roadMarkUiSetPending1303(false);
+    state.requestedEnd = null;
+    roadMarkUiDrawMap1303();
+    roadMarkUiStatus1303('道路データを読み込めませんでした。終点 B をもう一度選んでください。',true);
+    return;
+  }
+  if (!state.open || state.token !== token) return;
+  roadMarkUiSetPending1303(false);
+  state.requestedEnd = null;
+  if (!match?.points || match.points.length<2) {
+    roadMarkUiDrawMap1303();
+    roadMarkUiStatus1303('同じ道路の区間を見つけられませんでした。道路の中心に近い終点 B を選ぶか、始点から選び直してください。',true);
+    return;
+  }
+  const previous = state.previous;
+  state.draft = {
+    id: previous?.id || ('road-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,10)),
+    name: previous?.name || match.name || '道路の中央線',
+    style: previous?.style || 'dashed',
+    points: match.points
+  };
+  state.previous = null;
+  roadMarkUiDrawMap1303();
+  roadMarkUiEdit1303();
+}
+
+function roadMarkUiEdit1303() {
+  const {draft,saved} = roadMarkUiState1303;
+  roadMarkUiNode1303('name').value = draft.name;
+  roadMarkUiNode1303('style').value = draft.style;
+  roadMarkUiNode1303('length').textContent = '始点 A から終点 B まで 約' + roadMarkUiLength1303(draft.points) + ' m';
+  roadMarkUiNode1303('remove').hidden = !saved;
+  roadMarkUiShow1303('edit');
+  roadMarkUiStatus1303('');
+}
+
+function roadMarkUiRead1303() {
+  return {...roadMarkUiState1303.draft,
+    name:roadMarkUiNode1303('name').value.trim() || '道路の中央線',
+    style:roadMarkUiNode1303('style').value
+  };
+}
+
+function roadMarkUiPreviewStatus1303() {
+  roadMarkUiNode1303('showRoad').hidden = roadLinesVisible;
+  const style = roadMarkUiLabels1303[roadMarkUiState1303.draft.style];
+  roadMarkUiStatus1303(roadLinesVisible
+    ? style + 'で確認中です。区間が見えない場合は、撮影位置と向きを調整してください。'
+    : '道路の表示がオフです。「道路の表示をオンにする」を押すと、この画面で確認できます。');
+}
+
+(function initRoadMarkUi1303() {
+  const state = roadMarkUiState1303;
+  const bind = (key,callback) => roadMarkUiNode1303(key).addEventListener('click',callback);
+  document.getElementById('homeRoadMark1303').addEventListener('click',roadMarkUiOpen1303);
+  bind('close',() => roadMarkUiClose1303());
+  bind('new',() => roadMarkUiPick1303());
+  bind('retry',() => {
+    roadMarkUiPick1303(state.previous);
+  });
+  bind('cancelPick',() => {
+    state.token++;
+    roadMarkUiSetPending1303(false);
+    if (state.previous) {
+      state.draft = state.previous;
+      state.previous = null;
+      roadMarkUiDrawMap1303();
+      roadMarkUiEdit1303();
+    } else roadMarkUiList1303();
+  });
+  bind('backList',() => roadMarkUiList1303());
+  bind('repick',() => roadMarkUiPick1303(state.draft));
+  bind('editFromMap',() => roadMarkUiEdit1303());
+  bind('locate',() => {
+    state.draft = roadMarkUiRead1303();
+    roadMarkUiShow1303('locateView');
+    roadMarkUiStatus1303('水色で示した道路区間に中央線の設定が反映されます。');
+    roadMarkUiSwitchMap1303(true,true);
+  });
+  bind('preview',() => {
+    const draft = roadMarkUiRead1303();
+    if (!roadMarkSetPreview1303(draft)) {
+      roadMarkUiStatus1303('この区間を表示できませんでした。地図で区間を選び直してください。',true);
+      return;
+    }
+    state.draft = draft;
+    roadMarkUiShow1303('previewView');
+    roadMarkUiSwitchMap1303(false);
+    roadMarkUiPreviewStatus1303();
+  });
+  bind('showRoad',() => {
+    if (!roadLinesVisible) el.popupRoadBtn.click();
+    roadMarkUiPreviewStatus1303();
+    roadMarkUiNode1303('save').focus({preventScroll:true});
+  });
+  bind('editFromPreview',() => {
+    roadMarkSetPreview1303(null);
+    roadMarkUiEdit1303();
+  });
+  bind('save',() => {
+    if (!roadMarkSave1303(state.draft)) {
+      roadMarkUiStatus1303('保存できませんでした。ブラウザの保存設定や空き容量を確認してください。',true);
+      return;
+    }
+    roadMarkUiClose1303({restoreMap:false});
+  });
+  bind('remove',() => {
+    if (!state.saved) return;
+    if (!state.removeArmed) {
+      state.removeArmed = true;
+      roadMarkUiNode1303('remove').textContent = '削除を確定';
+      roadMarkUiStatus1303('設定を削除すると、この区間は自動表示に戻ります。');
+      return;
+    }
+    if (roadMarkDelete1303(state.draft.id)) roadMarkUiList1303('設定を削除しました。');
+    else roadMarkUiStatus1303('設定を削除できませんでした。',true);
+  });
+  const openHome = setHomeScreenOpen1250;
+  setHomeScreenOpen1250 = function(open, options) {
+    if (open && state.open) roadMarkUiClose1303({focus:false});
+    return openHome.call(this,open,options);
+  };
+  const openMap = setOsmMapScreenOpen;
+  setOsmMapScreenOpen = function(open, options) {
+    if (state.open && !state.switchingMap) {
+      const wantsMap = ['pick','locateView'].includes(state.view);
+      if ((!open && wantsMap) || (open && state.view === 'previewView')) roadMarkUiClose1303({restoreMap:false,focus:false});
+    }
+    return openMap.call(this,open,options);
+  };
+  document.addEventListener('fullscreenchange',() => {if (state.open) roadMarkUiMount1303();});
+  document.addEventListener('keydown',event => {
+    if (!state.open) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      roadMarkUiClose1303();
+    }
+    if (event.key !== 'Tab' || !['list','edit'].includes(state.view)) return;
+    const nodes = [...roadMarkUiRoot1303.querySelectorAll('button,input,select')]
+      .filter(node => !node.disabled && node.getClientRects().length);
+    const first = nodes[0],last = nodes[nodes.length-1];
+    if (event.shiftKey && (document.activeElement === first || !nodes.includes(document.activeElement))) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  },true);
 })();
 (function initBridgeHeightUi1271(){
   const root=bridgeHeightUiNode1271('Ui');if(!root)return;document.body.appendChild(root);document.getElementById('homeRailBridgeHeightBtn1271')?.addEventListener('click',bridgeHeightUiOpen1271);
