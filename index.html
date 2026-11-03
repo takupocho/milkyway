@@ -6375,6 +6375,44 @@ body.object-flow-map1270 #osmMap .leaflet-top.leaflet-left{top:auto!important;bo
 @container(max-width:210px){#mapPlaceBar.object-flow-active1270 #objectFlow1270{gap:11px;padding:18px 10px;}#mapPlaceBar.object-flow-active1270 .object-flow-message1270,#mapPlaceBar.object-flow-active1270 .object-flow-hint1270{font-size:15px;}#mapPlaceBar.object-flow-active1270 .object-flow-rotations1270{gap:4px;}#mapPlaceBar.object-flow-active1270 #objectFlow1270 .object-flow-rotations1270 button{padding-left:1px;padding-right:1px;font-size:13px;}}
 @container(max-width:166px){#mapPlaceBar.object-flow-active1270 .object-flow-actions1270{grid-template-columns:minmax(0,1fr);gap:6px;}#mapPlaceBar.object-flow-active1270 #objectFlow1270{gap:8px;padding:16px 8px;}#mapPlaceBar.object-flow-active1270 .object-flow-rotations1270{grid-template-columns:minmax(0,1fr);}}
 
+#mapPlaceBar:is(.train-flow-active1265,.truss-flow-active1269,.object-flow-active1270){
+  border-radius:18px!important;
+}
+#mapPlaceBar.train-flow-active1265 #trainFlow1265,
+#mapPlaceBar.train-flow-active1265 #trainFlow1265:has(#trainFlowManage1265:not([hidden])),
+#mapPlaceBar.train-flow-active1265 #trainFlow1265:has(#trainFlowEditMenu1268:not([hidden])),
+#mapPlaceBar.truss-flow-active1269 #trussFlow1269,
+#mapPlaceBar.object-flow-active1270 #objectFlow1270{
+  gap:8px;
+  padding:12px 12px 14px;
+}
+#mapPlaceBar.train-flow-active1265 .train-flow-header1265,
+#mapPlaceBar.truss-flow-active1269 .truss-flow-title1269,
+#mapPlaceBar.object-flow-active1270 .object-flow-title1270{
+  font-size:16px;
+}
+#mapPlaceBar.train-flow-active1265 .train-flow-message1265,
+#mapPlaceBar.train-flow-active1265 .train-flow-hint1265,
+#mapPlaceBar.train-flow-active1265 #trainFlow1265:has(#trainFlowManage1265:not([hidden])) .train-flow-hint1265,
+#mapPlaceBar.truss-flow-active1269 .truss-flow-message1269,
+#mapPlaceBar.truss-flow-active1269 .truss-flow-hint1269,
+#mapPlaceBar.object-flow-active1270 .object-flow-message1270,
+#mapPlaceBar.object-flow-active1270 .object-flow-hint1270{
+  font-size:14px;
+  line-height:1.4;
+}
+#mapPlaceBar.train-flow-active1265 #trainFlowEditMenu1268,
+#mapPlaceBar.truss-flow-active1269 .truss-flow-manage1269,
+#mapPlaceBar.object-flow-active1270 .object-flow-manage1270{
+  gap:6px;
+  width:min(100%,208px);
+}
+#mapPlaceBar.train-flow-active1265 .train-flow-actions1265,
+#mapPlaceBar.truss-flow-active1269 .truss-flow-actions1269,
+#mapPlaceBar.object-flow-active1270 .object-flow-actions1270{
+  margin-top:2px;
+}
+
 .bridge-height-ui1271{position:fixed;inset:0;z-index:190000;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box;background:rgba(3,9,20,.72);color:#eef7ff;font-family:inherit;line-height:1.55;overscroll-behavior:contain}
 .bridge-height-ui1271[hidden],.bridge-height-ui1271 [hidden]{display:none!important}
 .bridge-height-dialog1271{box-sizing:border-box;width:min(720px,100%);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;padding:22px;background:#0d1a2b;border:2px solid #60bfdd;border-radius:20px;box-shadow:0 15px 60px #0009;font-size:16px;color:#eef7ff;text-align:left}
@@ -10151,7 +10189,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1298-sweetgum-map-color";
+const APP_VERSION="1299-map-placement-panels";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -61664,9 +61702,11 @@ function mapPlaceFreeRegion1264(area,obstacles,options){
       const neededHeight=Math.max(Number(opts.minHeight)||0,24+Math.ceil(textLength/charsPerLine)*20+Math.ceil(buttons/columns)*46);
       const cardHeight=Math.min(availableHeight,neededHeight);
       const centreX=Math.max(gap[0]+cardWidth/2,Math.min(targetX,gap[1]-cardWidth/2));
-      const centreY=Math.max(top+cardHeight/2,Math.min(targetY,bottom-cardHeight/2));
+      const centreY=opts.alignTop?top+cardHeight/2:Math.max(top+cardHeight/2,Math.min(targetY,bottom-cardHeight/2));
       const fit=Math.min(cardWidth/targetWidth,1)*Math.min(availableHeight/neededHeight,1);
-      const distance=Math.hypot((centreX-targetX)/Math.max(1,width),(centreY-targetY)/Math.max(1,height));
+      const distance=opts.alignTop
+        ?Math.hypot((centreX-targetX)/Math.max(1,width),(top-area.top)/Math.max(1,height))
+        :Math.hypot((centreX-targetX)/Math.max(1,width),(centreY-targetY)/Math.max(1,height));
       const score=fit*10+Math.min(cardWidth*cardHeight/(targetWidth*neededHeight),1)-distance*.7;
       if(score>bestScore){bestScore=score;best={left:gap[0],right:gap[1],top,bottom,width:availableWidth,height:availableHeight,cardWidth,centreX,centreY};}
     }
@@ -61705,7 +61745,7 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     const flow=!!flowNode;
     const textLength=flow?(flowNode.innerText||'').length:(document.getElementById('mapPlaceText')?.textContent||'').length;
     const minHeight=flow?Math.ceil(Math.max(bar.scrollHeight,flowNode.getBoundingClientRect().height)+2):0;
-    const zone=mapPlaceFreeRegion1264(area,obstacles,{textLength,buttons,maxWidth:flow?320:440,minHeight});
+    const zone=mapPlaceFreeRegion1264(area,obstacles,{textLength,buttons,maxWidth:flow?280:440,minHeight,alignTop:flow});
     if(!zone)return;
     bar.classList.add('map-place-safe1264');
     bar.classList.toggle('map-place-skinny1264',zone.cardWidth<168);
@@ -61713,7 +61753,7 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     set('--map-place-width1264',width+'px');set('--map-place-height1264',maxHeight+'px');
     /* 幅を確定して自然高を測る。実測の高さも同じ空き矩形内へ必ず制限する。 */
     const barHeight=Math.min(maxHeight,bar.getBoundingClientRect().height||maxHeight);
-    const centreY=Math.max(zone.top+barHeight/2,Math.min(area.top+(area.bottom-area.top)*.36,zone.bottom-barHeight/2));
+    const centreY=flow?zone.top+barHeight/2:Math.max(zone.top+barHeight/2,Math.min(area.top+(area.bottom-area.top)*.36,zone.bottom-barHeight/2));
     set('--map-place-left1264',(zone.centreX-host.left-(panel.clientLeft||0)+(panel.scrollLeft||0))+'px');
     set('--map-place-top1264',(centreY-host.top-(panel.clientTop||0)+(panel.scrollTop||0))+'px');
   }
@@ -61756,6 +61796,14 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
 /* 【v1265】列車アイコンの長押し。短押しの Leaflet click は変更しない。
    updateOsmKmzMarkers 内で trainContextInstall1265(marker, slot) を呼ぶ。
    UI は trainPlaceMenuOpen1265(slot) に委ねる。false を返すと対象外にできる。 */
+/* 組み立て中だった Leaflet のドラッグを、メニューが指に重なる前に終了する。 */
+function finishMapMarkerDrag1299(map){
+  const dragging=map?.dragging;
+  if(!dragging?.enabled())return;
+  dragging.disable();
+  dragging.enable();
+}
+
 (function installTrainContext1265(root){
   'use strict';
   const doc=root.document;
@@ -61789,6 +61837,7 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
     if(!accepted)suppression=null;
     return accepted;
@@ -61818,10 +61867,11 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     const state=active,p=state&&state.press;if(!p||p.id!==id)return;
     if(Math.hypot((Number(e.clientX)||0)-p.x,(Number(e.clientY)||0)-p.y)>MOVE_PX)cancel(state);
   }
-  function finish(e,id,cancelled){
+  function finish(e,id,cancelled,release=e){
     if(active&&active.press&&active.press.id===id)cancel(active);
     if(suppression&&suppression.held&&suppression.pointerId===id){
       suppression.held=false;suppression.until=clock()+CLICK_MS;
+      if(!cancelled)suppression.release=point(release);
       /* 伝播は止めず Leaflet の drag/touch の後片付けを必ず通す。 */
       if(!cancelled&&e.cancelable!==false)e.preventDefault();
     }
@@ -61832,12 +61882,18 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     const target=e.target,path=e.composedPath?e.composedPath():[];
     const same=target===s.element||(s.element.contains&&s.element.contains(target))||path.includes(s.element);
     const close=Math.hypot((Number(e.clientX)||0)-s.x,(Number(e.clientY)||0)-s.y)<=24;
-    return same||(e.detail!==0&&close);
+    const release=s.release;
+    const closeToRelease=release&&Math.hypot((Number(e.clientX)||0)-release.x,(Number(e.clientY)||0)-release.y)<=24;
+    return same||(e.detail!==0&&(close||closeToRelease));
   }
   function suppressClick(e){
     if(!matchesSuppressed(e))return;
     stop(e);suppression=null;
   }
+  function newPress(){
+    if(suppression&&!suppression.held)suppression=null;
+  }
+  doc.addEventListener('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)newPress();},true);
   doc.addEventListener('click',suppressClick,true);
   doc.addEventListener('dblclick',suppressClick,true);
   doc.addEventListener('scroll',cancelAll,{capture:true,passive:true});
@@ -61848,18 +61904,18 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
   root.addEventListener('pagehide',()=>{cancelAll();pointers.clear();suppression=null;},true);
   doc.addEventListener('keydown',e=>{if(e.key==='Escape'){cancelAll();suppression=null;}},true);
   if(root.PointerEvent){
-    doc.addEventListener('pointerdown',e=>{pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
+    doc.addEventListener('pointerdown',e=>{if(e.isPrimary!==false&&e.button===0)newPress();pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
     doc.addEventListener('pointermove',e=>move(e,e.pointerId),{capture:true,passive:true});
     doc.addEventListener('pointerup',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,false);},{capture:true,passive:false});
     doc.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,true);},true);
   }
   doc.addEventListener('mousemove',e=>move(e,'mouse'),{capture:true,passive:true});
   doc.addEventListener('mouseup',e=>finish(e,'mouse',false),{capture:true,passive:false});
-  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length>1)cancelAll();},{capture:true,passive:true});
+  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)newPress();else cancelAll();},{capture:true,passive:true});
   doc.addEventListener('touchmove',e=>{
     lastTouch=clock();if(e.touches.length!==1){cancelAll();return;}move(e.touches[0],e.touches[0].identifier);
   },{capture:true,passive:true});
-  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled);};
+  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled,t);};
   doc.addEventListener('touchend',e=>end(e,false),{capture:true,passive:false});
   doc.addEventListener('touchcancel',e=>end(e,true),{capture:true,passive:true});
   function detachElement(state){
@@ -61883,10 +61939,12 @@ var mapPlaceLayoutState1264={raf:0,active:false,resize:null,changes:null,barObse
     on('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)begin(state,e,'mouse','mouse','mouse');},{capture:true,passive:true});
     on('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)begin(state,e.touches[0],e.touches[0].identifier,'touch','touch');else cancelAll();},{capture:true,passive:true});
     on('contextmenu',e=>{
+      const press=state.press;
       stop(e);cancel(state);
       /* iOS 等で長押し後に届く contextmenu では二重に開かない。 */
       if(matchesSuppressed(e))return;
-      open(state,{...point(e),id:null,kind:'contextmenu'},false);
+      if(press&&press.kind!=='mouse')open(state,press,true);
+      else open(state,{...point(e),id:null,kind:'contextmenu'},false);
     },true);
     on('keydown',e=>{
       if(!((e.shiftKey&&e.key==='F10')||e.key==='ContextMenu'))return;
@@ -62715,6 +62773,7 @@ async function bridgeLibraryManagerImport1277(file){
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
     if(!accepted)suppression=null;
     return accepted;
@@ -62748,10 +62807,11 @@ async function bridgeLibraryManagerImport1277(file){
     const state=active,p=state&&state.press;if(!p||p.id!==id)return;
     if(Math.hypot((Number(e.clientX)||0)-p.x,(Number(e.clientY)||0)-p.y)>MOVE_PX)cancel(state);
   }
-  function finish(e,id,cancelled){
+  function finish(e,id,cancelled,release=e){
     if(active&&active.press&&active.press.id===id)cancel(active);
     if(suppression&&suppression.held&&suppression.pointerId===id){
       suppression.held=false;suppression.until=clock()+CLICK_MS;
+      if(!cancelled)suppression.release=point(release);
       /* 伝播は止めず Leaflet の drag/touch の後片付けを必ず通す。 */
       if(!cancelled&&e.cancelable!==false)e.preventDefault();
     }
@@ -62762,12 +62822,18 @@ async function bridgeLibraryManagerImport1277(file){
     const target=e.target,path=e.composedPath?e.composedPath():[];
     const same=target===s.element||(s.element.contains&&s.element.contains(target))||path.includes(s.element);
     const close=Math.hypot((Number(e.clientX)||0)-s.x,(Number(e.clientY)||0)-s.y)<=24;
-    return same||(e.detail!==0&&close);
+    const release=s.release;
+    const closeToRelease=release&&Math.hypot((Number(e.clientX)||0)-release.x,(Number(e.clientY)||0)-release.y)<=24;
+    return same||(e.detail!==0&&(close||closeToRelease));
   }
   function suppressClick(e){
     if(!matchesSuppressed(e))return;
     stop(e);suppression=null;
   }
+  function newPress(){
+    if(suppression&&!suppression.held)suppression=null;
+  }
+  doc.addEventListener('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)newPress();},true);
   doc.addEventListener('click',suppressClick,true);
   doc.addEventListener('dblclick',suppressClick,true);
   doc.addEventListener('scroll',cancelForScroll,{capture:true,passive:true});
@@ -62778,18 +62844,18 @@ async function bridgeLibraryManagerImport1277(file){
   root.addEventListener('pagehide',()=>{cancelAll();pointers.clear();suppression=null;},true);
   doc.addEventListener('keydown',e=>{if(e.key==='Escape'){cancelAll();suppression=null;}},true);
   if(root.PointerEvent){
-    doc.addEventListener('pointerdown',e=>{pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
+    doc.addEventListener('pointerdown',e=>{if(e.isPrimary!==false&&e.button===0)newPress();pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
     doc.addEventListener('pointermove',e=>move(e,e.pointerId),{capture:true,passive:true});
     doc.addEventListener('pointerup',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,false);},{capture:true,passive:false});
     doc.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,true);},true);
   }
   doc.addEventListener('mousemove',e=>move(e,'mouse'),{capture:true,passive:true});
   doc.addEventListener('mouseup',e=>finish(e,'mouse',false),{capture:true,passive:false});
-  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length>1)cancelAll();},{capture:true,passive:true});
+  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)newPress();else cancelAll();},{capture:true,passive:true});
   doc.addEventListener('touchmove',e=>{
     lastTouch=clock();if(e.touches.length!==1){cancelAll();return;}move(e.touches[0],e.touches[0].identifier);
   },{capture:true,passive:true});
-  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled);};
+  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled,t);};
   doc.addEventListener('touchend',e=>end(e,false),{capture:true,passive:false});
   doc.addEventListener('touchcancel',e=>end(e,true),{capture:true,passive:true});
   function detachElement(state){
@@ -62815,10 +62881,12 @@ async function bridgeLibraryManagerImport1277(file){
     on('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)begin(state,e,'mouse','mouse','mouse');},{capture:true,passive:true});
     on('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)begin(state,e.touches[0],e.touches[0].identifier,'touch','touch');else cancelAll();},{capture:true,passive:true});
     on('contextmenu',e=>{
+      const press=state.press;
       stop(e);cancel(state);
       /* iOS 等で長押し後に届く contextmenu では二重に開かない。 */
       if(matchesSuppressed(e))return;
-      open(state,{...point(e),id:null,kind:'contextmenu'},false);
+      if(press&&press.kind!=='mouse')open(state,press,true);
+      else open(state,{...point(e),id:null,kind:'contextmenu'},false);
     },true);
     on('keydown',e=>{
       if(!((e.shiftKey&&e.key==='F10')||e.key==='ContextMenu'))return;
@@ -63112,6 +63180,7 @@ function objectPlaceMenuOpen1270(slot){
     if(typeof hook!=='function')return false;
     /* 先に抑止状態を用意する。UI が marker を外しても、その後の click を拾わない。 */
     suppress(state,p,held);
+    if(held)finishMapMarkerDrag1299(state.map);
     const accepted=hook(state.slot)!==false;
     if(!accepted)suppression=null;
     return accepted;
@@ -63145,10 +63214,11 @@ function objectPlaceMenuOpen1270(slot){
     const state=active,p=state&&state.press;if(!p||p.id!==id)return;
     if(Math.hypot((Number(e.clientX)||0)-p.x,(Number(e.clientY)||0)-p.y)>MOVE_PX)cancel(state);
   }
-  function finish(e,id,cancelled){
+  function finish(e,id,cancelled,release=e){
     if(active&&active.press&&active.press.id===id)cancel(active);
     if(suppression&&suppression.held&&suppression.pointerId===id){
       suppression.held=false;suppression.until=clock()+CLICK_MS;
+      if(!cancelled)suppression.release=point(release);
       /* 伝播は止めず Leaflet の drag/touch の後片付けを必ず通す。 */
       if(!cancelled&&e.cancelable!==false)e.preventDefault();
     }
@@ -63159,12 +63229,18 @@ function objectPlaceMenuOpen1270(slot){
     const target=e.target,path=e.composedPath?e.composedPath():[];
     const same=target===s.element||(s.element.contains&&s.element.contains(target))||path.includes(s.element);
     const close=Math.hypot((Number(e.clientX)||0)-s.x,(Number(e.clientY)||0)-s.y)<=24;
-    return same||(e.detail!==0&&close);
+    const release=s.release;
+    const closeToRelease=release&&Math.hypot((Number(e.clientX)||0)-release.x,(Number(e.clientY)||0)-release.y)<=24;
+    return same||(e.detail!==0&&(close||closeToRelease));
   }
   function suppressClick(e){
     if(!matchesSuppressed(e))return;
     stop(e);suppression=null;
   }
+  function newPress(){
+    if(suppression&&!suppression.held)suppression=null;
+  }
+  doc.addEventListener('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)newPress();},true);
   doc.addEventListener('click',suppressClick,true);
   doc.addEventListener('dblclick',suppressClick,true);
   doc.addEventListener('scroll',cancelForScroll,{capture:true,passive:true});
@@ -63175,18 +63251,18 @@ function objectPlaceMenuOpen1270(slot){
   root.addEventListener('pagehide',()=>{cancelAll();pointers.clear();suppression=null;},true);
   doc.addEventListener('keydown',e=>{if(e.key==='Escape'){cancelAll();suppression=null;}},true);
   if(root.PointerEvent){
-    doc.addEventListener('pointerdown',e=>{pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
+    doc.addEventListener('pointerdown',e=>{if(e.isPrimary!==false&&e.button===0)newPress();pointers.add(e.pointerId);if(pointers.size>1)cancelAll();},true);
     doc.addEventListener('pointermove',e=>move(e,e.pointerId),{capture:true,passive:true});
     doc.addEventListener('pointerup',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,false);},{capture:true,passive:false});
     doc.addEventListener('pointercancel',e=>{pointers.delete(e.pointerId);finish(e,e.pointerId,true);},true);
   }
   doc.addEventListener('mousemove',e=>move(e,'mouse'),{capture:true,passive:true});
   doc.addEventListener('mouseup',e=>finish(e,'mouse',false),{capture:true,passive:false});
-  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length>1)cancelAll();},{capture:true,passive:true});
+  doc.addEventListener('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)newPress();else cancelAll();},{capture:true,passive:true});
   doc.addEventListener('touchmove',e=>{
     lastTouch=clock();if(e.touches.length!==1){cancelAll();return;}move(e.touches[0],e.touches[0].identifier);
   },{capture:true,passive:true});
-  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled);};
+  const end=(e,cancelled)=>{lastTouch=clock();for(const t of Array.from(e.changedTouches||[]))finish(e,t.identifier,cancelled,t);};
   doc.addEventListener('touchend',e=>end(e,false),{capture:true,passive:false});
   doc.addEventListener('touchcancel',e=>end(e,true),{capture:true,passive:true});
   function detachElement(state){
@@ -63212,10 +63288,12 @@ function objectPlaceMenuOpen1270(slot){
     on('mousedown',e=>{if(e.button===0&&clock()-lastTouch>800)begin(state,e,'mouse','mouse','mouse');},{capture:true,passive:true});
     on('touchstart',e=>{lastTouch=clock();if(e.touches.length===1)begin(state,e.touches[0],e.touches[0].identifier,'touch','touch');else cancelAll();},{capture:true,passive:true});
     on('contextmenu',e=>{
+      const press=state.press;
       stop(e);cancel(state);
       /* iOS 等で長押し後に届く contextmenu では二重に開かない。 */
       if(matchesSuppressed(e))return;
-      open(state,{...point(e),id:null,kind:'contextmenu'},false);
+      if(press&&press.kind!=='mouse')open(state,press,true);
+      else open(state,{...point(e),id:null,kind:'contextmenu'},false);
     },true);
     on('keydown',e=>{
       if(!((e.shiftKey&&e.key==='F10')||e.key==='ContextMenu'))return;
