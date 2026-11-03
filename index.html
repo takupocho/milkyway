@@ -6344,6 +6344,10 @@ body.truss-flow-map1269 #osmMap .leaflet-top.leaflet-left{top:auto!important;bot
 #mapPlaceBar.object-flow-active1270 .object-flow-actions1270:has(>button[hidden]){grid-template-columns:minmax(0,1fr);justify-items:center;}
 #mapPlaceBar.object-flow-active1270 .object-flow-actions1270:has(>button[hidden])>button:not([hidden]){width:75%;}
 #mapPlaceBar.object-flow-active1270 .object-flow-manage1270{display:flex;flex-direction:column;align-items:stretch;gap:12px;width:min(100%,220px);min-width:0;margin:0 auto;}
+#objectFlow1270 .object-flow-color-picker1298{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;}
+#objectFlow1270 .object-flow-color-picker1298 input{width:70px;height:44px;margin:0;padding:4px;}
+#objectFlow1270 .object-flow-color-swatches1298{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
+#mapPlaceBar.object-flow-active1270 #objectFlowColorApply1270{background:#189b39;color:#fff;}
 #mapPlaceBar.object-flow-active1270 .object-flow-rotations1270{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,1fr);align-items:center;gap:8px;min-width:0;}
 #mapPlaceBar.object-flow-active1270 .object-flow-angle-label1270{grid-column:1/-1;color:#bcd8e5;font-size:14px;font-weight:800;}
 #mapPlaceBar.object-flow-active1270 .object-flow-angle-input1270{display:flex;align-items:center;justify-content:center;gap:2px;min-height:44px;min-width:0;padding:0 4px;box-sizing:border-box;border:1px solid #3189bd;border-radius:5px;background:#fff;color:#142337;font:800 17px/1.4 system-ui,-apple-system,"Noto Sans JP",sans-serif;}
@@ -8752,8 +8756,20 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
   </div>
   <div id="objectFlowManage1270" class="object-flow-manage1270" role="group" aria-label="配置したオブジェクトの操作" hidden>
     <button id="objectFlowReposition1270" type="button">再配置</button>
+    <button id="objectFlowColorOpen1270" type="button" hidden>葉の色を変更</button>
     <button id="objectFlowDelete1270" type="button">削除</button>
     <button id="objectFlowStop1270" type="button">やめる</button>
+  </div>
+  <div id="objectFlowColorPanel1270" class="object-flow-manage1270" role="group" aria-label="モミジバフウの葉の色" hidden>
+    <label class="object-flow-color-picker1298">葉の色 <input id="objectFlowColor1270" type="color" value="#d77b28"></label>
+    <div class="object-flow-color-swatches1298" role="group" aria-label="色づきの見本">
+      <button type="button" data-object-leaf-color="#54843f">緑葉</button>
+      <button type="button" data-object-leaf-color="#deb637">黄葉</button>
+      <button type="button" data-object-leaf-color="#d77b28">橙の紅葉</button>
+      <button type="button" data-object-leaf-color="#b94738">赤の紅葉</button>
+    </div>
+    <button id="objectFlowColorApply1270" type="button">この木に反映</button>
+    <button id="objectFlowColorBack1270" type="button">戻る</button>
   </div>
   <div id="objectFlowActions1270" class="object-flow-actions1270">
     <button id="objectFlowConfirm1270" class="object-flow-confirm1270" type="button" disabled hidden>決定</button>
@@ -10135,7 +10151,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1297-sweetgum-trees";
+const APP_VERSION="1298-sweetgum-map-color";
 /* 海面線を視点の高さで下げるか。**【v896】既定をONにした。**
 
    持尾展望台から明石海峡大橋を見た実景で、水平線が道路より 0.075° 下に来て
@@ -62853,7 +62869,7 @@ function objectFlowOriginalHidden1270(slot){return objectPlaceFlow1270.active&&o
 function objectFlowClearPreview1270(){const s=objectPlaceFlow1270;if(s.preview&&s.previewMap)try{s.previewMap.removeLayer(s.preview);}catch(_error){}s.preview=null;s.previewMap=null;}
 function objectFlowCancel1270(note=null){
   const s=objectPlaceFlow1270;if(!s.active)return;
-  const mask=s.mask;s.serial++;s.active=false;s.phase='position';s.spec=null;s.model=null;s.draft=null;s.editSlot=null;s.menuSlot=null;s.context=null;s.fingerprint=null;s.mask=null;s.message='';
+  const mask=s.mask;s.serial++;s.active=false;s.phase='position';s.spec=null;s.model=null;s.draft=null;s.editSlot=null;s.menuSlot=null;s.context=null;s.fingerprint=null;s.mask=null;s.message='';s.recolor1298=false;
   objectFlowClearPreview1270();document.body.classList.remove('object-flow-map1270','map-place');
   const bar=document.getElementById('mapPlaceBar');bar.classList.remove('object-flow-active1270');bar.hidden=true;objectFlowNode1270('').hidden=true;
   if(mask&&mask.target!==null&&mapKmzTargetId===null&&kmzSlots.includes(mask.slot))mapKmzTargetId=mask.target;
@@ -62877,7 +62893,9 @@ function objectFlowSync1270(){
   const repeat=objectFlowNode1270('Repeat');
   repeat.hidden=menu||!s.draft||!!s.editSlot||s.spec?.kind!=='sweetgum';
   repeat.disabled=objectFlowNode1270('Confirm').disabled;
-  objectFlowNode1270('Cancel').hidden=menu;objectFlowNode1270('Actions').hidden=menu;objectFlowNode1270('Manage').hidden=!menu;
+  objectFlowNode1270('Cancel').hidden=menu;objectFlowNode1270('Actions').hidden=menu;objectFlowNode1270('Manage').hidden=!menu||!!s.recolor1298;
+  objectFlowNode1270('ColorOpen').hidden=!menu||s.menuSlot?.object?.kind!=='sweetgum';
+  objectFlowNode1270('ColorPanel').hidden=!menu||!s.recolor1298;
   if(first&&typeof trainFlowMapResize1265==='function')trainFlowMapResize1265();
   if(typeof simUiLayoutSchedule1256==='function')simUiLayoutSchedule1256();
 }
@@ -62962,6 +62980,44 @@ async function objectFlowConfirm1270(repeat=false){
   }catch(error){if(!current())return;s.phase='ready';s.message=error?.message||'配置できませんでした。';objectFlowSync1270();}
   finally{if(s.active&&s.serial===serial&&s.phase==='committing'&&!current())objectFlowCancel1270('設定が変わったため配置を中止しました。');}
 }
+function objectFlowColorOpen1298(){
+  const s=objectPlaceFlow1270;
+  if(s.phase!=='menu'||!objectFlowCurrent1270()||s.menuSlot?.object?.kind!=='sweetgum')return;
+  const color=objectFlowNode1270('Color');
+  color.value=s.menuSlot.object.foliageColor;
+  s.recolor1298=true;
+  objectFlowSync1270();
+  color.focus({preventScroll:true});
+}
+
+function objectFlowColorBack1298(){
+  const s=objectPlaceFlow1270;
+  if(!s.recolor1298)return;
+  s.recolor1298=false;
+  objectFlowSync1270();
+  if(s.active)objectFlowNode1270('ColorOpen').focus({preventScroll:true});
+}
+
+function objectFlowColorApply1298(){
+  const s=objectPlaceFlow1270,slot=s.menuSlot;
+  if(s.phase!=='menu'||!s.recolor1298||!objectFlowCurrent1270()||slot?.object?.kind!=='sweetgum')return;
+  const spec=objectSpecOf({...slot.object,foliageColor:objectFlowNode1270('Color').value});
+  if(!spec)return;
+  if(spec.foliageColor===slot.object.foliageColor){
+    objectFlowColorBack1298();
+    return;
+  }
+  const model=buildObjectModel(spec);
+  if(!model)return;
+  slot.object=spec;
+  slot.model=model;
+  if(kmzActiveId===slot.id)kmzBuildingModel=model;
+  objectFlowCancel1270();
+  drawPhoto._terrainRenderKey='';
+  update();
+  scheduleSaveSettings();
+  setKmzBuildingStatus('選んだモミジバフウの葉の色を変更しました。','ready');
+}
 function objectPlaceMenuOpen1270(slot){
   if(!objectSlotIsFree1270(slot)||slot.visible===false||!kmzSlots.includes(slot)||!osmMapScreenOpen)return false;
   homeRailCancelPlacement1255();const s=objectPlaceFlow1270;Object.assign(s,{active:true,phase:'menu',menuSlot:slot,editSlot:null,context:trainFlowContext1265(),fingerprint:objectFlowFingerprint1270(slot),spec:null,model:null,draft:null,mask:null,message:''});s.serial++;
@@ -62972,6 +63028,12 @@ function objectPlaceMenuOpen1270(slot){
   window.objectPlaceMenuOpen1270=objectPlaceMenuOpen1270;
   objectFlowNode1270('Confirm').addEventListener('click',()=>objectFlowConfirm1270());
   objectFlowNode1270('Repeat').addEventListener('click',()=>objectFlowConfirm1270(true));
+  objectFlowNode1270('ColorOpen').addEventListener('click',objectFlowColorOpen1298);
+  objectFlowNode1270('ColorBack').addEventListener('click',objectFlowColorBack1298);
+  objectFlowNode1270('ColorApply').addEventListener('click',objectFlowColorApply1298);
+  for(const button of objectFlowNode1270('ColorPanel').querySelectorAll('[data-object-leaf-color]')){
+    button.addEventListener('click',()=>{objectFlowNode1270('Color').value=button.dataset.objectLeafColor;});
+  }
   for(const id of ['Cancel','Stop'])objectFlowNode1270(id).addEventListener('click',()=>objectFlowCancel1270());
   objectFlowNode1270('Left').addEventListener('click',()=>objectFlowRotate1270(-15));objectFlowNode1270('Right').addEventListener('click',()=>objectFlowRotate1270(15));
   objectFlowNode1270('Angle').addEventListener('input',event=>objectFlowSetHeading1270(event.target.value));
