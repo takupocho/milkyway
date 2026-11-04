@@ -10338,7 +10338,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1304-correction-cloud-sync";
+const APP_VERSION="1305-kmz-render-performance";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -13148,6 +13148,8 @@ function sweetgumSpecOf1297(value) {
   return { kind: "sweetgum", name: name || SWEETGUM_DEFAULT1297.name, height, width, foliageColor };
 }
 
+// Alternate detail is renderer-only. The original model and its export stay complete.
+const sweetgumDrawDetails1305 = new WeakMap();
 function buildSweetgumModel1297(rawSpec) {
   const spec = sweetgumSpecOf1297(rawSpec);
   if (!spec) return null;
@@ -13157,6 +13159,7 @@ function buildSweetgumModel1297(rawSpec) {
   const vertices = [];
   const triangles = [];
   const triangleColors = [];
+  const coarseFaceIndices = [];
   let seed = 19871997;
   const random = () => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -13178,16 +13181,17 @@ function buildSweetgumModel1297(rawSpec) {
     colorChannel(color[1] * brightness - warmth * leafIntensity * 1.35),
     colorChannel(color[2] * brightness - warmth * leafIntensity * 0.25)
   ];
-  const addFace = (a, b, c, color) => {
+  const addFace = (a, b, c, color, fineOnly = false) => {
+    if (!fineOnly) coarseFaceIndices.push(triangles.length);
     triangles.push([a, b, c]);
     triangleColors.push(color);
   };
-  const connectRings = (lower, upper) => {
+  const connectRings = (lower, upper, fineOnly = false) => {
     for (let i = 0; i < lower.length; i++) {
       const next = (i + 1) % lower.length;
       const color = tinted(bark, 0.78 + 0.30 * random());
-      addFace(lower[i], lower[next], upper[next], color);
-      addFace(lower[i], upper[next], upper[i], color);
+      addFace(lower[i], lower[next], upper[next], color, fineOnly);
+      addFace(lower[i], upper[next], upper[i], color, fineOnly);
     }
   };
 
@@ -13226,7 +13230,7 @@ function buildSweetgumModel1297(rawSpec) {
       const s = Math.sin(angle) * radius;
       return vertex(...center.map((coordinate, j) => coordinate + across[j] * c + tilt[j] * s));
     });
-    connectRings(ring(from, startRadius), ring(to, endRadius));
+    connectRings(ring(from, startRadius), ring(to, endRadius), sides === 4);
   };
 
   // Rounded, asymmetric groups of foliage fill the crown. Star-shaped leaves
@@ -13261,7 +13265,7 @@ function buildSweetgumModel1297(rawSpec) {
     const brightness = 0.87 + random() * 0.24;
     for (let i = 0; i < outline.length; i++) {
       addFace(crease, outline[i], outline[(i + 1) % outline.length],
-        tinted(leafColor, brightness + (i < outline.length / 2 ? 0.04 : -0.04), warmth));
+        tinted(leafColor, brightness + (i < outline.length / 2 ? 0.04 : -0.04), warmth), true);
     }
   };
   const lobe = (center, radius, height, leaves = true) => {
@@ -13322,7 +13326,7 @@ function buildSweetgumModel1297(rawSpec) {
     point[1] *= scaleY;
     point[2] *= scaleZ;
   }
-  return {
+  const model = {
     triangles,
     triangleColors,
     triangleAlphas: triangles.map(() => 1),
@@ -13333,6 +13337,39 @@ function buildSweetgumModel1297(rawSpec) {
     vertexCount: triangles.length * 3,
     object: spec
   };
+  const horizontalRadius = vertices.reduce((radius,point)=>Math.max(radius,Math.hypot(point[0],point[1])),0);
+  sweetgumDrawDetails1305.set(model,{coarseFaceIndices,horizontalRadius,coarse:null});
+  return model;
+}
+
+function sweetgumDrawModel1305(model,cfg,base,s,width,eye,earthRadius,cameraForward,reflectionPass,mirrorZ) {
+  const detail = sweetgumDrawDetails1305.get(model);
+  if (!detail || mobileLensMode === 'fisheye' || base.distanceKm < .08) return model;
+
+  // Bound the tree's projected diameter in perspective, even near the image edge.
+  // The centre is at half tree height and the radius includes horizontal spread,
+  // vertical extent, and a margin for curvature and the geodesic conversion.
+  const distance = base.distanceKm * 1000;
+  const bearing = base.bearing * D2R;
+  const height = model.height * cfg.scale;
+  const middle = cfg.altitude + height / 2;
+  const visibleHeight = reflectionPass ? 2 * mirrorZ - Math.max(middle,mirrorZ) : middle;
+  const rise = visibleHeight - eye - distance * distance / (2 * earthRadius);
+  const radius = Math.hypot(detail.horizontalRadius * cfg.scale,height / 2) * 1.02 + .1;
+  const depth = dot([Math.sin(bearing)*distance,Math.cos(bearing)*distance,rise],cameraForward);
+  if (!(depth > radius + .25)) return model;
+  const side = Math.sqrt(Math.max(0,distance*distance+rise*rise-depth*depth));
+  const pixels = width * radius * (1 + side / depth) / ((depth-radius) * Math.tan(s.fovH * D2R / 2));
+  if (!(pixels > 0 && pixels < 44)) return model;
+
+  if (!detail.coarse) {
+    const select = values=>detail.coarseFaceIndices.map(index=>values[index]);
+    detail.coarse = {
+      triangles:select(model.triangles),triangleColors:select(model.triangleColors),
+      triangleAlphas:select(model.triangleAlphas)
+    };
+  }
+  return detail.coarse;
 }
 
 const OBJECT_SHAPES={box:{label:"角柱・角錐",icon:"⬛"},cylinder:{label:"円柱・円錐",icon:"⚫"}};
@@ -17603,12 +17640,23 @@ function kmzSlotDistanceKm(s,slot){
 function kmzStationOrderKm(s,slot,trains){
   const o=slot&&slot.object;
   if(!o||!String(o.name||"").startsWith("駅・")||!Array.isArray(o.parts)||!o.parts.length)return null;
+  const stationLat=slot.lat,stationLon=slot.lon;
+  if(!Number.isFinite(stationLat)||!Number.isFinite(stationLon))return null;
+  const neighbourKm=.08;
+  // A spherical-cap bound rejects distant pairs before computing a distance and bearing.
+  const angularLimit=neighbourKm/6371;
+  const latLimit=angularLimit*R2D+1e-10;
+  const lonLimit=Math.abs(stationLat)+latLimit>=90?180:
+    Math.asin(Math.min(1,Math.sin(angularLimit)/Math.cos(stationLat*D2R)))*R2D+1e-10;
   let near=null;
   for(const t of trains){
-    const cfg=kmzSlotSettings(t.slot);
-    if(!cfg||!Number.isFinite(cfg.lat))continue;
-    const d=terrainDistanceAndBearing(slot.lat,slot.lon,cfg.lat,cfg.lon).distanceKm;
-    if(d<.08&&(!near||d<near.d))near={d,km:t.km};
+    const cfg=t.cfg??kmzSlotSettings(t.slot);
+    if(!cfg||!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon)||Math.abs(cfg.lat-stationLat)>latLimit)continue;
+    const delta=cfg.lon-stationLon;
+    const lonDelta=Math.abs(delta)<=180?Math.abs(delta):Math.abs(((delta+180)%360+360)%360-180);
+    if(lonDelta>lonLimit)continue;
+    const d=terrainDistanceAndBearing(stationLat,stationLon,cfg.lat,cfg.lon).distanceKm;
+    if(d<neighbourKm&&(!near||d<near.d))near={d,km:t.km};
   }
   if(!near||!Number.isFinite(near.km))return null;
   const h=(slot.heading||0)*D2R,v=terrainDistanceAndBearing(slot.lat,slot.lon,s.lat,s.lon);
@@ -17617,18 +17665,105 @@ function kmzStationOrderKm(s,slot,trains){
   const platformSide=o.parts[0].x>=0?1:-1;
   return near.km+(lateral*platformSide>0?-1e-4:1e-4);   /* 小さい＝手前＝あとで描く */
 }
-function kmzSlotsInDrawOrder(s,extraSlots=[]){
+/* Reject complete static meshes before building their skyline or projecting faces. */
+const kmzCullBoundsCache1305 = new WeakMap();
+
+function kmzCullBounds1305(model) {
+  const triangles = model.triangles;
+  const cached = kmzCullBoundsCache1305.get(model);
+  if (cached?.triangles === triangles && cached.count === triangles.length) return cached.bounds;
+  let horizontal = 0, low = Infinity, high = -Infinity;
+  for (const triangle of triangles) {
+    for (const point of triangle) {
+      if (!Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !Number.isFinite(point[2])) return null;
+      horizontal = Math.max(horizontal,point[0]*point[0]+point[1]*point[1]);
+      low = Math.min(low,point[2]);
+      high = Math.max(high,point[2]);
+    }
+  }
+  const bounds = Number.isFinite(low) ? {horizontal:Math.sqrt(horizontal),low,high} : null;
+  kmzCullBoundsCache1305.set(model,{triangles,count:triangles.length,bounds});
+  return bounds;
+}
+
+function kmzCullView1305(s,W,H,phase) {
+  if (!(W>0 && H>0) || ![s.fovH,s.facingAz,s.facingAlt].every(Number.isFinite) || s.fovH<=0 || s.fovH>=180) return null;
+  const fisheye = mobileLensMode === 'fisheye' && !arActive;
+  const forward = toVec(s.facingAz,s.facingAlt);
+  const right = [cos(s.facingAz),-sin(s.facingAz),0];
+  const up = cross(right,forward);
+  const pixels = W/2/Math.tan(s.fovH/2*D2R);
+  const halfX = W/2/pixels;
+  const halfY = H/2/pixels;
+  const eye = highDetailProjectionGround1246(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
+  return {forward,right,up,halfX,halfY,pixels,eye,fisheye,reflection:phase==='reflection'};
+}
+
+function kmzCullStatic1305(slot,cfg,base,view) {
+  // Animated effects and line models can have visible content outside their triangle mesh.
+  const model = slot.model;
+  if (!view || slot.train || slot.firework || slot.glow || model.lines || !Array.isArray(model.triangles)) return false;
+  const distance = base.distanceKm*1000;
+  if (distance>120000) return true; // Existing limit for the triangle renderer.
+  if (!Number.isFinite(distance) || distance<3 || !(cfg.scale>0) || !Number.isFinite(view.eye)) return false;
+  const bounds = kmzCullBounds1305(model);
+  if (!bounds) return false;
+  const span = bounds.horizontal*cfg.scale;
+  if (!Number.isFinite(span) || span>120000 || distance<=span+2) return false;
+  let altitude = cfg.altitude;
+  if (slot.object?.kind==='sweetgum') altitude=gradeTerrainHeight1302(cfg.lat,cfg.lon,altitude);
+  let low = altitude + bounds.low*cfg.scale;
+  let high = altitude + bounds.high*cfg.scale;
+  if (view.reflection) {
+    const mirror = waterMirrorElevationM(base.bearing,altitude);
+    [low,high]=[2*mirror-Math.max(high,mirror),2*mirror-Math.max(low,mirror)];
+  }
+  // The renderer projects each vertex from its own geographic coordinate.
+  // Allow for the change of scale of the eye-centred distance/bearing projection,
+  // plus the change in curvature drop from the closest to the farthest vertex.
+  const curvatureRadius = 6371000*(7/6);
+  const horizontal = span*1.02 + .001;
+  const curvatureError = (2*distance*span+span*span)/(2*curvatureRadius);
+  const center = [sin(base.bearing)*distance,cos(base.bearing)*distance,
+    (low+high)/2-view.eye-distance*distance/(2*curvatureRadius)];
+  const radius = Math.hypot(horizontal,(high-low)/2+curvatureError+.001);
+  const z = dot(center,view.forward);
+  if (!Number.isFinite(z) || !Number.isFinite(radius)) return false;
+  if (z+radius<.25) return true;
+  if (view.fisheye) return false;
+  const x = dot(center,view.right), y = dot(center,view.up);
+  const halfX = Math.max(view.halfX,Math.tan(.5*D2R))*1.3;
+  const halfY = Math.max(view.halfY,view.halfY*Math.tan(.5*D2R)/view.halfX)*1.3;
+  if (Math.abs(x)-halfX*z>radius*Math.hypot(1,halfX)
+    || Math.abs(y)-halfY*z>radius*Math.hypot(1,halfY)) return true;
+  if (z<=radius+10) return false;
+  const projectedSpan = 2*radius*view.pixels*(z+Math.max(Math.abs(x),Math.abs(y)))/(z*z-radius*radius);
+  return projectedSpan<.5;
+}
+
+function kmzSlotsInDrawOrder(s,extraSlots=[],W,H,phase='after'){
   extraSlots=extraSlots.concat(bridgeHeightBankSlots1271());
-  const slots=(extraSlots.length?kmzSlots.concat(extraSlots):kmzSlots).filter(slot=>!slot.flowerField);
-  if(!kmzSlotDepthSort||!s||slots.length<2)return slots;
-  /* Infinity どうしを引くと NaN になって並びが壊れるので、有限の大きな値に置き換えてから比べる。
-     sort は安定なので、距離が同じ物は一覧の並び順のまま残る。 */
-  const entries=slots.map((slot,index)=>({slot,index,km:kmzSlotDistanceKm(s,slot)}));
-  const trains=entries.filter(e=>e.slot&&e.slot.train&&e.slot.visible!==false);
-  if(trains.length)for(const e of entries){const k=kmzStationOrderKm(s,e.slot,trains);if(k!==null)e.km=k;}
-  return entries
-    .sort((a,b)=>((Number.isFinite(b.km)?b.km:1e9)-(Number.isFinite(a.km)?a.km:1e9))||(a.index-b.index))
-    .map(entry=>entry.slot);
+  const slots=extraSlots.length?kmzSlots.concat(extraSlots):kmzSlots;
+  const view=kmzCullView1305(s,W,H,phase);
+  const entries=[];
+  for(const slot of slots){
+    if(!slot?.visible||!slot.model||slot.flowerField)continue;
+    const cfg=kmzSlotSettings(slot);
+    const base=Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)
+      ?terrainDistanceAndBearing(s.lat,s.lon,cfg.lat,cfg.lon):null;
+    if(base&&kmzCullStatic1305(slot,cfg,base,view))continue;
+    entries.push({slot,cfg,km:base?.distanceKm??Infinity});
+  }
+  if(kmzSlotDepthSort&&entries.length>1){
+    const trains=entries.filter(entry=>entry.slot.train);
+    if(trains.length)for(const entry of entries){
+      const order=kmzStationOrderKm(s,entry.slot,trains);
+      if(order!==null)entry.km=order;
+    }
+    const distance=entry=>Number.isFinite(entry.km)?entry.km:1e9;
+    entries.sort((a,b)=>distance(b)-distance(a));
+  }
+  return entries.map(entry=>entry.slot);
 }
 /* 【v852】自ら光るもの（花火・イルミネーション）用。
    昼夜の暗転も太陽の陰影も掛けず、そのままの色で加算合成する。
@@ -42196,7 +42331,7 @@ function drawKmzBuildingLayer(targetCtx,s,toXY,W,H,phase){
     }
     return;
   }
-  const drawOrder=kmzSlotsInDrawOrder(s,railSimBantanVisibleTunnelPortals(s));
+  const drawOrder=kmzSlotsInDrawOrder(s,railSimBantanVisibleTunnelPortals(s),W,H);
   /* 【v1119】確かめる用に描いた順を控えておく。 */
   drawPhoto._kmzOrder={自動:kmzSlotDepthSort,順:drawOrder.map(slot=>({名:slot&&slot.fileName,km:+kmzSlotDistanceKm(s,slot).toFixed(3)}))};
   drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,drawOrder);
@@ -42383,8 +42518,9 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
      そのために投影のついでに、東・北・上の実寸座標も控えておく。 */
   /* 【v852】発光のときは面の向きを使わないので、法線用の座標も控えない。 */
   const needShading=!slot.silhouette&&!slot.glow;
-  const triangleColors=slot.model.triangleColors;
-  const triangleAlphas=slot.model.triangleAlphas;   // 【v876】マテリアルごとの不透明度
+  const drawModel=sweetgumDrawModel1305(slot.model,cfg,base,s,W,eye,earthRadius,cameraForward,reflectionPass,mirrorZ);
+  const triangleColors=drawModel.triangleColors;
+  const triangleAlphas=drawModel.triangleAlphas;   // 【v876】マテリアルごとの不透明度
   const triangleGlow=slot.model.triangleGlow||null;   // 【v1175】列車の窓・ヘッドライト・尾灯
   /* 【v1050】カメラの手前面と画面の四辺で切り取る面（道路の v877 と同じ）。目を原点にした東・北・上の実寸座標で切る。
      以前は頂点が 1 つでもカメラの後ろなら三角形ごと捨てていたので、模型に近づくと手前の面が丸ごと消えた
@@ -42447,7 +42583,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
   };
   /* 【v1197】同じ頂点を面ごとに再投影しない。キャッシュは1描画内だけなので
      視点・模型位置・鏡面・画角の変更はすべてそのコマで反映する。 */
-  const geometry=kmzModelGeometryIndex(slot.model),vertexProjectionCache=new Array(geometry.vertices.length);
+  const geometry=kmzModelGeometryIndex(drawModel),vertexProjectionCache=new Array(geometry.vertices.length);
   const headingCos=Math.cos(heading),headingSin=Math.sin(heading);
   /* 【v1218】暗い凹みは目から見た開口の内側に限定する。入口の背面からは描かない。 */
   let portalInteriorPlanes=null;
@@ -42466,8 +42602,8 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
       });
     }
   }
-  for(let triIndex=0;triIndex<slot.model.triangles.length;triIndex++){
-    const triangle=slot.model.triangles[triIndex];
+  for(let triIndex=0;triIndex<drawModel.triangles.length;triIndex++){
+    const triangle=drawModel.triangles[triIndex];
     /* 【v903】zs = 頂点ごとの「カメラの正面方向の奥行き」。
        1/z は画面上で直線的に変わるので、この値だと三角形の中を正しく補間できる。
        水平距離（depth）だけだと、見下ろすときに屋根と床下の前後が付かない。 */
@@ -47003,7 +47139,7 @@ function drawPhoto(ctx,s){
            （花火は加算、城はふつうに重ねる、が同時に成り立たない）。
            スロットは数個なので、1枚ずつ描いても費用は小さい。 */
         /* 【v1119】映り込みも同じ順にする。手前の物の映り込みは、奥の物の映り込みより手前に出る。 */
-        for(const slots of kmzReflectionGroups(kmzSlotsInDrawOrder(s))){
+        for(const slots of kmzReflectionGroups(kmzSlotsInDrawOrder(s,[],W,H,"reflection"))){
           const slot=slots[0];if(!slot.visible||!slot.model||arActive)continue;
           const kmzReflection=drawPhoto._kmzReflectionCanvas||(drawPhoto._kmzReflectionCanvas=document.createElement("canvas"));
           if(kmzReflection.width!==W||kmzReflection.height!==H){kmzReflection.width=W;kmzReflection.height=H;}
