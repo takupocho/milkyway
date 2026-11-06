@@ -8821,7 +8821,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
     <button id="objectFlowDelete1270" type="button">削除</button>
     <button id="objectFlowStop1270" type="button">やめる</button>
   </div>
-  <div id="objectFlowColorPanel1270" class="object-flow-manage1270" role="group" aria-label="モミジバフウの葉の色" hidden>
+  <div id="objectFlowColorPanel1270" class="object-flow-manage1270" role="group" aria-label="木の葉の色" hidden>
     <label class="object-flow-color-picker1298">葉の色 <input id="objectFlowColor1270" type="color" value="#d77b28"></label>
     <div class="object-flow-color-swatches1298" role="group" aria-label="色づきの見本">
       <button type="button" data-object-leaf-color="#54843f">緑葉</button>
@@ -8997,6 +8997,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                   <div class="object-shape-row" role="group" aria-label="作るオブジェクト">
                     <button id="objectBasicMode1297" type="button" aria-pressed="true">基本の形</button>
                     <button id="objectSweetgumMode1297" type="button" aria-pressed="false">🍁 モミジバフウ</button>
+                    <button id="objectBaldCypressMode1306" type="button" aria-pressed="false">🌲 ラクウショウ</button>
                   </div>
                   <section id="objectSweetgumFields1297" hidden>
                     <p class="plan-modal-help">木を1本作ります。保存して「配置」を開くと、同じ木を地図に続けて置けます。</p>
@@ -10338,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1305-kmz-render-performance";
+const APP_VERSION="1306-baldcypress-object";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -13123,6 +13124,157 @@ function drawKmzLineModel(targetCtx,s,toXY,W,H,phase,slot){
    丸のときは topW===topD（＝上の直径）、bottomW===bottomD（＝下の直径）。
    【v1099 の教訓】「これはオブジェクトか？」の判定は必ず下の objectSpecOf だけを通すこと。
    数になりうる曖昧な値（null や ""）を形として受け取ると、別の模型に化ける。 */
+const BALDCYPRESS_DEFAULT1306 = Object.freeze({
+  kind: 'baldcypress',
+  name: 'ラクウショウ',
+  height: 18,
+  width: 7,
+  foliageColor: '#d77b28'
+});
+const BALDCYPRESS_COLORS1306 = Object.freeze({
+  green: '#54843f',
+  yellow: '#deb637',
+  orange: '#d77b28'
+});
+
+function baldCypressSpec1306(value) {
+  if (!value || value.kind !== 'baldcypress') return null;
+  const numberInRange = (value, minimum, maximum) => {
+    if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+    const number = Number(value);
+    return Number.isFinite(number) && number >= minimum && number <= maximum
+      ? Math.round(number * 1000) / 1000 : null;
+  };
+  const height = numberInRange(value.height, 2, 45);
+  const width = numberInRange(value.width, 1, 25);
+  const foliageColor = typeof value.foliageColor === 'string' ? value.foliageColor.trim().toLowerCase() : '';
+  if (height === null || width === null || !/^#[0-9a-f]{6}$/.test(foliageColor)) return null;
+  const name = typeof value.name === 'string' ? value.name.trim().slice(0, 30) : '';
+  return {kind:'baldcypress', name:name || BALDCYPRESS_DEFAULT1306.name, height, width, foliageColor};
+}
+
+function buildBaldCypressModel1306(rawSpec) {
+  const spec = baldCypressSpec1306(rawSpec);
+  if (!spec) return null;
+  const vertices = [], triangles = [], triangleColors = [], coarseFaceIndices = [];
+  let seed = 13061997;
+  const random = () => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+  const jitter = amount => (random() * 2 - 1) * amount;
+  const colorNumber = Number.parseInt(spec.foliageColor.slice(1), 16);
+  const foliage = [colorNumber >> 16, (colorNumber >> 8) & 255, colorNumber & 255];
+  const bark = [103, 75, 55];
+  const shade = (color, light) => color.map(channel => Math.round(Math.min(255, Math.max(0, channel * light))));
+  const vertex = (x, y, z) => {
+    const point = [x, y, z];
+    vertices.push(point);
+    return point;
+  };
+  const face = (a, b, c, color, coarse=true) => {
+    if (coarse) coarseFaceIndices.push(triangles.length);
+    triangles.push([a, b, c]);
+    triangleColors.push(color);
+  };
+  const joinRings = (lower, upper) => {
+    for (let i=0;i<lower.length;i++) {
+      const next = (i+1) % lower.length;
+      const color = shade(bark, .75 + random() * .35);
+      face(lower[i], lower[next], upper[next], color);
+      face(lower[i], upper[next], upper[i], color);
+    }
+  };
+
+  // The root flare and narrow leader give the tree its tall, tapering profile.
+  const trunkLevels = [[0,.077],[.025,.054],[.09,.029],[.30,.023],[.54,.016],[.77,.008],[1,.0015]];
+  const trunkRings = trunkLevels.map(([z, radius], level) => Array.from({length:8}, (_,i) => {
+    const angle = i * Math.PI / 4;
+    const fluting = 1 + Math.cos(i*Math.PI) * (level<2 ? .18 : .07);
+    return vertex(Math.cos(angle)*radius*fluting + .006*Math.sin(z*4), Math.sin(angle)*radius*fluting, z);
+  }));
+  for (let i=1;i<trunkRings.length;i++) joinRings(trunkRings[i-1], trunkRings[i]);
+  for (let i=1;i<trunkRings[0].length-1;i++) face(trunkRings[0][0],trunkRings[0][i+1],trunkRings[0][i],bark);
+
+  const branch = (from, to, radius) => {
+    const dx=to[0]-from[0], dy=to[1]-from[1], dz=to[2]-from[2];
+    const flat=Math.max(.0001,Math.hypot(dx,dy)), length=Math.hypot(flat,dz);
+    const side=[-dy/flat,dx/flat,0];
+    const vertical=[-dx*dz/(flat*length),-dy*dz/(flat*length),flat/length];
+    const ring = (point, r) => Array.from({length:5}, (_,i) => {
+      const angle=i*Math.PI*2/5, c=Math.cos(angle)*r, s=Math.sin(angle)*r;
+      return vertex(point[0]+side[0]*c+vertical[0]*s, point[1]+side[1]*c+vertical[1]*s, point[2]+vertical[2]*s);
+    });
+    joinRings(ring(from,radius),ring(to,radius*.23));
+  };
+
+  // Each branchlet has a slender folded core and paired linear needles.
+  // Retaining the core in the distant model keeps the feathery branch silhouette.
+  const spray = (start, azimuth, length, tilt, brightness) => {
+    const direction=[Math.cos(azimuth),Math.sin(azimuth),tilt];
+    const side=[-direction[1],direction[0],.60];
+    const width=length*.26;
+    const origin=vertex(...start);
+    const tip=vertex(start[0]+direction[0]*length,start[1]+direction[1]*length,start[2]+tilt*length);
+    const middle=vertex(start[0]+direction[0]*length*.52,start[1]+direction[1]*length*.52,start[2]+tilt*length*.52+.009);
+    const left=vertex(start[0]+direction[0]*length*.42+side[0]*width,start[1]+direction[1]*length*.42+side[1]*width,start[2]+tilt*length*.42);
+    const right=vertex(start[0]+direction[0]*length*.42-side[0]*width,start[1]+direction[1]*length*.42-side[1]*width,start[2]+tilt*length*.42);
+    face(origin,left,middle,shade(foliage,brightness*.82));
+    face(left,tip,middle,shade(foliage,brightness));
+    face(origin,middle,right,shade(foliage,brightness*.92));
+    face(middle,tip,right,shade(foliage,brightness*1.08));
+    for (let i=0;i<5;i++) {
+      const t=.14+i*.145;
+      const needleLength=width*(1.1-.72*t);
+      const needleWidth=length*.012;
+      for (const sign of [-1,1]) {
+        const base=[start[0]+direction[0]*length*t,start[1]+direction[1]*length*t,start[2]+tilt*length*t];
+        const a=vertex(base[0]-direction[0]*needleWidth,base[1]-direction[1]*needleWidth,base[2]);
+        const b=vertex(base[0]+direction[0]*needleWidth,base[1]+direction[1]*needleWidth,base[2]+.002);
+        const c=vertex(base[0]+side[0]*needleLength*sign+direction[0]*length*.095,
+          base[1]+side[1]*needleLength*sign+direction[1]*length*.095,base[2]+needleLength*.12);
+        face(a,c,b,shade(foliage,brightness*(.92+random()*.22)),false);
+      }
+    }
+  };
+
+  // Broad lower tiers narrow toward the leader, with irregular gaps between sprays.
+  for (let tier=0;tier<10;tier++) {
+    const t=tier/10, height=.24+t*.70;
+    const reach=.47*Math.pow(1-t,.78);
+    const branchCount=tier<6 ? 4 : 3;
+    for (let i=0;i<branchCount;i++) {
+      const azimuth=i*Math.PI*2/branchCount+tier*2.399963+jitter(.16);
+      const c=Math.cos(azimuth), s=Math.sin(azimuth);
+      const reachHere=reach*(.84+random()*.16);
+      const from=[.006*Math.sin(height*4),0,height];
+      const to=[c*reachHere,s*reachHere,height+.025+jitter(.012)];
+      branch(from,to,.008*(1-t)+.0015);
+      for (let twig=0;twig<5;twig++) {
+        const ratio=.20+twig*.18;
+        const start=[c*reachHere*ratio,s*reachHere*ratio,height+.025*ratio+jitter(.018)];
+        const fan=[-.80,.55,-.45,.35,-.15][twig];
+        spray(start,azimuth+fan,reachHere*(.55-.035*twig),.35+jitter(.25),.78+random()*.35);
+      }
+    }
+  }
+  spray([0,0,.925],.4,.10,.50,1.03);
+
+  const low=[Infinity,Infinity,Infinity], high=[-Infinity,-Infinity,-Infinity];
+  for (const point of vertices) for (let axis=0;axis<3;axis++) {
+    low[axis]=Math.min(low[axis],point[axis]);
+    high[axis]=Math.max(high[axis],point[axis]);
+  }
+  const scale=[spec.width/(high[0]-low[0]),spec.width/(high[1]-low[1]),spec.height/high[2]];
+  for (const point of vertices) for (let axis=0;axis<3;axis++) point[axis]*=scale[axis];
+  const model={triangles,triangleColors,triangleAlphas:triangles.map(()=>1),coloredCount:triangles.length,
+    width:spec.width,depth:spec.width,height:spec.height,vertexCount:triangles.length*3,object:spec};
+  const horizontalRadius=vertices.reduce((radius,point)=>Math.max(radius,Math.hypot(point[0],point[1])),0);
+  sweetgumDrawDetails1305.set(model,{coarseFaceIndices,horizontalRadius,coarse:null});
+  return model;
+}
+
+
 const SWEETGUM_DEFAULT1297 = Object.freeze({
   kind: "sweetgum",
   name: "モミジバフウ",
@@ -13405,9 +13557,16 @@ function objectPartOf(value){
   rot=Number.isFinite(rot)?((Math.round(rot*10)/10)%360+360)%360:0;
   return {shape,topW,topD,bottomW,bottomD,height,x:shift(value.x),y:shift(value.y),z:shift(value.z),rot};
 }
+function isTreeSpec1306(value){
+  return value?.kind==='sweetgum'||value?.kind==='baldcypress';
+}
+function treeName1306(value){
+  return value?.kind==='baldcypress'?'ラクウショウ':'モミジバフウ';
+}
 function objectSpecOf(value){
   if(!value||typeof value!=="object")return null;
   if(value.kind==="sweetgum")return sweetgumSpecOf1297(value);
+  if(value.kind==="baldcypress")return baldCypressSpec1306(value);
   const name=String(value.name||"").trim().slice(0,30);
   /* 【v1132】パーツの並びがあればそれを使う。無ければ**平らな欄を1個のパーツとして包む**
      （v1131 までに作ったオブジェクト・保存した撮影計画はこちらを通る）。 */
@@ -13433,7 +13592,7 @@ function objectSpecTotalHeight(spec){
 /* 見出し用の短い説明（「3×3×10m の角錐」など）。 */
 function objectSpecSummary(spec){
   if(!spec)return "";
-  if(spec.kind==="sweetgum")return `モミジバフウ／高さ${spec.height}m・横幅${spec.width}m`;
+  if(isTreeSpec1306(spec))return `${treeName1306(spec)}／高さ${spec.height}m・横幅${spec.width}m`;
   /* 【v1132】パーツが2個以上なら、個数と全高でまとめる。 */
   if(Array.isArray(spec.parts)&&spec.parts.length>1)
     return `パーツ${spec.parts.length}個／全高${Math.round(objectSpecTotalHeight(spec)*100)/100}m`;
@@ -13451,7 +13610,7 @@ function objectSpecSummary(spec){
 function buildObjectModel(rawSpec){
   const spec=objectSpecOf(rawSpec);
   if(!spec)return null;
-  if(spec.kind==="sweetgum")return objectSweetgumMesh1297(spec);
+  if(isTreeSpec1306(spec))return objectSweetgumMesh1297(spec);
   /* 【v1132】パーツごとに置き場所（x,y,z）と向き（rot）へ動かしてから足す。
      陰影は面の向きから出すので、**動かしたあとの座標**で三角形を作る必要がある。 */
   let partPlace=(p)=>p;
@@ -17711,7 +17870,7 @@ function kmzCullStatic1305(slot,cfg,base,view) {
   const span = bounds.horizontal*cfg.scale;
   if (!Number.isFinite(span) || span>120000 || distance<=span+2) return false;
   let altitude = cfg.altitude;
-  if (slot.object?.kind==='sweetgum') altitude=gradeTerrainHeight1302(cfg.lat,cfg.lon,altitude);
+  if (isTreeSpec1306(slot.object)) altitude=gradeTerrainHeight1302(cfg.lat,cfg.lon,altitude);
   let low = altitude + bounds.low*cfg.scale;
   let high = altitude + bounds.high*cfg.scale;
   if (view.reflection) {
@@ -18546,22 +18705,25 @@ async function setLaunchSiteStudioOpen(open,slot){
 /* ═════ 【v1107】オブジェクト作成の画面 ═════ */
 let objectStudioShape="box";
 let objectSweetgumMode1297=false;
+let objectTreeKind1306='sweetgum';
 const sweetgumNode1297=id=>document.getElementById(id+'1297');
 let sweetgumPreviewMesh1297=null;
 const sweetgumMeshes1297=new Map();
 
 function objectSweetgumMesh1297(spec){
-  const key=[spec.name,spec.height,spec.width,spec.foliageColor].join('|');
+  const key=[spec.kind,spec.name,spec.height,spec.width,spec.foliageColor].join('|');
   if(!sweetgumMeshes1297.has(key)){
     if(sweetgumMeshes1297.size>=8)sweetgumMeshes1297.delete(sweetgumMeshes1297.keys().next().value);
-    sweetgumMeshes1297.set(key,buildSweetgumModel1297(spec));
+    const model=spec.kind==='baldcypress'?buildBaldCypressModel1306(spec):buildSweetgumModel1297(spec);
+    sweetgumMeshes1297.set(key,model);
   }
   return sweetgumMeshes1297.get(key);
 }
 
 function objectSweetgumRead1297(){
-  return sweetgumSpecOf1297({
-    kind:'sweetgum',
+  const read=objectTreeKind1306==='baldcypress'?baldCypressSpec1306:sweetgumSpecOf1297;
+  return read({
+    kind:objectTreeKind1306,
     name:el.objectName.value,
     height:sweetgumNode1297('sweetgumHeight').valueAsNumber,
     width:sweetgumNode1297('sweetgumWidth').valueAsNumber,
@@ -18569,12 +18731,19 @@ function objectSweetgumRead1297(){
   });
 }
 
-function objectSweetgumSetMode1297(tree){
+function objectSweetgumSetMode1297(tree,kind='sweetgum'){
   objectSweetgumMode1297=tree;
+  if(tree)objectTreeKind1306=kind;
+  const cypress=tree&&objectTreeKind1306==='baldcypress';
+  document.getElementById('objectBaldCypressMode1306').classList.toggle('active',cypress);
+  document.getElementById('objectBaldCypressMode1306').setAttribute('aria-pressed',String(cypress));
+  for(const preset of el.objectStudioOverlay.querySelectorAll('[data-sweetgum-color]')){
+    preset.hidden=cypress&&preset.dataset.sweetgumColor==='#b94738';
+  }
   sweetgumNode1297('objectBasicFields').hidden=tree;
   sweetgumNode1297('objectSweetgumFields').hidden=!tree;
   sweetgumNode1297('sweetgumExport').hidden=!tree;
-  for(const [id,active] of [['objectBasicMode',!tree],['objectSweetgumMode',tree]]){
+  for(const [id,active] of [['objectBasicMode',!tree],['objectSweetgumMode',tree&&!cypress]]){
     const button=sweetgumNode1297(id);
     button.classList.toggle('active',active);
     button.setAttribute('aria-pressed',String(active));
@@ -18620,14 +18789,14 @@ function objectSweetgumDownload1297(){
   const spec=objectSweetgumRead1297();
   if(!spec){objectStudioSay('高さと横幅を入力範囲内にしてください。');return;}
   try{
-    const bytes=buildSweetgumKmz1297({...spec,name:spec.name||SWEETGUM_DEFAULT1297.name});
+    const bytes=buildSweetgumKmz1297(spec);
     const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.google-earth.kmz'}));
     const link=document.createElement('a');
     link.href=url;
-    link.download=(spec.name||SWEETGUM_DEFAULT1297.name).replace(/[\\/:*?"<>|]/g,'_')+'.kmz';
+    link.download=spec.name.replace(/[\\/:*?"<>|]/g,'_')+'.kmz';
     link.click();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    objectStudioSay('モミジバフウ1本をKMZに書き出しました。');
+    objectStudioSay((spec.kind==='baldcypress'?'ラクウショウ':'モミジバフウ')+'1本をKMZに書き出しました。');
   }catch(error){
     objectStudioSay('KMZを書き出せませんでした。'+(error?.message||''));
   }
@@ -18635,14 +18804,20 @@ function objectSweetgumDownload1297(){
 
 function initObjectSweetgum1297(){
   sweetgumNode1297('objectBasicMode').addEventListener('click',()=>{
-    if(objectSweetgumMode1297&&el.objectName.value===SWEETGUM_DEFAULT1297.name)el.objectName.value='';
+    if(objectSweetgumMode1297&&['モミジバフウ','ラクウショウ'].includes(el.objectName.value))el.objectName.value='';
     objectSweetgumSetMode1297(false);
     objectStudioRefresh();
   });
   sweetgumNode1297('objectSweetgumMode').addEventListener('click',()=>{
     if(!objectSweetgumMode1297)objectStudioCommitPart();
-    if(!el.objectName.value.trim())el.objectName.value=SWEETGUM_DEFAULT1297.name;
+    if(!el.objectName.value.trim()||el.objectName.value==='ラクウショウ')el.objectName.value=SWEETGUM_DEFAULT1297.name;
     objectSweetgumSetMode1297(true);
+    objectStudioRefresh();
+  });
+  document.getElementById('objectBaldCypressMode1306').addEventListener('click',()=>{
+    if(!objectSweetgumMode1297)objectStudioCommitPart();
+    if(!el.objectName.value.trim()||el.objectName.value===SWEETGUM_DEFAULT1297.name)el.objectName.value='ラクウショウ';
+    objectSweetgumSetMode1297(true,'baldcypress');
     objectStudioRefresh();
   });
   for(const id of ['sweetgumHeight','sweetgumWidth','sweetgumColor']){
@@ -18659,7 +18834,7 @@ function initObjectSweetgum1297(){
 
 /* Package the same mesh used by StarChase as a standalone COLLADA/KMZ model. */
 function buildSweetgumKmz1297(rawSpec, location = null) {
-  const model = buildSweetgumModel1297(rawSpec);
+  const model = rawSpec?.kind==='baldcypress'?buildBaldCypressModel1306(rawSpec):buildSweetgumModel1297(rawSpec);
   if (!model) throw new Error("木の高さ・横幅・葉の色を確認してください。");
   if (location && (!Number.isFinite(location.lat) || Math.abs(location.lat) > 90 ||
       !Number.isFinite(location.lon) || Math.abs(location.lon) > 180)) {
@@ -18752,6 +18927,7 @@ function buildSweetgumKmz1297(rawSpec, location = null) {
   <scene><instance_visual_scene url="#sweetgumScene"/></scene>
 </COLLADA>`;
 
+  const modelPath = model.object.kind==='baldcypress'?'models/baldcypress.dae':'models/sweetgum.dae';
   const name = flowerFieldXml1220(model.object.name);
   const locationXml = location ? `<Location><longitude>${location.lon}</longitude>
     <latitude>${location.lat}</latitude><altitude>0</altitude></Location>` : "";
@@ -18760,11 +18936,11 @@ function buildSweetgumKmz1297(rawSpec, location = null) {
   <Document><name>${name}</name><Placemark><name>${name}</name>
     <Model><altitudeMode>relativeToGround</altitudeMode>
       ${locationXml}
-      <Link><href>models/sweetgum.dae</href></Link>
+      <Link><href>${modelPath}</href></Link>
     </Model>
   </Placemark></Document>
 </kml>`;
-  return flowerFieldZipStore1220([["doc.kml", kml], ["models/sweetgum.dae", dae]]);
+  return flowerFieldZipStore1220([["doc.kml", kml], [modelPath, dae]]);
 }
 function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
 /* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
@@ -18861,8 +19037,9 @@ function objectStudioRenderParts(){
 function objectStudioLoadSpec(rawSpec){
   const spec=objectSpecOf(rawSpec);
   if(!spec)return null;
-  objectSweetgumSetMode1297(spec.kind==="sweetgum");
-  if(spec.kind==="sweetgum"){
+  const tree=spec.kind==="sweetgum"||spec.kind==="baldcypress";
+  objectSweetgumSetMode1297(tree,spec.kind);
+  if(tree){
     sweetgumNode1297('sweetgumHeight').value=String(spec.height);
     sweetgumNode1297('sweetgumWidth').value=String(spec.width);
     sweetgumNode1297('sweetgumColor').value=spec.foliageColor;
@@ -18952,7 +19129,7 @@ function objectStudioDrawPreview(){
     ctx.fillText("寸法を入れると形が出ます",cssW/2,cssH/2);
     return;
   }
-  if(spec.kind==="sweetgum"){
+  if(spec.kind==="sweetgum"||spec.kind==="baldcypress"){
     objectSweetgumPreview1297(ctx,cssW,cssH,spec);
     return;
   }
@@ -21680,14 +21857,16 @@ function sweetgumMapColor1300(spec){
 }
 function sweetgumMapIcon1300(spec){
   const color=sweetgumMapColor1300(spec);
-  const leaf='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff8e8" stroke="#252018" stroke-width="1.2" stroke-linejoin="round" d="M12 2l2.6 6 4.3-3.3-.6 5.9 4.5.3-3.6 3.5 1 3.1-6.7.9v3.1h-2.8v-3.1l-6.7-.9 1-3.1L1.4 11l4.6-.3-.6-5.9 4.2 3.3z"/></svg>';
-  return L.divIcon({className:"",html:'<div class="map-kmz-icon object sweetgum1300" style="--sweetgum-leaf1300:'+color+'">'+leaf+'</div>',iconSize:[36,36],iconAnchor:[18,18]});
+  const broadleaf='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff8e8" stroke="#252018" stroke-width="1.2" stroke-linejoin="round" d="M12 2l2.6 6 4.3-3.3-.6 5.9 4.5.3-3.6 3.5 1 3.1-6.7.9v3.1h-2.8v-3.1l-6.7-.9 1-3.1L1.4 11l4.6-.3-.6-5.9 4.2 3.3z"/></svg>';
+  const conifer='<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff8e8" stroke="#252018" stroke-width="1.1" stroke-linejoin="round" d="M12 1.5L7 8h2L4 15h3l-4 4h7.5v3h3v-3H21l-4-4h3l-5-7h2z"/></svg>';
+  const leaf=spec.kind==='baldcypress'?conifer:broadleaf;
+  return L.divIcon({className:"",html:'<div class="map-kmz-icon object sweetgum1300" data-tree-kind="'+spec.kind+'" style="--sweetgum-leaf1300:'+color+'">'+leaf+'</div>',iconSize:[36,36],iconAnchor:[18,18]});
 }
 function syncSweetgumMapIcon1300(marker,spec){
   const icon=marker.getElement?.()?.firstElementChild;
   if(!icon?.classList.contains("object"))return;
-  const sweetgum=spec.kind==="sweetgum";
-  if(sweetgum!==icon.classList.contains("sweetgum1300")){
+  const sweetgum=isTreeSpec1306(spec);
+  if(sweetgum!==icon.classList.contains("sweetgum1300")||(sweetgum&&icon.dataset.treeKind!==spec.kind)){
     marker.setIcon(sweetgum?sweetgumMapIcon1300(spec):L.divIcon({className:"",html:'<div class="map-kmz-icon object">🧱</div>',iconSize:[36,36],iconAnchor:[18,18]}));
     return;
   }
@@ -21759,7 +21938,7 @@ function updateOsmKmzMarkers(){
       if(!m&&iconKind){
         /* 【v1185】列車・駅は、赤丸ではなくアイコン（🚃／🚉）にする。 */
         m=L.marker([cfg.lat,cfg.lon],{pane:"markerPane",bubblingMouseEvents:false,autoPanOnFocus:iconKind!=="truss"&&iconKind!=="object",zIndexOffset:iconKind==="station"?600:0,   /* 【v1190】駅を列車より上に */
-          icon:iconKind==="object"&&slot.object.kind==="sweetgum"?sweetgumMapIcon1300(slot.object):L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":iconKind==="truss"?"🌉":iconKind==="object"?"🧱":"🚉"}</div>`,iconSize:iconKind==="station"?[24,24]:[36,36],iconAnchor:iconKind==="station"?[12,12]:[18,18]})}).addTo(osmMapInstance);
+          icon:iconKind==="object"&&isTreeSpec1306(slot.object)?sweetgumMapIcon1300(slot.object):L.divIcon({className:"",html:`<div class="map-kmz-icon ${iconKind}">${iconKind==="train"?"🚃":iconKind==="truss"?"🌉":iconKind==="object"?"🧱":"🚉"}</div>`,iconSize:iconKind==="station"?[24,24]:[36,36],iconAnchor:iconKind==="station"?[12,12]:[18,18]})}).addTo(osmMapInstance);
         m.on("click",()=>{mapKmzTargetId=mapKmzTargetId===slot.id?null:slot.id;mapKmzAimAtTarget();if(iconKind==="train")trainTapSelect(slot);updateOsmFovOverlay();});
         if(iconKind==="station"){
           m.off("click");   /* 【v1187】駅は被写体の選択ではなく、駅の案内を開く */
@@ -21792,7 +21971,7 @@ function updateOsmKmzMarkers(){
       }
       const onDrop=iconKind==="train"&&!slot.train.run?.sim?trainPlacementDrop1301:
         iconKind==="truss"?trussPlacementDrop1301:
-        iconKind==="object"&&slot.object?.kind==="sweetgum"?objectPlacementDrop1301:null;
+        iconKind==="object"&&isTreeSpec1306(slot.object)?objectPlacementDrop1301:null;
       if(onDrop||placementMarkerDrags1301.has(m))installPlacementMarkerDrag1301(m,slot,onDrop);
       const isTarget=slot.id===mapKmzTargetId;
       if((iconKind==="train"||iconKind==="truss"||iconKind==="object")&&m.setZIndexOffset)m.setZIndexOffset(isTarget?2000:0);
@@ -42422,7 +42601,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
   if(!slot||slot.flowerField||!slot.visible||!slot.model)return;
   const cfg=kmzSlotSettings(slot);
   // Use corrected ground only when drawing. Keep saved tree heights as raw terrain.
-  if(slot.object?.kind==='sweetgum'&&Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)){
+  if(isTreeSpec1306(slot.object)&&Number.isFinite(cfg.lat)&&Number.isFinite(cfg.lon)){
     cfg.altitude=gradeTerrainHeight1302(cfg.lat,cfg.lon,cfg.altitude);
   }
   if(phase!=="after"&&phase!=="reflection")return;   /* 【v1197】同期後、不要な段は計算しない。 */
@@ -65153,21 +65332,21 @@ function objectFlowSync1270(){
     return;
   }
   objectFlowNode1270('Batch').hidden=true;
-  objectFlowNode1270('BatchOpen').hidden=!menu||s.menuSlot?.object?.kind!=='sweetgum';
+  objectFlowNode1270('BatchOpen').hidden=!menu||!isTreeSpec1306(s.menuSlot?.object);
   objectFlowNode1270('Title').textContent=menu?(s.menuSlot.object.name+'をどうしますか？'):s.spec.name;
   objectFlowNode1270('Message').hidden=menu;objectFlowNode1270('Hint').hidden=menu;
   objectFlowNode1270('Message').textContent=s.phase==='height'?'地面の高さを確認しています…':s.phase==='committing'?'配置しています…':s.message||(ready?'ここに配置しますか？':'どこに配置しますか？');
   objectFlowNode1270('Hint').textContent=ready?(Number.isFinite(s.heading)?'回転で向きを調整し「決定」を押してください。':'向きの角度を入力してください。'):busy?'そのままお待ちください。':'置きたい場所を地図でタップしてください。';
-  if(ready&&s.spec?.kind==='sweetgum')objectFlowNode1270('Hint').textContent='アイコンをドラッグで調整し「決定」を押してください。';
+  if(ready&&isTreeSpec1306(s.spec))objectFlowNode1270('Hint').textContent='アイコンをドラッグで調整し「決定」を押してください。';
   objectFlowNode1270('Rotations').hidden=menu||!s.draft;objectFlowNode1270('Angle').disabled=s.phase==='committing';
   for(const id of ['Left','Right'])objectFlowNode1270(id).disabled=s.phase==='committing';
   if(document.activeElement!==objectFlowNode1270('Angle'))objectFlowNode1270('Angle').value=Number.isFinite(s.heading)?String(s.heading):'';
   objectFlowNode1270('Confirm').hidden=menu||!s.draft;objectFlowNode1270('Confirm').disabled=!ready||!Number.isFinite(s.heading)||busy||!!s.dragging1301;
   const repeat=objectFlowNode1270('Repeat');
-  repeat.hidden=menu||!s.draft||!!s.editSlot||s.spec?.kind!=='sweetgum';
+  repeat.hidden=menu||!s.draft||!!s.editSlot||!isTreeSpec1306(s.spec);
   repeat.disabled=objectFlowNode1270('Confirm').disabled;
   objectFlowNode1270('Cancel').hidden=menu;objectFlowNode1270('Actions').hidden=menu;objectFlowNode1270('Manage').hidden=!menu||!!s.recolor1298;
-  objectFlowNode1270('ColorOpen').hidden=!menu||s.menuSlot?.object?.kind!=='sweetgum';
+  objectFlowNode1270('ColorOpen').hidden=!menu||!isTreeSpec1306(s.menuSlot?.object);
   objectFlowNode1270('ColorPanel').hidden=!menu||!s.recolor1298;
   if(first&&typeof trainFlowMapResize1265==='function')trainFlowMapResize1265();
   if(typeof simUiLayoutSchedule1256==='function')simUiLayoutSchedule1256();
@@ -65178,8 +65357,8 @@ function objectFlowPreview1270(){
   const r=s.heading*D2R,cs=Math.cos(r),sn=Math.sin(r),scale=s.editSlot?.scale||1;
   const ll=(x,y)=>trainLL(d.lat,d.lon,(x*cs+y*sn)*scale,(-x*sn+y*cs)*scale);
   const outline=[[lo[0],lo[1]],[hi[0],lo[1]],[hi[0],hi[1]],[lo[0],hi[1]]].map(([x,y])=>ll(x,y));
-  const arrowLength=Math.max(12,Math.abs(hi[1])+8),layers=[L.polygon(outline,{interactive:false,color:'#5ccbed',weight:3,fillOpacity:.24}),L.polyline([ll(0,0),ll(0,arrowLength),ll(-3,arrowLength-5),ll(0,arrowLength),ll(3,arrowLength-5)],{interactive:false,color:'#ed5e55',weight:4}),L.marker(ll(0,0),{interactive:false,keyboard:false,icon:s.spec.kind==='sweetgum'?sweetgumMapIcon1300(s.spec):L.divIcon({className:'',html:'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]})})];
-  if(s.spec.kind==='sweetgum'&&s.phase==='ready'){
+  const arrowLength=Math.max(12,Math.abs(hi[1])+8),layers=[L.polygon(outline,{interactive:false,color:'#5ccbed',weight:3,fillOpacity:.24}),L.polyline([ll(0,0),ll(0,arrowLength),ll(-3,arrowLength-5),ll(0,arrowLength),ll(3,arrowLength-5)],{interactive:false,color:'#ed5e55',weight:4}),L.marker(ll(0,0),{interactive:false,keyboard:false,icon:isTreeSpec1306(s.spec)?sweetgumMapIcon1300(s.spec):L.divIcon({className:'',html:'<div class="map-place-pin">🧱</div>',iconSize:[0,0],iconAnchor:[0,0]})})];
+  if(isTreeSpec1306(s.spec)&&s.phase==='ready'){
     const marker=layers[layers.length-1];
     marker.options.interactive=true;
     marker.options.draggable=true;
@@ -65232,7 +65411,7 @@ function objectFlowMapClick1270(event){
   if(!objectFlowCurrent1270()){objectFlowCancel1270('撮影条件が変わりました。配置をやり直してください。');return true;}
   if(s.phase==='menu'||s.phase==='committing'||s.phase==='batch')return true;
   const fromDrag=event?.fromDrag1301===true;
-  if(s.dragging1301||(s.spec.kind==='sweetgum'&&s.draft&&!fromDrag))return true;
+  if(s.dragging1301||(isTreeSpec1306(s.spec)&&s.draft&&!fromDrag))return true;
   const lat=event?.latlng?.lat,rawLon=event?.latlng?.lng;
   if(!Number.isFinite(lat)||!Number.isFinite(rawLon)||Math.abs(lat)>90){
     if(fromDrag){objectFlowPreview1270();objectFlowSync1270();}
@@ -65247,8 +65426,8 @@ function objectFlowMapClick1270(event){
     try{
       const altitude=await fireworkGroundElevation(lat,lon);if(!current())return;
       if(!Number.isFinite(altitude))throw Error('地面の高さを取得できませんでした。別の場所をタップするか、もう一度お試しください。');
-      draft.altitude=altitude;s.phase='ready';s.after=performance.now()+400;if(s.spec.kind==='sweetgum')objectFlowPreview1270();objectFlowSync1270();
-      if(s.spec.kind!=='sweetgum'&&!fromDrag&&osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){const size=osmMapInstance.getSize(),point=osmMapInstance.latLngToContainerPoint([lat,lon]);osmMapInstance.panBy([point.x-size.x/2,point.y-Math.max(size.y*.68,size.y-105)],{animate:false});}
+      draft.altitude=altitude;s.phase='ready';s.after=performance.now()+400;if(isTreeSpec1306(s.spec))objectFlowPreview1270();objectFlowSync1270();
+      if(!isTreeSpec1306(s.spec)&&!fromDrag&&osmMapInstance?.getSize&&osmMapInstance?.latLngToContainerPoint&&osmMapInstance?.panBy){const size=osmMapInstance.getSize(),point=osmMapInstance.latLngToContainerPoint([lat,lon]);osmMapInstance.panBy([point.x-size.x/2,point.y-Math.max(size.y*.68,size.y-105)],{animate:false});}
     }catch(error){if(!current())return;s.phase=previous?'ready':'position';s.draft=previous;s.message=error?.message||'高さを確認できませんでした。もう一度お試しください。';objectFlowPreview1270();objectFlowSync1270();}
     finally{if(s.active&&s.serial===serial&&!objectFlowCurrent1270())objectFlowCancel1270('設定が変わったため配置を中止しました。');}
   })();return true;
@@ -65266,7 +65445,7 @@ async function objectFlowConfirm1270(repeat=false){
     kmzActiveId=slot.id;
     trainFlowEditorPrecision1268={slot};
     kmzLoadEditor();
-    if(repeat===true&&!edit&&s.spec.kind==='sweetgum'){
+    if(repeat===true&&!edit&&isTreeSpec1306(s.spec)){
       objectFlowClearPreview1270();
       Object.assign(s,{phase:'position',draft:null,after:0,message:'1本配置しました。次の場所をタップしてください。'});
       objectFlowSync1270();
@@ -65284,7 +65463,11 @@ async function objectFlowConfirm1270(repeat=false){
 }
 function objectFlowColorOpen1298(){
   const s=objectPlaceFlow1270;
-  if(s.phase!=='menu'||!objectFlowCurrent1270()||s.menuSlot?.object?.kind!=='sweetgum')return;
+  if(s.phase!=='menu'||!objectFlowCurrent1270()||!isTreeSpec1306(s.menuSlot?.object))return;
+  const panel=objectFlowNode1270('ColorPanel');
+  for(const button of panel.querySelectorAll('[data-object-leaf-color]')){
+    button.hidden=s.menuSlot.object.kind==='baldcypress'&&button.dataset.objectLeafColor==='#b94738';
+  }
   const color=objectFlowNode1270('Color');
   color.value=s.menuSlot.object.foliageColor;
   s.recolor1298=true;
@@ -65302,7 +65485,7 @@ function objectFlowColorBack1298(){
 
 function objectFlowColorApply1298(){
   const s=objectPlaceFlow1270,slot=s.menuSlot;
-  if(s.phase!=='menu'||!s.recolor1298||!objectFlowCurrent1270()||slot?.object?.kind!=='sweetgum')return;
+  if(s.phase!=='menu'||!s.recolor1298||!objectFlowCurrent1270()||!isTreeSpec1306(slot?.object))return;
   const spec=objectSpecOf({...slot.object,foliageColor:objectFlowNode1270('Color').value});
   if(!spec)return;
   if(spec.foliageColor===slot.object.foliageColor){
@@ -65318,7 +65501,7 @@ function objectFlowColorApply1298(){
   drawPhoto._terrainRenderKey='';
   update();
   scheduleSaveSettings();
-  setKmzBuildingStatus('選んだモミジバフウの葉の色を変更しました。','ready');
+  setKmzBuildingStatus('選んだ木の葉の色を変更しました。','ready');
 }
 let objectFlowBatch1300=null;
 
@@ -65347,7 +65530,7 @@ function objectFlowBatchClear1300(){
 function objectFlowBatchSync1300(){
   const batch=objectFlowBatch1300;
   if(!batch)return;
-  objectFlowNode1270('Title').textContent='モミジバフウをまとめて再配置';
+  objectFlowNode1270('Title').textContent=treeName1306(batch.entries[0].slot.object)+'をまとめて再配置';
   for(const id of ['Message','Hint','Rotations','Confirm','Repeat','Actions','Manage','ColorPanel']){
     objectFlowNode1270(id).hidden=true;
   }
@@ -65363,11 +65546,11 @@ function objectFlowBatchWrapLon1300(lon){
 
 function objectFlowBatchOpen1300(){
   const s=objectPlaceFlow1270;
-  if(s.phase!=='menu'||!osmMapInstance||!objectFlowCurrent1270()||s.menuSlot?.object?.kind!=='sweetgum')return;
+  if(s.phase!=='menu'||!osmMapInstance||!objectFlowCurrent1270()||!isTreeSpec1306(s.menuSlot?.object))return;
   const map=osmMapInstance;
   const entries=[];
   for(const slot of kmzSlots){
-    if(slot.visible===false||!slot.model||slot.object?.kind!=='sweetgum'||!objectSlotIsFree1270(slot))continue;
+    if(slot.visible===false||!slot.model||slot.object?.kind!==s.menuSlot.object.kind||!objectSlotIsFree1270(slot))continue;
     const cfg=kmzSlotSettings(slot);
     if(!Number.isFinite(cfg.lat)||!Number.isFinite(cfg.lon))continue;
     entries.push({slot,fingerprint:objectFlowFingerprint1270(slot),lat:cfg.lat,lon:cfg.lon,altitude:cfg.altitude,marker:null});
@@ -65471,7 +65654,7 @@ async function objectFlowBatchApply1300(){
     drawPhoto._terrainRenderKey='';
     update();
     scheduleSaveSettings();
-    setKmzBuildingStatus(positions.length+'本のモミジバフウを再配置しました。','ready');
+    setKmzBuildingStatus(positions.length+'本の木を再配置しました。','ready');
   }catch(error){
     if(objectFlowBatch1300!==batch)return;
     if(!objectFlowCurrent1270()){
