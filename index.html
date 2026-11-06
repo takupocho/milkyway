@@ -10339,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1306-baldcypress-object";
+const APP_VERSION="1307-tree-water-reflection";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -12891,6 +12891,67 @@ let waterMirrorCache={grid:null,value:0,rows:0};
    点ごとに別の鏡の面で映すと**映り込みがうねる**。
    置いた KMZ/KML もこの1枚を使うので、
    **橋の映り込みと、橋の上の列車・模型の映り込みが必ずそろう**。 */
+/* 【v1307】木の鏡像は、目の前の水面を描いた水位に合わせる。
+   全方向の水位の中央値では、別の低い池・川を拾い根元が下へ離れる。
+   保存した木の標高は変えず、盛土や高い岸との本来の高低差は残す。
+   長い橋・列車は従来の共有平面を維持し、橋と車両の鏡像を揃える。 */
+let waterMirrorScene1307=null;
+function waterMirrorRingContains1307(ring,x,y){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const a=ring[i],b=ring[j];
+    if((a.y>y)!==(b.y>y)&&x<(b.x-a.x)*(y-a.y)/(b.y-a.y)+a.x)inside=!inside;
+  }
+  return inside;
+}
+function waterMirrorForeground1307(surface,x,y){
+  const rings=[surface.outer,...(surface.holes||[])],cuts=[0,1];
+  for(const ring of rings)for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const a=ring[j],b=ring[i],dx=b.x-a.x,dy=b.y-a.y,den=x*dy-y*dx;
+    if(Math.abs(den)<1e-9)continue;
+    const t=(a.x*dy-a.y*dx)/den,u=(a.x*y-a.y*x)/den;
+    if(t>0&&t<1&&u>=0&&u<=1)cuts.push(t);
+  }
+  cuts.sort((a,b)=>a-b);
+  let far=-1;
+  for(let i=1;i<cuts.length;i++){
+    const t=(cuts[i-1]+cuts[i])/2;
+    if(waterMirrorRingContains1307(surface.outer,x*t,y*t)&&
+       !(surface.holes||[]).some(ring=>waterMirrorRingContains1307(ring,x*t,y*t)))far=cuts[i];
+  }
+  return far<0?null:far*Math.hypot(x,y);
+}
+function treeWaterMirrorPlane1307(slot,cfg,base){
+  const scene=waterMirrorScene1307;
+  if(!scene||!isTreeSpec1306(slot?.object)||
+     ![scene.lat,scene.lon,cfg.lat,cfg.lon,cfg.altitude,base.distanceKm].every(Number.isFinite))
+    return waterMirrorElevationM(base.bearing,cfg.altitude);
+  const longitude=((cfg.lon-scene.lon+540)%360)-180;
+  const x=longitude*Math.max(1,111320*Math.cos(scene.lat*Math.PI/180));
+  const y=(cfg.lat-scene.lat)*111320,distance=Math.hypot(x,y);
+  let chosen=null,bestGap=Infinity;
+  for(const item of scene.items||[]){
+    const surface=item.mirrorSurface1307;
+    if(item.ocean||!surface||surface.samples<3||!Number.isFinite(surface.level)||!Array.isArray(surface.outer))continue;
+    const far=waterMirrorForeground1307(surface,x,y);
+    if(far===null)continue;
+    const gap=Math.max(0,distance-far);
+    if(gap>200||gap>=bestGap)continue;
+    const level=surface.levelAt?surface.levelAt(distance):surface.level;
+    if(!Number.isFinite(level))continue;
+    chosen=level;bestGap=gap;
+  }
+  // 高精細ではポリゴンの推定値を使わず、実際に描いた水の区間を参照する。
+  if(chosen===null&&typeof scene.segmentsAt==='function'){
+    for(const segment of scene.segmentsAt(base.bearing)||[]){
+      if(![segment.nearM,segment.farM,segment.level].every(Number.isFinite)||segment.nearM>distance)continue;
+      const gap=Math.max(0,distance-segment.farM);
+      if(gap<=200&&gap<bestGap){chosen=segment.level;bestGap=gap;}
+    }
+  }
+  return chosen===null?waterMirrorElevationM(base.bearing,cfg.altitude):Math.min(chosen,cfg.altitude);
+}
+
 function waterMirrorSharedPlaneM(){
   const grid=realTerrainState&&realTerrainState.nearSurfaceGrid;
   if(!grid)return null;
@@ -17874,7 +17935,7 @@ function kmzCullStatic1305(slot,cfg,base,view) {
   let low = altitude + bounds.low*cfg.scale;
   let high = altitude + bounds.high*cfg.scale;
   if (view.reflection) {
-    const mirror = waterMirrorElevationM(base.bearing,altitude);
+    const mirror = treeWaterMirrorPlane1307(slot,{...cfg,altitude},base);
     [low,high]=[2*mirror-Math.max(high,mirror),2*mirror-Math.max(low,mirror)];
   }
   // The renderer projects each vertex from its own geographic coordinate.
@@ -42690,7 +42751,7 @@ function drawKmzOneBuilding(targetCtx,s,toXY,W,H,phase,slot,opaqueRecords=null){
      地形とKMZがずれてしまう(地形側は各点の実標高から毎回計算し直している)。 */
   const eye=highDetailProjectionGround1246(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),earthRadius=6371000*(7/6),heading=cfg.heading*D2R,projected=[];
   /* 【v1121】鏡の面。模型ごとに1回だけ出す。【v1137】模型の足元も渡す。 */
-  const mirrorZ=reflectionPass?waterMirrorElevationM(base.bearing,cfg.altitude):0;
+  const mirrorZ=reflectionPass?treeWaterMirrorPlane1307(slot,cfg,base):0;
   if(reflectionPass)kmzMirrorDiag(slot,base.bearing,cfg.altitude,mirrorZ);
   const cameraForward=toVec(s.facingAz,s.facingAlt);   // 【v903】奥行きを測る向き
   /* 【v851】シルエットで描かないときは、面の向きから明るさを出す。
@@ -44910,6 +44971,7 @@ function terrainFrameFailed1233(ctx,error){
 }
 
 function drawPhoto(ctx,s){
+  waterMirrorScene1307=null;
   drawPhoto._railReflectionMask1279=null;   /* 【v1279】前の画角・反射OFFの型を持ち越さない */
   highDetailClearForObserver1248();
   terrainMotionPrepare1224();
@@ -46439,7 +46501,25 @@ function drawPhoto(ctx,s){
            1200×800（縦は800×1200）の透明Canvasを毎回消去していた。 */
         /* 水際では従来の距離走査が湖面を0件と判定することがある。
            直接投影した内水面があれば、最終水域マスクを正としてリフレ生成を続ける。 */
-        const directInlandReflectionAvailable=!highDetailOn&&directInlandWaterGeometry().length>0;
+        const directWaterItems1307=!highDetailOn?directInlandWaterGeometry():[];
+        waterMirrorScene1307={lat:s.lat,lon:s.lon,items:directWaterItems1307};
+        if(highDetailOn){
+          const mirrorSegmentsMemo1307=new Map();
+          waterMirrorScene1307.segmentsAt=bearing=>{
+            if(!Number.isFinite(bearing)||(TERRAIN_RENDERER!=="layered"&&
+               !(TERRAIN_RENDERER==="legacy"&&gradingRects1302.length)))return [];
+            const az=((bearing%360)+360)%360;
+            if(mirrorSegmentsMemo1307.has(az))return mirrorSegmentsMemo1307.get(az);
+            // The existing memo includes the DEM generation, water polygons,
+            // observer, grading revision and HD quality. No raw terrain changes.
+            const bands=azimuthVisibleBands(az,-89,false,true);
+            const segments=bands&&Array.isArray(bands.waterMirrorSegments1307)
+              ?bands.waterMirrorSegments1307:[];
+            mirrorSegmentsMemo1307.set(az,segments);
+            return segments;
+          };
+        }
+        const directInlandReflectionAvailable=directWaterItems1307.length>0;
         if(!waterReflectionEnabled||(!confirmedWaterAz.some(Boolean)&&!directInlandReflectionAvailable)) return false;
         if(cloudSeaCoversGround()) return false;
         const mainCtx=ctx;
@@ -48982,6 +49062,7 @@ function drawPhoto(ctx,s){
         }
         if(!full)return null;
         const bands=[];
+        if(full.waterMirrorSegments1307)bands.waterMirrorSegments1307=full.waterMirrorSegments1307;
         for(const band of full){
           if(!(band.hi>bottomAlt))continue;
           // 同じ高度なら元の highest は bottomAlt のまま。-0 もそのまま保つ。
@@ -49049,6 +49130,21 @@ function drawPhoto(ctx,s){
         if(fineUseStart1246)highDetailMemoBandUse1246(result,fineUseStart1246);
         visibleBandsCache.set(key,result);
         return result;
+      }
+      /* 【v1307】Keep the level that the high-detail water walk actually draws.
+         Local DEM points use their own elevations; the remaining water points
+         use the run's existing lower-decile plane and eye-clearance clamp. */
+      function waterMirrorRunSegments1307(walk,start,end,level,eye,segments){
+        let previous=null;
+        for(let i=start;i<end;i++){
+          const point=walk[i];
+          if(!point||!Number.isFinite(point.distanceKm)||point.distanceKm<0)continue;
+          const height=point.local?point.baseElevation:Math.min(level,eye-.05);
+          if(!Number.isFinite(height)){previous=null;continue;}
+          const metres=point.distanceKm*1000;
+          if(previous&&previous.level===height){previous.farM=metres;}
+          else{previous={nearM:metres,farM:metres,level:height};segments.push(previous);}
+        }
       }
       function azimuthVisibleBandsUncached(azDeg,bottomAlt,skylineOnly,rawBands){
         const grid=terrainRenderGrid1224();
@@ -49403,6 +49499,7 @@ function drawPhoto(ctx,s){
            こちらの経路にも残っていた。 */
         const eyeElevationForWater=highDetailProjectionGround1246(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
         const waterEyeAbove=new Array(walk.length).fill(null);
+        const waterMirrorSegments1307=highDetailOn&&!skylineOnly?[]:null;
         let waterElevation=null,waterBodyCount=0;
         for(let i=0;i<walk.length;){
           if(!waterFlags[i]){i++;continue;}
@@ -49417,6 +49514,7 @@ function drawPhoto(ctx,s){
             const level=levels[Math.floor((levels.length-1)*.10)];
             const above=Math.max(.05,eyeElevationForWater-level);
             for(let k=i;k<j;k++)waterEyeAbove[k]=above;
+            if(waterMirrorSegments1307)waterMirrorRunSegments1307(walk,i,j,level,eyeElevationForWater,waterMirrorSegments1307);
             if(waterElevation===null)waterElevation=level;   // 診断の表示用（最初の水域）
             waterBodyCount++;
           }
@@ -49447,6 +49545,7 @@ function drawPhoto(ctx,s){
           return point.alt-Math.atan2(eyeShiftM,metres)*R2D;
         };
         const bands=[];
+        if(waterMirrorSegments1307)bands.waterMirrorSegments1307=waterMirrorSegments1307;
         let highest=bottomAlt;
         for(let i=0;i<walk.length;i++){
           const point=walk[i];
@@ -49583,6 +49682,7 @@ function drawPhoto(ctx,s){
            塗る図形の数が数分の1になり、描画コストが大きく下がる(色は変わらない)。 */
         const colorKey=band=>`${band.water?1:0}${band.cloud?"c":""}:${Math.round(Math.log(1+band.distanceKm*1000)*12)}`;
         const merged=[bands[0]];
+        if(bands.waterMirrorSegments1307)merged.waterMirrorSegments1307=bands.waterMirrorSegments1307;
         for(let i=1;i<bands.length;i++){
           const previous=merged[merged.length-1],current=bands[i];
           if(colorKey(previous)===colorKey(current)) previous.hi=current.hi;
@@ -51461,7 +51561,7 @@ function drawPhoto(ctx,s){
         if(!Array.isArray(rings)||!rings.some(waterRingWanted)||!Number.isFinite(originLat)||!Number.isFinite(originLon))return [];
         /* 【v848】海を含めるようになったので鍵を変える。
            前の版の覚え書き（海抜きの形）をそのまま拾わないようにする。 */
-        const cacheKey=`${terrainGeometryKey}|water2|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
+        const cacheKey=`${terrainGeometryKey}|water1307|${originLat.toFixed(6)},${originLon.toFixed(6)}|${rings.length}`;
         const cached=drawPhoto._directInlandWaterGeometry;
         if(cached&&cached.key===cacheKey&&cached.rings===rings)return cached.items;
         const metrePerDegLon=Math.max(1,111320*Math.cos(originLat*D2R)),limitM=waterDrawRadiusKm()*1000,items=[];
@@ -51581,6 +51681,7 @@ function drawPhoto(ctx,s){
           /* 【v849】引き算の元から海を外すための印。 */
           if(projected>=3)items.push({path,distanceKm:distanceTotal/projected/1000,ocean:polygon.waterClass==="ocean",
             /* 【v891】診断用。描画には使わない。 */
+            mirrorSurface1307:{outer:clippedOuter,holes:(polygon.holes||[]).map(hole=>clipInlandVectorRing(hole.points||hole,limitM,originLat,originLon,metrePerDegLon)).filter(ring=>ring.length>=3),level:waterElevation,levelAt:waterLevelAt,samples:elevationSamples.length},
             diagWaterElevation:waterElevation,
             diagMinAlt:Number.isFinite(diagMinAlt)?diagMinAlt:null,
             diagMaxAlt:Number.isFinite(diagMaxAlt)?diagMaxAlt:null,
@@ -53534,6 +53635,7 @@ function drawPhoto(ctx,s){
   }
   terrainFrameComplete1233(ctx,s);
   }catch(error){trainSunWindowsEnd1280(ctx);terrainFrameFailed1233(ctx,error);}
+  finally{waterMirrorScene1307=null;}
 }
 
 /* =========================================================
