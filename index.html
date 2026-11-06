@@ -10339,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1307-tree-water-reflection";
+const APP_VERSION="1308-cypress-reflection-full-crown";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -12896,6 +12896,14 @@ let waterMirrorCache={grid:null,value:0,rows:0};
    保存した木の標高は変えず、盛土や高い岸との本来の高低差は残す。
    長い橋・列車は従来の共有平面を維持し、橋と車両の鏡像を揃える。 */
 let waterMirrorScene1307=null;
+/* 【v1308】普通のKMZには木の設定が無いものもある。小さな静的模型も同じ水面へ。
+   長い橋・走行列車・町・発光演出の共有平面は変更しない。 */
+function kmzLocalWaterModel1308(slot,cfg){
+  if(!slot?.model||!Array.isArray(slot.model.triangles)||slot.train||slot.town||slot.flowerField||slot.firework||slot.glow||slot.standardKmz||slot.bridgeHeightBank1271||slot.model.lines)return false;
+  if(isTreeSpec1306(slot.object)||isTreeSpec1306(slot.model.object))return true;
+  const bounds=kmzCullBounds1305(slot.model);
+  return !!bounds&&cfg.scale>0&&bounds.horizontal*cfg.scale<=40&&(bounds.high-bounds.low)*cfg.scale<=100;
+}
 function waterMirrorRingContains1307(ring,x,y){
   let inside=false;
   for(let i=0,j=ring.length-1;i<ring.length;j=i++){
@@ -12923,12 +12931,17 @@ function waterMirrorForeground1307(surface,x,y){
 }
 function treeWaterMirrorPlane1307(slot,cfg,base){
   const scene=waterMirrorScene1307;
-  if(!scene||!isTreeSpec1306(slot?.object)||
+  if(!scene||!kmzLocalWaterModel1308(slot,cfg)||
      ![scene.lat,scene.lon,cfg.lat,cfg.lon,cfg.altitude,base.distanceKm].every(Number.isFinite))
     return waterMirrorElevationM(base.bearing,cfg.altitude);
   const longitude=((cfg.lon-scene.lon+540)%360)-180;
   const x=longitude*Math.max(1,111320*Math.cos(scene.lat*Math.PI/180));
   const y=(cfg.lat-scene.lat)*111320,distance=Math.hypot(x,y);
+  // 水域アトラスでメッシュに貼られた水は、輪郭推定ではなく実際の面を使う。
+  if(typeof scene.surfaceAt1308==='function'){
+    const actual=scene.surfaceAt1308(cfg,base);
+    if(Number.isFinite(actual))return Math.min(actual,cfg.altitude);
+  }
   let chosen=null,bestGap=Infinity;
   for(const item of scene.items||[]){
     const surface=item.mirrorSurface1307;
@@ -13320,6 +13333,40 @@ function buildBaldCypressModel1306(rawSpec) {
     }
   }
   spray([0,0,.925],.4,.10,.50,1.03);
+
+  // 【v1308】A closed, lobed inner crown fills the large gaps between sprays.
+  // The original feathered branchlets remain outside it, so the silhouette is
+  // soft and irregular rather than an opaque smooth cone. The low-cost crown
+  // is retained in the distant LOD as well as the full model.
+  const crownLevels = [
+    [.245,.045],[.285,.365],[.335,.420],[.385,.365],
+    [.425,.380],[.475,.326],[.515,.333],[.565,.273],
+    [.605,.277],[.655,.220],[.695,.219],[.745,.160],
+    [.785,.154],[.835,.104],[.875,.088],[.925,.040],[.975,.003]
+  ];
+  const crownSides=16;
+  const crownRings=crownLevels.map(([z,radius],level)=>Array.from({length:crownSides},(_,i)=>{
+    const azimuth=i*Math.PI*2/crownSides;
+    // Alternating broad lobes form overlapping boughs and break up the contour.
+    const lobe=1+.075*Math.sin(i*2.7+level*.85)+.035*Math.cos(i*4.1-level*.9);
+    const heightJitter=level===0||level===crownLevels.length-1?0:.008*Math.sin(i*1.8+level*1.2);
+    return vertex(Math.cos(azimuth)*radius*lobe+.004*Math.sin(z*4),
+      Math.sin(azimuth)*radius*lobe,z+heightJitter);
+  }));
+  for(let level=1;level<crownRings.length;level++){
+    const lower=crownRings[level-1],upper=crownRings[level];
+    for(let i=0;i<crownSides;i++){
+      const next=(i+1)%crownSides;
+      const brightness=.84+.12*Math.sin(i*.9+level*.55)+.06*Math.cos(level*2.3+i*1.4);
+      face(lower[i],lower[next],upper[next],shade(foliage,brightness));
+      face(lower[i],upper[next],upper[i],shade(foliage,brightness*1.035));
+    }
+  }
+  for(let i=1;i<crownSides-1;i++){
+    face(crownRings[0][0],crownRings[0][i+1],crownRings[0][i],shade(foliage,.76));
+    const top=crownRings[crownRings.length-1];
+    face(top[0],top[i],top[i+1],shade(foliage,.98));
+  }
 
   const low=[Infinity,Infinity,Infinity], high=[-Infinity,-Infinity,-Infinity];
   for (const point of vertices) for (let axis=0;axis<3;axis++) {
@@ -19001,7 +19048,7 @@ function buildSweetgumKmz1297(rawSpec, location = null) {
     </Model>
   </Placemark></Document>
 </kml>`;
-  return flowerFieldZipStore1220([["doc.kml", kml], [modelPath, dae]]);
+  return flowerFieldZipStore1220([["doc.kml", kml], [modelPath, dae], [TREE_KMZ_METADATA1308,JSON.stringify({version:1,object:model.object})]]);
 }
 function objectStudioSay(text){if(el.objectStudioStatus)el.objectStudioStatus.textContent=text||"";}
 /* 打ち込んだ数字を読む。丸のときは「直径」ひとつを幅と奥行の両方に入れる。 */
@@ -19821,6 +19868,71 @@ document.getElementById("objectStudioOpenBtn").addEventListener("click",()=>{
 /* 【v880】読み込むと**新しいスロットを足して選択する**（上書きしない）。
    `slotId` を渡すと、そのスロットの中身を差し替える（撮影計画からの復元で使う）。 */
 /* 【v1013】applyKmlAltitude: KML の標高も入れる。【v1014】内蔵の明石海峡大橋も含めて既定 false（基部の標高は 0 から）。 */
+/* 【v1308】木のKMZにも寸法・葉色を同梱し、取り込み後も木として扱う。
+   旧ファイルはStarChaseの既知のラクウショウ形状・3色だけを厳密に照合する。
+   他のKMZや判別できない独自色を、名前だけで木へ置き換えない。 */
+const TREE_KMZ_METADATA1308='starchase-tree.json';
+const TREE_KMZ_LEGACY_PALETTES1308={
+  "#54843f": "100,156,75:2|100,157,75:19|100,158,75:6|100,73,53:8|100,73,54:6|101,158,75:3|101,158,76:4|101,159,76:10|101,74,54:6|102,160,76:16|102,160,77:2|102,161,77:3|102,74,54:4|102,74,55:4|103,161,77:3|103,162,77:8|103,163,78:1|103,75,55:18|104,163,78:6|104,164,78:3|104,76,55:4|104,76,56:10|105,164,78:2|105,165,79:8|105,76,56:4|105,77,56:4|106,166,79:4|106,167,80:1|106,77,56:2|106,77,57:12|106,78,57:2|107,167,80:2|107,168,80:4|107,78,57:18|108,170,81:1|108,78,57:2|108,79,58:10|109,79,58:6|110,80,58:2|110,80,59:12|111,81,59:12|111,81,60:2|112,81,60:8|112,82,60:4|113,82,60:6|54,85,41:7|54,86,41:1|55,86,41:4|55,87,41:1|56,87,42:2|56,88,42:7|56,89,42:4|57,89,42:2|57,89,43:1|57,90,43:2|58,90,43:1|58,91,43:2|58,91,44:1|58,92,44:2|59,92,44:3|59,93,44:2|59,93,45:1|60,94,45:4|60,95,45:3|61,95,45:3|61,95,46:5|61,96,46:8|61,97,46:2|62,97,46:14|62,97,47:1|62,98,47:8|63,100,48:7|63,98,47:8|63,99,47:16|64,100,48:10|64,101,48:21|65,101,48:3|65,102,48:4|65,102,49:19|65,103,49:11|66,103,49:8|66,104,49:13|66,104,50:22|67,105,50:34|67,106,50:8|67,106,51:9|68,106,51:11|68,107,51:34|68,108,51:3|69,108,51:8|69,108,52:20|69,109,52:22|70,109,52:10|70,110,52:24|70,110,53:18|70,111,53:11|71,111,53:33|71,112,53:21|71,112,54:9|72,112,54:6|72,113,54:61|72,114,54:26|73,114,54:9|73,114,55:17|73,115,55:60|74,116,55:38|74,116,56:10|74,117,56:21|75,117,56:26|75,118,56:41|75,118,57:7|75,119,57:3|76,119,57:51|76,120,57:33|77,120,57:14|77,121,58:66|77,122,58:20|78,122,58:27|78,123,58:4|78,123,59:34|78,56,41:2|78,57,41:2|78,57,42:8|79,123,59:10|79,124,59:49|79,125,59:9|79,125,60:14|79,57,42:4|79,58,42:10|80,125,60:32|80,126,60:56|80,58,43:2|81,127,60:12|81,127,61:40|81,128,61:35|81,59,43:10|82,128,61:19|82,129,61:23|82,129,62:35|82,130,62:4|82,60,44:18|83,130,62:36|83,131,62:27|83,131,63:16|83,60,44:10|83,61,45:4|84,131,63:13|84,132,63:51|84,133,63:11|84,61,45:14|84,62,45:2|85,133,63:12|85,133,64:22|85,134,64:50|85,62,45:12|85,62,46:4|86,134,64:5|86,135,64:25|86,135,65:26|86,136,65:20|86,62,46:4|86,63,46:12|87,136,65:18|87,137,65:36|87,137,66:8|87,63,46:14|87,63,47:2|87,64,47:10|88,138,66:41|88,139,66:27|88,64,47:14|89,139,66:12|89,139,67:5|89,140,67:43|89,141,67:7|89,65,47:6|89,65,48:8|90,141,67:44|90,141,68:4|90,142,68:29|90,65,48:12|90,66,48:4|91,142,68:12|91,143,68:44|91,144,69:7|91,66,48:4|91,66,49:10|92,144,69:26|92,145,69:37|92,67,49:12|93,145,69:2|93,146,69:5|93,146,70:37|93,147,70:17|93,68,50:6|94,147,70:19|94,148,70:4|94,148,71:26|94,68,50:8|94,69,50:2|95,149,71:31|95,150,71:6|95,150,72:10|95,69,51:14|96,150,72:8|96,151,72:29|96,152,72:2|96,70,51:12|96,70,52:4|97,152,72:8|97,152,73:14|97,153,73:8|97,70,52:2|97,71,52:8|98,153,73:8|98,154,73:18|98,154,74:18|98,155,74:4|98,71,52:14|98,72,53:2|99,155,74:7|99,156,74:7|99,156,75:4|99,72,53:10",
+  "#deb637": "100,73,53:8|100,73,54:6|101,74,54:6|102,74,54:4|102,74,55:4|103,75,55:18|104,76,55:4|104,76,56:10|105,76,56:4|105,77,56:4|106,77,56:2|106,77,57:12|106,78,57:2|107,78,57:18|108,78,57:2|108,79,58:10|109,79,58:6|110,80,58:2|110,80,59:12|111,81,59:12|111,81,60:2|112,81,60:8|112,82,60:4|113,82,60:6|143,117,35:6|144,118,36:4|145,119,36:2|146,119,36:1|147,120,36:1|147,121,36:2|147,121,37:1|148,121,37:3|148,122,37:1|149,122,37:7|150,123,37:1|151,124,37:2|152,125,38:1|153,126,38:2|154,126,38:1|154,127,38:1|155,127,38:4|156,128,39:1|157,129,39:3|158,129,39:1|158,130,39:1|159,130,39:1|159,131,40:1|160,131,40:6|160,132,40:2|161,132,40:5|162,132,40:1|162,133,40:6|163,133,40:4|163,134,40:8|164,134,41:4|164,135,41:2|165,135,41:8|165,136,41:3|166,136,41:9|167,137,41:11|168,137,42:4|168,138,42:7|169,138,42:4|169,139,42:4|170,139,42:11|170,140,42:6|171,140,42:12|171,141,42:1|172,141,42:1|172,141,43:15|173,141,43:2|173,142,43:9|174,142,43:1|174,143,43:20|175,143,43:10|175,144,43:4|176,144,43:2|176,144,44:17|176,145,44:4|177,145,44:19|178,146,44:15|179,146,44:2|179,147,44:15|180,147,44:1|180,147,45:9|180,148,45:9|181,148,45:12|181,149,45:7|182,149,45:19|182,150,45:1|183,150,45:20|184,151,45:1|184,151,46:19|185,151,46:8|185,152,46:15|186,152,46:16|186,153,46:11|187,153,46:20|187,154,46:6|188,154,46:4|188,154,47:19|189,155,47:26|190,155,47:7|190,156,47:30|191,156,47:13|191,157,47:24|192,157,47:5|192,157,48:9|192,158,48:13|193,158,48:24|193,159,48:6|194,159,48:36|195,159,48:3|195,160,48:28|196,160,48:6|196,161,49:19|197,161,49:11|197,162,49:18|198,162,49:18|198,163,49:10|199,163,49:26|199,164,49:2|200,164,49:5|200,164,50:22|201,164,50:10|201,165,50:22|202,165,50:15|202,166,50:21|203,166,50:25|203,167,50:15|204,167,50:10|204,167,51:18|204,168,51:4|205,168,51:35|206,168,51:1|206,169,51:19|207,169,51:8|207,170,51:21|208,170,51:15|208,170,52:2|208,171,52:8|209,171,52:24|209,172,52:11|210,172,52:31|210,173,52:2|211,173,52:35|212,173,52:5|212,174,52:7|212,174,53:19|213,174,53:12|213,175,53:19|214,175,53:22|214,176,53:10|215,176,53:29|215,177,53:5|216,177,53:15|216,177,54:15|217,178,54:35|218,178,54:10|218,179,54:21|219,179,54:9|219,180,54:11|220,180,54:18|220,180,55:7|220,181,55:9|221,181,55:30|221,182,55:4|222,182,55:31|223,182,55:3|223,183,55:20|224,183,55:8|224,184,55:2|224,184,56:18|225,184,56:21|225,185,56:16|226,185,56:21|226,186,56:9|227,186,56:19|227,187,56:2|228,187,56:28|228,187,57:7|229,187,57:6|229,188,57:15|230,188,57:12|230,189,57:16|231,189,57:15|231,190,57:10|232,190,57:23|232,190,58:5|233,191,58:20|234,191,58:1|234,192,58:26|235,192,58:9|235,193,58:18|236,193,58:14|236,194,58:3|236,194,59:8|237,194,59:31|237,195,59:7|238,195,59:25|238,196,59:1|239,196,59:23|240,196,59:4|240,197,59:8|240,197,60:13|241,197,60:12|241,198,60:11|242,198,60:13|242,199,60:8|243,199,60:22|243,200,60:3|244,200,60:20|244,200,61:4|245,200,61:1|245,201,61:18|246,201,61:8|246,202,61:20|247,202,61:10|247,203,61:11|248,203,61:13|248,204,62:3|249,204,62:14|249,205,62:1|250,205,62:27|251,205,62:2|251,206,62:13|252,206,62:5|252,207,62:7|252,207,63:5|253,207,63:6|253,208,63:7|254,208,63:15|254,209,63:3|255,209,63:16|255,210,63:10|255,210,64:4|255,211,64:12|255,212,64:24|255,213,64:18|255,214,65:7|255,215,65:10|255,216,65:11|255,217,65:4|255,217,66:11|255,218,66:8|255,219,66:8|255,220,66:3|255,220,67:7|255,221,67:12|255,222,67:4|255,223,67:6|255,224,68:5|255,225,68:5|255,226,68:3|255,227,68:1|255,227,69:5|255,228,69:4|255,229,69:4|255,231,70:3|255,232,70:4|255,234,71:1|78,56,41:2|78,57,41:2|78,57,42:8|79,57,42:4|79,58,42:10|80,58,43:2|81,59,43:10|82,60,44:18|83,60,44:10|83,61,45:4|84,61,45:14|84,62,45:2|85,62,45:12|85,62,46:4|86,62,46:4|86,63,46:12|87,63,46:14|87,63,47:2|87,64,47:10|88,64,47:14|89,65,47:6|89,65,48:8|90,65,48:12|90,66,48:4|91,66,48:4|91,66,49:10|92,67,49:12|93,68,50:6|94,68,50:8|94,69,50:2|95,69,51:14|96,70,51:12|96,70,52:4|97,70,52:2|97,71,52:8|98,71,52:14|98,72,53:2|99,72,53:10",
+  "#d77b28": "100,73,53:8|100,73,54:6|101,74,54:6|102,74,54:4|102,74,55:4|103,75,55:18|104,76,55:4|104,76,56:10|105,76,56:4|105,77,56:4|106,77,56:2|106,77,57:12|106,78,57:2|107,78,57:18|108,78,57:2|108,79,58:10|109,79,58:6|110,80,58:2|110,80,59:12|111,81,59:12|111,81,60:2|112,81,60:8|112,82,60:4|113,82,60:6|138,79,26:3|139,79,26:3|139,80,26:2|140,80,26:4|141,81,26:1|142,81,26:2|143,82,27:5|144,82,27:3|144,83,27:1|145,83,27:5|146,84,27:2|147,84,27:1|148,85,28:2|149,85,28:1|150,86,28:5|151,86,28:1|152,87,28:3|153,87,28:1|153,88,29:1|154,88,29:2|155,88,29:1|155,89,29:8|156,89,29:5|157,90,29:6|158,90,29:11|158,91,29:1|159,91,29:2|159,91,30:5|160,91,30:4|160,92,30:8|161,92,30:9|162,92,30:3|162,93,30:11|163,93,30:8|163,94,30:1|164,94,30:4|164,94,31:6|165,94,31:12|165,95,31:6|166,95,31:14|167,95,31:5|167,96,31:12|168,96,31:7|169,96,31:2|169,97,31:21|169,97,32:4|170,97,32:17|170,98,32:2|171,98,32:23|172,98,32:7|172,99,32:3|173,99,32:21|174,100,32:13|174,99,32:5|175,100,32:6|175,100,33:12|176,100,33:6|176,101,33:16|177,101,33:19|177,102,33:1|178,102,33:21|179,102,33:20|179,103,33:6|180,103,33:15|180,103,34:10|181,103,34:16|181,104,34:10|182,104,34:24|183,104,34:4|183,105,34:23|184,105,34:34|184,106,34:4|185,106,34:34|185,106,35:4|186,106,35:15|186,107,35:12|187,107,35:31|188,107,35:12|188,108,35:29|189,108,35:28|190,108,35:4|190,109,35:21|191,109,35:8|191,109,36:22|192,110,36:32|193,110,36:17|193,111,36:7|194,111,36:42|195,111,36:6|195,112,36:21|196,112,36:22|196,112,37:14|197,112,37:8|197,113,37:30|198,113,37:36|199,114,37:27|200,114,37:18|200,115,37:8|201,115,37:32|202,115,37:1|202,115,38:6|202,116,38:20|203,116,38:35|204,116,38:5|204,117,38:30|205,117,38:31|205,118,38:3|206,118,38:32|207,118,38:13|207,118,39:10|207,119,39:13|208,119,39:34|209,119,39:12|209,120,39:18|210,120,39:36|211,120,39:4|211,121,39:27|212,121,39:21|212,122,40:2|213,122,40:34|214,122,40:21|214,123,40:13|215,123,40:32|216,123,40:9|216,124,40:14|217,124,40:34|218,124,40:5|218,125,40:4|218,125,41:25|219,125,41:28|219,126,41:2|220,126,41:26|221,126,41:25|221,127,41:8|222,127,41:25|223,127,41:4|223,128,41:7|223,128,42:16|224,128,42:29|225,128,42:6|225,129,42:11|226,129,42:24|226,130,42:6|227,130,42:26|228,130,42:17|228,131,42:11|228,131,43:1|229,131,43:34|230,131,43:12|230,132,43:16|231,132,43:25|232,132,43:1|232,133,43:21|233,133,43:30|233,134,43:2|234,134,43:5|234,134,44:15|235,134,44:15|235,135,44:7|236,135,44:30|237,135,44:5|237,136,44:14|238,136,44:27|239,136,44:1|239,137,44:14|239,137,45:10|240,137,45:14|240,138,45:2|241,138,45:14|242,138,45:16|242,139,45:10|243,139,45:17|244,139,45:5|244,140,45:13|245,140,46:13|246,140,46:1|246,141,46:17|247,141,46:13|247,142,46:3|248,142,46:14|249,142,46:3|249,143,46:3|250,143,46:8|250,143,47:14|251,143,47:4|251,144,47:14|252,144,47:10|253,144,47:1|253,145,47:6|254,145,47:7|254,146,47:1|255,146,47:7|255,146,48:8|255,147,48:18|255,148,48:11|255,149,48:9|255,149,49:10|255,150,49:6|255,151,49:8|255,152,49:6|255,152,50:1|255,153,50:7|255,154,50:6|255,155,50:4|255,156,51:4|255,157,51:3|255,158,51:1|78,56,41:2|78,57,41:2|78,57,42:8|79,57,42:4|79,58,42:10|80,58,43:2|81,59,43:10|82,60,44:18|83,60,44:10|83,61,45:4|84,61,45:14|84,62,45:2|85,62,45:12|85,62,46:4|86,62,46:4|86,63,46:12|87,63,46:14|87,63,47:2|87,64,47:10|88,64,47:14|89,65,47:6|89,65,48:8|90,65,48:12|90,66,48:4|91,66,48:4|91,66,49:10|92,67,49:12|93,68,50:6|94,68,50:8|94,69,50:2|95,69,51:14|96,70,51:12|96,70,52:4|97,70,52:2|97,71,52:8|98,71,52:14|98,72,53:2|99,72,53:10"
+};
+function treeKmzPalette1308(model){
+  if(!Array.isArray(model?.triangleColors)||model.triangleColors.length!==model.triangles?.length)return null;
+  const counts=new Map();
+  for(let i=0;i<model.triangleColors.length;i++){
+    const rgb=model.triangleColors[i];
+    if(!Array.isArray(rgb)||rgb.length!==3||!rgb.every(channel=>Number.isInteger(channel)&&channel>=0&&channel<=255)||
+       (Number.isFinite(model.triangleAlphas?.[i])&&model.triangleAlphas[i]!==1))return null;
+    const key=rgb.join(',');counts.set(key,(counts.get(key)||0)+1);
+  }
+  return [...counts].sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:0).map(([rgb,count])=>rgb+':'+count).join('|');
+}
+function treeKmzImportSpec1308(entries,daeName,daeText,model,kmlText){
+  try{
+    if(entries.has(TREE_KMZ_METADATA1308)){
+      const bytes=entries.get(TREE_KMZ_METADATA1308);
+      if(!bytes||bytes.byteLength>16000)return null;
+      const metadata=JSON.parse(new TextDecoder('utf-8').decode(bytes));
+      if(metadata?.version!==1||!isTreeSpec1306(metadata.object))return null;
+      return objectSpecOf(metadata.object);
+    }
+    // v1306の生成物以外には適用しない。別の木や自作KMZの誤変換を防ぐ。
+    if(daeName!=='models/baldcypress.dae'||model?.triangles?.length!==2996||
+       ![model.width,model.depth,model.height].every(Number.isFinite)||Math.abs(model.width-model.depth)>.002)return null;
+    const xml=new DOMParser().parseFromString(daeText,'application/xml');
+    if(xml.getElementsByTagName('parsererror').length||
+       xmlFirstByLocalName(xml,'authoring_tool')?.textContent?.trim()!=='StarChase'||
+       xmlFirstByLocalName(xml,'up_axis')?.textContent?.trim()!=='Z_UP'||
+       !xmlChildrenByLocalName(xml,'geometry').some(node=>node.getAttribute('id')==='sweetgumGeometry')||
+       !xmlChildrenByLocalName(xml,'node').some(node=>node.getAttribute('id')==='sweetgumTree'))return null;
+    const palette=treeKmzPalette1308(model);
+    const foliageColor=Object.keys(TREE_KMZ_LEGACY_PALETTES1308).find(color=>TREE_KMZ_LEGACY_PALETTES1308[color]===palette);
+    if(!foliageColor)return null;
+    const kml=new DOMParser().parseFromString(kmlText,'application/xml');
+    const name=xmlFirstByLocalName(kml,'name')?.textContent||'';
+    return objectSpecOf({kind:'baldcypress',name,height:model.height,width:model.width,foliageColor});
+  }catch(error){return null;}
+}
+function treeKmzBuildImported1308(spec){
+  if(!isTreeSpec1306(spec))return null;
+  // Fresh meshes avoid mutating the shared creator/placement cache.
+  return spec.kind==='baldcypress'?buildBaldCypressModel1306(spec):buildSweetgumModel1297(spec);
+}
+function treeKmzRestoreSavedSpec1308(slot,saved){
+  // Source files remain authoritative for ordinary KMZ. Only a positively
+  // identified generated tree may recover its subsequent user edits.
+  if(slot?.treeKmzImported1308!==true||!isTreeSpec1306(slot.object)||!isTreeSpec1306(saved))return false;
+  const spec=objectSpecOf(saved);
+  if(!spec||spec.kind!==slot.object.kind)return false;
+  const model=treeKmzBuildImported1308(spec);
+  if(!model)return false;
+  model.fileName=slot.model?.fileName||slot.fileName;
+  model.daeName=slot.model?.daeName;
+  slot.object=spec;slot.model=model;
+  return true;
+}
+
 async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,applyKmlAltitude=false,sourceDataUrl="",slotId=null}={}){
   const entries=await readKmzEntries(arrayBuffer),decoder=new TextDecoder("utf-8");
   if(entries.has("flower-field.json")){
@@ -19840,7 +19952,11 @@ async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,
     }
     if(!daeName)daeName=[...entries.keys()].find(name=>name.toLowerCase().endsWith(".dae"));
     if(!daeName)throw new Error("KMZ内に.dae形式の3Dモデルが見つかりません。");
-    const model=parseColladaBuilding(decoder.decode(entries.get(daeName)));model.fileName=fileName;model.daeName=daeName;
+    const daeText1308=decoder.decode(entries.get(daeName));
+    const parsedModel1308=parseColladaBuilding(daeText1308);
+    const treeSpec1308=treeKmzImportSpec1308(entries,daeName,daeText1308,parsedModel1308,kmlText);
+    const model=(treeSpec1308&&treeKmzBuildImported1308(treeSpec1308))||parsedModel1308;
+    model.fileName=fileName;model.daeName=daeName;
     const kmlLocation=kmzBuildingKmlLocation;
 
     /* 【v880】置き場所の初期値。
@@ -19857,6 +19973,8 @@ async function loadKmzBuildingBytes(arrayBuffer,fileName,{applyKmlLocation=true,
       kmzSlots.push(slot);
     }
     slot.model=model;slot.fileName=fileName;slot.kmlLocation=kmlLocation;
+    if(treeSpec1308){slot.object=treeSpec1308;slot.freeObject1270=true;slot.treeKmzImported1308=true;}
+    else{delete slot.treeKmzImported1308;if(slotId){delete slot.object;delete slot.freeObject1270;}}
     if(sourceDataUrl)slot.sourceDataUrl=sourceDataUrl;
     if(applyKmlLocation&&kmlLocation){
       slot.lat=kmlLocation.lat;slot.lon=kmlLocation.lon;
@@ -33620,6 +33738,7 @@ async function restoreKmzBuildingFromPlan(saved){
       await loadKmzBuildingBytes(buffer,item.fileName||"building.kmz",
         {applyKmlLocation:false,sourceDataUrl:item.sourceDataUrl});
       if(token!==kmzBuildingRestoreToken)return false;
+      treeKmzRestoreSavedSpec1308(kmzActiveSlot(),item.object);
       }
       const slot=kmzActiveSlot();
       if(slot){
@@ -44790,6 +44909,119 @@ function glTerrainBuildMesh(columns,altGrid,waterGrid,cloudGrid,layerKm,layerCou
   return {data,count:n/GL_STRIDE,runs};
   }finally{glTerrainMeshWorkspaceDepth--;}
 }
+/* 【v1308】Water painted by the WebGL atlas lies on the uploaded terrain
+   triangles, not on the polygon's separate lower-decile estimate. Retain the
+   actual screen/Mercator mapping and recover its height only where that atlas
+   really paints water. Tree base altitude is never a water-level input. */
+const waterMirrorAtlasPixels1308=new WeakMap();
+function waterMirrorMeshKeep1308(geom,key,s,W,H,eye,fisheye){
+  if(drawPhoto._waterMirrorMesh1308?.key===key)return;
+  if(fisheye){drawPhoto._waterMirrorMesh1308=null;return;}
+  const source=geom.data,records=[];
+  for(let i=0;i+20<geom.count*7;i+=21){
+    if(source[i+4]>=2)continue; // Atlas is deliberately disabled on steep cells.
+    for(let j=0;j<3;j++){
+      const at=i+j*7;
+      records.push(source[at],source[at+1],source[at+5],source[at+6]);
+    }
+  }
+  const basis=photoMercatorBasis(s.lat,s.lon),az=s.facingAz*Math.PI/180,alt=s.facingAlt*Math.PI/180;
+  const forward=[Math.sin(az)*Math.cos(alt),Math.cos(az)*Math.cos(alt),Math.sin(alt)];
+  const right=[Math.cos(az),-Math.sin(az),0];
+  const up=[-Math.sin(az)*Math.sin(alt),-Math.cos(az)*Math.sin(alt),Math.cos(alt)];
+  const field={key,data:Float32Array.from(records),basis,eye,W,H,forward,right,up,
+    pixels:W/2/Math.tan(s.fovH*Math.PI/360),index:null,
+    metresPerTile:40075016.686*Math.cos(s.lat*Math.PI/180)/(2**16)};
+  field.heights=new Float64Array(field.data.length/4);
+  for(let at=0;at<field.data.length;at+=4)field.heights[at/4]=waterMirrorMeshVertexHeight1308(field,field.data[at],field.data[at+1],field.data[at+2],field.data[at+3]);
+  drawPhoto._waterMirrorMesh1308=field;
+}
+function waterMirrorMeshVertexHeight1308(field,sx,sy,mx,my){
+  const east=(mx-field.basis.x(0,0))*field.metresPerTile,north=(field.basis.y(0,0)-my)*field.metresPerTile;
+  const distanceM=Math.hypot(east,north),nx=(sx-field.W/2)/field.pixels,ny=(field.H/2-sy)/field.pixels;
+  const direction=field.forward.map((v,j)=>v+nx*field.right[j]+ny*field.up[j]);
+  const flat=Math.hypot(direction[0],direction[1]);
+  return flat>1e-9?field.eye+distanceM*direction[2]/flat+distanceM*distanceM/(2*6371000*(7/6)):NaN;
+}
+function waterMirrorAtlasSample1308(atlas,field,mx,my){
+  const canvas=atlas.canvas,N=WATER_ATLAS_N;
+  const u=(mx-atlas.ox+field.basis.ox)/N,v=(my-atlas.oy+field.basis.oy)/N;
+  if(!(u>=0&&v>=0&&u<1&&v<1))return null;
+  let cache=waterMirrorAtlasPixels1308.get(canvas);
+  if(!cache||cache.version!==atlas.version){cache={version:atlas.version,blocks:new Map()};waterMirrorAtlasPixels1308.set(canvas,cache);}
+  const px=u*canvas.width-.5,py=v*canvas.height-.5,x0=Math.floor(px),y0=Math.floor(py),fx=px-x0,fy=py-y0;
+  const pixel=(x,y)=>{
+    x=Math.max(0,Math.min(canvas.width-1,x));y=Math.max(0,Math.min(canvas.height-1,y));
+    const bx=Math.floor(x/64)*64,by=Math.floor(y/64)*64,key=bx+','+by;
+    let block=cache.blocks.get(key);
+    if(!block){
+      const width=Math.min(64,canvas.width-bx),height=Math.min(64,canvas.height-by);
+      try{block={width,data:canvas.getContext('2d',{willReadFrequently:true}).getImageData(bx,by,width,height).data};}
+      catch(_error){return null;}
+      if(cache.blocks.size>=128)cache.blocks.delete(cache.blocks.keys().next().value);
+      cache.blocks.set(key,block);
+    }
+    const at=((y-by)*block.width+x-bx)*4;return [block.data[at],block.data[at+1]];
+  };
+  const a=pixel(x0,y0),b=pixel(x0+1,y0),c=pixel(x0,y0+1),d=pixel(x0+1,y0+1);
+  if(!a||!b||!c||!d)return null;
+  const channel=i=>(a[i]*(1-fx)+b[i]*fx)*(1-fy)+(c[i]*(1-fx)+d[i]*fx)*fy;
+  return channel(1)>127.5?channel(0)>127.5:null;
+}
+function waterMirrorMeshIndex1308(field,atlas){
+  const xMin=atlas.ox-field.basis.ox,yMin=atlas.oy-field.basis.oy,N=WATER_ATLAS_N;
+  const key=xMin+','+yMin+','+N;
+  if(field.index?.key===key)return field.index;
+  const bins=new Map(),broad=[],data=field.data,cell=.125;
+  for(let at=0;at<data.length;at+=12){
+    const left=Math.max(xMin,Math.min(data[at+2],data[at+6],data[at+10]));
+    const right=Math.min(xMin+N,Math.max(data[at+2],data[at+6],data[at+10]));
+    const top=Math.max(yMin,Math.min(data[at+3],data[at+7],data[at+11]));
+    const bottom=Math.min(yMin+N,Math.max(data[at+3],data[at+7],data[at+11]));
+    if(left>right||top>bottom)continue;
+    const x0=Math.floor(left/cell),x1=Math.floor(right/cell),y0=Math.floor(top/cell),y1=Math.floor(bottom/cell);
+    if((x1-x0+1)*(y1-y0+1)>128){broad.push(at);continue;}
+    for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++){
+      const binKey=x+','+y;let bin=bins.get(binKey);if(!bin){bin=[];bins.set(binKey,bin);}bin.push(at);
+    }
+  }
+  return field.index={key,bins,broad};
+}
+function waterMirrorMeshPoint1308(field,atlas,mx,my,distanceM){
+  if(waterMirrorAtlasSample1308(atlas,field,mx,my)!==true)return null;
+  const index=waterMirrorMeshIndex1308(field,atlas),bin=index.bins.get(Math.floor(mx/.125)+','+Math.floor(my/.125))||[];
+  const indices=index.broad.length?bin.concat(index.broad).sort((a,b)=>a-b):bin,data=field.data;
+  for(let i=indices.length-1;i>=0;i--){
+    const at=indices[i],x0=data[at+2],y0=data[at+3],x1=data[at+6],y1=data[at+7],x2=data[at+10],y2=data[at+11];
+    const denominator=(y1-y2)*(x0-x2)+(x2-x1)*(y0-y2);
+    if(Math.abs(denominator)<1e-12)continue;
+    const a=((y1-y2)*(mx-x2)+(x2-x1)*(my-y2))/denominator;
+    const b=((y2-y0)*(mx-x2)+(x0-x2)*(my-y2))/denominator,c=1-a-b;
+    if(a<-.00001||b<-.00001||c<-.00001)continue;
+    const height=a*field.heights[at/4]+b*field.heights[at/4+1]+c*field.heights[at/4+2];
+    if(Number.isFinite(height))return height;
+  }
+  return null;
+}
+function waterMirrorMeshSampler1308(field,atlas){
+  const memo=new Map();
+  return (cfg,base)=>{
+    if(!field||![base?.distanceKm,base?.bearing].every(Number.isFinite))return null;
+    const key=[cfg.lat,cfg.lon,base.distanceKm,base.bearing].join('|');
+    if(memo.has(key))return memo.get(key);
+    const distance=base.distanceKm*1000,az=base.bearing*Math.PI/180;
+    let result=null;
+    // Find the closest actual water before this object, not the nearest lake
+    // in some other direction. A 2m walk is finer than the source DEM mesh.
+    for(let gap=0;gap<=Math.min(200,distance-1);gap+=2){
+      const metres=distance-gap,mx=field.basis.x(Math.sin(az),metres/1000),my=field.basis.y(Math.cos(az),metres/1000);
+      const level=waterMirrorMeshPoint1308(field,atlas,mx,my,metres);
+      if(Number.isFinite(level)){result=level;break;}
+    }
+    memo.set(key,result);return result;
+  };
+}
+
 function glTerrainUpload(geom,key){
   const x=glTerrain,gl=x.gl;
   if(x.uploadedKey===key)return;
@@ -44972,6 +45204,9 @@ function terrainFrameFailed1233(ctx,error){
 
 function drawPhoto(ctx,s){
   waterMirrorScene1307=null;
+  const waterMirrorWanted1308=waterReflectionEnabled&&!arActive&&kmzSlots.some(slot=>slot?.visible&&kmzLocalWaterModel1308(slot,{scale:slot.scale||1}));
+  if(waterMirrorWanted1308&&!drawPhoto._waterMirrorWanted1308)drawPhoto._terrainRenderKey=null;
+  drawPhoto._waterMirrorWanted1308=waterMirrorWanted1308;
   drawPhoto._railReflectionMask1279=null;   /* 【v1279】前の画角・反射OFFの型を持ち越さない */
   highDetailClearForObserver1248();
   terrainMotionPrepare1224();
@@ -46501,23 +46736,28 @@ function drawPhoto(ctx,s){
            1200×800（縦は800×1200）の透明Canvasを毎回消去していた。 */
         /* 水際では従来の距離走査が湖面を0件と判定することがある。
            直接投影した内水面があれば、最終水域マスクを正としてリフレ生成を続ける。 */
-        const directWaterItems1307=!highDetailOn?directInlandWaterGeometry():[];
+        const layeredWater1308=TERRAIN_RENDERER==="layered"||(TERRAIN_RENDERER==="legacy"&&gradingRects1302.length);
+        const directWaterItems1307=!highDetailOn&&layeredWater1308?directInlandWaterGeometry():[];
         waterMirrorScene1307={lat:s.lat,lon:s.lon,items:directWaterItems1307};
-        if(highDetailOn){
-          const mirrorSegmentsMemo1307=new Map();
-          waterMirrorScene1307.segmentsAt=bearing=>{
-            if(!Number.isFinite(bearing)||(TERRAIN_RENDERER!=="layered"&&
-               !(TERRAIN_RENDERER==="legacy"&&gradingRects1302.length)))return [];
-            const az=((bearing%360)+360)%360;
-            if(mirrorSegmentsMemo1307.has(az))return mirrorSegmentsMemo1307.get(az);
-            // The existing memo includes the DEM generation, water polygons,
-            // observer, grading revision and HD quality. No raw terrain changes.
-            const bands=azimuthVisibleBands(az,-89,false,true);
-            const segments=bands&&Array.isArray(bands.waterMirrorSegments1307)
-              ?bands.waterMirrorSegments1307:[];
-            mirrorSegmentsMemo1307.set(az,segments);
-            return segments;
-          };
+        const mirrorSegmentsMemo1308=new Map();
+        waterMirrorScene1307.segmentsAt=bearing=>{
+          if(!Number.isFinite(bearing)||TERRAIN_RENDERER==="world")return [];
+          const az=((bearing%360)+360)%360;
+          if(mirrorSegmentsMemo1308.has(az))return mirrorSegmentsMemo1308.get(az);
+          const previousFine=normalFineWaterMaskPass;
+          let bands;
+          try{
+            normalFineWaterMaskPass=!highDetailOn&&!!layeredWater1308;
+            bands=azimuthVisibleBands(az,-89,false,true);
+          }finally{normalFineWaterMaskPass=previousFine;}
+          const segments=bands?.waterMirrorSegments1307||[];
+          mirrorSegmentsMemo1308.set(az,segments);return segments;
+        };
+        /* WATER_MIRROR_ATLAS1308 */
+        if(!highDetailOn&&(TERRAIN_RENDERER==="layered"||(TERRAIN_RENDERER==="legacy"&&gradingRects1302.length))&&
+           drawPhoto._terrainRenderKey===terrainRenderKey&&drawPhoto._waterAtlasMasksReady&&waterAtlas.ready&&waterAtlas.canvas&&
+           drawPhoto._waterMirrorMesh1308?.key===terrainGeometryKey){
+          waterMirrorScene1307.surfaceAt1308=waterMirrorMeshSampler1308(drawPhoto._waterMirrorMesh1308,waterAtlas);
         }
         const directInlandReflectionAvailable=directWaterItems1307.length>0;
         if(!waterReflectionEnabled||(!confirmedWaterAz.some(Boolean)&&!directInlandReflectionAvailable)) return false;
@@ -49499,7 +49739,7 @@ function drawPhoto(ctx,s){
            こちらの経路にも残っていた。 */
         const eyeElevationForWater=highDetailProjectionGround1246(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM();
         const waterEyeAbove=new Array(walk.length).fill(null);
-        const waterMirrorSegments1307=highDetailOn&&!skylineOnly?[]:null;
+        const waterMirrorSegments1307=!skylineOnly?[]:null;
         let waterElevation=null,waterBodyCount=0;
         for(let i=0;i<walk.length;){
           if(!waterFlags[i]){i++;continue;}
@@ -52201,6 +52441,7 @@ function drawPhoto(ctx,s){
           }
           const gd0=performance.now();
           glTerrainUpload(geom,glKey);
+          if(drawPhoto._waterMirrorWanted1308&&glMeshOn&&!highDetailOn&&sharedTerrainProjectionPass!=="replay")waterMirrorMeshKeep1308(geom,terrainGeometryKey,s,W,H,highDetailProjectionGround1246(realTerrainState.observerElevation||0)+eyeHeightAboveGroundM(),useDiagonalFisheye);
           const nearGrassRangeKm=Math.max(NEAR_GRASS_RANGE_KM,eyeHeightAboveGroundM()*2/1000);
           glTerrainDraw(0,W,H,terrainDayFactor,normalSeparateWaterColorPass||photoWaterOff(),nearGrassRangeKm,waterAtlasActive);   /* 【v1000】水域OFFなら水も陸の色（写真） */
           tctx.drawImage(glTerrain.canvas,0,0);
