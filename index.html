@@ -10339,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1309-reflection-occlusion";
+const APP_VERSION="1310-solar-apparent-position";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -11038,6 +11038,117 @@ function raDecToAltAz(raDeg,decDeg,jd,latDeg,lonDeg){
   let azFromSouth=atan2d(sin(Hs), cos(Hs)*sin(latDeg)-tan(decDeg)*cos(latDeg));
   let az=norm360(azFromSouth+180);
   return {alt,az};
+}
+
+/* v1310: apparent Sun shared by drawing, aiming, tracks and sea-contact checks.
+ * The existing sunPosition / raDecToAltAz and state.sunAltAz remain geometric.
+ * Refraction: Saemundsson (1986), Meeus ch.16, standard 1010 hPa / 10 C.
+ * Below -1 degree use the safe continuous extension documented by Astronomy
+ * Engine's Refraction(normal): clamp the evaluation and taper towards nadir.
+ * This is a standard-atmosphere estimate, not a prediction of local mirages.
+ * https://github.com/cosinekitty/astronomy/blob/master/source/js/astronomy.d.ts
+ * https://britastro.org/2019/atmospheric-refraction
+ */
+function solarRefractionDeg1310(geometricAltitude){
+  if(!Number.isFinite(geometricAltitude)||geometricAltitude<=-90||geometricAltitude>=90)return 0;
+  const h=Math.max(-1,geometricAltitude);
+  let correction=(1.02/Math.tan((h+10.3/(h+5.11))*Math.PI/180))/60;
+  if(geometricAltitude<-1)correction*=(geometricAltitude+90)/89;
+  return Math.max(0,correction);
+}
+function solarRefractedAltitude1310(geometricAltitude){
+  return Number.isFinite(geometricAltitude)?Math.min(90,geometricAltitude+solarRefractionDeg1310(geometricAltitude)):NaN;
+}
+function solarApparentFromGeometric1310(alt,az,sun,eye=0){
+  if(!Number.isFinite(alt)||!Number.isFinite(az)||alt<-90||alt>90)return null;
+  const distance=sun&&Number.isFinite(sun.distAU)&&sun.distAU>0?sun.distAU:1;
+  const eyeM=Number.isFinite(eye)?eye:0;
+  /* Solar horizontal parallax is 8.794 arcsec at 1 AU. A spherical observer
+     subtraction changes the altitude by up to 0.0025 degree. Its neglected
+     geodetic flattening term is below 0.03 arcsec for terrestrial observers. */
+  const ratio=Math.sin((8.794/3600/distance)*Math.PI/180)*(1+eyeM/6378140);
+  const radians=alt*Math.PI/180;
+  const geometricAlt=Math.atan2(Math.sin(radians)-ratio,Math.max(0,Math.cos(radians)))*180/Math.PI;
+  const refractionDeg=solarRefractionDeg1310(geometricAlt);
+  return {alt:solarRefractedAltitude1310(geometricAlt),az:((az%360)+360)%360,
+    geometricAlt,geocentricAlt:alt,refractionDeg,parallaxDeg:alt-geometricAlt};
+}
+function solarApparentAltAz1310(jd,lat,lon,eye=0,sun=null,geometric=null){
+  if(!geometric){
+    if(![jd,lat,lon].every(Number.isFinite)||lat<-90||lat>90)return null;
+    sun=sun||sunPosition(jd);
+    geometric=raDecToAltAz(sun.ra,sun.dec,jd,lat,lon);
+  }
+  return solarApparentFromGeometric1310(geometric.alt,geometric.az,sun,eye);
+}
+function solarApparentDisk1310(jd,lat,lon,eye=0,sun=null,geometric=null){
+  if(!sun){
+    if(!Number.isFinite(jd))return null;
+    sun=sunPosition(jd);
+  }
+  const center=solarApparentAltAz1310(jd,lat,lon,eye,sun,geometric);
+  if(!center)return null;
+  const radius=sun&&Number.isFinite(sun.angularRadiusDeg)&&sun.angularRadiusDeg>0?sun.angularRadiusDeg:.26656;
+  const topGeometric=Math.min(90,center.geometricAlt+radius),bottomGeometric=Math.max(-90,center.geometricAlt-radius);
+  const topAlt=solarRefractedAltitude1310(topGeometric);
+  const bottomAlt=solarRefractedAltitude1310(bottomGeometric);
+  return {...center,centerRayAlt:center.alt,topAlt,bottomAlt,midAlt:(topAlt+bottomAlt)/2,
+    verticalRadiusDeg:(topAlt-bottomAlt)/2,angularRadiusDeg:radius};
+}
+
+/* 太陽の幾何高度（薄明・照明用）と、見かけの位置（写真用）を分離する。 */
+function solarObserverEye1310(){
+  const eye=highDetailProjectionEye1246();return Number.isFinite(eye)?eye:0;
+}
+function solarStateDisk1310(s){
+  if(!s||!s.sunAltAz)return null;
+  return solarApparentDisk1310(s.jd,s.lat,s.lon,solarObserverEye1310(),s.sun,s.sunAltAz);
+}
+function solarDisplayOffset1310(){
+  // 海面の実際の俯角をOFFにした比較表示では、島影と同じ原点へ写す。
+  return arActive?0:renderedSeaHorizonAltDeg()-currentSeaHorizonAltitudeDeg();
+}
+function solarDisplayDisk1310(s){
+  const d=solarStateDisk1310(s);if(!d)return null;
+  const offset=solarDisplayOffset1310(),mid=d.geometricAlt>85?d.centerRayAlt:d.midAlt;
+  return {...d,alt:mid+offset,midAlt:mid+offset,centerRayAlt:d.centerRayAlt+offset,
+    topAlt:d.topAlt+offset,bottomAlt:d.bottomAlt+offset};
+}
+function solarDisplayPoint1310(s){
+  const d=solarDisplayDisk1310(s);return d?{az:d.az,alt:d.centerRayAlt}:s.sunAltAz;
+}
+function solarDisplayPath1310(s){
+  const eye=solarObserverEye1310(),offset=solarDisplayOffset1310(),path=s.sunPath;
+  const cached=solarDisplayPath1310.cache;
+  if(cached&&cached.path===path&&cached.eye===eye&&cached.offset===offset)return cached.points;
+  const points=(path||[]).map(p=>{
+    const a=solarApparentFromGeometric1310(p.alt,p.az,p,eye);
+    return a?{...p,az:a.az,alt:a.alt+offset}:p;
+  });
+  solarDisplayPath1310.cache={path,eye,offset,points};return points;
+}
+/* 円盤の縁の各光線を屈折・レンズ投影する。上下の持ち上がりの差が扁平化になる。 */
+function solarPhotoOutline1310(s,toXY,W,celestialScale=1){
+  const disk=solarDisplayDisk1310(s);if(!disk)return null;
+  const center=toXY(disk.az,disk.midAlt);if(!center||!center.every(Number.isFinite))return null;
+  const az=disk.az*D2R,alt=disk.geometricAlt*D2R,r=disk.angularRadiusDeg*D2R;
+  const sa=Math.sin(az),ca=Math.cos(az),sh=Math.sin(alt),ch=Math.cos(alt),cr=Math.cos(r),sr=Math.sin(r);
+  const offset=solarDisplayOffset1310(),points=[];
+  for(let i=0;i<72;i++){
+    const angle=i*Math.PI*2/72,h=Math.cos(angle)*sr,v=Math.sin(angle)*sr;
+    const x=ch*sa*cr+ca*h-sh*sa*v,y=ch*ca*cr-sa*h-sh*ca*v,z=sh*cr+ch*v;
+    const a=Math.atan2(z,Math.hypot(x,y))*R2D;
+    const p=toXY(norm360(Math.atan2(x,y)*R2D),a+solarRefractionDeg1310(a)+offset);
+    if(!p||!p.every(Number.isFinite))return null;
+    points.push(p);
+  }
+  const radius=Math.max(...points.map(p=>Math.hypot(p[0]-center[0],p[1]-center[1])));
+  return {center,points,radius,disk};
+}
+function solarOutlinePath1310(ctx,shape,foldY=null){
+  ctx.beginPath();
+  shape.points.forEach((p,i)=>{const y=foldY===null?p[1]:2*foldY-p[1];if(i===0)ctx.moveTo(p[0],y);else ctx.lineTo(p[0],y);});
+  ctx.closePath();
 }
 
 function sunPosition(jd){
@@ -20873,7 +20984,7 @@ function handleSkySearchSelection(selectEl){
 
   // 太陽・月はすでに計算済みのalt/azをそのまま使う
   let aa;
-  if(val==="sun") aa=state.sunAltAz;
+  if(val==="sun") aa=solarDisplayPoint1310(state);
   else if(val==="moon") aa=state.moonAltAz;
   else {
     if(!target) return;
@@ -23720,7 +23831,7 @@ function setAzLockTarget(target){
   if(state){
     let az=null,alt=null;
     if(lockAzToGc && state.gcAltAz && state.gcAltAz.alt>-90) az=state.gcAltAz.az;
-    else if(lockAzToSun && state.sunAltAz){az=state.sunAltAz.az;alt=state.sunAltAz.alt;}
+    else if(lockAzToSun && state.sunAltAz){const sunAim1310=solarDisplayPoint1310(state);az=sunAim1310.az;alt=sunAim1310.alt;}
     else if(lockAzToMoon && state.moonAltAz){az=state.moonAltAz.az;alt=state.moonAltAz.alt;}
     else if(lockAzToTrain){const t=trainLockAim();if(t){trainLockWriteAim(t);az=t.az;alt=t.alt;}}
     if(az!==null){
@@ -26646,7 +26757,7 @@ function sunsetDarkGuardMask(canvas,cw,ch){
 /* 太陽を中心にした放射状のグラデーションを、指定の範囲だけに塗る。
    `stops` は [位置0〜1, 色] の並び。半径の外は最後の色で埋まる。
    `bright` を渡すと、明るいところにだけ光が乗るようになる（橋やKMZを黒いまま残す）。 */
-function sunsetFieldPass(ctx,cw,ch,sun,radiusX,radiusY,stops,mask,invert,mode,alpha,bright,protect,yBand){
+function sunsetFieldPass(ctx,cw,ch,sun,radiusX,radiusY,stops,mask,invert,mode,alpha,bright,protect,yBand,solarOutline1310=null,solarFold1310=null){
   if(!(alpha>.002)||!(radiusX>0)||!(radiusY>0))return;
   const field=sunsetFieldCanvas=sunsetCanvas(sunsetFieldCanvas,cw,ch);
   const fieldCtx=sunsetResetContext(field);
@@ -26659,11 +26770,13 @@ function sunsetFieldPass(ctx,cw,ch,sun,radiusX,radiusY,stops,mask,invert,mode,al
     fieldCtx.rect(0,yBand[0],cw,Math.max(1,yBand[1]-yBand[0]));
     fieldCtx.clip();
   }
+  if(solarOutline1310){fieldCtx.save();solarOutlinePath1310(fieldCtx,solarOutline1310,solarFold1310);fieldCtx.clip();}
   fieldCtx.setTransform(radiusX,0,0,radiusY,sun.x,sun.y);
   const gradient=fieldCtx.createRadialGradient(0,0,0,0,0,1);
   for(const stop of stops)gradient.addColorStop(stop[0],stop[1]);
   fieldCtx.fillStyle=gradient;
   fieldCtx.fillRect(-9999,-9999,19998,19998);   /* 半径の外は最後の色で埋まる */
+  if(solarOutline1310)fieldCtx.restore();
   if(yBand)fieldCtx.restore();   /* 【v966】clipを外す */
   fieldCtx.setTransform(1,0,0,1,0,0);
   if(bright&&protect>.002){
@@ -26839,9 +26952,10 @@ function applySunsetMode(ctx,s,W,H,toXY){
   ctx.restore();
 
   /* ② 太陽の画面位置と、視半径ぶんの画面上の大きさ。 */
+  const displaySun1310=solarDisplayDisk1310(s);
   const sunAlt=s.sunAltAz.alt;
-  const point=toXY?toXY(s.sunAltAz.az,sunAlt):null;
-  const edge=(toXY&&point)?toXY(s.sunAltAz.az,sunAlt+(s.sun&&s.sun.angularRadiusDeg||.267)):null;
+  const point=toXY?toXY(s.sunAltAz.az,displaySun1310?displaySun1310.midAlt:sunAlt):null;
+  const edge=(toXY&&point)?toXY(s.sunAltAz.az,displaySun1310?displaySun1310.topAlt:sunAlt+(s.sun&&s.sun.angularRadiusDeg||.267)):null;
   const diagonal=Math.hypot(cw,ch);
   /* 【v936】太陽が画面の向きから離れていれば、太陽まわりの光は描かない。
      95°より離れたら中心を画面のはるか外へ逃がす。こうすると放射のグラデーションは
@@ -26849,7 +26963,10 @@ function applySunsetMode(ctx,s,W,H,toXY){
   const aimFade=sunsetAimFactor(s);
   const sunBehind=aimFade<=.02;
   const sun=(point&&!sunBehind)?{x:point[0],y:point[1]}:{x:cw*.5,y:-diagonal*4};
-  const sunRadius=(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
+  const solarPaintOutline1310=realSunMoonEnabled&&toXY?solarPhotoOutline1310(s,toXY,cw):null;
+  const sunRadius=solarPaintOutline1310?solarPaintOutline1310.radius:(point&&edge)?Math.max(1,Math.hypot(edge[0]-point[0],edge[1]-point[1])):Math.max(2,cw*.01);
+  const sunRadiusX1310=solarPaintOutline1310?Math.max(...solarPaintOutline1310.points.map(p=>Math.abs(p[0]-sun.x))):sunRadius;
+  const sunRadiusY1310=solarPaintOutline1310?Math.max(...solarPaintOutline1310.points.map(p=>Math.abs(p[1]-sun.y))):sunRadius;
   /* 【v993】ズーム追従。画面の対角で決めていた半径を、基準の焦点距離との比で伸縮させる＝角度で決めるのと同じ。 */
   const zoomRef=Number.isFinite(sunsetMode.zoomRef)?sunsetMode.zoomRef:0;
   const zoomK=(zoomRef>0&&Number.isFinite(s.focalLength))?clamp((s.focalLength*(s.sensor&&s.sensor.crop||1))/zoomRef,.05,60):1;
@@ -27073,9 +27190,11 @@ function applySunsetMode(ctx,s,W,H,toXY){
       skyMask,true,"lighter",weight*sunWhite*(.32+.68*horizonFadeRaw)*glowScale,guardMask,protect);
     /* 面。**一様に塗る**ので、輪郭までその色ちょうどの円になる。
        縁の1割だけ透明へ落として、階段状のギザギザを消す。 */
-    sunsetFieldPass(ctx,cw,ch,sun,sunRadius,sunRadius,
+    const solarFoldShape1310=drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce;
+    const solarUpperBand1310=solarFoldShape1310&&Number.isFinite(solarFoldShape1310.foldY)?[0,solarFoldShape1310.foldY]:null;
+    sunsetFieldPass(ctx,cw,ch,sun,sunRadiusX1310,sunRadiusY1310,
       [[0,sunRgba(1)],[.9,sunRgba(1)],[1,sunRgba(0)]],
-      skyMask,true,"source-over",weight*sunWhite);
+      skyMask,true,"source-over",weight*sunWhite,null,0,solarUpperBand1310,solarPaintOutline1310);
     /* 【v966】だるま夕陽の足元。
 
        だるま（v745）は太陽の下端を折り返し線で反転させ、折り返し線〜水平線の
@@ -27089,9 +27208,9 @@ function applySunsetMode(ctx,s,W,H,toXY){
     if(darumaShape&&Number.isFinite(darumaShape.foldY)&&Number.isFinite(darumaShape.horizonY)){
       const foldY=darumaShape.foldY,horizonY=Math.max(foldY+1,darumaShape.horizonY);
       const inverted={x:sun.x,y:2*foldY-sun.y};
-      sunsetFieldPass(ctx,cw,ch,inverted,sunRadius,sunRadius,
+      sunsetFieldPass(ctx,cw,ch,inverted,sunRadiusX1310,sunRadiusY1310,
         [[0,sunRgba(1)],[.9,sunRgba(1)],[1,sunRgba(0)]],
-        skyMask,true,"source-over",weight*sunWhite,null,0,[foldY,horizonY+1]);
+        skyMask,true,"source-over",weight*sunWhite,null,0,[foldY,horizonY+1],solarPaintOutline1310,foldY);
     }
   }
 
@@ -30162,7 +30281,7 @@ function refreshPlaybackCelestialState(jdPreview,newAz){
     el.azVal.textContent=`${Math.round(newAz)}°`;
   }else if(lockAzToSun){
     const sunAz=norm360(state.sunAltAz.az);
-    const sunAlt=clamp(state.sunAltAz.alt,-30,85);
+    const sunAlt=clamp(solarDisplayPoint1310(state).alt,-30,85);
     state.facingAz=sunAz;
     state.facingAlt=sunAlt;
     el.facingAz.value=sunAz;
@@ -35874,12 +35993,10 @@ function computeState(){
     const sunUpIntervals=findAltIntervals(sunPosition, jdMidnight, timelineTotalMin, lat, lon, 5, -0.8333);
     const mwGoodIntervals=findAllGoodIntervals(lat,lon,jdMidnight,timelineTotalMin);
     const sunPath=[], moonPath=[];
-    for(let m=0;m<=timelineTotalMin;m+=20){
-      const jdP=jdMidnight+m/1440;
-      const sp=sunPosition(jdP);
-      sunPath.push({...raDecToAltAz(sp.ra,sp.dec,jdP,lat,lon), m});
-      const mp=moonPosition(jdP);
-      moonPath.push({...raDecToAltAz(mp.ra,mp.dec,jdP,lat,lon), m});
+    for(let m=0;m<=timelineTotalMin;m+=2){
+      const jdP=jdMidnight+m/1440,sp=sunPosition(jdP);
+      sunPath.push({...raDecToAltAz(sp.ra,sp.dec,jdP,lat,lon),distAU:sp.distAU,m});
+      if(m%20===0){const mp=moonPosition(jdP);moonPath.push({...raDecToAltAz(mp.ra,mp.dec,jdP,lat,lon),m});}
     }
     daily = { jdMidnight, sunRiseSet, moonRiseSet, bestWindow, moonUpIntervals, sunUpIntervals, mwGoodIntervals, sunPath, moonPath };
     computeState._dailyCacheKey = dailyCacheKey;
@@ -35985,7 +36102,7 @@ function drawDial(ctx,s){
     ctx.fillText(label, x, y-11);
   }
   marker(s.moonAltAz,"#cfd3f0","月");
-  marker(s.sunAltAz,"#f2b45a","日");
+  marker(solarDisplayPoint1310(s),"#f2b45a","日");
 
   // 撮影方位のFOVウェッジ
   const half=s.fovH/2;
@@ -38316,11 +38433,32 @@ let darumaSilhouettePhotoPicking=false,darumaSilhouettePickTouchHandled=false;
 let darumaSilhouetteGeneration=0,darumaSilhouetteLoading=false;
 const DARUMA_SILHOUETTE_MAX_SPAN_DEG=12;
 
+function darumaObserverEye1310(){
+  const projected=highDetailProjectionEye1246();
+  return Number.isFinite(projected)?projected:observerEyeElevationM();
+}
+
+/* A slow DEM response may finish after the user has moved the camera. Never
+   attach the old island profile to that new observer or retime their scene. */
+
+function darumaScanMatches1310(geometry){
+  if(!geometry)return false;
+  const lat=+el.lat.value,lon=+el.lon.value,eye=darumaObserverEye1310();
+  if(![lat,lon,eye,geometry.lat,geometry.lon,geometry.eyeElevation].every(Number.isFinite))return false;
+  if(Math.abs(lat-geometry.lat)>1e-9||Math.abs(lon-geometry.lon)>1e-9||Math.abs(eye-geometry.eyeElevation)>.02)return false;
+  if(typeof geometry.date==='string'&&geometry.date!==el.dateInput.value)return false;
+  if(Number.isFinite(geometry.tz)&&geometry.tz!==+el.tz.value)return false;
+  return true;
+}
+
+/* The lower apparent solar limb touches the physical sea horizon. Refraction
+   is evaluated at each limb, so a flattened disk is not treated as a circle. */
+
 function darumaTelephotoObserverKey(lat,lon,eyeElevation){
   return `${lat.toFixed(6)},${lon.toFixed(6)}|eye${eyeElevation.toFixed(2)}`;
 }
 function darumaTelephotoResultMatches(s){
-  const result=darumaTelephotoState.result,eye=observerEyeElevationM();
+  const result=darumaTelephotoState.result,eye=darumaObserverEye1310();
   return !!(result&&s&&Number.isFinite(eye)&&result.date===el.dateInput.value&&
     result.observerKey===darumaTelephotoObserverKey(s.lat,s.lon,eye));
 }
@@ -38333,7 +38471,7 @@ function darumaIslandSilhouetteMatches(s){
      三脚・オフセットが同じなら島影だけは通信を待たず復元できる。 */
   const terrainKey=`${s.lat.toFixed(4)},${s.lon.toFixed(4)}`;
   const terrainReady=realTerrainState&&realTerrainState.key===terrainKey&&Number.isFinite(realTerrainState.observerElevation);
-  const eye=observerEyeElevationM();
+  const eye=darumaObserverEye1310();
   return !terrainReady||!Number.isFinite(eye)||Math.abs(+silhouette.eyeElevation-eye)<=.02;
 }
 /* 【v968】案B：島影の方位範囲では、判定の距離範囲にある**陸の帯**を地形から外す。
@@ -38446,7 +38584,7 @@ function updateDarumaTelephotoSummary(){
   if(!el.darumaTelephotoSummary)return;
   const near=clamp(+el.darumaTelephotoNearKm.value||5,1,119);
   const far=clamp(+el.darumaTelephotoFarKm.value||120,2,120);
-  const eye=observerEyeElevationM(),kind=el.darumaTelephotoEvent.value==="sunrise"?"朝陽":"夕陽";
+  const eye=darumaObserverEye1310(),kind=el.darumaTelephotoEvent.value==="sunrise"?"朝陽":"夕陽";
   el.darumaTelephotoSummary.textContent=far<=near
     ?"走査終了は、走査開始より遠くしてください。"
     :`${kind}の海面接触方位を、${near.toFixed(0)}～${far.toFixed(0)}km先まで走査。視点は${Number.isFinite(eye)?`海抜${eye.toFixed(1)}m`:`標高データ準備中`}。`;
@@ -38458,11 +38596,11 @@ function darumaTelephotoOutcomeText(result){
   const fallback=result.fallbackTiles?`（10m級補完 ${result.fallbackTiles}区画）`:"";
   if(result.outcome==="blocked"){
     const p=result.strongest;
-    return `島が太陽に重なります\n${heading}\n遮蔽地点：約${p.distanceKm.toFixed(1)}km先・標高${p.elevationM.toFixed(0)}m（島影上端 ${p.displayAltitudeDeg.toFixed(3)}°）\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽34′・地形7/6地球半径）`;
+    return `島が太陽に重なります\n${heading}\n遮蔽地点：約${p.distanceKm.toFixed(1)}km先・標高${p.elevationM.toFixed(0)}m（島影上端 ${p.displayAltitudeDeg.toFixed(3)}°）\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽は高度別・地形7/6地球半径）`;
   }
   if(result.outcome==="clear"){
     const visible=result.highestVisible;
-    return `太陽円盤に重なる島は確認されませんでした\n${heading}\n${visible?`最も高く見える陸地：約${visible.distanceKm.toFixed(1)}km先・標高${visible.elevationM.toFixed(0)}m（水平線上${visible.displayAltitudeDeg.toFixed(3)}°）`:`指定範囲の太陽円盤方向は海面として確認`}\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽34′・地形7/6地球半径）`;
+    return `太陽円盤に重なる島は確認されませんでした\n${heading}\n${visible?`最も高く見える陸地：約${visible.distanceKm.toFixed(1)}km先・標高${visible.elevationM.toFixed(0)}m（水平線上${visible.displayAltitudeDeg.toFixed(3)}°）`:`指定範囲の太陽円盤方向は海面として確認`}\n走査：${result.nearKm.toFixed(0)}～${result.farKm.toFixed(0)}km・5m優先標高${fallback}／地球曲率＋標準大気差（太陽は高度別・地形7/6地球半径）`;
   }
   return `判定できない区画が残っています\n${heading}\n標高タイル失敗 ${result.failedTiles}枚・範囲省略 ${result.omittedTiles}枚・未確認方位 ${result.unknownRays||0}本。島が無いとは断定していません。\n時間を空けて再判定するか、走査距離を狭めてください。水域サーバーは使用していません。`;
 }
@@ -38861,21 +38999,17 @@ function clearDarumaIslandSilhouette(){
 
 /* 視点高から求めた物理水平線へ太陽下端が接する瞬間を、2分走査＋二分法で求める。 */
 function findDarumaTelephotoContact(eventKind){
-  const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value,eye=observerEyeElevationM();
+  const lat=+el.lat.value,lon=+el.lon.value,tz=+el.tz.value,eye=darumaObserverEye1310();
   if(![lat,lon,tz,eye].every(Number.isFinite))throw new Error("観測地点の標高がまだ準備できていません。");
   const parts=(el.dateInput.value||"").split("-").map(Number);
   if(parts.length!==3||!parts.every(Number.isFinite))throw new Error("日付を確認してください。");
   const [year,month,day]=parts;
   const jdMidnight=toJulianDay(new Date(Date.UTC(year,month-1,day,0,0,0)-tz*3600000));
   const physicalHorizon=currentSeaHorizonAltitudeDeg();
-  const middaySun=sunPosition(jdMidnight+.5),radius=middaySun.angularRadiusDeg||.26656;
-  /* raDecToAltAzは幾何高度なので、太陽の標準大気差34分を引いた高度で
-     「見かけの下端が水平線へ接する瞬間」を求める。 */
-  const solarRefraction=34/60;
-  const targetAltitude=physicalHorizon+radius-solarRefraction;
   const valueAt=minute=>{
-    const jd=jdMidnight+minute/1440,sun=sunPosition(jd),aa=raDecToAltAz(sun.ra,sun.dec,jd,lat,lon);
-    return {minute,jd,sun,aa,value:aa.alt-targetAltitude};
+    const jd=jdMidnight+minute/1440,sun=sunPosition(jd),disk=solarApparentDisk1310(jd,lat,lon,eye,sun);
+    const aa={alt:disk.geometricAlt,az:disk.az};
+    return {minute,jd,sun,aa,disk,value:disk.bottomAlt-physicalHorizon};
   };
   let previous=valueAt(0),bracket=null;
   for(let minute=2;minute<=1440;minute+=2){
@@ -38897,8 +39031,11 @@ function findDarumaTelephotoContact(eventKind){
     }
   }
   const contact=valueAt((lo.minute+hi.minute)/2);
-  return {...contact,physicalHorizon,radius,solarRefraction,targetAltitude,eyeElevation:eye,lat,lon,tz,date:el.dateInput.value};
+  const radius=contact.disk.angularRadiusDeg,solarRefraction=contact.disk.centerRayAlt-contact.disk.geometricAlt;
+  return {...contact,physicalHorizon,radius,solarRefraction,targetAltitude:contact.aa.alt,
+    eyeElevation:eye,lat,lon,tz,date:el.dateInput.value};
 }
+
 function collectDarumaTelephotoTiles(z,lat,lon,bearing,halfAngle,nearKm,farKm){
   const map=new Map(),bearingParts=Math.max(2,Math.ceil(halfAngle*2/.45)),bearings=[];
   /* 広い保存用島影でも、太陽1個分より粗い隙間を作らない。通常判定は従来どおり3本程度になる。 */
@@ -39015,12 +39152,15 @@ function scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,par
 }
 function judgeDarumaTelephotoOverlap(contact,profile){
   let strongest=null;
+  const disk=contact.disk;
+  const centerAltitude=disk?disk.midAlt:contact.targetAltitude+contact.solarRefraction;
+  const verticalRadius=disk?disk.verticalRadiusDeg:contact.radius;
   for(const point of profile){
     if(!point)continue;
     const horizontal=Math.abs(darumaTelephotoAngleDifference(point.az,contact.aa.az));
     if(horizontal>contact.radius)continue;
-    const verticalHalf=Math.sqrt(Math.max(0,contact.radius*contact.radius-horizontal*horizontal));
-    const sunCenterDisplay=contact.targetAltitude+contact.solarRefraction-contact.physicalHorizon;
+    const verticalHalf=verticalRadius*Math.sqrt(Math.max(0,1-horizontal*horizontal/(contact.radius*contact.radius)));
+    const sunCenterDisplay=centerAltitude-contact.physicalHorizon;
     const sunBottom=sunCenterDisplay-verticalHalf,sunTop=sunCenterDisplay+verticalHalf;
     const pointDisplay=point.altitude-contact.physicalHorizon;
     if(pointDisplay<=.004||pointDisplay<=sunBottom+.003)continue;
@@ -39031,16 +39171,17 @@ function judgeDarumaTelephotoOverlap(contact,profile){
   }
   return strongest;
 }
+
 async function runDarumaSilhouetteScan(){
   if(darumaSilhouetteLoading)return;
-  const selection=darumaSilhouetteSelection;
+  const selection={...darumaSilhouetteSelection};
   if(!Number.isFinite(selection.centerAz)||!Number.isFinite(selection.halfAngle)||selection.halfAngle<=0){
     setDarumaSilhouetteStatus("先にシミュレーション画面で左右範囲を選択してください。","error");return;
   }
   const nearKm=clamp(+el.darumaTelephotoNearKm.value||5,1,119),farKm=clamp(+el.darumaTelephotoFarKm.value||120,2,120);
   if(farKm<=nearKm){setDarumaSilhouetteStatus("走査終了は、走査開始より遠くしてください。","error");return;}
   darumaTelephotoConfig={event:el.darumaTelephotoEvent.value==="sunrise"?"sunrise":"sunset",nearKm,farKm};scheduleSaveSettings();
-  const lat=+el.lat.value,lon=+el.lon.value,eyeElevation=observerEyeElevationM();
+  const lat=+el.lat.value,lon=+el.lon.value,eyeElevation=darumaObserverEye1310();
   if(![lat,lon,eyeElevation].every(Number.isFinite)){setDarumaSilhouetteStatus("観測地点の標高が準備できていません。","error");return;}
   const geometry={lat,lon,eyeElevation,physicalHorizon:currentSeaHorizonAltitudeDeg(),aa:{az:selection.centerAz}};
   const generation=++darumaSilhouetteGeneration;darumaSilhouetteLoading=true;updateDarumaSilhouetteRangeUi();
@@ -39051,15 +39192,17 @@ async function runDarumaSilhouetteScan(){
     parentTiles=parentTiles.slice(0,DARUMA_TELEPHOTO_MAX_PARENT_TILES);
     const parentSeaKeys=new Set(),parentDemTiles=new Map(),landParents=[],parentFailedKeys=new Set();let parentDone=0;
     await darumaTelephotoMapLimit(parentTiles,3,async tile=>{
-      if(generation!==darumaSilhouetteGeneration)return;
-      const fetched=await fetchDarumaTelephotoDemPixels("dem_png",tile),pixels=fetched.pixels;parentDone++;
+      if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
+      const fetched=await fetchDarumaTelephotoDemPixels("dem_png",tile);
+      if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
+      const pixels=fetched.pixels;parentDone++;
       if(fetched.kind==="failed")parentFailedKeys.add(tile.key);
       else if(fetched.kind==="absent")parentSeaKeys.add(tile.key);
       else if(pixelsContainDemValue(pixels)){landParents.push({...tile,maxElevation:pixelsMaxDemValue(pixels)});parentDemTiles.set(tile.key,pixels);}
       else parentSeaKeys.add(tile.key);
       if(parentDone%4===0||parentDone===parentTiles.length)setDarumaSilhouetteStatus(`島候補を確認中 ${parentDone}/${parentTiles.length}（候補${landParents.length}区画）`);
     });
-    if(generation!==darumaSilhouetteGeneration)return;
+    if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
     const childMap=new Map();
     /* 【v904】水平線を越えられない区画には5mメッシュを取りに行かない。 */
     const fineParents=darumaParentsWorthFineDem(landParents,geometry.physicalHorizon,eyeElevation);
@@ -39072,17 +39215,19 @@ async function runDarumaSilhouetteScan(){
     fineRequests=fineRequests.slice(0,DARUMA_TELEPHOTO_MAX_FINE_TILES);
     const fineTiles=new Map();let fineDone=0,fineFallback=0,fineLand=0;
     await darumaTelephotoMapLimit(fineRequests,3,async tile=>{
-      if(generation!==darumaSilhouetteGeneration)return;
+      if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
       const fineFetches=await Promise.all(["dem5a_png","dem5b_png","dem5c_png"].map(layer=>fetchDarumaTelephotoDemPixels(layer,tile)));
+      if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
       const fineSources=fineFetches.filter(item=>item.kind==="data"&&item.pixels).map(item=>item.pixels);
       const decoded=highDetailDecode(fineSources);
       if(decoded){fineTiles.set(tile.key,decoded);fineLand++;}else{fineTiles.set(tile.key,null);fineFallback++;}
       fineDone++;
       if(fineDone%2===0||fineDone===fineRequests.length)setDarumaSilhouetteStatus(`5m優先標高を取得中 ${fineDone}/${fineRequests.length}（5m ${fineLand}・10m級補完 ${fineFallback}）`);
     });
-    if(generation!==darumaSilhouetteGeneration)return;
+    if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
     setDarumaSilhouetteStatus("地球の丸みと視点高を反映して、軽量な島の稜線へ変換しています…");
     await new Promise(resolve=>setTimeout(resolve,30));
+    if(generation!==darumaSilhouetteGeneration||!darumaScanMatches1310(geometry))return;
     const scan=scanDarumaTelephotoProfile(geometry,nearKm,farKm,selection.halfAngle,fineTiles,parentSeaKeys,parentDemTiles);
     const omittedTiles=omittedParent+omittedFine,failedTiles=parentFailedKeys.size;
     const incomplete=omittedTiles>0||failedTiles>0||scan.unknownSamples>0;
@@ -39098,9 +39243,13 @@ async function runDarumaSilhouetteScan(){
   }catch(error){
     if(generation===darumaSilhouetteGeneration)setDarumaSilhouetteStatus(`島影を作成できませんでした。\n${String(error&&error.message||error)}`,"error");
   }finally{
-    if(generation===darumaSilhouetteGeneration){darumaSilhouetteLoading=false;updateDarumaSilhouetteRangeUi();}
+    if(generation===darumaSilhouetteGeneration){
+      darumaSilhouetteLoading=false;updateDarumaSilhouetteRangeUi();
+      if(!darumaScanMatches1310(geometry))setDarumaSilhouetteStatus("観測地点や視点高が変わったため、島影の作成を取り消しました。現在の位置で作成し直してください。","error");
+    }
   }
 }
+
 async function runDarumaTelephotoScan(){
   if(darumaTelephotoState.status==="loading")return;
   const eventKind=el.darumaTelephotoEvent.value==="sunrise"?"sunrise":"sunset";
@@ -39108,17 +39257,21 @@ async function runDarumaTelephotoScan(){
   if(farKm<=nearKm){el.darumaTelephotoSummary.textContent="走査終了は、走査開始より遠くしてください。";return;}
   darumaTelephotoConfig={event:eventKind,nearKm,farKm};scheduleSaveSettings();
   const generation=++darumaTelephotoGeneration;
+  let scanGeometry1310=null;
   if(el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=true;
   try{
     const contact=findDarumaTelephotoContact(eventKind),halfAngle=contact.radius+.08;
+    scanGeometry1310=contact;
     setDarumaTelephotoProgress(`海面接触 ${darumaTelephotoTimeText(contact.minute)}・方位${contact.aa.az.toFixed(2)}°を計算しました。遠方の島候補を確認中…`);
     let parentTiles=collectDarumaTelephotoTiles(DARUMA_TELEPHOTO_PARENT_Z,contact.lat,contact.lon,contact.aa.az,halfAngle,nearKm,farKm);
     const omittedParent=Math.max(0,parentTiles.length-DARUMA_TELEPHOTO_MAX_PARENT_TILES);
     parentTiles=parentTiles.slice(0,DARUMA_TELEPHOTO_MAX_PARENT_TILES);
     const parentSeaKeys=new Set(),parentDemTiles=new Map(),landParents=[],parentFailedKeys=new Set();let parentDone=0;
     await darumaTelephotoMapLimit(parentTiles,3,async tile=>{
-      if(generation!==darumaTelephotoGeneration)return;
-      const fetched=await fetchDarumaTelephotoDemPixels("dem_png",tile),pixels=fetched.pixels;parentDone++;
+      if(generation!==darumaTelephotoGeneration||scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310))return;
+      const fetched=await fetchDarumaTelephotoDemPixels("dem_png",tile);
+      if(generation!==darumaTelephotoGeneration||!darumaScanMatches1310(contact))return;
+      const pixels=fetched.pixels;parentDone++;
       if(fetched.kind==="failed")parentFailedKeys.add(tile.key);
       else if(fetched.kind==="absent")parentSeaKeys.add(tile.key);
       else if(pixelsContainDemValue(pixels)){landParents.push({...tile,maxElevation:pixelsMaxDemValue(pixels)});parentDemTiles.set(tile.key,pixels);}
@@ -39128,7 +39281,7 @@ async function runDarumaTelephotoScan(){
         syncDarumaTelephotoUi();
       }
     });
-    if(generation!==darumaTelephotoGeneration)return;
+    if(generation!==darumaTelephotoGeneration||scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310))return;
     const childMap=new Map();
     /* 【v904】水平線を越えられない区画には5mメッシュを取りに行かない。 */
     const fineParents=darumaParentsWorthFineDem(landParents,contact.physicalHorizon,contact.eyeElevation);
@@ -39141,10 +39294,11 @@ async function runDarumaTelephotoScan(){
     fineRequests=fineRequests.slice(0,DARUMA_TELEPHOTO_MAX_FINE_TILES);
     const fineTiles=new Map();let fineDone=0,fineFallback=0,fineLand=0;
     await darumaTelephotoMapLimit(fineRequests,3,async tile=>{
-      if(generation!==darumaTelephotoGeneration)return;
+      if(generation!==darumaTelephotoGeneration||scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310))return;
       /* dem_pngはz14までなので、z15では5mレイヤーを直接取得する。
          5mが未整備・失敗の区画は、すでに成功した親z14を走査時に補完利用する。 */
       const fineFetches=await Promise.all(["dem5a_png","dem5b_png","dem5c_png"].map(layer=>fetchDarumaTelephotoDemPixels(layer,tile)));
+      if(generation!==darumaTelephotoGeneration||!darumaScanMatches1310(contact))return;
       const fineSources=fineFetches.filter(item=>item.kind==="data"&&item.pixels).map(item=>item.pixels);
       const decoded=highDetailDecode(fineSources);
       if(decoded){fineTiles.set(tile.key,decoded);fineLand++;}
@@ -39155,9 +39309,10 @@ async function runDarumaTelephotoScan(){
         syncDarumaTelephotoUi();
       }
     });
-    if(generation!==darumaTelephotoGeneration)return;
+    if(generation!==darumaTelephotoGeneration||scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310))return;
     darumaTelephotoState.message="地球の丸みと視点高を反映して、太陽円盤との重なりを計算中…";syncDarumaTelephotoUi();
     await new Promise(resolve=>setTimeout(resolve,30));
+    if(generation!==darumaTelephotoGeneration||!darumaScanMatches1310(contact))return;
     const scan=scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,parentSeaKeys,parentDemTiles);
     const strongest=judgeDarumaTelephotoOverlap(contact,scan.profile);
     const failedTiles=parentFailedKeys.size,omittedTiles=omittedParent+omittedFine;
@@ -39167,7 +39322,8 @@ async function runDarumaTelephotoScan(){
       outcome,event:eventKind,date:contact.date,observerKey:darumaTelephotoObserverKey(contact.lat,contact.lon,contact.eyeElevation),
       eyeElevation:contact.eyeElevation,physicalHorizon:contact.physicalHorizon,radius:contact.radius,solarRefraction:contact.solarRefraction,
       contactJd:contact.jd,contactMinute:contact.minute,timeText:darumaTelephotoTimeText(contact.minute),sunAz:contact.aa.az,
-      sunCenterAltitude:contact.targetAltitude,nearKm,farKm,halfAngle,profile:scan.profile,
+      sunCenterAltitude:contact.targetAltitude,apparentTopAltitude:contact.disk.topAlt,apparentBottomAltitude:contact.disk.bottomAlt,
+      apparentCenterAltitude:contact.disk.midAlt,nearKm,farKm,halfAngle,profile:scan.profile,
       strongest,highestVisible:scan.highestVisible,failedTiles,omittedTiles,unknownRays:scan.unknownSamples,
       parentTiles:parentTiles.length,fineTiles:fineRequests.length,fallbackTiles:fineFallback
     };
@@ -39180,7 +39336,7 @@ async function runDarumaTelephotoScan(){
     update();
     setDarumaTelephotoOpen(true);
   }catch(error){
-    if(generation!==darumaTelephotoGeneration)return;
+    if(generation!==darumaTelephotoGeneration||scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310))return;
     darumaTelephotoState={status:"idle",result:null,message:""};
     syncDarumaTelephotoUi();
     if(el.darumaTelephotoResult){
@@ -39188,15 +39344,20 @@ async function runDarumaTelephotoScan(){
       el.darumaTelephotoResult.textContent=`判定を開始できませんでした。\n${String(error&&error.message||error)}`;
     }
   }finally{
-    if(generation===darumaTelephotoGeneration&&el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=false;
+    if(generation===darumaTelephotoGeneration){
+      if(el.darumaTelephotoRunBtn)el.darumaTelephotoRunBtn.disabled=false;
+      if(scanGeometry1310&&!darumaScanMatches1310(scanGeometry1310)){
+        darumaTelephotoState={status:"idle",result:null,message:""};syncDarumaTelephotoUi();
+        if(el.darumaTelephotoResult){el.darumaTelephotoResult.hidden=false;el.darumaTelephotoResult.className="daruma-telephoto-result unknown";
+          el.darumaTelephotoResult.textContent="観測地点・視点高・日付が変わったため、判定を取り消しました。現在の設定で判定し直してください。";}
+      }
+    }
   }
 }
+
 function darumaTelephotoDisplayShift(s){
-  if(!darumaTelephotoResultMatches(s))return 0;
-  const result=darumaTelephotoState.result;
-  if(Math.abs(darumaTelephotoAngleDifference(s.sunAltAz.az,result.sunAz))>3)return 0;
-  if(s.sunAltAz.alt<result.sunCenterAltitude-.8||s.sunAltAz.alt>result.sunCenterAltitude+2.5)return 0;
-  return result.solarRefraction-result.physicalHorizon;
+  const apparent=solarDisplayPoint1310(s);
+  return apparent&&s&&s.sunAltAz?apparent.alt-s.sunAltAz.alt:0;
 }
 function darumaTelephotoBlockingAltitudeAt(az,s){
   const sources=[];
@@ -45864,7 +46025,7 @@ function drawPhoto(ctx,s){
     ctx.restore();
   }
   if(moonPathVisible) drawCelestialPath(s.moonPath,"205,208,228","moon");
-  if(sunPathVisible) drawCelestialPath(s.sunPath,"242,180,90","sun");
+  if(sunPathVisible) drawCelestialPath(solarDisplayPath1310(s),"242,180,90","sun");
 
   // 月(月相の形を反映)
   if(showBelowHorizon || s.moonAltAz.alt>-1){
@@ -46000,10 +46161,9 @@ function drawPhoto(ctx,s){
     }
   }
 
-  // 太陽。超望遠判定中は、物理水平線の俯角ぶんだけ表示を持ち上げ、
-  // 実際の海面接触時刻を画面上の水平線0°へ対応させる。
-  const darumaTelephotoSunShift=darumaTelephotoDisplayShift(s);
-  const sunDisplayAltitude=s.sunAltAz.alt+darumaTelephotoSunShift;
+  // 判定の実行状態に依存せず、大気差と視点高を太陽・島影・海面で共有する。
+  const solarDisk1310=solarDisplayDisk1310(s);
+  const sunDisplayAltitude=solarDisk1310?solarDisk1310.midAlt:s.sunAltAz.alt;
   if(showBelowHorizon || sunDisplayAltitude>-1){
     const pt=toXY(s.sunAltAz.az,sunDisplayAltitude);
     if(pt && pt[0]>-40 && pt[0]<W+40 && pt[1]>-40 && pt[1]<H+40){
@@ -46012,25 +46172,8 @@ function drawPhoto(ctx,s){
       // 月と同じ考え方で、「太陽・月をリアル表示する」がONの場合のみ実際の視角半径と
       // レンズ投影(sec²θ・secθの解析式)を使って楕円状の歪みを再現する。太陽には満ち欠け(位置角)が
       // 無いため、回転は不要で歪み(縦横比)だけを反映すればよい。
-      let sunAngR=1,sVAzX,sVAzY,sVAltX,sVAltY;
-      if(realSunMoonEnabled){
-        const m=lensStretchAxes(x,y,s.sun.angularRadiusDeg||0.267);
-        sVAzX=m.a; sVAzY=m.b; sVAltX=m.c; sVAltY=m.d;
-        /* 月と同じで、底上げの大きさもその日の太陽の大きさに比例させる。
-           太陽の振れ幅は±1.7%と小さいが、扱いは揃えておく。 */
-        const SUN_MEAN_ANGULAR_RADIUS=0.26656;
-        const sunSizeRatio=(s.sun.angularRadiusDeg||SUN_MEAN_ANGULAR_RADIUS)/SUN_MEAN_ANGULAR_RADIUS;
-        const minR=13*(W/1200)*celestialScale*sunSizeRatio;
-        const approxR=Math.hypot(sVAzX,sVAzY);
-        if(approxR>0 && approxR<minR){
-          const boost=minR/approxR;
-          sVAzX*=boost; sVAzY*=boost; sVAltX*=boost; sVAltY*=boost;
-        }
-      }else{
-        const rFixed=20*(W/1200)*celestialScale;
-        sVAzX=rFixed; sVAzY=0; sVAltX=0; sVAltY=rFixed;
-      }
-      const rForSunLabel=Math.max(Math.hypot(sVAzX,sVAzY),Math.hypot(sVAltX,sVAltY))*sunAngR;
+      const sunOutline1310=realSunMoonEnabled?solarPhotoOutline1310(s,toXY,W,celestialScale):null;
+      const rForSunLabel=sunOutline1310?sunOutline1310.radius:20*(W/1200)*celestialScale;
 
       const sunAtmosphereRGB=atmosphericCelestialRGB(s.sunAltAz.alt,"sun");
       const sunAtmosphereColor=sunAtmosphereRGB.join(",");
@@ -46074,10 +46217,9 @@ function drawPhoto(ctx,s){
         const sequenceStart=foldAlt+angularRadius+.14,sequenceEnd=foldAlt-angularRadius-.08;
         const inSequence=sunDisplayAltitude<=sequenceStart&&sunDisplayAltitude>=sequenceEnd;
         /* profileが海面より明確に高い方角は、島・岬・山の向こうなので演出しない。 */
-        const dedicatedBlocked=dedicatedMatched&&darumaTelephotoState.result.outcome==="blocked";
-        const dedicatedClear=dedicatedMatched&&darumaTelephotoState.result.outcome==="clear";
-        const unobstructed=!dedicatedBlocked&&(blockingAlt===null||blockingAlt<=physicalSeaHorizonAlt+.04);
-        if((dedicatedClear||seaVotes>=1||demSea)&&unobstructed&&inSequence){
+        const dedicatedSea=dedicatedMatched&&darumaTelephotoState.result.outcome==="clear";
+        const unobstructed=blockingAlt===null||blockingAlt<=physicalSeaHorizonAlt+.04;
+        if((dedicatedSea||seaVotes>=1||demSea)&&unobstructed&&inSequence){
           darumaSunActive=true;
           const foldPoint=toXY(s.sunAltAz.az,foldAlt),horizonPoint=toXY(s.sunAltAz.az,renderedSeaHorizonAlt);
           if(foldPoint&&horizonPoint) darumaSunShape={foldY:foldPoint[1],horizonY:horizonPoint[1]};
@@ -46093,14 +46235,14 @@ function drawPhoto(ctx,s){
         ctx.fillStyle=`rgb(${sunAtmosphereColor})`;ctx.globalAlpha=sunExtinction;
         /* 正立像は折り返し線より上だけ。 */
         ctx.save();ctx.beginPath();ctx.rect(x-r*1.5,y-r*1.5,r*3,foldY-(y-r*1.5));ctx.clip();
-        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();ctx.restore();
+        if(sunOutline1310)solarOutlinePath1310(ctx,sunOutline1310);else{ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);}ctx.fill();ctx.restore();
         /* 反転像は同じ折り返し線より下で上下反転し、太陽の下降と逆向きに上昇する。
            水平線より下へは出さないため、水中の丸い反射にはならない。 */
         ctx.save();ctx.beginPath();ctx.rect(x-r*1.5,foldY,r*3,Math.max(1,horizonY-foldY+1));ctx.clip();
-        ctx.beginPath();ctx.arc(x,invertedCenterY,r,0,Math.PI*2);ctx.globalAlpha=sunExtinction*.94;ctx.fill();ctx.restore();
+        if(sunOutline1310)solarOutlinePath1310(ctx,sunOutline1310,foldY);else{ctx.beginPath();ctx.arc(x,invertedCenterY,r,0,Math.PI*2);}ctx.globalAlpha=sunExtinction*.94;ctx.fill();ctx.restore();
       }else{
-        ctx.transform(sVAzX,sVAzY,sVAltX,sVAltY,x,y);
-        ctx.beginPath();ctx.arc(0,0,sunAngR,0,Math.PI*2);
+        if(sunOutline1310)solarOutlinePath1310(ctx,sunOutline1310);
+        else{ctx.beginPath();ctx.arc(x,y,rForSunLabel,0,Math.PI*2);}
         ctx.fillStyle=`rgb(${sunAtmosphereColor})`;ctx.globalAlpha=sunExtinction;ctx.fill();
       }
       ctx.restore();
@@ -47470,8 +47612,10 @@ function drawPhoto(ctx,s){
 
         // 太陽は昼間も鏡像を保ち、低高度時だけ長いサンロードを水面へ伸ばす。
         // 高度20度へ近づくにつれて光路は連続的に短く・弱くなる。
-        if(s.sunAltAz.alt>0){
-          const sunPoint=toXY(s.sunAltAz.az,-s.sunAltAz.alt);
+        const reflectedSolar1310=solarStateDisk1310(s);
+        const reflectedSun1310=reflectedSolar1310?{az:reflectedSolar1310.az,alt:reflectedSolar1310.centerRayAlt}:s.sunAltAz;
+        if(reflectedSun1310.alt>0){
+          const sunPoint=toXY(reflectedSun1310.az,-reflectedSun1310.alt);
           const reflectedSunRGB=atmosphericCelestialRGB(s.sunAltAz.alt,"sun").join(",");
           const daylightSunVisibility=clamp(.86+dayFactor*.12,0,1);
           ctx.save();ctx.globalCompositeOperation="lighter";
@@ -47487,10 +47631,10 @@ function drawPhoto(ctx,s){
           const mirrorAltFade=mirrorRaw*mirrorRaw*(3-2*mirrorRaw);
           const mirrorFade=sunsetModeOn?Math.min(mirrorAltFade,sunsetMirrorTimeFade(s)):mirrorAltFade;
           if(!darumaSunActive&&mirrorFade>.002)
-            drawMirroredCelestialDisc(s.sunAltAz,"sun",reflectedSunRGB,daylightSunVisibility*mirrorFade);
+            drawMirroredCelestialDisc(reflectedSun1310,"sun",reflectedSunRGB,daylightSunVisibility*mirrorFade);
           // 低い太陽は一本線の汎用反射を重ねず、水面の短い反射群だけで光の道を作る。
           if(s.sunAltAz.alt>=20) drawCelestialReflection(sunPoint,1,reflectedSunRGB,1.34,.92,daylightSunVisibility);
-          drawCelestialLightRoad(s.sunAltAz,1,reflectedSunRGB,"sun",daylightSunVisibility);
+          drawCelestialLightRoad(reflectedSun1310,1,reflectedSunRGB,"sun",daylightSunVisibility);
           ctx.restore();
         }
 
@@ -54423,8 +54567,8 @@ function renderReadout(s){
       sub:`<span class="chip ${gcVis.chip}">${gcVis.text}</span>`,
     },
     {
-      label:"太陽高度",
-      value:`${s.sunAltAz.alt.toFixed(1)}°`,
+      label:"太陽高度（見かけ）",
+      value:`${(solarStateDisk1310(s)?.centerRayAlt??s.sunAltAz.alt).toFixed(2)}°`,
       sub: `${twilightLabel(s.sunAltAz.alt)}<br><span class="mono" style="font-size:11px;">日の出 ${s.sunRiseSet.rise} ・ 日の入 ${s.sunRiseSet.set}${s.sunRiseSet.note?" ("+s.sunRiseSet.note+")":""}</span>`,
     },
     {
@@ -61351,7 +61495,7 @@ async function runShotPlan(){
       const floorR=9*(W/1200)*((st.moon.angularRadiusDeg||.2590)/.2590);
       const rMoon=Math.max(scaleP*D2R*(st.moon.angularRadiusDeg||.26),floorR);
       const pMoon=project(st.moonAltAz);
-      const pSun=project(st.sunAltAz);
+      const pSun=project(solarDisplayPoint1310(st));
       /* 時刻の文字は主役の1つに付ける。月→太陽→いちばん明るい彗星の順。 */
       let primary=onScreen(pMoon)?{p:pMoon,r:rMoon}:null;
       if(mode!=="frame"&&onScreen(pMoon)) patches.push({p:pMoon,r:Math.max(16,rMoon*3.6)});
