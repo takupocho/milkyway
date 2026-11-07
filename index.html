@@ -10339,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1308-cypress-reflection-full-crown";
+const APP_VERSION="1309-reflection-occlusion";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -14336,6 +14336,7 @@ function trainHeadlightSourceMesh(spec,body){
    光が広がっても5260面の走査用キャンバスは大きくならない。
    水面用の「模型の型」には入れず、透明な光で水面に穴を開けない。 */
 function drawTrainHeadlightBeam(targetCtx,s,slot,cfg,projectLocalPolygon,defer1272=false){
+  if(reflectionCoveragePass1309)return; // 車体の遮蔽型へ照射光を入れない。
   const beam=slot.model&&slot.model.headlightBeam,amount=trainHeadlightAmount(s,slot)*trainHeadlightBrightness;
   if(!beam||amount<=.01||slot.silhouette||slot.glow||targetCtx.canvas===sunsetKmzMaskCanvas||cfg.opacity<=0)return;
   targetCtx.save();
@@ -42670,6 +42671,50 @@ function drawKmzModelSequence(targetCtx,s,toXY,W,H,phase,slots){
   flush();
 }
 /* 水面反射の濃さ・加算合成が同じ列車だけをまとめる。異なる設定は従来どおり別の絵。 */
+/* 【v1309】反射の薄さと、物体が奥を隠す形を分ける。
+   不透明な木の内側へ山が透けず、葉の隙間や透明材質はそのまま通る。
+   coverage=A、反射の濃さ=R、距離フェード=F とすると、
+   奥は B*(1-A)、手前は M*R*F*A。残りだけ下の水面色に混ざる。
+   LIGHTER は消去後のプリマルチプライド色を足すために使い、二重に背景を減らさない。 */
+var reflectionCoveragePass1309=false;
+function reflectionComposite1309(target,source,strength,rawMask=null,glow=false){
+  if(!target||!source||!Number.isFinite(strength))return false;
+  const gain=Math.max(0,Math.min(1,strength));
+  target.save();
+  try{
+    target.setTransform(1,0,0,1,0,0);
+    if(!glow){
+      target.globalCompositeOperation='destination-out';target.globalAlpha=1;
+      target.drawImage(rawMask||source,0,0);
+    }
+    target.globalCompositeOperation='lighter';target.globalAlpha=gain;
+    target.drawImage(source,0,0);
+  }finally{target.restore();}
+  return true;
+}
+function reflectionCoverageContext1309(owner,W,H){
+  const canvas=owner._reflectionCoverageCanvas1309||(owner._reflectionCoverageCanvas1309=document.createElement('canvas'));
+  if(canvas.width!==W)canvas.width=W;
+  if(canvas.height!==H)canvas.height=H;
+  const ctx=canvas.getContext('2d');ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.filter='none';
+  ctx.clearRect(0,0,W,H);return ctx;
+}
+function reflectionCoverageCopy1309(source,owner){
+  const ctx=reflectionCoverageContext1309(owner,source.width,source.height);
+  ctx.drawImage(source,0,0);return ctx.canvas;
+}
+function reflectionBeamActive1309(slot,s){
+  return !!slot?.model?.headlightBeam&&!slot.glow&&!slot.silhouette&&slot.opacity!==0&&
+    trainHeadlightAmount(s,slot)*trainHeadlightBrightness>.01;
+}
+function reflectionBodyCoverage1309(owner,W,H,paint){
+  const ctx=reflectionCoverageContext1309(owner,W,H),previous=reflectionCoveragePass1309;
+  reflectionCoveragePass1309=true;
+  try{paint(ctx);}finally{reflectionCoveragePass1309=previous;}
+  return ctx.canvas;
+}
+
 function kmzReflectionGroups(slots){
   const groups=[];let current=null;
   for(const slot of slots){
@@ -47621,6 +47666,7 @@ function drawPhoto(ctx,s){
               lc.strokeStyle=`rgba(${bp.edge.join(",")},${(a*.82).toFixed(3)})`;
               lc.lineWidth=Math.max(1.2,1.8*fade);lc.stroke(mv.edge[i]);
             }
+            const bridgeCoverage1309=mv.fadeAxis1280?reflectionCoverageCopy1309(layer,drawPhoto):layer;
             railReflectionFade1280(lc,mv.fadeAxis1280,W,H);
             /* 【v1279】橋の鏡像も光を通さない。色だけ暗くし、鏡面の形と全体の濃さを保つ。 */
             const railMirrorAmount1279=railBacklight1279(s);
@@ -47629,9 +47675,7 @@ function drawPhoto(ctx,s){
               lc.fillStyle="rgb(9,7,6)";lc.fillRect(0,0,W,H);lc.restore();
               railReflectionCollect1279(layer,s,W,H);
             }
-            ctx.save();ctx.globalAlpha=opaque?BRIDGE_REFLECTION_OPAQUE_ALPHA:BRIDGE_REFLECTION_ALPHA;
-            ctx.drawImage(layer,0,0);
-            ctx.restore();
+            reflectionComposite1309(ctx,layer,opaque?BRIDGE_REFLECTION_OPAQUE_ALPHA:BRIDGE_REFLECTION_ALPHA,bridgeCoverage1309);
           }}
         /* 【v880】模型ごとに映す。**発光は模型ごとの設定**なので、
            まとめて1枚に描いてしまうと合成のしかたを切り替えられない
@@ -47649,18 +47693,15 @@ function drawPhoto(ctx,s){
           kmzReflectionContext.clearRect(0,0,W,H);
           const fadeSamples1280=[];railReflectionGroup1280=fadeSamples1280;
           try{drawKmzModelSequence(kmzReflectionContext,s,toXY,W,H,"reflection",slots);}finally{railReflectionGroup1280=null;}
-          railReflectionFade1280(kmzReflectionContext,railReflectionAxis1280(fadeSamples1280),W,H);
+          const fadeAxis1309=railReflectionAxis1280(fadeSamples1280);
+          const kmzCoverage1309=slot.glow?null:
+            (slots.some(item=>reflectionBeamActive1309(item,s))
+              ?reflectionBodyCoverage1309(drawPhoto,W,H,maskCtx=>drawKmzModelSequence(maskCtx,s,toXY,W,H,"reflection",slots))
+              :(fadeAxis1309?reflectionCoverageCopy1309(kmzReflection,drawPhoto):kmzReflection));
+          railReflectionFade1280(kmzReflectionContext,fadeAxis1309,W,H);
           if(slots.some(item=>!item.glow&&(item.train||item.standardKmz===STANDARD_KAKOGAWA_TRUSS_KEY)&&railBacklight1279(s,trainModelBearing1279(item,s))>.002))railReflectionCollect1279(kmzReflection,s,W,H);
-          ctx.save();
-          /* 発光（花火）は加算で乗せる。暗い川面に光が足し算で出る。 */
-          if(slot.glow)ctx.globalCompositeOperation="lighter";
-          /* 【v871】映り込みの濃さ。0.72だと明石海峡大橋のような大きな構造物で
-             水面が埋まってしまうため下げた。 */
-          ctx.globalAlpha=(trainSpecOf(slot.train)!==null)?KMZ_TRAIN_REFLECTION_ALPHA:KMZ_REFLECTION_ALPHA;
-          /* 【v1110】折り返さない。反射用の段が既に「水面の反対側」を描いているので、そのまま重ねる。
-             このあとの水域マスクで抜かれるため、**反射点が陸地なら自動的に映らない**。 */
-          ctx.drawImage(kmzReflection,0,0);
-          ctx.restore();
+          const reflectionStrength1309=(trainSpecOf(slot.train)!==null)?KMZ_TRAIN_REFLECTION_ALPHA:KMZ_REFLECTION_ALPHA;
+          reflectionComposite1309(ctx,kmzReflection,reflectionStrength1309,kmzCoverage1309,!!slot.glow);
         }
         // 最終段階で、実際に水色として残った画素だけを通す。方位マスクの外形ではなく
         // 地形描画と共通の水域マスクなので、入り江・岸・手前の陸地へ反射が漏れない。
