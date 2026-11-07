@@ -10339,7 +10339,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1310-solar-apparent-position";
+const APP_VERSION="1311-island-geodesy";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -38463,7 +38463,7 @@ function darumaTelephotoResultMatches(s){
     result.observerKey===darumaTelephotoObserverKey(s.lat,s.lon,eye));
 }
 function darumaIslandSilhouetteMatches(s){
-  const silhouette=darumaIslandSilhouette;
+  const silhouette=darumaEnsureSilhouetteGeodesy1311(darumaIslandSilhouette);
   if(!(silhouette&&Array.isArray(silhouette.segments)&&silhouette.segments.length&&s))return false;
   if(Math.abs(+silhouette.lat-s.lat)>1e-5||Math.abs(+silhouette.lon-s.lon)>1e-5)return false;
   if(Number.isFinite(+silhouette.heightAboveGround)&&Math.abs(+silhouette.heightAboveGround-eyeHeightAboveGroundM())>.02)return false;
@@ -38949,36 +38949,38 @@ function savedDarumaIslandPointCount(saved){
 function captureDarumaIslandSilhouetteForPlan(){
   if(!darumaIslandSilhouetteMatches(state))return null;
   const silhouette=darumaIslandSilhouette;
-  return {version:1,lat:silhouette.lat,lon:silhouette.lon,eyeElevation:silhouette.eyeElevation,
+  return {version:1,geodesy:silhouette.geodesy,lat:silhouette.lat,lon:silhouette.lon,eyeElevation:silhouette.eyeElevation,
     heightAboveGround:silhouette.heightAboveGround,observerKey:silhouette.observerKey,physicalHorizon:silhouette.physicalHorizon,savedAt:Date.now(),
     segments:silhouette.segments.map(segment=>({centerAz:segment.centerAz,halfAngle:segment.halfAngle,
-      nearKm:segment.nearKm,farKm:segment.farKm,incomplete:!!segment.incomplete,samples:packDarumaIslandProfile(segment.profile)}))};
+      nearKm:segment.nearKm,farKm:segment.farKm,geodesy:segment.geodesy,coverageCenterAz1311:segment.coverageCenterAz1311,coverageHalfAngle1311:segment.coverageHalfAngle1311,incomplete:!!segment.incomplete,samples:packDarumaIslandProfile(segment.profile)}))};
 }
 function applyDarumaIslandSilhouetteFromPlan(saved){
   darumaIslandSilhouette=null;
   if(!saved||!Array.isArray(saved.segments)||!saved.segments.length){setDarumaSilhouetteStatus("");updateDarumaSilhouetteRangeUi();return false;}
   const segments=saved.segments.map(segment=>({centerAz:norm360(+segment.centerAz||0),halfAngle:Math.max(.001,+segment.halfAngle||0),
-    nearKm:+segment.nearKm||1,farKm:+segment.farKm||80,incomplete:!!segment.incomplete,profile:unpackDarumaIslandProfile(segment.samples)}))
+    nearKm:+segment.nearKm||1,farKm:+segment.farKm||80,geodesy:segment.geodesy||saved.geodesy||null,coverageCenterAz1311:segment.coverageCenterAz1311,coverageHalfAngle1311:segment.coverageHalfAngle1311,incomplete:!!segment.incomplete,profile:unpackDarumaIslandProfile(segment.samples)}))
     .filter(segment=>segment.profile.length&&segment.profile.some(Boolean));
   if(!segments.length){setDarumaSilhouetteStatus("");updateDarumaSilhouetteRangeUi();return false;}
-  darumaIslandSilhouette={version:1,lat:+saved.lat,lon:+saved.lon,eyeElevation:+saved.eyeElevation,
+  darumaIslandSilhouette={version:1,geodesy:saved.geodesy||null,lat:+saved.lat,lon:+saved.lon,eyeElevation:+saved.eyeElevation,
     heightAboveGround:Number.isFinite(+saved.heightAboveGround)?+saved.heightAboveGround:null,
     observerKey:String(saved.observerKey||darumaTelephotoObserverKey(+saved.lat,+saved.lon,+saved.eyeElevation)),
     physicalHorizon:+saved.physicalHorizon||0,segments};
+  darumaEnsureSilhouetteGeodesy1311(darumaIslandSilhouette);
   setDarumaSilhouetteStatus(`撮影計画から島影を復元しました。${segments.length}範囲・${darumaIslandProfilePointCount(darumaIslandSilhouette)}点。`,"ready");
   updateDarumaSilhouetteRangeUi();drawPhoto._terrainRenderKey=null;return true;
 }
 function mergeDarumaIslandSilhouetteSegments(segments,geometry,replaceCenter,replaceHalf){
+  darumaEnsureSilhouetteGeodesy1311(darumaIslandSilhouette);
   const observerKey=darumaTelephotoObserverKey(geometry.lat,geometry.lon,geometry.eyeElevation);
   if(!darumaIslandSilhouette||darumaIslandSilhouette.observerKey!==observerKey){
-    darumaIslandSilhouette={version:1,lat:geometry.lat,lon:geometry.lon,eyeElevation:geometry.eyeElevation,
+    darumaIslandSilhouette={version:1,geodesy:"grs80-v1311",lat:geometry.lat,lon:geometry.lon,eyeElevation:geometry.eyeElevation,
       heightAboveGround:eyeHeightAboveGroundM(),observerKey,physicalHorizon:geometry.physicalHorizon,segments:[]};
   }
   if(Number.isFinite(replaceCenter)&&Number.isFinite(replaceHalf)){
     darumaIslandSilhouette.segments=darumaIslandSilhouette.segments.filter(segment=>
       Math.abs(darumaTelephotoAngleDifference(segment.centerAz,replaceCenter))>segment.halfAngle+replaceHalf+.01);
   }
-  const visibleSegments=segments.map(segment=>({...segment,
+  const visibleSegments=segments.map(segment=>({...segment,geodesy:segment.geodesy||geometry.geodesy||"grs80-v1311",
     /* 水平線より下へ隠れる陸地はシルエットに不要。保存前にnullへ落として軽くする。 */
     profile:Array.isArray(segment.profile)?segment.profile.map(point=>point&&point.altitude>geometry.physicalHorizon+.002?point:null):[]}))
     .filter(segment=>segment.profile.some(Boolean));
@@ -38988,7 +38990,8 @@ function mergeDarumaIslandSilhouetteSegments(segments,geometry,replaceCenter,rep
 }
 function keepDarumaTelephotoResultIsland(result){
   if(!result||!result.profile||!result.profile.some(Boolean))return;
-  const geometry={lat:+el.lat.value,lon:+el.lon.value,eyeElevation:result.eyeElevation,physicalHorizon:result.physicalHorizon};
+  darumaEnsureResultGeodesy1311(result,{lat:+el.lat.value,lon:+el.lon.value});
+  const geometry={lat:+el.lat.value,lon:+el.lon.value,eyeElevation:result.eyeElevation,physicalHorizon:result.physicalHorizon,geodesy:result.geodesy};
   mergeDarumaIslandSilhouetteSegments([{centerAz:result.sunAz,halfAngle:result.halfAngle,nearKm:result.nearKm,farKm:result.farKm,
     incomplete:result.outcome==="unknown",profile:result.profile}],geometry,result.sunAz,result.halfAngle);
 }
@@ -39036,6 +39039,121 @@ function findDarumaTelephotoContact(eventKind){
     eyeElevation:eye,lat,lon,tz,date:el.dateInput.value};
 }
 
+/* v1311: GRS80 geodesic ray used only by the distant-island DEM scan.
+   Vincenty (1975), direct solution; constants and the auxiliary-sphere terms
+   are prepared once per azimuth, not once per elevation sample.
+   https://www.ngs.noaa.gov/PUBS_LIB/inverse.pdf
+   GRS80 is the reference ellipsoid used by GSI's modern Japanese coordinates.
+   https://www.gsi.go.jp/sokuchikijun/datum-main
+*/
+function darumaGeodesicRay1311(lat,lon,bearingDeg){
+  if(![lat,lon,bearingDeg].every(Number.isFinite)||Math.abs(lat)>90)return null;
+  const radians=Math.PI/180,degrees=180/Math.PI;
+  const a=6378137,f=1/298.257222101,b=a*(1-f);
+  const phi=lat*radians,lambda1=lon*radians,alpha1=bearingDeg*radians;
+  const sinAlpha1=Math.sin(alpha1),cosAlpha1=Math.cos(alpha1),tanU1=(1-f)*Math.tan(phi);
+  const cosU1=1/Math.sqrt(1+tanU1*tanU1),sinU1=tanU1*cosU1;
+  const sigma1=Math.atan2(tanU1,cosAlpha1),sinAlpha=cosU1*sinAlpha1,cosSqAlpha=1-sinAlpha*sinAlpha;
+  const uSq=cosSqAlpha*(a*a-b*b)/(b*b);
+  const A=1+uSq/16384*(4096+uSq*(-768+uSq*(320-175*uSq)));
+  const B=uSq/1024*(256+uSq*(-128+uSq*(74-47*uSq)));
+  const C=f/16*cosSqAlpha*(4+f*(4-3*cosSqAlpha));
+  return function pointAt(distanceKm){
+    if(!Number.isFinite(distanceKm))return null;
+    if(distanceKm===0)return [lat,((lon+540)%360)-180];
+    const base=distanceKm*1000/(b*A);let sigma=base;
+    for(let i=0;i<12;i++){
+      const sinSigma=Math.sin(sigma),cosSigma=Math.cos(sigma),cos2SigmaM=Math.cos(2*sigma1+sigma);
+      const delta=B*sinSigma*(cos2SigmaM+B/4*(cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)
+        -B/6*cos2SigmaM*(-3+4*sinSigma*sinSigma)*(-3+4*cos2SigmaM*cos2SigmaM)));
+      const next=base+delta,difference=Math.abs(next-sigma);sigma=next;
+      if(difference<1e-13)break;
+    }
+    const sinSigma=Math.sin(sigma),cosSigma=Math.cos(sigma),cos2SigmaM=Math.cos(2*sigma1+sigma);
+    const tmp=sinU1*sinSigma-cosU1*cosSigma*cosAlpha1;
+    const phi2=Math.atan2(sinU1*cosSigma+cosU1*sinSigma*cosAlpha1,
+      (1-f)*Math.sqrt(sinAlpha*sinAlpha+tmp*tmp));
+    const lambda=Math.atan2(sinSigma*sinAlpha1,cosU1*cosSigma-sinU1*sinSigma*cosAlpha1);
+    const L=lambda-(1-C)*f*sinAlpha*(sigma+C*sinSigma*(cos2SigmaM+C*cosSigma*(-1+2*cos2SigmaM*cos2SigmaM)));
+    return [phi2*degrees,(((lambda1+L)*degrees+540)%360)-180];
+  };
+}
+function darumaGeodesicDestination1311(lat,lon,bearingDeg,distanceKm){
+  const ray=darumaGeodesicRay1311(lat,lon,bearingDeg);
+  return ray?ray(distanceKm):null;
+}
+
+/* Old saved profiles have only (spherical azimuth, distance, elevation), not
+   their sampled coordinates. Recover that original coordinate first, then
+   project its GRS80 ECEF sight line into the observer's local north/east frame.
+   Preserve old altitude/distance/steps: no unrequested height reconstruction. */
+function darumaLegacyBearingProjector1311(lat,lon){
+  if(![lat,lon].every(Number.isFinite)||Math.abs(lat)>90)return null;
+  const radians=Math.PI/180,degrees=180/Math.PI,a=6378137,f=1/298.257222101,e2=f*(2-f);
+  const p1=lat*radians,l1=lon*radians,sinP=Math.sin(p1),cosP=Math.cos(p1),sinL=Math.sin(l1),cosL=Math.cos(l1);
+  const n1=a/Math.sqrt(1-e2*sinP*sinP);
+  const x1=n1*cosP*cosL,y1=n1*cosP*sinL,z1=n1*(1-e2)*sinP;
+  return function bearingAt(bearing,distanceKm){
+    if(![bearing,distanceKm].every(Number.isFinite)||distanceKm<=0)return bearing;
+    const d=distanceKm/6371,br=bearing*radians,sinD=Math.sin(d),cosD=Math.cos(d);
+    const p2=Math.asin(sinP*cosD+cosP*sinD*Math.cos(br));
+    const l2=l1+Math.atan2(Math.sin(br)*sinD*cosP,cosD-sinP*Math.sin(p2));
+    const sin2=Math.sin(p2),cos2=Math.cos(p2),n2=a/Math.sqrt(1-e2*sin2*sin2);
+    const dx=n2*cos2*Math.cos(l2)-x1,dy=n2*cos2*Math.sin(l2)-y1,dz=n2*(1-e2)*sin2-z1;
+    const east=-sinL*dx+cosL*dy,north=-sinP*cosL*dx-sinP*sinL*dy+cosP*dz;
+    return ((Math.atan2(east,north)*degrees)%360+360)%360;
+  };
+}
+function darumaGeodesyKnown1311(tag){return tag==='grs80-v1311'||tag==='grs80-v1311-legacy';}
+function darumaLegacyProfile1311(profile,project){
+  return (profile||[]).map(point=>point?{...point,az:project(point.az,point.distanceKm)}:null);
+}
+function darumaLegacyRange1311(project,center,half,nearKm,farKm){
+  if(![center,half,nearKm,farKm].every(Number.isFinite))return null;
+  const difference=az=>((az-center+540)%360)-180;
+  const left=[nearKm,farKm].map(km=>difference(project(center-half,km)));
+  const right=[nearKm,farKm].map(km=>difference(project(center+half,km)));
+  const lo=Math.min(...left,...right),hi=Math.max(...left,...right);
+  if(hi-lo>=180)return null;
+  const coveredLo=Math.max(...left),coveredHi=Math.min(...right);
+  return {centerAz:((center+(lo+hi)/2)%360+360)%360,halfAngle:(hi-lo)/2,
+    coverageCenterAz1311:((center+(coveredLo+coveredHi)/2)%360+360)%360,
+    coverageHalfAngle1311:Math.max(0,(coveredHi-coveredLo)/2)};
+}
+function darumaEnsureSilhouetteGeodesy1311(silhouette){
+  if(!silhouette||!Array.isArray(silhouette.segments))return silhouette;
+  if(darumaGeodesyKnown1311(silhouette.geodesy)&&silhouette.segments.every(segment=>darumaGeodesyKnown1311(segment.geodesy)))return silhouette;
+  const project=darumaLegacyBearingProjector1311(+silhouette.lat,+silhouette.lon);if(!project)return silhouette;
+  silhouette.segments=silhouette.segments.map(segment=>{
+    const tag=segment.geodesy||silhouette.geodesy;
+    if(darumaGeodesyKnown1311(tag))return {...segment,geodesy:tag};
+    const profile=darumaLegacyProfile1311(segment.profile,project);
+    const range=darumaLegacyRange1311(project,+segment.centerAz,+segment.halfAngle,segment.nearKm,segment.farKm);
+    return {...segment,...(range||{}),profile,geodesy:'grs80-v1311-legacy'};
+  });
+  silhouette.geodesy='grs80-v1311';return silhouette;
+}
+function darumaEnsureResultGeodesy1311(result,s){
+  if(!result||darumaGeodesyKnown1311(result.geodesy))return result;
+  const project=darumaLegacyBearingProjector1311(s.lat,s.lon);if(!project)return result;
+  result.profile=darumaLegacyProfile1311(result.profile,project);
+  const range=darumaLegacyRange1311(project,result.sunAz,result.halfAngle,result.nearKm,result.farKm);
+  if(range){result.coverageCenterAz1311=range.coverageCenterAz1311;result.coverageHalfAngle1311=range.coverageHalfAngle1311;}
+  if([result.apparentTopAltitude,result.apparentBottomAltitude,result.radius,result.sunAz,result.physicalHorizon].every(Number.isFinite)&&result.radius>0){
+    const top=result.apparentTopAltitude,bottom=result.apparentBottomAltitude;
+    const contact={aa:{az:result.sunAz},radius:result.radius,physicalHorizon:result.physicalHorizon,
+      disk:{midAlt:(top+bottom)/2,verticalRadiusDeg:(top-bottom)/2}};
+    result.strongest=judgeDarumaTelephotoOverlap(contact,result.profile);
+    const complete=result.failedTiles===0&&result.omittedTiles===0&&result.unknownRays===0;
+    result.outcome=result.strongest?'blocked':complete?'clear':'unknown';
+  }else{result.strongest=null;result.outcome='unknown';}
+  result.highestVisible=null;
+  for(const point of result.profile){
+    if(point&&point.displayAltitudeDeg>.002&&(!result.highestVisible||point.displayAltitudeDeg>result.highestVisible.displayAltitudeDeg))result.highestVisible=point;
+  }
+  result.geodesy='grs80-v1311-legacy';return result;
+}
+
 function collectDarumaTelephotoTiles(z,lat,lon,bearing,halfAngle,nearKm,farKm){
   const map=new Map(),bearingParts=Math.max(2,Math.ceil(halfAngle*2/.45)),bearings=[];
   /* 広い保存用島影でも、太陽1個分より粗い隙間を作らない。通常判定は従来どおり3本程度になる。 */
@@ -39043,12 +39161,12 @@ function collectDarumaTelephotoTiles(z,lat,lon,bearing,halfAngle,nearKm,farKm){
   const stepKm=z===DARUMA_TELEPHOTO_PARENT_Z?0.65:0.32;
   for(const az of bearings){
     for(let distance=nearKm;distance<=farKm+.0001;distance+=stepKm){
-      const point=terrainDestination(lat,lon,norm360(az),Math.min(distance,farKm));
+      const point=darumaGeodesicDestination1311(lat,lon,norm360(az),Math.min(distance,farKm));
       const tile=terrainTilePoint(point[0],point[1],z),key=`${tile.x}/${tile.y}`;
       const old=map.get(key);
       if(!old||distance<old.distanceKm)map.set(key,{z,x:tile.x,y:tile.y,key,distanceKm:distance});
     }
-    const point=terrainDestination(lat,lon,norm360(az),farKm),tile=terrainTilePoint(point[0],point[1],z),key=`${tile.x}/${tile.y}`;
+    const point=darumaGeodesicDestination1311(lat,lon,norm360(az),farKm),tile=terrainTilePoint(point[0],point[1],z),key=`${tile.x}/${tile.y}`;
     if(!map.has(key))map.set(key,{z,x:tile.x,y:tile.y,key,distanceKm:farKm});
   }
   return [...map.values()].sort((a,b)=>a.distanceKm-b.distanceKm);
@@ -39105,17 +39223,14 @@ function scanDarumaTelephotoProfile(contact,nearKm,farKm,halfAngle,fineTiles,par
   const profile=[],azStep=.01,distanceStepKm=.015;
   const effectiveEarthRadius=6371000*(7/6),eye=contact.eyeElevation;
   let unknownSamples=0,highestVisible=null;
-  const lat1=contact.lat*D2R,sinLat1=Math.sin(lat1),cosLat1=Math.cos(lat1),lon1=contact.lon*D2R;
   for(let offset=-halfAngle;offset<=halfAngle+.000001;offset+=azStep){
-    const az=norm360(contact.aa.az+offset),bearing=az*D2R,sinBearing=Math.sin(bearing),cosBearing=Math.cos(bearing);
+    const az=norm360(contact.aa.az+offset),ray=darumaGeodesicRay1311(contact.lat,contact.lon,az);
     let highest=null,rayUnknown=false;
     /* 【v1128】外へ進みながら最大値が更新された点の列。これが「尾根の連なり」になる。 */
     const steps=[];
     for(let distanceKm=nearKm;distanceKm<=farKm+.000001;distanceKm+=distanceStepKm){
-      const angular=distanceKm/6371,sinAngular=Math.sin(angular),cosAngular=Math.cos(angular);
-      const lat2=Math.asin(sinLat1*cosAngular+cosLat1*sinAngular*cosBearing);
-      const lon2=lon1+Math.atan2(sinBearing*sinAngular*cosLat1,cosAngular-sinLat1*Math.sin(lat2));
-      const sample=darumaTelephotoElevationAt(lat2*R2D,((lon2*R2D+540)%360)-180,fineTiles,parentSeaKeys,parentDemTiles);
+      const position=ray(distanceKm);
+      const sample=darumaTelephotoElevationAt(position[0],position[1],fineTiles,parentSeaKeys,parentDemTiles);
       if(!sample.known){rayUnknown=true;continue;}
       if(!Number.isFinite(sample.value)||sample.value<-.5)continue;
       const distanceM=distanceKm*1000,curvatureDrop=distanceM*distanceM/(2*effectiveEarthRadius);
@@ -39183,7 +39298,7 @@ async function runDarumaSilhouetteScan(){
   darumaTelephotoConfig={event:el.darumaTelephotoEvent.value==="sunrise"?"sunrise":"sunset",nearKm,farKm};scheduleSaveSettings();
   const lat=+el.lat.value,lon=+el.lon.value,eyeElevation=darumaObserverEye1310();
   if(![lat,lon,eyeElevation].every(Number.isFinite)){setDarumaSilhouetteStatus("観測地点の標高が準備できていません。","error");return;}
-  const geometry={lat,lon,eyeElevation,physicalHorizon:currentSeaHorizonAltitudeDeg(),aa:{az:selection.centerAz}};
+  const geometry={lat,lon,eyeElevation,physicalHorizon:currentSeaHorizonAltitudeDeg(),aa:{az:selection.centerAz},geodesy:"grs80-v1311"};
   const generation=++darumaSilhouetteGeneration;darumaSilhouetteLoading=true;updateDarumaSilhouetteRangeUi();
   try{
     setDarumaSilhouetteStatus(`太陽約${Math.max(1,Math.ceil(selection.halfAngle*2/.53))}個分の範囲から、遠方の島候補を確認しています…`);
@@ -39319,7 +39434,7 @@ async function runDarumaTelephotoScan(){
     const incomplete=failedTiles>0||omittedTiles>0||scan.unknownSamples>0;
     const outcome=strongest?"blocked":(incomplete?"unknown":"clear");
     const result={
-      outcome,event:eventKind,date:contact.date,observerKey:darumaTelephotoObserverKey(contact.lat,contact.lon,contact.eyeElevation),
+      outcome,event:eventKind,geodesy:"grs80-v1311",date:contact.date,observerKey:darumaTelephotoObserverKey(contact.lat,contact.lon,contact.eyeElevation),
       eyeElevation:contact.eyeElevation,physicalHorizon:contact.physicalHorizon,radius:contact.radius,solarRefraction:contact.solarRefraction,
       contactJd:contact.jd,contactMinute:contact.minute,timeText:darumaTelephotoTimeText(contact.minute),sunAz:contact.aa.az,
       sunCenterAltitude:contact.targetAltitude,apparentTopAltitude:contact.disk.topAlt,apparentBottomAltitude:contact.disk.bottomAlt,
@@ -39359,31 +39474,65 @@ function darumaTelephotoDisplayShift(s){
   const apparent=solarDisplayPoint1310(s);
   return apparent&&s&&s.sunAltAz?apparent.alt-s.sunAltAz.alt:0;
 }
-function darumaTelephotoBlockingAltitudeAt(az,s){
-  const sources=[];
-  if(darumaIslandSilhouetteMatches(s))for(const segment of darumaIslandSilhouette.segments)sources.push(segment.profile);
-  else if(darumaTelephotoResultMatches(s))sources.push(darumaTelephotoState.result.profile);
-  let best=null;
-  for(const profile of sources){
-    if(!Array.isArray(profile)||profile.length<2)continue;
-    let before=null,after=null;
-    for(const point of profile){
-      if(!point)continue;
-      const delta=darumaTelephotoAngleDifference(point.az,az);
-      if(delta<=0&&(!before||delta>before.delta))before={delta,point};
-      if(delta>=0&&(!after||delta<after.delta))after={delta,point};
+/* v1311: one contiguous island boundary for painting and occlusion. Null
+   samples (sea, below-horizon land or missing coverage) never become a ridge. */
+function darumaIslandProfileRuns1311(profile,physicalHorizon,limitKm=NaN){
+  const runs=[];let run=[];
+  const finish=()=>{if(run.length>=2)runs.push(run);run=[];};
+  for(const point of profile||[]){
+    const ridge=darumaIslandRidgeAt(point,limitKm);
+    if(!point||!Number.isFinite(point.az)||!ridge||!Number.isFinite(ridge.alt)||!(ridge.alt>physicalHorizon+.002)){
+      finish();continue;
     }
-    let altitude=null;
-    if(before&&after&&after.delta!==before.delta&&after.delta-before.delta<.08)altitude=lerp(before.point.altitude,after.point.altitude,(-before.delta)/(after.delta-before.delta));
-    else if(before&&Math.abs(before.delta)<.025)altitude=before.point.altitude;
-    else if(after&&Math.abs(after.delta)<.025)altitude=after.point.altitude;
-    if(Number.isFinite(altitude)&&(best===null||altitude>best))best=altitude;
+    if(run.length){
+      const delta=Math.abs(darumaTelephotoAngleDifference(point.az,run[run.length-1].point.az));
+      if(delta>.080000001)finish();
+    }
+    run.push({point,ridge});
+  }
+  finish();return runs;
+}
+function darumaTelephotoBlockingAltitudeAt(az,s){
+  const found=darumaIslandProfilesFor(s);if(!found)return null;
+  let best=null;
+  for(const profile of found.list)for(const run of darumaIslandProfileRuns1311(profile,found.physicalHorizon)){
+    for(let i=1;i<run.length;i++){
+      const a=run[i-1],b=run[i];
+      const span=darumaTelephotoAngleDifference(b.point.az,a.point.az);
+      const delta=darumaTelephotoAngleDifference(az,a.point.az);
+      let altitude=null;
+      if(Math.abs(span)<1e-10){if(Math.abs(delta)<1e-9)altitude=Math.max(a.ridge.alt,b.ridge.alt);}
+      else{
+        const fraction=delta/span;
+        if(fraction>=-1e-9&&fraction<=1+1e-9)altitude=lerp(a.ridge.alt,b.ridge.alt,clamp(fraction,0,1));
+      }
+      if(Number.isFinite(altitude)&&(best===null||altitude>best))best=altitude;
+    }
   }
   return best;
 }
-/* 【v939】逆光の度合い。太陽が水平線へ近づくほど1へ近づく。
-   4.5°より高ければ0（今までどおり）、0°で1（ほぼ真っ黒）。
-   逆光は演出ではなく物理なので、夕焼けモードのON/OFFに関係なく効かせる。 */
+/* A null ray alone does not establish sea: incomplete coverage may also have
+   null samples. Only a completed matching scan can override the coarse ridge. */
+function darumaFineCoverageAt1311(az,s){
+  if(!Number.isFinite(az))return false;
+  if(darumaIslandSilhouetteMatches(s)){
+    for(const segment of darumaIslandSilhouette.segments){
+      if(segment.incomplete)continue;
+      const center=Number.isFinite(segment.coverageCenterAz1311)?segment.coverageCenterAz1311:+segment.centerAz;
+      const half=Number.isFinite(segment.coverageHalfAngle1311)?segment.coverageHalfAngle1311:+segment.halfAngle;
+      if(Number.isFinite(center)&&Number.isFinite(half)&&half>0&&Math.abs(darumaTelephotoAngleDifference(az,center))<=half+1e-9)return true;
+    }
+  }
+  if(darumaTelephotoResultMatches(s)){
+    const result=darumaTelephotoState.result;
+    const center=result&&Number.isFinite(result.coverageCenterAz1311)?result.coverageCenterAz1311:result&&result.sunAz;
+    const half=result&&Number.isFinite(result.coverageHalfAngle1311)?result.coverageHalfAngle1311:result&&result.halfAngle;
+    if(result&&result.failedTiles===0&&result.omittedTiles===0&&result.unknownRays===0
+      &&Number.isFinite(center)&&Number.isFinite(half)&&half>0
+      &&Math.abs(darumaTelephotoAngleDifference(az,center))<=half+1e-9)return true;
+  }
+  return false;
+}
 function darumaIslandBacklitFactor(s){
   const alt=(s&&s.sunAltAz&&Number.isFinite(s.sunAltAz.alt))?s.sunAltAz.alt:null;
   if(alt===null||alt>=4.5)return 0;
@@ -39415,9 +39564,8 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
   const passes=bands||[null];
   for(const band of passes){
     const limitKm=band?band.limitKm:NaN;
-    const points=profile.map(point=>{
-      const ridge=darumaIslandRidgeAt(point,limitKm);
-      if(!ridge||!(ridge.alt>physicalHorizon+.002))return null;
+    for(const profileRun1311 of darumaIslandProfileRuns1311(profile,physicalHorizon,limitKm)){
+    const points=profileRun1311.map(({point,ridge})=>{
       const top=toXY(point.az,seaLine+(ridge.alt-physicalHorizon)),base=toXY(point.az,seaLine);
       return top&&base&&[...top,...base].every(Number.isFinite)?{top,base}:null;
     });
@@ -39457,6 +39605,7 @@ function drawDarumaIslandProfile(ctx,profile,physicalHorizon,toXY,W,H,dayFactor,
         }
       }
       start=Math.max(end,start+1);
+    }
     }
   }
 }
@@ -39540,7 +39689,7 @@ function darumaIslandProfilesFor(s){
     if(list.length)return {list,physicalHorizon:darumaIslandSilhouette.physicalHorizon};
   }
   if(typeof darumaTelephotoResultMatches==="function"&&darumaTelephotoResultMatches(s)){
-    const result=darumaTelephotoState&&darumaTelephotoState.result;
+    const result=darumaEnsureResultGeodesy1311(darumaTelephotoState&&darumaTelephotoState.result,s);
     if(result&&Array.isArray(result.profile))return {list:[result.profile],physicalHorizon:result.physicalHorizon};
   }
   return null;
@@ -39556,15 +39705,13 @@ function darumaIslandSkylineY(s,toXY,W,H,limitKm){
   const width=Math.max(1,Math.ceil(W));
   const arr=new Float32Array(width).fill(Infinity);
   let any=false;
-  for(const profile of found.list){
+  for(const profile of found.list)for(const profileRun1311 of darumaIslandProfileRuns1311(profile,found.physicalHorizon,limitKm)){
     let prev=null;
-    for(const point of profile){
+    for(const {point,ridge} of profileRun1311){
       /* 【v1128】「花火より手前でいちばん高い尾根」で切る。
          v1126 は「その方位でいちばん高い1点」しか見ていなかったので、
          花火が手前の尾根と奥の尾根の**間**にあるとき島影側は何もしなかった。 */
-      const ridge=darumaIslandRidgeAt(point,limitKm);
-      const usable=ridge&&Number.isFinite(ridge.alt)&&ridge.alt>found.physicalHorizon+.002;
-      if(!usable){prev=null;continue;}
+
       const here=toXY(norm360(point.az),seaLine+(ridge.alt-found.physicalHorizon));
       if(!here||!here.every(Number.isFinite)){prev=null;continue;}
       if(prev){
@@ -46212,7 +46359,8 @@ function drawPhoto(ctx,s){
         const foldAlt=renderedSeaHorizonAlt+.045;
         const dedicatedMatched=darumaTelephotoResultMatches(s);
         const dedicatedBlocking=darumaTelephotoBlockingAltitudeAt(s.sunAltAz.az,s);
-        const blockingAlt=Number.isFinite(dedicatedBlocking)?dedicatedBlocking:currentEyeTerrainBlockingAltitudeAt(s.sunAltAz.az);
+        const fineCoverage1311=darumaFineCoverageAt1311(s.sunAltAz.az,s);
+        const blockingAlt=Number.isFinite(dedicatedBlocking)?dedicatedBlocking:(fineCoverage1311?physicalSeaHorizonAlt:currentEyeTerrainBlockingAltitudeAt(s.sunAltAz.az));
         const angularRadius=s.sun.angularRadiusDeg||.26656;
         const sequenceStart=foldAlt+angularRadius+.14,sequenceEnd=foldAlt-angularRadius-.08;
         const inSequence=sunDisplayAltitude<=sequenceStart&&sunDisplayAltitude>=sequenceEnd;
