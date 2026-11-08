@@ -1870,6 +1870,9 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   .daruma-photo-adjust-body1313 input[type="range"]{display:block;width:100%;margin:4px 0;}
   .daruma-photo-adjust-body1313 button{width:100%;padding:8px 10px;font-size:12px;}
 
+  .daruma-photo-colors1314{margin:12px 0;padding:0 10px 6px;border:1px solid rgba(146,174,205,.28);border-radius:8px;min-width:0;}
+  .daruma-photo-colors1314>legend{padding:0 5px;color:var(--core-amber);font-size:12px;font-weight:600;}
+
   #darumaTelephotoBtn{position:relative;}
   #darumaTelephotoBtn.loading{color:var(--core-amber);border-color:var(--core-amber);opacity:1;}
   #darumaTelephotoBtn.loading svg{animation:darumaTelephotoPulse 1s ease-in-out infinite alternate;}
@@ -9636,7 +9639,17 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                         <div class="field"><label class="top" for="darumaPhotosky1313">空の明るさ <output id="darumaPhotoskyVal1313" class="mono">100%</output></label><input id="darumaPhotosky1313" type="range" min="70" max="130" step="1" value="100"></div>
                         <div class="field"><label class="top" for="darumaPhotowater1313">水面の明るさ <output id="darumaPhotowaterVal1313" class="mono">100%</output></label><input id="darumaPhotowater1313" type="range" min="60" max="160" step="1" value="100"></div>
                         <div class="field"><label class="top" for="darumaPhotoground1313">景色の明るさ <output id="darumaPhotogroundVal1313" class="mono">100%</output></label><input id="darumaPhotoground1313" type="range" min="50" max="180" step="1" value="100"></div>
-                        <div class="field"><label class="top" for="darumaPhotowarmth1313">暖色の強さ <output id="darumaPhotowarmthVal1313" class="mono">100%</output></label><input id="darumaPhotowarmth1313" type="range" min="0" max="150" step="1" value="100"><div class="range-hint">控えめ ← → 暖かく鮮やかに</div></div>
+                        <div class="field"><label class="top" for="darumaPhotowarmth1313">全体の暖色の強さ <output id="darumaPhotowarmthVal1313" class="mono">100%</output></label><input id="darumaPhotowarmth1313" type="range" min="0" max="150" step="1" value="100"><div class="range-hint">控えめ ← → 暖かく鮮やかに</div></div>
+                        <p class="plan-modal-help">水面と地上の色を別々に調整できます。暖かさは黄・赤み、彩度は色の鮮やかさです。</p>
+                        <fieldset class="daruma-photo-colors1314"><legend>水面の色</legend>
+                          <div class="field"><label class="top" for="darumaPhotowaterWarmth1313">色の暖かさ <output id="darumaPhotowaterWarmthVal1313" class="mono">100%</output></label><input id="darumaPhotowaterWarmth1313" type="range" min="0" max="200" step="1" value="100"></div>
+                          <div class="field"><label class="top" for="darumaPhotowaterSaturation1313">彩度（鮮やかさ） <output id="darumaPhotowaterSaturationVal1313" class="mono">100%</output></label><input id="darumaPhotowaterSaturation1313" type="range" min="0" max="250" step="1" value="100"></div>
+                        </fieldset>
+                        <fieldset class="daruma-photo-colors1314"><legend>地上の景色の色</legend>
+                          <div class="field"><label class="top" for="darumaPhotogroundWarmth1313">色の暖かさ <output id="darumaPhotogroundWarmthVal1313" class="mono">100%</output></label><input id="darumaPhotogroundWarmth1313" type="range" min="0" max="200" step="1" value="100"></div>
+                          <div class="field"><label class="top" for="darumaPhotogroundSaturation1313">彩度（鮮やかさ） <output id="darumaPhotogroundSaturationVal1313" class="mono">100%</output></label><input id="darumaPhotogroundSaturation1313" type="range" min="0" max="250" step="1" value="100"></div>
+                        </fieldset>
+
                         <button id="darumaPhotoReset1313" type="button">標準に戻す</button>
                       </div>
                     </details>
@@ -10362,7 +10375,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1313-daruma-water-brightness";
+const APP_VERSION="1314-daruma-surface-colors";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -26969,8 +26982,8 @@ function darumaPhotoToneMatrix1312(kind){
     .213*.60*.15,.715*.60*.15,(.072*.60+.40)*.15,0]);
 }
 /* 【v1313】写真風の表示専用。カメラや通常の夕焼け設定とは別に保持する。 */
-const DARUMA_PHOTO_LIMITS1313={sky:[70,130],water:[60,160],ground:[50,180],warmth:[0,150]};
-const DARUMA_PHOTO_DEFAULT1313={sky:100,water:100,ground:100,warmth:100};
+const DARUMA_PHOTO_LIMITS1313={sky:[70,130],water:[60,160],ground:[50,180],warmth:[0,150],waterWarmth:[0,200],waterSaturation:[0,250],groundWarmth:[0,200],groundSaturation:[0,250]};
+const DARUMA_PHOTO_DEFAULT1313={sky:100,water:100,ground:100,warmth:100,waterWarmth:100,waterSaturation:100,groundWarmth:100,groundSaturation:100};
 const darumaPhotoAppearance1313={...DARUMA_PHOTO_DEFAULT1313};
 function darumaPhotoAppearanceRestore1313(saved){
   for(const key of Object.keys(DARUMA_PHOTO_DEFAULT1313)){
@@ -27021,6 +27034,26 @@ function darumaPhotoWaterLift1313(ctx,canvas){
   ctx.restore();
 }
 
+/* 【v1314】地上と水面の色を別々に調整。明るさ補正後に適用し、
+   標準100/100は完全に素通し。暖かさの加減では輝度と黒を保つ。 */
+function darumaPhotoSurfaceColorMatrix1314(warmth,saturation){
+  const delta=clamp(warmth,0,200)/100-1,red=.25*delta,blue=-.40*delta;
+  const green=-(.213*red+.072*blue)/.715;
+  const temperature=new Float64Array([
+    1+red*.213,red*.715,red*.072,0,
+    green*.213,1+green*.715,green*.072,0,
+    blue*.213,blue*.715,1+blue*.072,0]);
+  // 彩度0では、暖かさを変えていても本当に無彩色にする。
+  return smMul(smSaturate(clamp(saturation,0,250)/100),temperature);
+}
+function darumaPhotoSurfaceColor1314(ctx,canvas,kind){
+  if(kind!=="water"&&kind!=="ground")return;
+  const warmth=darumaPhotoAppearance1313[kind+"Warmth"],saturation=darumaPhotoAppearance1313[kind+"Saturation"];
+  if(warmth===100&&saturation===100)return;
+  const adjusted=sunsetMatrixDraw("darumaPhotoSurfaceColor"+kind,canvas,canvas.width,canvas.height,darumaPhotoSurfaceColorMatrix1314(warmth,saturation));
+  ctx.save();ctx.globalCompositeOperation="copy";ctx.drawImage(adjusted,0,0);ctx.restore();
+}
+
 function applyDarumaPhotoExposure1312(ctx,s,W,H,toXY,original,masks,sun,rx,ry,outline){
   const amount=darumaPhotoExposureWeight1312(s);
   if(!(amount>.002)||!original||!(W>0&&H>0))return false;
@@ -27052,6 +27085,7 @@ function applyDarumaPhotoExposure1312(ctx,s,W,H,toXY,original,masks,sun,rx,ry,ou
     sunsetResetContext(layer.canvas);
     layer.ctx.drawImage(sunsetMatrixDraw("darumaPhoto"+kind,original,W,H,darumaPhotoSurfaceMatrix1313(kind)),0,0);
     if(kind==="water")darumaPhotoWaterLift1313(layer.ctx,layer.canvas);
+    darumaPhotoSurfaceColor1314(layer.ctx,layer.canvas,kind);
     useMask(mask);target.ctx.drawImage(layer.canvas,0,0);
   }
   /* 既存の72点の輪郭・島の遮蔽・折返し帯へ、白い芯と薄い黄色の縁だけを塗る。 */
