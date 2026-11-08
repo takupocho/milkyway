@@ -1861,6 +1861,15 @@ body.fs-sim.drone-mode.gps1243-hiking-playing .gps1223-replay{bottom:calc(var(--
   #highDetailBtn[aria-pressed="true"] svg.high-detail-dash-ring{opacity:1;}
   #highDetailBtn{position:relative;}
   /* 超望遠・だるま判定は、通常の高精細スキャンとは独立した遠距離島影の確認機能。 */
+  .daruma-photo-adjust1313{margin:9px 0;border:1px solid rgba(146,174,205,.32);border-radius:9px;background:rgba(12,20,34,.28);}
+  .daruma-photo-adjust1313>summary{padding:11px 12px;cursor:pointer;color:var(--star-white);font-weight:600;font-size:13px;}
+  .daruma-photo-adjust-body1313{padding:0 12px 12px;}
+  .daruma-photo-adjust-body1313 .field{margin:12px 0;}
+  .daruma-photo-adjust-body1313 label.top{gap:8px;}
+  .daruma-photo-adjust-body1313 output{color:var(--core-amber);flex-shrink:0;}
+  .daruma-photo-adjust-body1313 input[type="range"]{display:block;width:100%;margin:4px 0;}
+  .daruma-photo-adjust-body1313 button{width:100%;padding:8px 10px;font-size:12px;}
+
   #darumaTelephotoBtn{position:relative;}
   #darumaTelephotoBtn.loading{color:var(--core-amber);border-color:var(--core-amber);opacity:1;}
   #darumaTelephotoBtn.loading svg{animation:darumaTelephotoPulse 1s ease-in-out infinite alternate;}
@@ -9620,6 +9629,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                     <p class="plan-modal-help">シミュレーション画面で左右2点を選び、その方位範囲だけを太陽1個分ずつ走査します。完成した島影は日付を変えても残り、撮影計画と一緒に保存されます。</p>
                     <button id="darumaPhotoExposureBtn1312" type="button" class="active" aria-pressed="true" style="width:100%;margin-top:9px;">写真風の明るさ ON</button>
                     <p class="plan-modal-help">島影を表示して太陽を向くと、低い朝陽・夕陽を写真の露出感で表示します。太陽は黄白色、景色は暗めになります。OFFで元の表示へ戻せます。</p>
+                    <details id="darumaPhotoAdjust1313" class="daruma-photo-adjust1313">
+                      <summary>明るさ・色味を調整</summary>
+                      <div class="daruma-photo-adjust-body1313">
+                        <p class="plan-modal-help">写真風の明るさがONのときに反映します。100%が標準です。</p>
+                        <div class="field"><label class="top" for="darumaPhotosky1313">空の明るさ <output id="darumaPhotoskyVal1313" class="mono">100%</output></label><input id="darumaPhotosky1313" type="range" min="70" max="130" step="1" value="100"></div>
+                        <div class="field"><label class="top" for="darumaPhotowater1313">水面の明るさ <output id="darumaPhotowaterVal1313" class="mono">100%</output></label><input id="darumaPhotowater1313" type="range" min="60" max="160" step="1" value="100"></div>
+                        <div class="field"><label class="top" for="darumaPhotoground1313">景色の明るさ <output id="darumaPhotogroundVal1313" class="mono">100%</output></label><input id="darumaPhotoground1313" type="range" min="50" max="180" step="1" value="100"></div>
+                        <div class="field"><label class="top" for="darumaPhotowarmth1313">暖色の強さ <output id="darumaPhotowarmthVal1313" class="mono">100%</output></label><input id="darumaPhotowarmth1313" type="range" min="0" max="150" step="1" value="100"><div class="range-hint">控えめ ← → 暖かく鮮やかに</div></div>
+                        <button id="darumaPhotoReset1313" type="button">標準に戻す</button>
+                      </div>
+                    </details>
+
                     <button id="darumaSilhouettePickBtn" type="button" style="width:100%;margin-top:9px;">シミュレーション画面で左右範囲を選ぶ</button>
                     <!-- 【v1095】左端・右端は読み取り専用の表示だけ（範囲は必ずシミュレーション画面で選ぶ）。入力欄をやめて 1 行の結果に。 -->
                     <p id="darumaSilhouetteAzReadout" class="daruma-silhouette-az-readout">左右の方位：<span id="darumaSilhouetteAzValue">未選択</span></p>
@@ -10341,7 +10362,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1312-daruma-photo-exposure";
+const APP_VERSION="1313-daruma-water-brightness";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -26947,6 +26968,59 @@ function darumaPhotoToneMatrix1312(kind){
     .213*.60*.20,(.715*.60+.40)*.20,.072*.60*.20,0,
     .213*.60*.15,.715*.60*.15,(.072*.60+.40)*.15,0]);
 }
+/* 【v1313】写真風の表示専用。カメラや通常の夕焼け設定とは別に保持する。 */
+const DARUMA_PHOTO_LIMITS1313={sky:[70,130],water:[60,160],ground:[50,180],warmth:[0,150]};
+const DARUMA_PHOTO_DEFAULT1313={sky:100,water:100,ground:100,warmth:100};
+const darumaPhotoAppearance1313={...DARUMA_PHOTO_DEFAULT1313};
+function darumaPhotoAppearanceRestore1313(saved){
+  for(const key of Object.keys(DARUMA_PHOTO_DEFAULT1313)){
+    const value=saved&&typeof saved==="object"?saved[key]:undefined;
+    const limits=DARUMA_PHOTO_LIMITS1313[key];
+    darumaPhotoAppearance1313[key]=typeof value==="number"&&Number.isFinite(value)?Math.round(clamp(value,limits[0],limits[1])):DARUMA_PHOTO_DEFAULT1313[key];
+  }
+  syncDarumaPhotoAppearance1313();
+}
+function syncDarumaPhotoAppearance1313(){
+  for(const key of Object.keys(DARUMA_PHOTO_DEFAULT1313)){
+    const input=document.getElementById("darumaPhoto"+key+"1313"),value=darumaPhotoAppearance1313[key];
+    if(input)input.value=value;
+    const output=document.getElementById("darumaPhoto"+key+"Val1313");if(output)output.textContent=value+"%";
+  }
+}
+function darumaPhotoAdjustMatrix1313(gain){
+  const warmth=darumaPhotoAppearance1313.warmth/100,delta=warmth-1;
+  const balance=new Float64Array([gain*(1+.06*delta),0,0,0,0,gain,0,0,0,0,gain*(1-.12*delta),0]);
+  return smMul(balance,smSaturate(.6+.4*warmth));
+}
+function darumaPhotoSurfaceMatrix1313(kind){
+  return smMul(darumaPhotoAdjustMatrix1313(darumaPhotoAppearance1313[kind]/100),darumaPhotoToneMatrix1312(kind));
+}
+function darumaPhotoSkyAdjust1313(ctx,canvas){
+  if(darumaPhotoAppearance1313.sky===100&&darumaPhotoAppearance1313.warmth===100)return;
+  const adjusted=sunsetMatrixDraw("darumaPhotoSkyAdjust",canvas,canvas.width,canvas.height,darumaPhotoAdjustMatrix1313(darumaPhotoAppearance1313.sky/100));
+  ctx.save();ctx.globalCompositeOperation="copy";ctx.drawImage(adjusted,0,0);ctx.restore();
+}
+for(const key of Object.keys(DARUMA_PHOTO_DEFAULT1313)){
+  const input=document.getElementById("darumaPhoto"+key+"1313");
+  input?.addEventListener("input",()=>{
+    const limits=DARUMA_PHOTO_LIMITS1313[key],value=Number(input.value);
+    if(!Number.isFinite(value))return;
+    darumaPhotoAppearance1313[key]=Math.round(clamp(value,limits[0],limits[1]));syncDarumaPhotoAppearance1313();update();scheduleSaveSettings();
+  });
+}
+document.getElementById("darumaPhotoReset1313")?.addEventListener("click",()=>{
+  darumaPhotoAppearanceRestore1313(null);update();scheduleSaveSettings();
+});
+
+/* 【v1313】水面だけの中間調を持ち上げる。screen合成は黒を保つので、
+   水に映る暗い山・木・橋を一様な明るい塗りで白ませない。CPU画素読出しも増やさない。 */
+function darumaPhotoWaterLift1313(ctx,canvas){
+  ctx.save();
+  ctx.globalCompositeOperation="screen";ctx.globalAlpha=1;ctx.drawImage(canvas,0,0);
+  ctx.globalAlpha=.45;ctx.drawImage(canvas,0,0);
+  ctx.restore();
+}
+
 function applyDarumaPhotoExposure1312(ctx,s,W,H,toXY,original,masks,sun,rx,ry,outline){
   const amount=darumaPhotoExposureWeight1312(s);
   if(!(amount>.002)||!original||!(W>0&&H>0))return false;
@@ -26970,12 +27044,14 @@ function applyDarumaPhotoExposure1312(ctx,s,W,H,toXY,original,masks,sun,rx,ry,ou
     halo.addColorStop(0,"rgba(255,193,80,.24)");halo.addColorStop(.32,"rgba(255,177,58,.11)");halo.addColorStop(1,"rgba(255,150,36,0)");
     layer.ctx.fillStyle=halo;layer.ctx.fillRect(0,0,W,H);
   }
+  darumaPhotoSkyAdjust1313(layer.ctx,layer.canvas);
   useMask(masks.sky,true);target.ctx.drawImage(layer.canvas,0,0);
   /* 地上は露出を落とし、水面は茶金の中間調へ。型の外側は元画像を保つ。 */
   for(const kind of ["ground","water"]){
     const mask=masks[kind];if(!mask)continue;
     sunsetResetContext(layer.canvas);
-    layer.ctx.drawImage(sunsetMatrixDraw("darumaPhoto"+kind,original,W,H,darumaPhotoToneMatrix1312(kind)),0,0);
+    layer.ctx.drawImage(sunsetMatrixDraw("darumaPhoto"+kind,original,W,H,darumaPhotoSurfaceMatrix1313(kind)),0,0);
+    if(kind==="water")darumaPhotoWaterLift1313(layer.ctx,layer.canvas);
     useMask(mask);target.ctx.drawImage(layer.canvas,0,0);
   }
   /* 既存の72点の輪郭・島の遮蔽・折返し帯へ、白い芯と薄い黄色の縁だけを塗る。 */
@@ -32665,6 +32741,7 @@ function collectPersistedSettings(){
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
     powerSaveOn:powerSaveOn,   // 【v982】
+    darumaPhotoAppearance1313:{...darumaPhotoAppearance1313},
     darumaPhotoExposureOn1312:darumaPhotoExposureOn1312,
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
@@ -33165,6 +33242,7 @@ async function applyPersistedSettingsText(stored){
     if(false&&Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
+    darumaPhotoAppearanceRestore1313(s.darumaPhotoAppearance1313);
     darumaPhotoExposureOn1312=s.darumaPhotoExposureOn1312!==false;syncDarumaPhotoExposure1312();
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
     if(s.sunsetModeOn!==undefined&&!sunsetRebaked)sunsetModeOn=s.sunsetModeOn===true;
