@@ -9618,6 +9618,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                   <div class="daruma-island-silhouette-box">
                     <h4 class="daruma-island-silhouette-title">撮影計画へ保存する島のシルエット</h4>
                     <p class="plan-modal-help">シミュレーション画面で左右2点を選び、その方位範囲だけを太陽1個分ずつ走査します。完成した島影は日付を変えても残り、撮影計画と一緒に保存されます。</p>
+                    <button id="darumaPhotoExposureBtn1312" type="button" class="active" aria-pressed="true" style="width:100%;margin-top:9px;">写真風の明るさ ON</button>
+                    <p class="plan-modal-help">島影を表示して太陽を向くと、低い朝陽・夕陽を写真の露出感で表示します。太陽は黄白色、景色は暗めになります。OFFで元の表示へ戻せます。</p>
                     <button id="darumaSilhouettePickBtn" type="button" style="width:100%;margin-top:9px;">シミュレーション画面で左右範囲を選ぶ</button>
                     <!-- 【v1095】左端・右端は読み取り専用の表示だけ（範囲は必ずシミュレーション画面で選ぶ）。入力欄をやめて 1 行の結果に。 -->
                     <p id="darumaSilhouetteAzReadout" class="daruma-silhouette-az-readout">左右の方位：<span id="darumaSilhouetteAzValue">未選択</span></p>
@@ -10339,7 +10341,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1311-island-geodesy";
+const APP_VERSION="1312-daruma-photo-exposure";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -26911,6 +26913,91 @@ function railReflectionClip1279(waterMask,bridgeOverlay,W,H){
   }
   c.restore();
 }
+/* 【v1312】だるま夕陽の構図を写真の露出感で確認する一時的な現像。
+   撮影設定・天文位置・島影・円盤の輪郭には触れない。既存の現像結果へ連続的に混ぜる。 */
+let darumaPhotoExposureOn1312=true;
+const darumaPhotoCanvases1312=Object.create(null);
+function darumaPhotoCanvas1312(key,w,h){
+  const canvas=darumaPhotoCanvases1312[key]=sunsetCanvas(darumaPhotoCanvases1312[key],w,h);
+  return {canvas,ctx:sunsetResetContext(canvas)};
+}
+function syncDarumaPhotoExposure1312(){
+  const button=document.getElementById("darumaPhotoExposureBtn1312");
+  if(!button)return;
+  button.textContent=`写真風の明るさ ${darumaPhotoExposureOn1312?"ON":"OFF"}`;
+  button.classList.toggle("active",darumaPhotoExposureOn1312);
+  button.setAttribute("aria-pressed",String(darumaPhotoExposureOn1312));
+}
+function darumaPhotoExposureWeight1312(s){
+  if(!darumaPhotoExposureOn1312||!sunsetModeOn||arActive||!s?.sunAltAz)return 0;
+  if(!darumaIslandOverlayActive(s)&&!darumaTelephotoResultMatches(s))return 0;
+  const altitude=s.sunAltAz.alt;
+  if(!Number.isFinite(altitude))return 0;
+  const smooth=t=>{const k=clamp(t,0,1);return k*k*(3-2*k);};
+  return sunsetModeWeight(s)*sunsetAimFactor(s)*smooth((altitude+5)/3)*smooth((8-altitude)/5);
+}
+function darumaPhotoToneMatrix1312(kind){
+  /* 暗い鏡像は暗いまま。水面に一様な明るい塗りを足さず、元の明暗を保つ。 */
+  if(kind==="water")return new Float64Array([
+    .213*.70,.715*.70,.072*.70,.006,
+    .213*.44,.715*.44,.072*.44,.004,
+    .213*.28,.715*.28,.072*.28,.003]);
+  return new Float64Array([
+    (.213*.60+.40)*.27,.715*.60*.27,.072*.60*.27,0,
+    .213*.60*.20,(.715*.60+.40)*.20,.072*.60*.20,0,
+    .213*.60*.15,.715*.60*.15,(.072*.60+.40)*.15,0]);
+}
+function applyDarumaPhotoExposure1312(ctx,s,W,H,toXY,original,masks,sun,rx,ry,outline){
+  const amount=darumaPhotoExposureWeight1312(s);
+  if(!(amount>.002)||!original||!(W>0&&H>0))return false;
+  const target=darumaPhotoCanvas1312("target",W,H),layer=darumaPhotoCanvas1312("layer",W,H);
+  target.ctx.drawImage(original,0,0,W,H);
+  const useMask=(mask,invert=false)=>{
+    if(!mask)return;
+    layer.ctx.globalCompositeOperation=invert?"destination-out":"destination-in";
+    layer.ctx.drawImage(mask,0,0,W,H);layer.ctx.globalCompositeOperation="source-over";
+  };
+  /* 空の形は地形・島影・橋・模型をすべて除いた共通の型。前景へ光を足さない。 */
+  const horizon=toXY(s.facingAz,renderedSeaHorizonAltDeg());
+  const horizonY=clamp(horizon?.[1]??H*.5,H*.18,H*.94);
+  const sky=layer.ctx.createLinearGradient(0,0,0,horizonY);
+  sky.addColorStop(0,"#f37929");sky.addColorStop(.65,"#e96522");sky.addColorStop(1,"#cb4b1d");
+  layer.ctx.drawImage(original,0,0,W,H);
+  layer.ctx.globalAlpha=.90;layer.ctx.fillStyle=sky;layer.ctx.fillRect(0,0,W,H);layer.ctx.globalAlpha=1;
+  if(sun&&Number.isFinite(sun.x)&&Number.isFinite(sun.y)){
+    const r=Math.max(Math.hypot(W,H)*.25,Math.max(rx,ry)*3.5);
+    const halo=layer.ctx.createRadialGradient(sun.x,sun.y,0,sun.x,sun.y,r);
+    halo.addColorStop(0,"rgba(255,193,80,.24)");halo.addColorStop(.32,"rgba(255,177,58,.11)");halo.addColorStop(1,"rgba(255,150,36,0)");
+    layer.ctx.fillStyle=halo;layer.ctx.fillRect(0,0,W,H);
+  }
+  useMask(masks.sky,true);target.ctx.drawImage(layer.canvas,0,0);
+  /* 地上は露出を落とし、水面は茶金の中間調へ。型の外側は元画像を保つ。 */
+  for(const kind of ["ground","water"]){
+    const mask=masks[kind];if(!mask)continue;
+    sunsetResetContext(layer.canvas);
+    layer.ctx.drawImage(sunsetMatrixDraw("darumaPhoto"+kind,original,W,H,darumaPhotoToneMatrix1312(kind)),0,0);
+    useMask(mask);target.ctx.drawImage(layer.canvas,0,0);
+  }
+  /* 既存の72点の輪郭・島の遮蔽・折返し帯へ、白い芯と薄い黄色の縁だけを塗る。 */
+  if(sun&&Number.isFinite(sun.x)&&Number.isFinite(sun.y)&&rx>0&&ry>0){
+    const discOutline=outline||{points:Array.from({length:72},(_,i)=>{const a=i*Math.PI/36;return [sun.x+Math.cos(a)*rx,sun.y+Math.sin(a)*ry];})};
+    const stops=[[0,"#fffdf2"],[.68,"#fffbea"],[.88,"#fff5b9"],[.96,"#ffe16b"],[1,"#ffd13a"]];
+    const shape=drawPhoto._darumaSunShape||drawPhoto._darumaShapeForce;
+    const upper=shape&&Number.isFinite(shape.foldY)?[0,shape.foldY]:null;
+    sunsetFieldPass(target.ctx,W,H,sun,rx,ry,stops,masks.sky,true,"source-over",1,null,0,upper,discOutline);
+    if(shape&&Number.isFinite(shape.foldY)&&Number.isFinite(shape.horizonY)){
+      const fold=shape.foldY,bottom=Math.max(fold+1,shape.horizonY);
+      sunsetFieldPass(target.ctx,W,H,{x:sun.x,y:2*fold-sun.y},rx,ry,stops,masks.sky,true,"source-over",1,null,0,[fold,bottom+1],discOutline,fold);
+    }
+  }
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.filter="none";
+  ctx.globalCompositeOperation="source-over";ctx.globalAlpha=amount;ctx.drawImage(target.canvas,0,0);ctx.restore();
+  return true;
+}
+document.getElementById("darumaPhotoExposureBtn1312")?.addEventListener("click",()=>{
+  darumaPhotoExposureOn1312=!darumaPhotoExposureOn1312;syncDarumaPhotoExposure1312();update();scheduleSaveSettings();
+});
+
 function applySunsetMode(ctx,s,W,H,toXY){
   const weight=sunsetModeWeight(s);
   if(sunsetProbeArmed)sunsetProbeResult=null;
@@ -27050,6 +27137,11 @@ function applySunsetMode(ctx,s,W,H,toXY){
     }else groundMask=terrainMask;
   }
 
+  /* 【v1312】完全に写真風へ切り替わる場面では、不要な旧現像の光・彩度処理を省く。 */
+  if(darumaPhotoExposureWeight1312(s)>.998&&applyDarumaPhotoExposure1312(ctx,s,cw,ch,toXY,copy,{sky:skyMask,ground:groundMask,water:waterOk?waterMask:null},sun,sunRadiusX1310,sunRadiusY1310,solarPaintOutline1310)){
+    if(probeBefore)sunsetProbeResult={before:probeBefore,after:sunsetProbeMean(canvas),weight:weight};
+    return;
+  }
   /* ③ 空。遠くを暗くし、全体を持ち上げ、太陽まわりに光を足す。 */
   const skyRadius=zoomDiag*.5*(sunsetMode.skySpread/100);   /* 【v993】 */
   sunsetFieldPass(ctx,cw,ch,sun,skyRadius,skyRadius,
@@ -27258,6 +27350,7 @@ function applySunsetMode(ctx,s,W,H,toXY){
   /* 【v942】水面も同じく。日没後に空より明るい赤が残るのを止める。 */
   restoreRegion(waterOk?waterMask:null,1-sunsetWaterFactor(sunAlt));
   /* 【v957】掛けたあとの平均色。前と同じなら、描いたつもりで何も乗っていない。 */
+  applyDarumaPhotoExposure1312(ctx,s,cw,ch,toXY,copy,{sky:skyMask,ground:groundMask,water:waterOk?waterMask:null},sun,sunRadiusX1310,sunRadiusY1310,solarPaintOutline1310);
   if(probeBefore)sunsetProbeResult={before:probeBefore,after:sunsetProbeMean(canvas),weight:weight};
 }
 for(const name of SUNSET_MODE_KEYS){
@@ -32572,6 +32665,7 @@ function collectPersistedSettings(){
     overlayStyle:JSON.parse(JSON.stringify(overlayStyle)),   // 【v961】道路・線路・橋の色
     glTerrainOn:glTerrainOn,   // 【v976】
     powerSaveOn:powerSaveOn,   // 【v982】
+    darumaPhotoExposureOn1312:darumaPhotoExposureOn1312,
     sunsetModeOn:sunsetModeOn,   // 【v929】
     sunsetRevision:SUNSET_REVISION,   // 【v947】
     sunsetMode:{...sunsetMode},
@@ -33071,6 +33165,7 @@ async function applyPersistedSettingsText(stored){
     if(false&&Number.isFinite(+s.worldGridBrightness)&&s.worldGridBrightness!==undefined){worldGridBrightness=Math.max(0,Math.min(300,Math.round(+s.worldGridBrightness)));syncWorldGridBrightnessControls();}   /* 【v984】 */
     /* 【v929】夕焼けモード。既定はOFFなので、記録が無ければOFFのまま。 */
     /* 【v947】既定値を差し替えたので、版番号が合わない古い保存は読み飛ばす。 */
+    darumaPhotoExposureOn1312=s.darumaPhotoExposureOn1312!==false;syncDarumaPhotoExposure1312();
     const sunsetRebaked=s.sunsetRevision!==SUNSET_REVISION;
     if(s.sunsetModeOn!==undefined&&!sunsetRebaked)sunsetModeOn=s.sunsetModeOn===true;
     if(s.sunsetMode&&typeof s.sunsetMode==="object"&&!sunsetRebaked){
