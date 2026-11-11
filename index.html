@@ -8460,6 +8460,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</pre></deta
                 <button id="popupPowerSaveBtn" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="再生・ドラッグ中のコマ数を30/秒に抑えて発熱を減らします。絵は変わりません">省電力</button>
                 <button id="popupRealSunMoonBtn" type="button" class="constellation-toggle-btn display-control-btn">太陽・月 リアル表示</button>
                 <button id="popupMoonSurfaceBtn1320" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true" title="実際の月面の模様を、日時・月相・見える向きに合わせて表示します">月の模様：ON</button>
+                <button id="popupMoonDarkSideBtn1321" type="button" class="constellation-toggle-btn display-control-btn" aria-pressed="false" title="ONで暗い側の月面を薄く表示します。輪郭確認用の演出で、地球照の明るさの予測ではありません">月の暗い部分を表示：OFF</button>
                 <button id="popupVignetteBtn" type="button" class="constellation-toggle-btn display-control-btn active" aria-pressed="true">周辺減光</button>
                 <button id="popupRealMilkyWayBtn" type="button" class="constellation-toggle-btn display-control-btn">天の川 リアル表示</button>
 <!-- zodiacal-popup-start1288 -->
@@ -10472,7 +10473,7 @@ function actMonSetShown(on){
 
 /* このファイルのバージョン。ファイル名と必ず一致させること。
    画面左下に常時表示されるので、どの版が動いているか実機でも確認できる。 */
-const APP_VERSION="1320-real-moon-surface";
+const APP_VERSION="1321-moon-dark-side";
 function correctionCloudLocalMeta1304(kind) {
   const store = correctionCloudLocalMeta1304.store ||= new Map();
   if (!store.has(kind)) store.set(kind,new Map());
@@ -24493,11 +24494,11 @@ var moonSurface1320 = (function () {
   function render(options) {
     if(!maps)return null;
     var o=options||{},p=pose(o),light=lighting(o);if(!p||!light)return null;
-    var size=adaptiveSize(o.size),tint=colorValue(o.litColor),exposure=finite(o.exposure)?clamp(o.exposure,.1,3):1.35;
+    var size=adaptiveSize(o.size),tint=colorValue(o.litColor),exposure=finite(o.exposure)?clamp(o.exposure,.1,3):1.35,darkSide=o.darkSide===true;
     /* Appearance changes slowly: max 15s bucket at 512px, max 60s small.
      * Planet positions and silhouette stay in the caller's exact live state. */
     var bucket=size>=320?15:60,timeKey=Math.round(o.jd*86400/bucket);
-    var key=[generation,size,timeKey,finite(o.jdTT)?o.jdTT.toFixed(7):'-',o.moon.ra.toFixed(3),o.moon.dec.toFixed(3),o.moon.elong.toFixed(2),o.sun.ra.toFixed(3),o.sun.dec.toFixed(3),tint.map(function(v){return Math.round(v);}).join(','),exposure].join('|');
+    var key=[generation,size,timeKey,finite(o.jdTT)?o.jdTT.toFixed(7):'-',o.moon.ra.toFixed(3),o.moon.dec.toFixed(3),o.moon.elong.toFixed(2),o.sun.ra.toFixed(3),o.sun.dec.toFixed(3),tint.map(function(v){return Math.round(v);}).join(','),exposure,darkSide?1:0].join('|');
     if(cache.has(key)){var reused=cache.get(key);cache.delete(key);cache.set(key,reused);hits++;return reused;}
     var canvas=makeCanvas(size);if(!canvas)return null;
     var ctx=canvas.getContext('2d');if(!ctx)return null;
@@ -24507,7 +24508,19 @@ var moonSurface1320 = (function () {
     for(var y=0;y<size;y++)for(var x=0;x<size;x++){
       var nx=(x+.5-half)/half,ny=(half-y-.5)/half,r2=nx*nx+ny*ny;if(r2>=1)continue;
       var point=surfacePoint(p,nx,ny),mu0=nx*light.east+ny*light.north+point.viewCos*light.view;
-      if(mu0<=0)continue; // preserve analytic phase; relief never leaks beyond it
+      if(mu0<=0){
+        if(!darkSide)continue; // legacy phase stays transparent by default
+        /* v1321: optional explanatory visibility, not a physical Earthshine
+         * prediction. Reuse actual spherical albedo at 6% direct-light scale;
+         * never replace it with a blue uniform disc or change the lit face. */
+        var darkRgb=sampleMap(maps.color,point.lon,point.lat,scratch),darkIndex=(y*size+x)*4;
+        var darkEdge=clamp((1-Math.sqrt(r2))*half,0,1),darkBrightness=.06*exposure;
+        pixels[darkIndex]=Math.round(clamp(darkRgb[0]*darkBrightness*tint[0]/255,0,255));
+        pixels[darkIndex+1]=Math.round(clamp(darkRgb[1]*darkBrightness*tint[1]/255,0,255));
+        pixels[darkIndex+2]=Math.round(clamp(darkRgb[2]*darkBrightness*tint[2]/255,0,255));
+        pixels[darkIndex+3]=Math.round(darkEdge*255);
+        continue;
+      }
       var rgb=sampleMap(maps.color,point.lon,point.lat,scratch),normal=bumpNormal(point,relief),illum=Math.max(0,dot(normal,lBody));
       /* Lommel-Seeliger dominates a particulate lunar surface; a small Lambert
        * contribution gives relief without turning a full Moon into a plastic ball. */
@@ -24530,6 +24543,33 @@ var moonSurface1320 = (function () {
 })();
 if(typeof module!=='undefined'&&module.exports)module.exports=moonSurface1320;
 /* moon-surface-integration-start1320 */
+/* Moon dark-side preference and sky occlusion. No photo pixel reads/copies. */
+let moonDarkSideEnabled1321=false;
+function moonDarkSideSync1321(){const b=document.getElementById('popupMoonDarkSideBtn1321');if(!b)return;b.classList.toggle('active',moonDarkSideEnabled1321);b.setAttribute('aria-pressed',String(moonDarkSideEnabled1321));b.textContent='月の暗い部分を表示：'+(moonDarkSideEnabled1321?'ON':'OFF');}
+function moonDarkBaseColor1321(color){return moonDarkSideEnabled1321?'rgb('+color.map(v=>Math.round(v*.025)).join(',')+')':'rgba(0,0,0,0)';}
+// Match the main Moon's existing lens stretch and minimum display radius.
+function moonDarkDisc1321(s,toXY,W,H,lensStretchAxes){
+  if(!showBelowHorizon&&s.moonAltAz.alt<=-1)return null;
+  const p=toXY(s.moonAltAz.az,s.moonAltAz.alt);if(!p||!p.every(Number.isFinite)||p[0]<=-40||p[0]>=W+40||p[1]<=-40||p[1]>=H+40)return null;
+  let axes;const celestialScale=arActive?2:1;
+  if(realSunMoonEnabled){axes=lensStretchAxes(p[0],p[1],s.moon.angularRadiusDeg||.26);const minR=9*(W/1200)*celestialScale*((s.moon.angularRadiusDeg||.2590)/.2590),r=Math.hypot(axes.a,axes.b);if(r>0&&r<minR){const boost=minR/r;axes={a:axes.a*boost,b:axes.b*boost,c:axes.c*boost,d:axes.d*boost};}}
+  else{const r=13*(W/1200)*celestialScale;axes={a:r,b:0,c:0,d:r};}
+  return{x:p[0],y:p[1],...axes};
+}
+function moonDarkReflectionDisc1321(s,toXY,W,H,scale,reflectionCanvasScale){
+  if(s.moonAltAz.alt<=0)return null;const p=toXY(s.moonAltAz.az,-s.moonAltAz.alt);if(!p||!p.every(Number.isFinite)||p[0]<-60||p[0]>W+60||p[1]<-60||p[1]>H+60)return null;
+  const r=realSunMoonEnabled?Math.max(1.2,scale*D2R*(s.moon.angularRadiusDeg||.272)):18*reflectionCanvasScale;
+  return{x:p[0],y:p[1],a:r,b:0,c:0,d:r};
+}
+// Call inside the caller's save/restore. The even-odd hole removes the entire
+// lunar disc from background lights, even when its unlit side is not shown.
+// Canvas path coordinates retain the ellipse transform after restore.
+function moonDarkClipOutside1321(ctx,disc,W,H){
+  if(!disc||![disc.x,disc.y,disc.a,disc.b,disc.c,disc.d].every(Number.isFinite)||Math.abs(disc.a*disc.d-disc.b*disc.c)<1e-12)return;
+  ctx.beginPath();ctx.rect(0,0,W,H);ctx.save();ctx.transform(disc.a,disc.b,disc.c,disc.d,disc.x,disc.y);ctx.moveTo(1,0);ctx.arc(0,0,1,0,Math.PI*2);ctx.restore();ctx.clip('evenodd');
+}
+document.getElementById('popupMoonDarkSideBtn1321').addEventListener('click',()=>{moonDarkSideEnabled1321=!moonDarkSideEnabled1321;moonDarkSideSync1321();update();scheduleSaveSettings();});
+moonDarkSideSync1321();
 let moonSurfaceEnabled1320=true;
 let moonSurfaceLoad1320=null,moonSurfaceFailed1320=false;
 function moonSurfaceSync1320(){const b=document.getElementById('popupMoonSurfaceBtn1320');if(!b)return;b.classList.toggle('active',moonSurfaceEnabled1320);b.setAttribute('aria-pressed',String(moonSurfaceEnabled1320));b.textContent='月の模様：'+(moonSurfaceEnabled1320?'ON':'OFF');}
@@ -24540,7 +24580,7 @@ function moonSurfaceOffset1320(moon,positionAngle){const rho=.06*Math.PI/180,pa=
  * Project celestial east/north separately, preserving that exact stretch.
  * For water, reflect the full basis (including its handedness) in altitude. */
 function moonSurfaceBasis1320(s,toXY,point,axes,mirror=false){const {a,b,c,d}=axes,det=a*d-b*c;if(!Number.isFinite(det)||Math.abs(det)<1e-12)return null;const centreAA=raDecToAltAz(s.moon.ra,s.moon.dec,s.jd,s.lat,s.lon),origin=toXY(centreAA.az,mirror?-centreAA.alt:centreAA.alt);if(!origin||!origin.every(Number.isFinite))return null;const local=pa=>{const rd=moonSurfaceOffset1320(s.moon,pa),aa=raDecToAltAz(rd.ra,rd.dec,s.jd,s.lat,s.lon),p=toXY(aa.az,mirror?-aa.alt:aa.alt);if(!p||!p.every(Number.isFinite))return null;const dx=p[0]-origin[0],dy=p[1]-origin[1];return[(d*dx-c*dy)/det,(-b*dx+a*dy)/det];};const east=local(90),north=local(0);if(!east||!north)return null;const length=Math.hypot(...east),cross=east[0]*north[1]-east[1]*north[0];if(length<1e-10||Math.abs(cross)<1e-12)return null;const ex=east[0]/length,ey=east[1]/length,sign=Math.sign(cross),sx=ey*sign,sy=-ex*sign;return{a:a*ex+c*ey,b:b*ex+d*ey,c:a*sx+c*sy,d:b*sx+d*sy};}
-function moonSurfaceOverlay1320(ctx,s,toXY,point,axes,color,mirror=false,translated=false){if(!moonSurfaceEnabled1320)return false;moonSurfaceEnsure1320();if(!moonSurface1320.ready())return false;const basis=moonSurfaceBasis1320(s,toXY,point,axes,mirror);if(!basis)return false;const diameter=2*Math.max(Math.hypot(axes.a,axes.b),Math.hypot(axes.c,axes.d)),size=Math.min(diameter,playbackTimer?192:512);const result=moonSurface1320.render({jd:s.jd,sun:s.sun,moon:s.moon,size,litColor:color,exposure:1.05});if(!result)return false;ctx.save();try{ctx.shadowBlur=0;ctx.shadowColor='rgba(0,0,0,0)';ctx.transform(basis.a,basis.b,basis.c,basis.d,translated?0:point[0],translated?0:point[1]);ctx.drawImage(result.canvas,-1,-1,2,2);}finally{ctx.restore();}return true;}
+function moonSurfaceOverlay1320(ctx,s,toXY,point,axes,color,mirror=false,translated=false){if(!moonSurfaceEnabled1320)return false;moonSurfaceEnsure1320();if(!moonSurface1320.ready())return false;const basis=moonSurfaceBasis1320(s,toXY,point,axes,mirror);if(!basis)return false;const diameter=2*Math.max(Math.hypot(axes.a,axes.b),Math.hypot(axes.c,axes.d)),size=Math.min(diameter,playbackTimer?192:512);const result=moonSurface1320.render({jd:s.jd,sun:s.sun,moon:s.moon,size,litColor:color,exposure:1.05,darkSide:moonDarkSideEnabled1321});if(!result)return false;ctx.save();try{ctx.shadowBlur=0;ctx.shadowColor='rgba(0,0,0,0)';ctx.transform(basis.a,basis.b,basis.c,basis.d,translated?0:point[0],translated?0:point[1]);ctx.drawImage(result.canvas,-1,-1,2,2);}finally{ctx.restore();}return true;}
 document.getElementById('popupMoonSurfaceBtn1320').addEventListener('click',()=>{moonSurfaceEnabled1320=!moonSurfaceEnabled1320;moonSurfaceSync1320();update();scheduleSaveSettings();});
 moonSurfaceSync1320();
 /* moon-surface-integration-end1320 */
@@ -30222,7 +30262,7 @@ trainSunWindowsSync1280();
 
 /* 「表示」ポップアップ内の6ボタンを、設定画面側の既存機能と常に同期する。 */
 function syncDisplayPopupControls(){
-  moonSurfaceSync1320();
+  moonSurfaceSync1320();moonDarkSideSync1321();
   zodiacalLightSync1288();
   trainSunWindowsSync1280();
   if(homeRailRuntimeReady1255)syncHomeRailState1255();
@@ -32995,7 +33035,7 @@ function collectPersistedSettings(){
     zodiacalLightEnabled1288,zodiacalLightEmphasis1288,
     realMilkyWayBrightnessLevel:realMilkyWayBrightnessLevel,
     realSunMoonEnabled:realSunMoonEnabled,
-    moonSurfaceEnabled1320,
+    moonSurfaceEnabled1320,moonDarkSideEnabled1321,
     vignetteEnabled:vignetteEnabled,
     milkyWayPositionTrailVisible:milkyWayPositionTrailVisible,
     constellationLinesVisible:constellationLinesVisible,
@@ -33152,6 +33192,7 @@ const USER_DEFAULT_SETTINGS={
  "realMilkyWayBrightnessLevel": 3,
  "realSunMoonEnabled": true,
  "moonSurfaceEnabled1320": true,
+ "moonDarkSideEnabled1321": false,
  "vignetteEnabled": false,
  "milkyWayPositionTrailVisible": false,
  "constellationLinesVisible": false,
@@ -33367,6 +33408,7 @@ async function applyPersistedSettingsText(stored){
     el.realMilkyWayBrightnessSlider.value=realMilkyWayBrightnessLevel;
     syncRealMilkyWayBrightnessControl();
     moonSurfaceEnabled1320=s.moonSurfaceEnabled1320!==false;moonSurfaceSync1320();
+    moonDarkSideEnabled1321=s.moonDarkSideEnabled1321===true;moonDarkSideSync1321();
     realSunMoonEnabled=!!s.realSunMoonEnabled;
     el.realSunMoonBtn.classList.toggle("active",realSunMoonEnabled);
     el.realSunMoonState.textContent=realSunMoonEnabled ? "ON" : "OFF";
@@ -34620,7 +34662,7 @@ async function registerCurrentObservingPlan(customTitle=""){
     railBridgeHeights1271:bridgeLibraryLegacySnapshot1277(),
     trainHeadlightsOn,   /* 【v1194】撮影計画にも照明の入り切りを保存する。 */
     trainSunWindowsOn1280,
-    moonSurfaceEnabled1320,
+    moonSurfaceEnabled1320,moonDarkSideEnabled1321,
     zodiacalLightEnabled1288,zodiacalLightEmphasis1288,
     trainHeadlightBrightness,   /* 【v1195】撮影計画にも光量を保存する。 */
     updatedAt:Date.now()
@@ -34846,6 +34888,7 @@ async function applySavedObservingPlan(location){
   if(typeof location.trainHeadlightsOn==="boolean")trainHeadlightsOn=location.trainHeadlightsOn;   /* 古い計画では現在の設定を保つ。 */
   trainSunWindowsRestoreSetting1280(location,true);
   if(typeof location.moonSurfaceEnabled1320==="boolean")moonSurfaceEnabled1320=location.moonSurfaceEnabled1320;
+  if(typeof location.moonDarkSideEnabled1321==="boolean")moonDarkSideEnabled1321=location.moonDarkSideEnabled1321;
   zodiacalLightRestore1288(location);   /* 古い撮影計画には黄道光を加えない。 */
   if(savedNumber(location.trainHeadlightBrightness)!==null)setTrainHeadlightBrightness(location.trainHeadlightBrightness);   /* 【v1195】光量のない旧計画は現在値を保つ。 */
   await restorePlanBridgeSnapshot(location);
@@ -46322,6 +46365,8 @@ function drawPhoto(ctx,s){
   const starOpacity = (+el.starOpacitySlider.value||50)/100; // 星の透明度(スタートレイルで描く星全体に均一に適用、0.1〜1.0)
 
   // 実写モードは空背景の直後に描き、星座・惑星・ベストタイムの白い玉など既存の案内表示は上へ重ねる。
+  const moonOcclusionDisc1321=moonDarkDisc1321(s,toXY,W,H,lensStretchAxes);
+  ctx.save();moonDarkClipOutside1321(ctx,moonOcclusionDisc1321,W,H);
   drawRealMilkyWay(ctx,s,toXY,W,H,vis);
   drawZodiacalLight1288(ctx,s,W,H);
 
@@ -46676,6 +46721,8 @@ function drawPhoto(ctx,s){
   if(moonPathVisible) drawCelestialPath(s.moonPath,"205,208,228","moon");
   if(sunPathVisible) drawCelestialPath(solarDisplayPath1310(s),"242,180,90","sun");
 
+  ctx.restore(); // End background-light clipping; the Moon itself remains unclipped.
+
   // 月(月相の形を反映)
   if(showBelowHorizon || s.moonAltAz.alt>-1){
     const pt=toXY(s.moonAltAz.az,s.moonAltAz.alt);
@@ -46743,7 +46790,7 @@ function drawPhoto(ctx,s){
       ctx.save();
       ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
       ctx.rotate(moonRotationRad);
-      drawMoonPhaseShape(ctx,0,0,angR,s.moon.elong,`rgb(${moonAtmosphereColor})`,"#3d4058");
+      drawMoonPhaseShape(ctx,0,0,angR,s.moon.elong,`rgb(${moonAtmosphereColor})`,moonDarkBaseColor1321(moonAtmosphereRGB));
       ctx.restore();
       const moonTextureDrawn1320=moonSurfaceOverlay1320(ctx,s,toXY,[x,y],{a:vAzX,b:vAzY,c:vAltX,d:vAltY},moonAtmosphereRGB);
 
@@ -46797,7 +46844,7 @@ function drawPhoto(ctx,s){
       ctx.transform(vAzX,vAzY,vAltX,vAltY,x,y);
       ctx.beginPath(); ctx.arc(0,0,angR,0,Math.PI*2);
       // 細い月でも外周全体が白く光って満月状に見えないよう、輪郭はごく控えめにする。
-      ctx.strokeStyle=`rgba(${moonAtmosphereColor},${.04+.05*s.moon.illum})`;
+      ctx.strokeStyle=`rgba(${moonAtmosphereColor},${moonDarkSideEnabled1321?.04+.05*s.moon.illum:0})`;
       ctx.lineWidth=.7/Math.max(0.001,pxPerDeg);
       ctx.stroke();
       ctx.restore();
@@ -46908,6 +46955,8 @@ function drawPhoto(ctx,s){
       }
     }
   }
+
+  ctx.save();moonDarkClipOutside1321(ctx,moonOcclusionDisc1321,W,H);
 
   /* 彗星（v679）。コマ(ぼんやりした頭)と、太陽の正反対へ伸びる尾を描く。
      尾の向きは幾何学的に決まるので正確だが、長さは彗星の活動しだいで
@@ -47175,6 +47224,8 @@ function drawPhoto(ctx,s){
     });
   }
   ctx.globalAlpha=skyMarkAlphaBase; }   /* 【v1037】ここまで薄明で消す範囲 */
+
+  ctx.restore(); // End late star/planet/comet clipping before foreground scenery.
 
   // 全ての天空オブジェクトを描き終えてから大気ベールを通す。
   // これにより水平線近くの天の川や恒星も、色付きながら自然に見えにくくなる。
@@ -47718,6 +47769,8 @@ function drawPhoto(ctx,s){
 
         }
 
+        const reflectedMoonDisc1321=isConfirmedWaterDirection(s.moonAltAz.az)?moonDarkReflectionDisc1321(s,toXY,W,H,scale,reflectionCanvasScale):null;
+        ctx.save();moonDarkClipOutside1321(ctx,reflectedMoonDisc1321,W,H);
         drawZodiacalLight1288(ctx,s,W,H,true);
 
         // 天の川の反射。実写モードではESO画像を同じ球面メッシュで水平線の下へ反転する。
@@ -47908,7 +47961,7 @@ function drawPhoto(ctx,s){
             // 円形ハローも月には描かず、三日月が満月の円盤に見える現象を防ぐ。
             ctx.shadowColor=`rgba(${color},${alpha*.48})`;
             ctx.shadowBlur=Math.max(1.5,radius*.42);
-            drawMoonPhaseShape(ctx,0,0,radius,s.moon.elong,`rgb(${color})`,"rgba(0,0,0,0)");
+            drawMoonPhaseShape(ctx,0,0,radius,s.moon.elong,`rgb(${color})`,moonDarkBaseColor1321(color.split(",").map(Number)));
             if(moonSurfaceEnabled1320){ctx.rotate(-reflectedRotation);moonSurfaceOverlay1320(ctx,s,toXY,point,{a:radius,b:0,c:0,d:radius},color.split(",").map(Number),true,true);}
           }else{
             const haloRadius=radius*2.8;
@@ -48262,6 +48315,8 @@ function drawPhoto(ctx,s){
           });
           ctx.restore();
         }
+
+        ctx.restore(); // Keep the outer water mask; release reflected background-light clipping.
 
         // 太陽は昼間も鏡像を保ち、低高度時だけ長いサンロードを水面へ伸ばす。
         // 高度20度へ近づくにつれて光路は連続的に短く・弱くなる。
